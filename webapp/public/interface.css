@@ -1,0 +1,588 @@
+/* Shared brand and interface type. Every size is in rem (px / 16), so this
+   one root size sets the density: 1rem is 16px on phones and tablets, and
+   computers show everything at 90% of that, the density a laptop suits.
+   Pixels only for hairlines (2px or less), media queries and positions
+   measured at runtime. Change the density here, never with CSS zoom or
+   transforms; "screen" keeps a page printed to PDF at full size. */
+html { font-size: 100%; }
+@media screen and (hover: hover) and (pointer: fine) { html { font-size: 90%; } }
+/* The app's colours by name, as closedhand.com's (its interface.css): these
+   are the dark ones, the light ones follow. Pages, styles and scripts use the
+   names, never the values; a name's -rgb twin is for rgba(). The theme in use
+   is set on <html> before anything is drawn (theme.js), from the Appearance
+   the person picked in Settings. */
+:root {
+  --fg: #EFE6D6; --fg-rgb: 239,230,214;
+  --bg: #100E0D; --bg-rgb: 16,14,13;
+  --raised: #1A1817; --raised-rgb: 26,24,23;
+  --deep: #181615; --deep-rgb: 24,22,21;
+  --hover-bg: #24211E; --hover-bg-rgb: 36,33,30;
+  --muted: #B6AFA4; --muted-rgb: 182,175,164;
+  --dim: #8C857B; --dim-rgb: 140,133,123;
+  --faint: #6F695F; --faint-rgb: 111,105,95;
+  --fg-strong: #F7F0E3; --fg-strong-rgb: 247,240,227;
+  --fg-soft: #E6DCC9; --fg-soft-rgb: 230,220,201;
+  --fg-softer: #D9CDB9; --fg-softer-rgb: 217,205,185;
+  --accent: #D8624B; --accent-rgb: 216,98,75;
+  --accent-strong: #D0563F; --accent-strong-rgb: 208,86,63;
+  --accent-soft: #E8A493; --accent-soft-rgb: 232,164,147;
+  --accent-pale: #E48C79; --accent-pale-rgb: 228,140,121;
+  --accent-warm: #E3B394; --accent-warm-rgb: 227,179,148;
+  --ok: #8DBD79; --ok-rgb: 141,189,121;
+  /* The app's own, beyond closedhand.com's: attention, success, links on dark,
+     controls and the toast. on-accent is a label on an ember button. */
+  --warn: #D0A652; --warn-rgb: 208,166,82;
+  --warn-soft: #E6C27A; --warn-soft-rgb: 230,194,122;
+  --ok-soft: #ACCF9C; --ok-soft-rgb: 172,207,156;
+  --slate: #6D6A71; --slate-rgb: 109,106,113;
+  /* Chart categories: hues that mean nothing else in the app, never the accent,
+     green or yellow (AGENTS.md, Visual system). */
+  --chart-1: #7C9CD4; --chart-2: #A68BD0; --chart-3: #6FB0A8; --chart-4: #8A8F98;
+  --accent-link: #E59B89; --accent-link-rgb: 229,155,137;
+  --accent-live: #E07A64; --accent-live-rgb: 224,122,100;
+  --on-accent: #EFE6D6; --on-accent-rgb: 239,230,214;
+  --control: #26221F; --control-rgb: 38,34,31;
+  --control-hover: #352D27; --control-hover-rgb: 53,45,39;
+  --hover-soft: #292622; --hover-soft-rgb: 41,38,34;
+  --line-strong: #45413C; --line-strong-rgb: 69,65,60;
+  --raised-hover: #211D1A; --raised-hover-rgb: 33,29,26;
+  --fg-bright: #FFF6E8; --fg-bright-rgb: 255,246,232;
+  --fg-quiet: #D9D1C4; --fg-quiet-rgb: 217,209,196;
+  --toast: #1F1B19; --toast-rgb: 31,27,25;
+  --photo-backdrop: #0B0A09; --photo-backdrop-rgb: 11,10,9;
+  --shade-rgb: 0,0,0;
+  --lift-strong: rgba(0,0,0,0.5); --lift: rgba(0,0,0,0.45); --lift-soft: rgba(0,0,0,0.4);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --fg: #1A1817; --fg-rgb: 26,24,23;
+  --bg: #EFE6D6; --bg-rgb: 239,230,214;
+  --raised: #F7F1E7; --raised-rgb: 247,241,231;
+  --deep: #F4EDE2; --deep-rgb: 244,237,226;
+  --hover-bg: #E6DCCB; --hover-bg-rgb: 230,220,203;
+  --muted: #5E574F; --muted-rgb: 94,87,79;
+  --dim: #776F65; --dim-rgb: 119,111,101;
+  --faint: #9A9288; --faint-rgb: 154,146,136;
+  --fg-strong: #0F0D0C; --fg-strong-rgb: 15,13,12;
+  --fg-soft: #2E2A26; --fg-soft-rgb: 46,42,38;
+  --fg-softer: #3A3530; --fg-softer-rgb: 58,53,48;
+  --accent: #C4513B; --accent-rgb: 196,81,59;
+  --accent-strong: #B84732; --accent-strong-rgb: 184,71,50;
+  --accent-soft: #A9452F; --accent-soft-rgb: 169,69,47;
+  --accent-pale: #B04A35; --accent-pale-rgb: 176,74,53;
+  --accent-warm: #94562F; --accent-warm-rgb: 148,86,47;
+  --ok: #4E7F3A; --ok-rgb: 78,127,58;
+  --warn: #8A6416; --warn-rgb: 138,100,22;
+  --warn-soft: #7A5A12; --warn-soft-rgb: 122,90,18;
+  --ok-soft: #3F6B2E; --ok-soft-rgb: 63,107,46;
+  --slate: #7C7880; --slate-rgb: 124,120,128;
+  --chart-1: #4F72B8; --chart-2: #7A5CB0; --chart-3: #3F8C84; --chart-4: #6B7078;
+  --accent-link: #A9452F; --accent-link-rgb: 169,69,47;
+  --accent-live: #B84732; --accent-live-rgb: 184,71,50;
+  --on-accent: #FBF6EE; --on-accent-rgb: 251,246,238;
+  --control: #E6DCCB; --control-rgb: 230,220,203;
+  --control-hover: #DCD0BC; --control-hover-rgb: 220,208,188;
+  --hover-soft: #E6DCCB; --hover-soft-rgb: 230,220,203;
+  --line-strong: #BFB3A0; --line-strong-rgb: 191,179,160;
+  --raised-hover: #EEE6D8; --raised-hover-rgb: 238,230,216;
+  --fg-bright: #2E2A26; --fg-bright-rgb: 46,42,38;
+  --fg-quiet: #3A3530; --fg-quiet-rgb: 58,53,48;
+  --toast: #F7F1E7; --toast-rgb: 247,241,231;
+  --photo-backdrop: #0B0A09; --photo-backdrop-rgb: 11,10,9;
+  /* Shadows and dimming at the same strength as on dark, so lighter. */
+  --shade-rgb: 150,124,98;
+  --lift-strong: rgba(80,60,40,0.18); --lift: rgba(80,60,40,0.14); --lift-soft: rgba(80,60,40,0.12);
+}
+/* The fist is drawn cream; on cream it takes the text colour. */
+:root[data-theme="light"] .ch-brand > img, :root[data-theme="light"] .ch-brand img { filter: brightness(0.11); }
+/* So are the logos that are one colour and drawn white; the rest keep their colours. */
+:root[data-theme="light"] img:is([src$="/logos/github.svg"], [src$="/logos/notion.svg"], [src$="/logos/x.svg"], [src$="/logos/tiktok.svg"]) { filter: brightness(0.11); }
+:root {
+  --font-ui: 'DM Sans', system-ui, sans-serif;
+  --font-brand: 'Fraunces', Georgia, serif;
+  --ui-small: 0.8125rem;
+  --ui-label: 0.875rem;
+  --ui-body: 0.9375rem;
+  --ui-heading: 1.125rem;
+  --ui-title: 1.75rem;
+  --ui-text: var(--fg);
+  --ui-muted: var(--muted);
+  --ui-border: rgba(var(--fg-rgb),0.16);
+  --space-card: 1.5rem;
+  --space-section: 2.5rem;
+  --space-page: 2.5rem;
+}
+body { font-family: var(--font-ui); font-size: var(--ui-body); }
+button, input, textarea, select { font-family: var(--font-ui); }
+.ch-brand { display: inline-flex; align-items: center; gap: 0.5rem; flex: none; color: var(--ui-text); text-decoration: none; white-space: nowrap; }
+.ch-brand > img { display: block; width: 1.75rem; height: 1.75rem; margin: 0; opacity: 1; flex: none; }
+.ch-brand > span { display: inline; font-family: var(--font-brand); font-size: 1.5rem; font-weight: 500; font-style: normal; line-height: 1; letter-spacing: -0.02em; font-variation-settings: 'opsz' 48, 'SOFT' 30; color: inherit; }
+.ch-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.3125rem; border-radius: 0.1875rem; }
+.ch-brand:hover { color: var(--fg); }
+.dash-slide-header { min-height: 4.25rem; padding: 1.25rem var(--space-page); background: var(--raised); }
+.dash-title { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.ch-page-name { font: 400 var(--ui-label)/1.4 var(--font-ui); color: var(--ui-muted); padding-left: 1rem; border-left: 1px solid var(--ui-border); }
+.dash-slide-close { width: 2.25rem; height: 2.25rem; color: var(--ui-muted); background: transparent; }
+.dash-slide iframe { background: var(--raised); }
+.header-right a, .page-tab { font-size: var(--ui-label); }
+/* The header's link to the person's own dashboard is drawn as the main
+   actions are, and as closedhand.com's header link (the ink rule below). */
+.claw-swap { margin: 0 0.12em; }
+.header-center .auth-row { font-size: var(--ui-small); color: var(--ui-muted); }
+body.dashboard-page { display: block; background: var(--bg); color: var(--ui-text); }
+.dashboard-page .dashboard-container { padding: 1.75rem var(--space-page) 4rem; }
+.dashboard-container > .card { padding: 0; border: 0; border-radius: 0; background: transparent; backdrop-filter: none; box-shadow: none; }
+.dashboard-container h1 { font: 600 var(--ui-title)/1.25 var(--font-ui); letter-spacing: -0.02em; }
+.dashboard-container h2 { font: 600 var(--ui-heading)/1.4 var(--font-ui); letter-spacing: normal; text-transform: none; margin-bottom: 1.25rem; text-wrap: balance; }
+.dashboard-container h3, .dashboard-container h4 { font-family: var(--font-ui); }
+.dashboard-container .section { margin-top: var(--space-section); padding-top: 2rem; }
+.dashboard-container .tab-bar { margin: 0 0 1.75rem; gap: 0.75rem; border-bottom: 1px solid var(--ui-border); }
+.dashboard-container .tab { padding: 0.75rem 0.5rem; font: 500 var(--ui-label)/1.4 var(--font-ui); min-height: 2.75rem; color: var(--ui-muted); border-bottom-width: 2px; }
+.dashboard-container .tab.active { color: var(--ui-text); background: transparent; border-bottom: 2px solid var(--ui-text); }
+.dashboard-container .tab:hover { color: var(--fg); }
+.dashboard-container :is(input, select, textarea) { font-size: var(--ui-body); }
+.dashboard-container .plat-name { font-size: var(--ui-body); }
+/* A link and a button alike, its words in the middle of its height. */
+.dashboard-container .plat-connect-btn { font-size: var(--ui-small); min-height: 2rem; display: inline-flex; align-items: center; justify-content: center; }
+.dashboard-container .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Space within groups stays smaller than space between tasks. */
+/* Connections has three card sizes, by what the card is. The Mac card is
+   full width: a device, set up once. Everything you have (chat apps,
+   connected services, pasted servers, skills) is one row card: the same
+   height and columns, tall enough for a skill's name on two lines (24px of
+   padding, two 19.5px lines, the border), its status on the right and its
+   details opening below. Apps you could add are the small tiles. */
+.dashboard-container :is(.platforms-grid, .integrations-grid) { gap: 0.75rem; grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); align-items: start; overflow: visible; }
+.dashboard-container .platforms-wrap::after { display: none; }
+.dashboard-container :is(.plat-card, .int-card) { flex-direction: row; align-items: center; gap: 0.75rem; min-height: 4.0625rem; padding: 0.75rem 1rem; background: var(--raised); border-radius: 0.625rem; }
+.dashboard-container .plat-card .plat-top { flex: 1; min-width: 0; }
+.dashboard-container .plat-card :is(.badge, .plat-connect-btn) { align-self: center; }
+.dashboard-container .plat-card .badge { font-size: 0.875rem; text-transform: none; letter-spacing: normal; }
+.dashboard-container .int-card .int-tag { font-size: 0.8125rem; color: var(--muted); white-space: nowrap; }
+.dashboard-container .int-card > :is(svg, img) { flex: none; }
+.dashboard-container .int-unfurl-inner { padding: var(--space-card); }
+.dashboard-container .settings-group { margin-bottom: 1.75rem; }
+.dashboard-container .settings-group-header { padding: var(--space-card); }
+.dashboard-container .settings-group-header h2 { margin-bottom: 0.75rem; }
+.dashboard-container .settings-group-body { padding: var(--space-card); }
+.dashboard-container .settings-group > div:not(.settings-group-header):not(.settings-group-body) { padding: var(--space-card) !important; }
+/* A section's one muted line saying what it is for, the same on every tab. */
+.dashboard-container .section-desc { color: var(--ui-muted); font-size: var(--ui-body); line-height: 1.65; max-width: 70ch; text-wrap: pretty; }
+.dashboard-container .conn-card { padding: 1.125rem 1.25rem; }
+.dashboard-container .mc-metrics { gap: 1rem; margin-bottom: 2rem; }
+.dashboard-container .mc-metric { padding: 1.25rem; }
+.dashboard-container .mc-metric-value { margin-bottom: 0.625rem; }
+.dashboard-container .agent-tpl-grid { gap: 1rem; }
+.dashboard-container .auto-template { padding: 1.25rem; }
+.brain-toolbar { display: flex; gap: 1rem; margin-bottom: 1.25rem; align-items: center; flex-wrap: wrap; }
+#memory-filters { display: flex; gap: 0.5rem; row-gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.dashboard-container .auto-card { margin-bottom: 1rem; }
+.dashboard-container .auto-card-header { padding: 1.25rem; gap: 1rem; }
+/* The line under a card's title lines up with it and has room below. */
+.dashboard-container .auto-card > .auto-card-meta { padding: 0 1.25rem 1.125rem; margin-top: -0.5rem; }
+.dashboard-container .auto-card-detail-inner { padding: 0 1.25rem 1.25rem; }
+.dashboard-container .mc-section-label { margin-top: 2rem; margin-bottom: 1rem; }
+.dashboard-container .mcp-hero { padding: 3rem 2rem; }
+.mcp-logos { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: center; justify-items: center; gap: 1.5rem; max-width: 22.5rem; margin: 0 auto 2.25rem; }
+.mcp-copy { max-width: 56ch; margin: 0 auto 2rem; text-align: center; }
+.mcp-title { font-size: 1.0625rem; font-weight: 600; color: var(--fg); letter-spacing: -0.01em; text-wrap: balance; }
+.mcp-description { font-size: 0.875rem; color: var(--ui-muted); line-height: 1.65; margin: 1rem 0 0.75rem; text-wrap: balance; }
+.mcp-security { font-size: 0.8125rem; color: var(--ui-muted); line-height: 1.6; margin: 0; text-wrap: balance; }
+.dashboard-container .mcp-pill-inner { padding: 1.25rem; gap: 1rem; }
+/* One line, level with Connect; it grows as a longer paste wraps. */
+#mcp-url-input { min-width: 0; min-height: 1.5em; max-height: 13.75rem; }
+.mcp-browse { display: flex; justify-content: center; flex-wrap: wrap; gap: 0.75rem 1.5rem; margin-top: 1.25rem; }
+/* Home, conversation and file browsing use the same breathing room. */
+.header { padding: 1.5rem var(--space-page); }
+.page-tabs { margin-top: 0.75rem; margin-bottom: 1.25rem; }
+.hero-heading { margin-bottom: 1rem; text-wrap: balance; }
+.hero-heading-sub { margin-bottom: 2.25rem; text-wrap: balance; }
+.input-textarea-wrap { padding: 1.75rem 1.75rem 1.25rem; }
+.input-toolbar { padding: 1rem 1.5rem 1.25rem; }
+.suggestions { margin-top: 1.5rem; gap: 0.75rem; }
+.hero-bridge-prompt { margin: 1.75rem 0 1rem; flex-wrap: wrap; gap: 0.75rem; }
+.features-page { padding: 3rem var(--space-page) 5rem; }
+.feat-row { gap: 2rem; margin-bottom: 5rem; }
+.feat-card { padding: 2.5rem; }
+.feat-grid { gap: 1.75rem; }
+.feat-mini { padding: 2.5rem 2rem; }
+:is(.feat-card-title,.feat-mini-title,.feat-heading) { margin-bottom: 1rem; text-wrap: balance; }
+:is(.feat-card-desc,.feat-mini-desc,.feat-sub) { text-wrap: pretty; }
+.feat-pills { gap: 1rem; }
+.chat-messages { gap: 1.25rem; }
+.library-view { top: var(--workspace-top, 7.5rem); }
+.rag-container { padding: 2.25rem; }
+.computers-view { padding-top: 1.5rem; }
+.mon-grid { gap: 1rem; padding: 1.5rem; }
+.rag-header { margin-bottom: 1.5rem; }
+.rag-query-box { gap: 0.75rem; margin-bottom: 1.5rem; }
+:is(.rag-source,.rag-doc,.rag-result) { padding: 1.125rem 1.25rem; margin-bottom: 0.75rem; }
+.rag-empty-panel p { margin-bottom: 1.5rem; text-wrap: balance; }
+.setup-page { --font-display: var(--font-ui); --text-secondary: var(--muted); --text-tertiary: rgba(var(--fg-rgb),0.64); }
+.setup-page .wrap { padding-top: 2rem; }
+.setup-page header.top { margin-bottom: 3rem; }
+.setup-page .hero { margin-bottom: 2rem; }
+.setup-page .step { margin-bottom: 1.5rem; }
+.setup-page h1 { font: 600 var(--ui-title)/1.25 var(--font-ui); letter-spacing: -0.02em; }
+.setup-page h1 em { color: inherit; font-style: normal; font-weight: inherit; }
+.setup-page .step h2 { font: 600 var(--ui-heading)/1.4 var(--font-ui); }
+.setup-page .num { font: 400 var(--ui-heading)/1.4 var(--font-ui); }
+.setup-page .summary .count { font: 500 var(--ui-label)/1.4 var(--font-ui); }
+.setup-page :is(.ready,.finish) h2 { font: 600 1.375rem/1.3 var(--font-ui); }
+.setup-page :is(.field input,.field select) { font: 400 var(--ui-body)/1.5 var(--font-ui); }
+.setup-page footer em { font: inherit; }
+@media (max-width: 600px) {
+  :root { --space-card: 1.25rem; --space-section: 2rem; --space-page: 1.25rem; }
+  /* Type in a field is never under 16px on a phone: iOS Safari zooms the
+     whole page in to focus a smaller field and never zooms back out. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select { font-size: 1rem !important; }
+  .header { padding: 1.25rem 1.25rem 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 0.75rem; }
+  .header-left-group { grid-column: 1; grid-row: 1; }
+  .header-right { grid-column: 2; grid-row: 1; }
+  /* "Connected as" on its own row, centred, the same space above it as below. */
+  .header-center { grid-column: 1 / -1; grid-row: 2; position: static !important; left: auto !important; right: auto !important; transform: none !important; justify-content: center; text-align: center; padding: 1.125rem 0 0.5rem; }
+  .header-center:empty { display: none; }
+  .input-toolbar { padding: 0.75rem; }
+  .input-textarea-wrap { padding: 1.5rem 1.25rem 1.25rem; }
+  .hero-heading { margin-bottom: 1rem; }
+  .hero-heading-sub { margin-bottom: 2rem; }
+  .features-page { padding: 4rem 1.25rem; }
+  .feat-row, .feat-grid { gap: 1.5rem; margin-bottom: 4rem; }
+  .feat-card, .feat-mini { padding: 1.75rem 1.5rem; }
+  .library-view { padding: 1.25rem 1rem; }
+  .rag-container { padding: 1.25rem 1rem; }
+  .rag-empty-panel { padding: 2rem 1.25rem; }
+  .mon-grid { gap: 0.75rem; padding: 1.25rem; }
+  .dashboard-container .mcp-pill-inner { flex-wrap: wrap; }
+  #mcp-url-input { flex-basis: 100% !important; }
+  .mcp-connect-btn { margin-left: auto; }
+  #brain-search { flex-basis: 100% !important; }
+  .rag-query-box { flex-wrap: wrap; }
+  .rag-query-input { min-width: 0; }
+  .toolbar-right { gap: 0.375rem; }
+  .chat-app-toggle { padding: 0.5rem 0.625rem; min-height: 2.5rem; font-size: var(--ui-small); }
+  .send-btn { padding: 0.5rem 0.75rem; min-width: 0; min-height: 2.5rem; }
+  .toolbar-btn { width: 2.5rem; min-width: 2.5rem; height: 2.5rem; min-height: 2.5rem; }
+  .dash-slide-header { padding: 1.25rem; }
+  .dash-title { gap: 0.75rem; }
+  .ch-page-name { padding-left: 0.75rem; font-size: var(--ui-small); }
+  .dashboard-page .dashboard-container { padding: 1.5rem 1.25rem 3rem; }
+  .int-card .int-name { white-space: normal; min-width: 0; } /* a long name takes its second line, its status stays on the right as on a computer */
+  .dashboard-container .mcp-hero { padding: 2rem 1.25rem; }
+  .mcp-logos { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 15rem; margin-bottom: 1.75rem; }
+  .dashboard-container .tab-bar { gap: 2px; }
+  .dashboard-container .tab { padding: 0.75rem 0.5rem; }
+  .setup-page header.top { flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }
+  .setup-page .wrap { padding: 1.5rem 1.25rem 4rem; }
+  .header-right a[href='/privacy'], .header-right a[href='/terms'] { display: none; }
+}
+
+/* Settings use the same body type and spacing as the surrounding dashboard. */
+.dashboard-link-section { margin: var(--space-section) 0; padding: 1.75rem var(--space-card); border-top: 1px solid var(--ui-border); border-bottom: 1px solid var(--ui-border); }
+/* First in Settings (a hidden update notice may come before it): no divider
+   or space above it, right under the tabs. */
+#tab-settings .dashboard-link-section:first-child, #tab-settings .update-note[hidden] + .dashboard-link-section { margin-top: 0; padding-top: 0; border-top: 0; }
+.dashboard-link-section label { display: block; margin: 1.25rem 0 0.5rem; font-size: 1rem; }
+#phone-new-name { display: block; width: 100%; max-width: 26.25rem; box-sizing: border-box; padding: 0.75rem 1rem; border: 1px solid var(--ui-border); border-radius: 0.5rem; background: var(--raised); color: var(--ui-text); font: inherit; font-size: 1rem; }
+#phone-new-name:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 0.1875rem; }
+#phone-new-preview { overflow-wrap: anywhere; color: var(--ui-text); }
+#phone-change-line { margin: 0.625rem 0 0; }
+#phone-rename { margin: 0.5rem 0 0; }
+#phone-rename p { margin: 0.5rem 0 0; max-width: 68ch; color: var(--ui-muted); line-height: 1.65; }
+#phone-rename p:empty { display: none; }
+#phone-rename button { margin-top: 0.875rem; min-height: 2.75rem; padding: 0.625rem 1rem; }
+.dashboard-container .dashboard-link-section h2 { margin-bottom: 0.75rem; }
+/* Its two addresses are two cards side by side (stacked on a phone), in
+   the same style as the other Settings cards: an icon and title, the
+   address or its button, and a footer for the less used links, so each
+   reads as its own thing and the footers line up. */
+.address-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 21.25rem), 1fr)); gap: 1rem; align-items: stretch; margin-top: 1rem; }
+.address-card { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; padding: 1.25rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.1); border-radius: 0.75rem; }
+.address-head { display: flex; align-items: center; gap: 0.625rem; color: var(--muted); }
+.address-head svg { flex: none; }
+.address-title { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9375rem; font-weight: 600; color: var(--fg); }
+#addresses .dashboard-copy-box { margin-top: 0; max-width: none; background: var(--bg); }
+#addresses .address-foot { margin-top: auto; padding-top: 0.75rem; border-top: 1px solid rgba(var(--fg-rgb),0.08); }
+#addresses details.address-foot { margin: auto 0 0; }
+#addresses div.address-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1.25rem; }
+#addresses .address-foot > p { margin: 0; }
+#addresses .address-foot details { margin: 0; }
+#addresses .address-foot details[open] { flex-basis: 100%; }
+/* Every footer row is the same 32px line, so the two footers match. */
+#addresses .address-foot > p, #addresses .address-foot summary { padding: 0; min-height: 2rem; font-size: 0.875rem; line-height: 2rem; }
+#addresses .address-foot summary { color: var(--muted); cursor: pointer; }
+#addresses #phone-copy-status:empty { display: none; }
+#addresses #assistant-email { flex: 1; display: flex; flex-direction: column; }
+#addresses #assistant-email > div:first-child { flex: 1; display: flex; flex-direction: column; gap: 0.75rem; }
+#addresses #assistant-email .section-desc { margin: 0; }
+#addresses #assistant-email > div:first-child > button { align-self: flex-start; }
+#addresses #assistant-email > [role=status]:empty { display: none; }
+#phone-desc { margin: 0; max-width: 68ch; color: var(--ui-muted); line-height: 1.65; }
+#phone-block a, #my-account-facts a, .platform-pills a, .notification-retry { color: var(--ui-accent, var(--accent)); text-underline-offset: 0.1875rem; }
+.dashboard-copy-box { display: flex; align-items: center; gap: 1rem; margin-top: 1.25rem; padding: 0.5rem 0.5rem 0.5rem 1rem; max-width: 38.75rem; border: 1px solid var(--ui-border); border-radius: 0.5rem; background: var(--raised); }
+.dashboard-copy-box a { flex: 1; min-width: 0; font-size: 1rem; line-height: 1.6; overflow-wrap: anywhere; text-decoration: none; }
+.dashboard-link-path { white-space: nowrap; }
+.dashboard-copy-box a:hover { text-decoration: underline; }
+.dashboard-copy-box button { flex: none; min-width: 5rem; min-height: 2.75rem; padding: 0.625rem 1rem; border: 1px solid rgba(var(--fg-rgb),0.28); border-radius: 0.375rem; background: rgba(var(--fg-rgb),0.1); color: var(--ui-text); font: 500 var(--ui-body)/1.4 var(--font-ui); cursor: pointer; }
+.dashboard-copy-box button:hover { background: rgba(var(--fg-rgb),0.16); }
+.dashboard-link-feedback { margin: 0.5rem 0 0; color: var(--ui-muted); font-size: var(--ui-label); line-height: 1.6; }
+.dashboard-link-feedback:empty { display: none; }
+#phone-setup { margin: 1.25rem 0 0; }
+#phone-setup p { margin: 0.75rem 0 1.25rem; max-width: 68ch; color: var(--ui-muted); line-height: 1.65; }
+#phone-setup button { min-height: 2.75rem; padding: 0.625rem 1rem; }
+#phone-options { margin-top: 0.75rem; }
+#phone-block summary { width: fit-content; min-height: 2.75rem; padding: 0.625rem 0; box-sizing: border-box; cursor: pointer; color: var(--ui-muted); font-size: var(--ui-body); }
+.dashboard-link-options { padding: 0.5rem 0 0; color: var(--ui-muted); line-height: 1.65; max-width: 68ch; }
+.dashboard-link-options p { margin: 0 0 0.75rem; text-wrap: pretty; }
+#phone-save { display: inline-block; text-wrap: balance; }
+#phone-qr-details { margin-top: 1.5rem; }
+#phone-qr { display: block; padding: 0.5rem; background: var(--raised); border: 1px solid var(--ui-border); border-radius: 0.5rem; }
+.dashboard-link-control { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--ui-border); }
+.dashboard-link-control p { flex: 1 1 16.25rem; margin: 0; }
+#phone-block :is(a, button, summary):focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 0.1875rem; }
+#platform-pills { display: block; }
+.notification-help, #platform-pills .pulse-no-platforms { margin: 0; color: var(--ui-muted); font-size: var(--ui-body); line-height: 1.65; }
+.notification-options { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.25rem; }
+.notification-options:first-child { margin-top: 0; }
+.notification-options + .pulse-no-platforms { margin-top: 1.25rem !important; }
+.notification-options .pill[aria-pressed="true"]::before { content: "✓ "; }
+.notification-options .pill { display: inline-flex; align-items: center; gap: 0.5rem; }
+.notification-options .pill-logo { width: 1rem; height: 1rem; border-radius: 0.1875rem; opacity: 0.85; }
+/* Apps not linked yet: the same pill, drawn dashed and quiet, brightening on hover. */
+.notification-options .pill-add { border-style: dashed; border-color: rgba(var(--fg-rgb),0.26); background: transparent; color: var(--muted); }
+.notification-options .pill-add .pill-logo { opacity: 0.7; transition: opacity 0.15s; }
+.notification-options .pill-add .pill-add-plus { font-size: 0.9375rem; line-height: 1; margin-left: -2px; color: var(--accent); }
+.notification-options .pill-add:hover { border-style: solid; border-color: rgba(var(--accent-strong-rgb),0.55); color: var(--fg); background: rgba(var(--accent-strong-rgb),0.06); }
+.notification-options .pill-add:hover .pill-logo { opacity: 1; }
+.notification-options .pill-add-more { border-style: dashed; border-color: rgba(var(--fg-rgb),0.22); background: transparent; color: var(--muted); padding: 0.375rem 1.125rem 0.375rem 0.5rem; }
+.notification-options .pill-add-more .int-more-plus { width: 1.625rem; height: 1.625rem; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(var(--fg-rgb),0.22); color: var(--accent); transition: transform 0.25s, border-color 0.2s; }
+.notification-options .pill-add-more:hover { border-style: dashed; border-color: rgba(var(--accent-strong-rgb),0.55); background: rgba(var(--accent-strong-rgb),0.06); color: var(--fg); }
+.notification-options .pill-add-more:hover .int-more-plus { transform: rotate(90deg); border-color: rgba(var(--accent-strong-rgb),0.55); }
+.notification-options .pill-add { animation: pillIn 0.25s ease both; }
+@keyframes pillIn { from { opacity: 0; transform: translateY(0.25rem); } to { opacity: 1; transform: none; } }
+.notification-retry { background: none; border: 0; padding: 0.25rem; font: inherit; text-decoration: underline; cursor: pointer; }
+.preference-row { display: flex; align-items: flex-start; gap: 1rem; padding: 1.375rem 0; border-bottom: 1px solid var(--ui-border, rgba(var(--fg-rgb),0.16)); }
+.preference-row input { width: 1.25rem; height: 1.25rem; margin: 0.1875rem 0 0; flex: 0 0 1.25rem; accent-color: var(--accent-strong); }
+.preference-copy { flex: 1; min-width: 0; font-size: var(--ui-body); line-height: 1.65; overflow-wrap: anywhere; }
+.preference-copy small { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; margin-top: 0.375rem; font-size: 0.875rem; color: var(--ui-muted); }
+.preference-copy small > span { white-space: nowrap; }
+.preference-remove { flex: 0 0 2rem; width: 2rem; min-height: 2rem; border: 0; background: none; color: var(--ui-muted); font: inherit; font-size: 1.375rem; cursor: pointer; }
+.preference-remove:hover { color: var(--accent); }
+.preference-row input:focus-visible, .preference-remove:focus-visible, .notification-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.1875rem; }
+@media (max-width: 520px) {
+  .dashboard-link-section { padding: 1.5rem 0; }
+  .dashboard-copy-box { gap: 0.75rem; padding-left: 0.75rem; }
+  .preference-row { gap: 0.75rem; }
+}
+#rules-section .settings-group-body > label { font-size: var(--ui-body) !important; padding-bottom: 1.25rem !important; margin-bottom: 1.25rem !important; }
+.approved-sites-title { font-size: var(--ui-body); color: var(--ui-text); }
+.approved-sites-desc { font-size: var(--ui-body); color: var(--ui-muted); line-height: 1.65; margin: 0.5rem 0 0.75rem; max-width: 65ch; }
+.saved-preferences-title { margin: 1.5rem 0 0.75rem; font-size: var(--ui-body); font-weight: 600; }
+#new-rule-input { min-width: 0; min-height: 2.75rem; }
+/* The label over a group inside a section, one look across the dashboard's
+   tabs: connection-catalogue.css .add-sub's ("Apps", "Connect anything").
+   Sentence case, never small capitals (AGENTS.md, Visual system). */
+.dashboard-container :is(.mc-section-label, .mc-subsection-label, .conn-resources-label, .mc-metric-label, .goal-sub, .memory-section-label) { font-size: 0.875rem; font-weight: 600; color: rgba(var(--fg-rgb),0.85); letter-spacing: normal; text-transform: none; }
+/* Asking before something that can't be undone (ask.js), the same on every
+   page: the question in place of the button, then the action in red and Cancel. */
+.ask { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; flex-basis: 100%; width: 100%; margin: 0.25rem 0; text-align: left; }
+.ask-text { flex-basis: 100%; margin: 0; font-size: var(--ui-small); line-height: 1.5; color: var(--ui-muted); white-space: normal; }
+.ask-check { flex-basis: 100%; display: flex; align-items: flex-start; gap: 0.5rem; font-size: var(--ui-small); line-height: 1.5; color: var(--ui-muted); cursor: pointer; }
+.ask-check input { margin: 0.1875rem 0 0; accent-color: var(--accent-strong); }
+.ask-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.ask .ask-yes, .ask .ask-no { width: auto; min-height: 2rem; padding: 0.3125rem 0.75rem; border: 1px solid; border-radius: 0.375rem; background: transparent; font: inherit; font-size: var(--ui-small); white-space: nowrap; cursor: pointer; transition: background 0.12s; }
+.ask .ask-yes { color: var(--accent-strong); border-color: rgba(var(--accent-strong-rgb),0.4); }
+.ask .ask-yes:hover { background: rgba(var(--accent-strong-rgb),0.1); }
+.ask .ask-no { color: var(--ui-text); border-color: rgba(var(--fg-rgb),0.24); }
+.ask .ask-no:hover { background: rgba(var(--fg-rgb),0.08); }
+.ask-yes:focus-visible, .ask-no:focus-visible, .ask-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* One button system on every page. Ink: the one main action of a screen,
+   step or form, drawn as closedhand.com draws its header link: its words over
+   a swipe of the fist's brush, no box.
+   On hover a fresh coat is painted over the stroke from left to right and the
+   words lift a little; leaving takes the coat off the same way, so the stroke
+   never flickers. Tinted: starting something new beside it ("+ New routine",
+   "+ Add source") or going somewhere ("Open the form", "Open WhatsApp", the
+   web chat's Dashboard). Neutral outline
+   (.btn-quiet, .conn-btn-manage, .ask-no): everyday actions and Cancel. Red outline (.conn-btn-disconnect, .ask-yes): removing or turning
+   something off. Pages set only where a button sits, never how it looks. */
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit]) {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.25rem; padding: 0.4375rem 2px 0.5625rem;
+  border: 0; border-radius: 0; background: none; color: var(--fg);
+  font: 500 var(--ui-label)/1.3 var(--font-ui); white-space: nowrap; text-decoration: none; cursor: pointer;
+  transition: transform .3s cubic-bezier(.2, .8, .2, 1);
+}
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit])::before, :is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit])::after { content: ""; position: absolute; left: -0.3125rem; right: -0.375rem; bottom: 1px; height: 0.5625rem; -webkit-mask: url(/brush-underline.svg) center / 100% 100% no-repeat; mask: url(/brush-underline.svg) center / 100% 100% no-repeat; pointer-events: none; }
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit])::before { background: var(--accent); }
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit])::after { bottom: 0; height: 0.6875rem; background: color-mix(in srgb, var(--accent) 78%, var(--fg)); clip-path: inset(0 100% 0 0); transition: clip-path .45s cubic-bezier(.65, 0, .35, 1); }
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit]):is(:hover, :focus-visible):not(:disabled) { transform: translateY(-1px); text-decoration: none; }
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit]):is(:hover, :focus-visible):not(:disabled)::after { clip-path: inset(0 0 0 0); }
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit]):active:not(:disabled) { transform: translateY(0); }
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit]):focus-visible { outline: 2px solid var(--accent); outline-offset: 0.25rem; border-radius: 0.25rem; }
+:is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit]):disabled { opacity: .5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { :is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit]), :is(.btn-modal-primary, .save-btn, .go, .g-signin, .cta, .bridge-cta-dl, #goal-new button[type=submit], .project-form button[type=submit])::after { transition: none; } }
+.goals-new, .deep, .rag-upload-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.5rem; padding: 0.5625rem 1.125rem;
+  border: 1px solid rgba(var(--accent-strong-rgb),0.45); border-radius: 0.5rem; background: rgba(var(--accent-strong-rgb),0.08); color: var(--accent-link);
+  font: 500 var(--ui-label)/1.3 var(--font-ui); text-decoration: none; cursor: pointer; transition: background 0.12s;
+}
+.goals-new[hidden] { display: none; }
+.goals-new:hover, .deep:hover, .rag-upload-btn:hover { background: rgba(var(--accent-strong-rgb),0.16); text-decoration: none; }
+.btn-quiet {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.5rem; padding: 0.5625rem 1.125rem;
+  border: 1px solid rgba(var(--fg-rgb),0.24); border-radius: 0.5rem; background: transparent; color: var(--ui-text);
+  font: 500 var(--ui-label)/1.3 var(--font-ui); text-decoration: none; cursor: pointer; transition: background 0.12s;
+}
+.btn-quiet:hover { background: rgba(var(--fg-rgb),0.08); }
+.btn-modal-primary:disabled, .save-btn:disabled, .cta:disabled:disabled, .goals-new:disabled, .rag-upload-btn:disabled, .btn-quiet:disabled { opacity: 0.5; cursor: default; }
+.btn-modal-primary:focus-visible, .save-btn:focus-visible, .go:focus-visible, .g-signin:focus-visible, .cta:focus-visible, .btn-quiet:focus-visible:focus-visible, .bridge-cta-dl:focus-visible, .goals-new:focus-visible, .deep:focus-visible, .rag-upload-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* A short explanation behind a small "i" (llm-hint.js infoHint). The hint is
+   placed on the screen by llm-hint.js, so cards that clip their contents never
+   cut it off. */
+/* The i is centred on the capitals of the text beside it. Clipping its box
+   makes the box's bottom its baseline in every browser, so vertical-align
+   lifts its middle 0.36em above the text's baseline (half a capital's
+   height), whatever the size of that text. In a flex row it is centred. */
+.llm-hint { position: relative; display: inline-block; width: 1rem; height: 1rem; margin-left: 0.375rem; border-radius: 50%; overflow: hidden; line-height: 0; vertical-align: calc(0.36em - 0.5rem); align-self: center; flex: none; }
+.llm-hint:has(.info-hint-mark:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.llm-hint-tip { position: fixed; left: 0; top: 0; width: max-content; max-width: min(17rem, 80vw); padding: 0.5625rem 0.75rem; border-radius: 0.625rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.14); box-shadow: 0 0.625rem 1.875rem rgba(var(--shade-rgb),0.45); color: var(--muted); font-size: 0.8125rem; font-weight: 400; line-height: 1.5; text-align: left; text-transform: none; letter-spacing: 0; font-style: normal; white-space: pre-line; opacity: 0; visibility: hidden; transform: translateY(-0.25rem); transition: opacity .16s ease, transform .16s ease, visibility .16s; z-index: 30; pointer-events: none; }
+.llm-hint-tip.shown { opacity: 1; visibility: visible; transform: none; }
+@media (prefers-reduced-motion: reduce) { .llm-hint-tip { transition: none; } }
+/* The one "i": a thin circle with its letter, muted until pointed at, the
+   same size, colour and distance from its words wherever it is. */
+/* .llm-hint > raises it over a page's own button rule (the dashboard pads
+   every button), which stretched the circle into an oval. */
+.info-hint-mark, .llm-hint > .info-hint-mark { display: block; box-sizing: border-box; width: 1rem; height: 1rem; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 0; line-height: 0; cursor: help; transition: color .15s; }
+.info-hint-mark svg { display: block; width: 1rem; height: 1rem; }
+.info-hint-mark:hover, .llm-hint.open .info-hint-mark { color: var(--accent); }
+.info-hint-mark:focus-visible { outline: none; }
+
+/* Switching light and dark (theme.js), as on closedhand.com: the other theme
+   spreads from the Appearance control, its edge an ember ring that glows and
+   fades as it reaches the corners. */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: theme-spread 1.15s cubic-bezier(.6, .04, .3, 1); }
+@keyframes theme-spread {
+  from { clip-path: circle(0 at var(--reveal-x, 100%) var(--reveal-y, 0)); }
+  to { clip-path: circle(var(--reveal-r, 150vmax) at var(--reveal-x, 100%) var(--reveal-y, 0)); }
+}
+/* Light or dark: the brush sun (light), moon (dark) and the two in one
+   (matching the device) at the top of the web chat and the dashboard, the
+   same as closedhand.com's (theme.js switches it). The sun goes down to the
+   right as the moon rises from the left, and back; the sun and moon in one
+   comes up from below with a turn. */
+.theme-toggle { position: relative; display: inline-grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; overflow: hidden; transition: color .2s; -webkit-tap-highlight-color: transparent; }
+.theme-toggle:hover { color: var(--fg); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-toggle > span { grid-area: 1 / 1; width: 1.125rem; height: 1.125rem; transition: translate 1s cubic-bezier(.45, 0, .55, 1), opacity .6s ease .1s; }
+.theme-toggle svg { display: block; width: 100%; height: 100%; transition: translate 1s cubic-bezier(.25, .8, .35, 1.12), rotate 1s cubic-bezier(.25, .8, .35, 1.12); }
+:root:not([data-theme-pick="light"]) .theme-toggle .sun { translate: 80% 0; opacity: 0; }
+:root:not([data-theme-pick="light"]) .theme-toggle .sun svg { translate: 0 170%; }
+:root:not([data-theme-pick="dark"]) .theme-toggle .moon { translate: -80% 0; opacity: 0; }
+:root:not([data-theme-pick="dark"]) .theme-toggle .moon svg { translate: 0 170%; }
+:root:is([data-theme-pick="light"], [data-theme-pick="dark"]) .theme-toggle .device { opacity: 0; }
+:root:is([data-theme-pick="light"], [data-theme-pick="dark"]) .theme-toggle .device svg { translate: 0 170%; rotate: -150deg; }
+.theme-toggle:active > span { scale: .85; }
+@media (prefers-reduced-motion: reduce) { .theme-toggle > span, .theme-toggle svg { transition: none; } }
+.theme-ring { position: fixed; z-index: 2147483647; pointer-events: none; left: calc(var(--reveal-x) - var(--reveal-r)); top: calc(var(--reveal-y) - var(--reveal-r)); width: calc(var(--reveal-r) * 2); height: calc(var(--reveal-r) * 2); border-radius: 50%; view-transition-name: theme-ring;
+  box-shadow: 0 0 0 1.5px rgba(var(--accent-rgb), .9), 0 0 2.25rem .6rem rgba(var(--accent-rgb), .42), inset 0 0 2.25rem .6rem rgba(var(--accent-rgb), .32), 0 0 5rem 1.5rem rgba(var(--accent-rgb), .14); }
+::view-transition-group(theme-ring) { animation: none; }
+::view-transition-new(theme-ring) { animation: theme-ring 1.15s cubic-bezier(.6, .04, .3, 1) both; }
+@keyframes theme-ring {
+  from { transform: scale(0); opacity: 1; }
+  75% { opacity: .9; }
+  to { transform: scale(1); opacity: 0; }
+}
+/* The same spread drawn by hand where there are no view transitions (Safari
+   before 18; theme.js): the new page colour grows behind everything, and each
+   colour on the page changes as the edge reaches it. */
+.theme-spread { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+.theme-spread.is-new { background: var(--bg); animation: theme-spread 1.15s cubic-bezier(.6, .04, .3, 1) both; }
+.theme-spread.is-done { opacity: 0; transition: opacity .5s ease; }
+.theme-ring.by-hand { animation: theme-ring 1.15s cubic-bezier(.6, .04, .3, 1) both; }
+:root.theme-spreading, :root.theme-spreading body, :root.theme-spreading [data-spread-clear] { background-color: transparent !important; transition: none !important; }
+:root.theme-spreading body *:not(.theme-toggle):not(.theme-toggle *) { transition: none !important; }
+/* Stars come out on the way to dark; a warm glow comes up on the way to light. */
+.theme-sparkle { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; }
+.theme-sparkle i { position: absolute; width: var(--size, .25rem); height: var(--size, .25rem); margin: calc(var(--size, .25rem) / -2); border-radius: 50%; background: var(--fg); box-shadow: 0 0 .5rem .1rem rgba(var(--fg-rgb), .7); opacity: 0; animation: theme-star 1.1s ease-out both; }
+.theme-sparkle b { position: absolute; width: 9rem; height: 9rem; margin: -4.5rem; border-radius: 50%; background: radial-gradient(circle, rgba(var(--accent-rgb), .4), rgba(var(--accent-rgb), 0) 68%); opacity: 0; animation: theme-glow 1.2s ease-out both; }
+@keyframes theme-star {
+  0% { opacity: 0; transform: scale(.2); }
+  30% { opacity: 1; transform: scale(1.15); }
+  60% { opacity: .55; transform: scale(.8); }
+  100% { opacity: 0; transform: scale(.4); }
+}
+@keyframes theme-glow {
+  0% { opacity: 0; transform: scale(.3); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+/* Polar's form to pay or change the card (polar-form.js), over the whole
+   window as Polar's own embed shows it. */
+.polar-frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 2147483647; background: rgba(0, 0, 0, 0.5); }
+body.polar-open { overflow: hidden; }
+/* A secondary way to do something beside its main one ("Use your own LLM
+   provider instead", "Change card", "Cancel Closedhand+", "Invoice"): quiet
+   words, underlined, never a box. */
+.quiet-link { background: none; border: 0; padding: 0; font: inherit; font-size: 0.8125rem; color: var(--muted); text-decoration: underline; text-underline-offset: 0.1875rem; cursor: pointer; }
+.quiet-link:hover { color: var(--fg); }
+.quiet-link:disabled { opacity: .5; cursor: default; }
+/* A main action set aside with hidden stays hidden, whatever display its look sets. */
+.cta[hidden] { display: none !important; }
+
+/* A move between computers (move-progress.js): where it starts and where it
+   goes, the fist carrying Closedhand along the line as the parts arrive, the
+   steps ticked, and what it means in a line. Still for anyone who asks for
+   less motion. */
+.move-progress { --mp: 0%; display: grid; gap: 0.875rem; padding: 1.25rem 1.25rem 1.125rem; border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.875rem; background: var(--raised); }
+.move-progress .mp-route { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.875rem; }
+.move-progress .mp-end { display: grid; justify-items: center; gap: 0.375rem; min-width: 4.5rem; }
+.move-progress .mp-icon { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 0.75rem; border: 1px solid rgba(var(--fg-rgb),0.14); color: var(--fg); }
+.move-progress .mp-icon svg { width: 1.375rem; height: 1.375rem; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.move-progress .mp-to .mp-icon { color: var(--muted); }
+.move-progress.is-done .mp-to .mp-icon { color: var(--ok); border-color: rgba(var(--ok-rgb),0.55); }
+.move-progress .mp-label { font-size: 0.75rem; color: var(--muted); text-align: center; }
+.move-progress .mp-track { position: relative; height: 2.75rem; }
+.move-progress .mp-rail, .move-progress .mp-fill { position: absolute; left: 0; top: 50%; height: 2px; transform: translateY(-50%); border-radius: 2px; }
+/* What is still to go: dots moving towards where it goes. */
+.move-progress .mp-rail { right: 0; background: repeating-linear-gradient(90deg, rgba(var(--fg-rgb),0.28) 0 0.25rem, transparent 0.25rem 0.625rem); background-size: 0.625rem 100%; animation: mp-flow 0.9s linear infinite; }
+.move-progress .mp-fill { width: 0; background: var(--accent); transition: width 1.2s ease; }
+.move-progress .mp-fist { position: absolute; top: 50%; left: 0; width: 1.75rem; height: 1.75rem; margin-left: -0.875rem; transform: translateY(-50%); transition: left 1.2s ease; animation: mp-carry 1.4s ease-in-out infinite; filter: drop-shadow(0 0.125rem 0.375rem rgba(0,0,0,0.35)); }
+.move-progress.is-waiting .mp-fist { animation-duration: 2.2s; }
+.move-progress.is-done .mp-fist, .move-progress.is-failed .mp-fist { animation: none; }
+.move-progress.is-done .mp-rail, .move-progress.is-failed .mp-rail { animation: none; }
+.move-progress .mp-figures { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.move-progress .mp-percent { font-size: 1.375rem; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+.move-progress .mp-moved { font-size: 0.8125rem; color: var(--muted); }
+.move-progress .mp-bar { height: 0.375rem; border-radius: 1rem; background: linear-gradient(90deg, var(--accent) var(--mp), rgba(var(--fg-rgb),0.1) var(--mp)); transition: background 1.2s ease; }
+.move-progress.is-done .mp-bar { background: var(--ok); }
+.move-progress .mp-steps { display: flex; flex-wrap: wrap; gap: 0.375rem 1.25rem; margin: 0; padding: 0; list-style: none; font-size: 0.8125rem; color: var(--muted); }
+.move-progress .mp-steps li { display: flex; align-items: center; gap: 0.4375rem; }
+.move-progress .mp-steps li::before { content: ""; width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1px solid rgba(var(--fg-rgb),0.3); }
+.move-progress .mp-steps li.is-now { color: var(--fg); }
+.move-progress .mp-steps li.is-now::before { border-color: var(--accent); background: var(--accent); animation: mp-pulse 1.4s ease-in-out infinite; }
+.move-progress .mp-steps li.is-done { color: var(--fg); }
+.move-progress .mp-steps li.is-done::before { border-color: var(--ok); background: var(--ok); }
+.move-progress .mp-steps li.is-stopped::before { border-color: var(--accent); }
+.move-progress .mp-said { margin: 0; font-size: 0.875rem; line-height: 1.5; color: var(--fg); }
+.move-progress.is-failed .mp-said { color: var(--accent); }
+@keyframes mp-flow { to { background-position: 0.625rem 0; } }
+@keyframes mp-carry { 0%, 100% { transform: translateY(-50%); } 50% { transform: translateY(calc(-50% - 0.25rem)); } }
+@keyframes mp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) {
+  .move-progress .mp-rail, .move-progress .mp-fist, .move-progress .mp-steps li.is-now::before { animation: none; }
+  .move-progress .mp-fill, .move-progress .mp-fist, .move-progress .mp-bar { transition: none; }
+}
+@media (max-width: 30rem) { .move-progress .mp-end { min-width: 3.5rem; } .move-progress .mp-route { gap: 0.5rem; } }
+
+/* Search fields: the clear button drawn in the app's own muted cross rather
+   than the browser's blue one, brightening on hover. */
+input[type=search]::-webkit-search-cancel-button {
+  -webkit-appearance: none; appearance: none; width: 0.75rem; height: 0.75rem; margin-left: 0.5rem; cursor: pointer;
+  background-color: rgba(var(--fg-rgb),0.5);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 6l12 12M18 6L6 18' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 6l12 12M18 6L6 18' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+input[type=search]::-webkit-search-cancel-button:hover { background-color: var(--fg); }
+

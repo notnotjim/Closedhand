@@ -1,0 +1,156 @@
+# Closedhand self-host, one-command boot: `docker compose up -d` (pulls
+# pre-built images; nobody compiles anything to try the app).
+# Building from source instead:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Brings up Postgres+pgvector (schema auto-loaded from migrations/), the bot, and
+# the webapp. Copy .env.example to .env first; it boots with nothing configured
+# (setup mode) and you add model/platform keys there or via the dashboard.
+#
+# Secrets are not in .env. The database password, the encryption key and the
+# keys the services share are files in secrets/ (install.sh makes them, and
+# moves them out of an older .env), readable only by your account. Docker
+# hands each one, as a file under /run/secrets, only to the containers that
+# use it, so none is part of any container's settings.
+#
+# Dashboard and chat: http://localhost:3000 (WEBAPP_PORT).
+# The webapp reaches the bot over the internal Docker network.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: ${POSTGRES_DB:-closedhand}
+    secrets: [postgres_password]
+    # Every connection and disconnection is logged with its user and program
+    # name, so a reach into the database from anywhere but Closedhand's own
+    # services shows in the log.
+    command: ["postgres", "-c", "log_connections=on", "-c", "log_disconnections=on"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Auto-applies the full schema on FIRST init (empty data volume only).
+      - ./migrations/000_baseline_schema.sql:/docker-entrypoint-initdb.d/000_baseline_schema.sql:ro
+    # Checked every 2 seconds while it starts, then every 30: each check is a
+    # connection, and every connection is now a line in the log.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-closedhand}"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 90s
+      start_interval: 2s
+    # The connection log is kept to 50 MB, about two months of it.
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    restart: unless-stopped
+
+  bot:
+    image: ghcr.io/notnotjim/closedhand-bot:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: [.env]
+    environment:
+      DB_DRIVER: pg
+      DATABASE_URL: postgres://postgres@db:5432/${POSTGRES_DB:-closedhand}?application_name=closedhand-bot
+      STORAGE_DIR: /data/storage
+      SANDBOX_URL: http://sandbox:8080
+      PORT: "3000"
+    secrets: &service_secrets
+      - source: postgres_password
+        target: pgpassword
+      - token_encryption_key
+      - ws_auth_secret
+      - sandbox_token
+      - cookie_secret
+    ports:
+      - "127.0.0.1:${BOT_PORT:-3001}:3000" # bot service and health endpoint, this computer only
+    volumes:
+      - storage:/data/storage # shared with the webapp (attachments + logos)
+    # The bot is what the person is waiting on. When memory runs short, the
+    # sandbox's browser gives way first, so the local search models that every
+    # reply needs are never swapped out (that once made a reply take minutes).
+    mem_reservation: 1536m
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  webapp:
+    image: ghcr.io/notnotjim/closedhand-webapp:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: [.env]
+    environment:
+      DB_DRIVER: pg
+      DATABASE_URL: postgres://postgres@db:5432/${POSTGRES_DB:-closedhand}?application_name=closedhand-webapp
+      STORAGE_DIR: /data/storage
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
+      BOT_INTERNAL_URL: http://bot:3000
+      SANDBOX_URL: http://sandbox:8080 # the Computers tab shows this box's browser and files
+      PORT: "3000"
+    secrets: *service_secrets
+    ports:
+      - "127.0.0.1:${WEBAPP_PORT:-3000}:3000"
+    volumes:
+      - storage:/data/storage # same volume as the bot
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  # Code/browser tools: one fixed sandbox container (the hosted product
+  # provisions one per user on Railway; self-host is single-tenant, so one
+  # static box). The bot reaches it as http://sandbox:8080. Watch it work on
+  # the dashboard's Computers tab: its screen is not published on this
+  # computer's ports, where any program here could watch and use it.
+  sandbox:
+    image: ghcr.io/notnotjim/closedhand-sandbox:latest
+    environment:
+      PORT: "8080"
+      GATEWAY_URL: http://bot:3000
+      USER_ID: admin
+    secrets: [sandbox_token]
+    # The token arrives as a secret file and is handed to the agent as it
+    # starts; without one the sandbox computer does not start at all.
+    entrypoint: ["/bin/sh", "-c", "SANDBOX_TOKEN=\"$$(cat /run/secrets/sandbox_token 2>/dev/null)\"; [ -n \"$$SANDBOX_TOKEN\" ] || { echo 'No sandbox token in secrets/sandbox_token' >&2; exit 1; }; export SANDBOX_TOKEN; exec /entrypoint.sh \"$$@\"", "sandbox"]
+    command: ["node", "/app/server.js"]
+    volumes:
+      - sandbox-workspace:/workspace # files + browser profile survive restarts
+    # Background work. When the processor is busy, the bot answering someone
+    # comes first; the sandbox gets a quarter of the usual share.
+    cpu_shares: 256
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8080/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  storage:
+  sandbox-workspace:
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  token_encryption_key:
+    file: ./secrets/token_encryption_key
+  ws_auth_secret:
+    file: ./secrets/ws_auth_secret
+  sandbox_token:
+    file: ./secrets/sandbox_token
+  cookie_secret:
+    file: ./secrets/cookie_secret

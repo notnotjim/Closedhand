@@ -1,0 +1,225 @@
+name: Checks
+
+# Cheap, dependency-free guards that run on every push and PR. These exist
+# because of a specific class of bug: failures that are invisible at the moment
+# they happen. An unchecked database write and a vendored file that quietly
+# drifted both look exactly like working code.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  voice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install voice encoder for protocol tests
+        run: npm install --prefix "$RUNNER_TEMP/voice-test" --ignore-scripts --no-audit --no-fund opusscript@0.1.1
+      - name: Voice queue, cancellation, isolation and audio format
+        run: NODE_PATH="$RUNNER_TEMP/voice-test/node_modules" node --test scripts/test-speech.js
+  # Drafts are built and read by the real mail libraries, against a stand-in
+  # mail server, so only those libraries are installed for these tests.
+  mail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the mail libraries for the draft tests
+        run: npm install --prefix "$RUNNER_TEMP/mail-test" --ignore-scripts --no-audit --no-fund imapflow@1.7.1 mailparser@3.9.47 nodemailer@10.1.7 cheerio@1.2.0
+      - name: Drafts in every mailbox
+        run: NODE_PATH="$RUNNER_TEMP/mail-test/node_modules" node --test scripts/test-imap-drafts.js scripts/test-draft-update-id.js
+      - name: The index and the mail cache are read whole, and old listed mail stays
+        run: NODE_PATH="$RUNNER_TEMP/mail-test/node_modules" node --test scripts/test-index-hashes.js scripts/test-mail-history.js
+  # The closedhand.com service deploys from this repo, so its sign-in,
+  # personal URL and bug report routes are checked against a real Postgres.
+  closedhand-com:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the service's packages
+        run: npm ci --prefix closedhand-com --no-audit --no-fund
+      - name: Sign-in, personal URLs and bug reports against a real database
+        run: node --test closedhand-com/test/e2e.js closedhand-com/test/included-ai.js closedhand-com/test/plus.js closedhand-com/test/capacity.js
+        env:
+          DATABASE_URL: postgres://postgres:test@localhost:5432/postgres
+      # Its own step: it rebuilds the same database, so it must not run alongside.
+      - name: Assistant email relay against a real database
+        run: node --test closedhand-com/test/assistant-email.js
+        env:
+          DATABASE_URL: postgres://postgres:test@localhost:5432/postgres
+  # A database that starts empty (Railway's, a managed Postgres) gets its
+  # whole schema from the bot rather than Docker's first-start scripts.
+  fresh-database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the Postgres client for the test
+        run: npm install --prefix "$RUNNER_TEMP/pg-test" --ignore-scripts --no-audit --no-fund pg@8
+      - name: Baseline and migrations on an empty database
+        run: NODE_PATH="$RUNNER_TEMP/pg-test/node_modules" node --test scripts/test-fresh-database.js scripts/test-move.js scripts/test-name-search.js
+        env:
+          DATABASE_URL: postgres://postgres:test@localhost:5432/postgres
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Every .js file must at least parse. A syntax error here has twice
+      # shipped a dashboard whose entire inline script was dead.
+      - name: Syntax
+        run: |
+          set -e
+          find . -name '*.js' -not -path './node_modules/*' -not -path './.git/*' \
+            -print0 | xargs -0 -n1 node -c
+
+      - name: Assistant email and connection catalogue
+        run: node --test scripts/test-assistant-email.js scripts/test-connection-catalogue.js scripts/test-microsoft-sign-in.js scripts/test-google-quick-setup.js scripts/test-confirmation-answer.js scripts/test-progress-text.js scripts/test-new-connection-sync.js scripts/test-likely-tools.js scripts/test-event-attachments.js scripts/test-sign-in-again.js scripts/test-calendar-dates.js scripts/test-local-model-priority.js scripts/test-read-ceiling.js scripts/test-recall-budget.js scripts/test-reply-format.js scripts/test-reply-guidance.js scripts/test-follow-on.js scripts/test-telegram-in-app.js scripts/test-telegram-name.js scripts/test-voice-model.js scripts/test-self-send.js scripts/test-email-cache-first.js scripts/test-setup-feedback.js scripts/test-onedrive.js scripts/test-closedhand-com.js scripts/test-address-workers.js scripts/test-installer-fist.js scripts/test-installer-cleanup.js scripts/test-favicon.js scripts/test-unfinished-turns.js scripts/test-plain-dashes.js scripts/test-agent-cards.js scripts/test-web-chat-status.js scripts/test-agent-box.js scripts/test-search-blocked.js scripts/test-web-search-order.js scripts/test-provider-search.js scripts/test-included-ai.js scripts/test-app-theme.js scripts/test-sign-in-anywhere.js scripts/test-release-check.js scripts/test-location-line.js scripts/test-host-wording.js scripts/test-usage-by-job.js scripts/test-email-scans.js scripts/test-run-here.js scripts/test-run-here-flow.js scripts/test-dead-sign-ins.js scripts/test-skill-learning.js scripts/test-routine-offers.js scripts/test-sandbox-browse.js scripts/test-spend-any-way.js scripts/test-browse-engines.js scripts/test-routine-times.js scripts/test-projects.js scripts/test-railway-move.js scripts/test-move-clear.js scripts/test-file-search-names.js scripts/test-sandbox-workspace.js scripts/test-mail-send-gate.js scripts/test-log-file.js scripts/test-send-gate.js scripts/test-world-news.js scripts/test-away.js scripts/test-ci-runs-every-test.js scripts/test-assistant-email-release.js scripts/test-browser-access.js scripts/test-check-own-data.js scripts/test-embedding-gemma-2.js scripts/test-home-orb.js scripts/test-keep-ui.js scripts/test-recall-query.js scripts/test-whatsapp-names.js scripts/test-workspace-vm.js scripts/test-whatsapp-send.js scripts/test-file-expiry.js scripts/test-table-pages.js scripts/test-page-media.js scripts/test-outlook-parity.js scripts/test-mail-from.js scripts/test-confirmation-carry-on.js scripts/test-fold-in.js scripts/test-clear-command.js scripts/test-mac-access-icon.js scripts/test-page-expiry.js scripts/test-mac-app-resources.js scripts/test-mac-app-opening.js scripts/test-telegram-shortcuts.js scripts/test-whatsapp-quote.js
+
+      - name: No personal details in the published code
+        run: node --test scripts/test-no-personal-data.js
+
+      - name: Shopify connection and renewal
+        run: node --test scripts/test-shopify-connection.js
+
+      - name: Goals, check-ins and trusted sites
+        run: node --test scripts/test-goals.js scripts/test-goals-and-sites.js
+
+      - name: Connections tab
+        run: node --test scripts/test-connections-tab.js
+
+      - name: Wallet password check and addresses
+        run: node --test scripts/test-wallet-confirm.js scripts/test-wallet-addresses.js
+
+      - name: Nothing before the login gate is open by accident
+        run: node --test scripts/test-api-before-gate.js
+
+      - name: Settings change against what is saved, never a stale copy
+        run: node --test scripts/test-profile-settings.js
+
+      - name: The chat box
+        run: node --test scripts/test-chat-box.js
+
+      - name: Agent dashboard visibility and counts
+        run: node --test scripts/test-agent-dashboard.js
+
+      - name: Dashboard overview from chat
+        run: node --test scripts/test-dashboard-overview.js
+
+      - name: Chat presentation and generated media
+        run: node --test scripts/test-chat-presentation.js
+
+      - name: Connected sources and files in automatic recall
+        run: node --test scripts/test-recall-context.js scripts/test-recall-sync.js scripts/test-recall-protocol.js
+
+      - name: Requests preserved through onboarding
+        run: node --test scripts/test-onboarding-handoff.js
+
+      - name: Task continuity, verification and budgets
+        run: node --test scripts/test-agent-execution.js scripts/test-agent-runners.js scripts/test-pg-task-queries.js
+
+      - name: Agent context and current task state
+        run: node --test scripts/test-agent-context-state.js scripts/test-confirmation-lifetime.js scripts/test-outbound-guard.js scripts/test-sign-in-wall.js scripts/test-sandbox-screen.js scripts/test-connected-accounts.js scripts/test-asked-for-change.js scripts/test-dead-account.js scripts/test-pulse-context.js scripts/test-nudge-gate.js scripts/test-pulse-facts.js scripts/test-prepared-drafts.js scripts/test-mac-updates.js scripts/test-docker-updates.js scripts/test-setup-hello.js scripts/test-conversation.js scripts/test-theme-travels.js scripts/test-reply-context.js scripts/test-info-hints.js scripts/test-booking-update.js scripts/test-message-language.js scripts/test-search-budget.js scripts/test-figures-check.js scripts/test-answer-order.js scripts/test-home-threads.js scripts/test-brain-and-name.js scripts/test-dashboard-polish.js scripts/test-delight.js scripts/test-name-guess.js scripts/test-google-scopes.js scripts/test-settings-patch.js scripts/test-turn-timing.js scripts/test-settings-unread-model.js scripts/test-bridge-routes.js scripts/test-prompt-safety-rules.js scripts/test-mac-calendar.js scripts/test-booking-sources.js scripts/test-agreed-names.js scripts/test-prompt-size.js scripts/test-email-record.js scripts/test-mail-file.js scripts/test-model-key-guard.js scripts/test-video.js scripts/test-hear-files.js scripts/test-required-names.js scripts/test-brand.js scripts/test-listen.js scripts/test-dictation.js scripts/test-voice-connections.js scripts/test-api-keys.js scripts/test-api-connections.js scripts/test-sign-in-hosts.js scripts/test-phone-talk.js scripts/test-connection-jobs.js scripts/test-maps-lists.js scripts/test-sign-ins.js scripts/test-local-models.js scripts/test-dashboard-sessions.js scripts/test-web-hardening.js scripts/test-secrets-at-boot.js scripts/test-logs-hold-no-secrets.js scripts/test-secrets-at-rest.js scripts/test-bank-connections.js scripts/test-sign-in-code.js scripts/test-names-escaped.js scripts/test-upload-types.js scripts/test-secrets-guard.js scripts/test-crypto-strength.js scripts/test-watches.js scripts/test-maps-fallback.js scripts/test-search-route.js scripts/test-facts-prose.js scripts/test-stuck-tools.js scripts/test-sleep-watch.js scripts/test-fx.js
+
+      - name: Phone dashboard links
+        run: node --test scripts/test-dashboard-links.js scripts/test-phone-registration.js scripts/test-phone-link-delivery.js scripts/test-dashboard-link-settings.js scripts/test-instance-navigation.js scripts/test-setup-personal-url.js
+
+      - name: Bug reporting and consent
+        run: node --test scripts/test-bug-reports.js
+
+      - name: Flight times and booking changes
+        run: node --test scripts/test-flights.js scripts/test-time-context.js scripts/test-phone-zone.js scripts/test-computers-phone.js scripts/test-unique-routes.js scripts/test-bookings.js scripts/test-email-dates.js
+
+      - name: Model routing and setup
+        run: node --test scripts/test-pulse-triage.js scripts/test-pulse-tools.js scripts/test-prompt-caching.js scripts/test-model-routing.js scripts/test-model-settings-ui.js scripts/test-settings.js scripts/test-static-assets.js
+
+      - name: Built-in skill catalogue matches runtime
+        run: node scripts/check-builtin-skills.js && node --test scripts/test-builtin-skills.js
+
+      - name: Dashboard inline scripts parse
+        run: node scripts/check-inline-scripts.js
+
+      - name: Mac access setup and recovery
+        run: node --test scripts/test-mac-access.js
+
+      - name: Workspace file boundaries
+        run: node --test scripts/test-browser-park.js scripts/test-workspace-paths.js scripts/test-workspace-network.js scripts/test-workspace-host.js scripts/test-workspace-ui.js
+
+      - name: No new unchecked database writes
+        run: node scripts/check-unchecked-writes.js
+      - name: Every record picked by id names its owner
+        run: node scripts/check-owner-filters.js
+
+      - name: Report page, Word and Excel files
+        run: |
+          npm install --prefix "$RUNNER_TEMP/report-test" --ignore-scripts --no-audit --no-fund adm-zip@0.6.1 https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz mammoth@1.13.0
+          NODE_PATH="$RUNNER_TEMP/report-test/node_modules" node --test scripts/test-report-page.js
+
+      # A name that was never defined only fails when its line runs, so a
+      # rarely used path ships broken: removing a schedule crashed every
+      # time for this reason.
+      - name: No undefined names in server code
+        run: |
+          npm install --prefix "$RUNNER_TEMP/lint" --ignore-scripts --no-audit --no-fund eslint@8.57.1
+          "$RUNNER_TEMP/lint/node_modules/.bin/eslint" --no-eslintrc --env node,es2022 --parser-options=ecmaVersion:2022 --rule '{"no-undef":"error"}' --ignore-pattern lib/flight-time.js lib index.js user-store.js crypto-tokens.js webapp/server.js webapp/*.js sandbox-image/agent/server.js
+
+      # Sound and files a connected service sends back reach the person.
+      - name: Connected services' sound and files
+        run: |
+          npm install --prefix "$RUNNER_TEMP/mcp-test" --ignore-scripts --no-audit --no-fund @modelcontextprotocol/sdk@1.32.1
+          NODE_PATH="$RUNNER_TEMP/mcp-test/node_modules" node --test scripts/test-connection-media.js scripts/test-mcp-setup.js scripts/test-mcp-discovery.js
+
+      # The web chat's connection: frames relayed, bad tokens and foreign
+      # origins refused.
+      - name: Web chat connection
+        run: |
+          npm install --prefix "$RUNNER_TEMP/ws-test" --ignore-scripts --no-audit --no-fund ws@8.22.0
+          NODE_PATH="$RUNNER_TEMP/ws-test/node_modules" node --test scripts/test-chat-proxy.js
+
+      # Every kind of file reads through the one reader, scans and iPhone
+      # photos included, on Tesseract as in Docker.
+      - name: File reader
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libheif-examples
+          npm install --prefix "$RUNNER_TEMP/reader-test" --ignore-scripts --no-audit --no-fund tesseract.js@7.0.0 @tesseract.js-data/eng@1.0.0 pdfjs-dist@5.4.296 mammoth@1.13.0 adm-zip@0.6.1 cheerio@1.2.0 mailparser@3.9.37 pdfkit@0.19.1 https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+          NODE_PATH="$RUNNER_TEMP/reader-test/node_modules" node --test scripts/test-file-reader.js
+
+      - name: Vendored copies have not drifted
+        run: node scripts/check-vendored-identical.js
+
+      - name: No count-gated reranking
+        run: node scripts/check-rerank-callers.js
+
+      - name: Payment lookup and checkout boundaries
+        run: node --test scripts/test-spend-page-context.js

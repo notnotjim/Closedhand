@@ -1,0 +1,30 @@
+[
+  {
+    "id": "instagram-web",
+    "name": "Comment on Instagram posts",
+    "description": "Read and comment on Instagram posts through the browser on Closedhand's sandbox computer, where you are signed in",
+    "requires_service": null,
+    "always_active": false
+  },
+  {
+    "id": "meta-ads",
+    "name": "Manage Meta ad campaigns",
+    "description": "View and manage Facebook/Instagram ad campaigns, ad sets, and performance insights",
+    "requires_service": "meta_ads",
+    "always_active": false
+  },
+  {
+    "id": "shopify-analytics",
+    "name": "Check Shopify sales and stock",
+    "description": "Query Shopify orders, products, inventory, customers, and sales summaries",
+    "requires_service": "shopify",
+    "always_active": false
+  },
+  {
+    "id": "slack-workspace",
+    "name": "Read and post in Slack",
+    "description": "Read Slack channels, search messages, and post to channels",
+    "requires_service": "slack",
+    "always_active": false
+  }
+]

@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <script src="/theme.js"></script><script src="/account-nav.js" defer></script>
+<script src="/handheld.js"></script>
+<title>Closedhand</title>
+<meta name="description" content="A free, open-source personal AI assistant that keeps your data on a computer you control. Message it on WhatsApp or the web, and it handles your mail, calendar and files.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Closedhand">
+<meta property="og:title" content="Closedhand">
+<meta property="og:description" content="A free, open-source personal AI assistant that keeps your data on a computer you control. Message it on WhatsApp or the web, and it handles your mail, calendar and files.">
+<meta property="og:url" content="https://closedhand.com/">
+<meta property="og:image" content="https://closedhand.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+<meta property="og:image:alt" content="Closedhand. Control your world and your private data.">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Closedhand","url":"https://closedhand.com/"}</script>
+<link rel="icon" href="/favicon.png" type="image/png" sizes="192x192">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/interface.css">
+<link rel="stylesheet" href="/recall-demo.css">
+<style>
+:root {
+    --hero-title-size: clamp(1.5625rem, 2.9vw, 2.6875rem);
+    --hero-copy-size: clamp(.8125rem, 1.8vw, 1.125rem);
+    --text-primary: rgba(var(--fg-rgb),0.92);
+    --text-secondary: rgba(var(--fg-rgb),0.65);
+    --text-tertiary: rgba(var(--fg-rgb),0.4);
+    --bg-raised: rgba(var(--raised-rgb),0.9);
+    --bg-overlay: rgba(var(--fg-rgb),0.05);
+    --border-default: rgba(var(--fg-rgb),0.1);
+    --accent-dim: rgba(var(--accent-strong-rgb),0.15);
+    
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-display: var(--font-brand);
+  }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { overflow-x: hidden; }
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+body.chat-active { overflow: hidden; height: 100dvh; }
+body.chat-active .page { height: 100dvh; min-height: 0; overflow: hidden; }
+#blobCanvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+.no-webgl-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    
+    background: radial-gradient(ellipse 70% 45% at 50% 42%, rgba(var(--accent-strong-rgb),0.10) 0%, rgba(var(--accent-strong-rgb),0.03) 45%, transparent 70%),
+                radial-gradient(ellipse at 50% 45%, rgba(var(--raised-rgb),0.8) 0%, rgba(var(--bg-rgb),0.4) 40%, transparent 70%),
+                var(--bg);
+  }
+.page {
+    position: relative;
+    z-index: 1;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.75rem;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+  }
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+.header-left-group { display: flex; align-items: center; gap: .375rem; }
+.header-center {
+    display: flex;
+    align-items: center;
+  }
+.header-center .auth-row {
+    font-size: .875rem;
+    color: rgba(var(--fg-rgb),0.5);
+    display: inline-flex;
+    align-items: center;
+    gap: .375rem;
+  }
+.header-center .auth-row a {
+    display: inline-flex;
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+.header-center .auth-row a:hover { opacity: 0.85; }
+.header-center .auth-row .wordmark {
+    height: .9375rem;
+    opacity: 0.55;
+    transition: opacity 0.2s;
+  }
+.header-center .auth-row a:hover .wordmark { opacity: 0.8; }
+.header-center .auth-row-ms {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    margin-left: .375rem;
+    transition: opacity 0.2s;
+  }
+.header-center .auth-row-ms:hover { opacity: 0.85; }
+.header-center .auth-row-ms .wordmark { height: .9375rem; opacity: 0.55; transition: opacity 0.2s; }
+.header-center .auth-row-ms:hover .wordmark { opacity: 0.8; }
+.header-right { display: flex; align-items: center; gap: 1.75rem; }
+.header-right a {
+    font-size: 1rem;
+    color: rgba(var(--fg-rgb),0.5);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+.header-right a:hover { color: var(--muted); }
+/* The header's link to your own Closedhand is drawn in interface.css (nav-cta). */
+.header-right a.nav-cta { flex: none; }
+.header-right a#dashboardLink {
+    padding: .375rem .875rem;
+    border: 1px solid rgba(var(--accent-strong-rgb),0.2);
+    border-radius: .5rem;
+    color: rgba(var(--accent-strong-rgb),0.7);
+    font-size: .875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+.header-right a#dashboardLink:hover {
+    border-color: rgba(var(--accent-strong-rgb),0.4);
+    color: rgba(var(--accent-strong-rgb),0.9);
+    box-shadow: 0 0 .625rem rgba(var(--accent-strong-rgb),0.08);
+  }
+.hero-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 1.25rem 1.25rem;
+    gap: 0;
+    
+    min-height: calc(100dvh - 4.75rem);
+  }
+@media (prefers-reduced-motion: reduce) {
+    .hero-area *, .hero-heading, .hero-heading-sub, .input-box-wrap, .suggestions { animation: none !important; opacity: 1 !important; }
+    .hero-heading .hero-heading-more { transition: none; max-width: none; opacity: 0.85; }
+  }
+.hero-heading {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 144, 'SOFT' 60;
+    font-size: var(--hero-title-size);
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    text-align: center;
+    line-height: 1.1;
+    white-space: nowrap;
+    width: 100%;
+    max-width: 56.25rem;
+    user-select: none;
+    margin-bottom: .5rem;
+    color: var(--fg);
+    opacity: 0;
+    animation: heroHeadIn 0.8s ease forwards 0.3s;
+  }
+@keyframes heroHeadIn {
+    from { opacity: 0; transform: translateY(-1.25rem); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+.hero-heading .hero-heading-first { display: inline-block; }
+.hero-heading .hero-heading-more {
+    display: inline-block;
+    vertical-align: bottom;
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 0;
+    padding-left: 0.28em;
+    
+    padding-bottom: 0.18em;
+    margin-bottom: -0.18em;
+    opacity: 0;
+    color: var(--accent);
+    font-weight: 300;
+    transition: max-width 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) 1.2s, opacity 0.9s ease 1.5s;
+  }
+.hero-area.is-live .hero-heading-more {
+    max-width: var(--more-w, 60ch);
+    opacity: 0.85;
+  }
+.hero-heading-sub {
+    display: block;
+    align-items: center;
+    justify-content: center;
+    gap: .625rem;
+    font-size: clamp(1rem, 1.6vw, 1.1875rem);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    text-align: center;
+    color: rgba(var(--fg-rgb),0.68);
+    line-height: 1.4;
+    max-width: 66.25rem;
+    text-wrap: balance;
+    user-select: none;
+    margin-bottom: 1.5rem;
+    opacity: 0;
+    animation: heroIn 0.8s ease forwards 0.5s;
+  }
+.hero-heading-sub img {
+    width: clamp(1.25rem, 2.5vw, 1.75rem);
+    height: clamp(1.25rem, 2.5vw, 1.75rem);
+    opacity: 0.55;
+    flex-shrink: 0;
+  }
+.hero-footer {
+    margin-top: .75rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+.hero-footer span {
+    font-size: clamp(.8125rem, 1.1vw, .9375rem);
+    line-height: 1.5;
+    letter-spacing: 0;
+    color: rgba(var(--fg-rgb),0.55);
+    max-width: 100%;
+    text-align: center;
+    text-wrap: pretty;
+  }
+.hero-footer { margin-top: 1rem; }
+.ethos-link { color: inherit; text-decoration: none; text-underline-offset: .3125rem; }
+.ethos-link:hover { color: var(--fg); text-decoration: underline; text-decoration-color: var(--accent); }
+.ethos-link:focus-visible { outline: 2px solid var(--accent); outline-offset: .3125rem; }
+body.chat-active .hero-recent-float, body.chat-active .hero-recent-pop { display: none !important; }
+.hero-footer .footer-sep {
+    color: rgba(var(--fg-rgb),0.5);
+  }
+@keyframes heroIn {
+    from { opacity: 0; transform: translateY(1rem); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+:root { --sidebar-width: 16.25rem; }
+@media (min-width: 900px) {
+    .activity-sidebar.active ~ .chat-messages {
+      margin-left: var(--sidebar-width);
+      margin-right: 0;
+      width: auto;
+      max-width: none;
+      
+      padding-left: max(1.25rem, calc((100% - var(--sidebar-width) - 56.25rem) / 2));
+      padding-right: max(1.25rem, calc((100% - var(--sidebar-width) - 56.25rem) / 2));
+    }
+  }
+@media (max-width: 899px) {
+    .activity-sidebar { width: 15rem; }
+  }
+@media (max-width: 767px) {
+    .tl-thinking-text { animation: none; }
+    .tl-badge { font-size: .5625rem; }
+  }
+.hero-area {
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+.hero-area.hiding {
+    opacity: 0;
+    transform: translateY(-1.25rem);
+  }
+body.chat-active .input-box { backdrop-filter: none; }
+@media (max-width: 600px) {
+    .header { padding: .75rem .875rem; gap: .5rem; }
+    .header-center { font-size: .6875rem; }
+    .feat-3d { display: none !important; }
+    .header-right { gap: .75rem; }
+    .header-right a { font-size: .8125rem; }
+    .header-right a.nav-cta { font-size: .84375rem; }
+    /* On a phone the first screen is all there is: sit the hero in the
+       middle of it and let each part breathe, instead of hugging the top. */
+    .hero-space-top { flex: 1 !important; min-height: 1.75rem; }
+    .hero-space-bottom { flex: 1.15 !important; }
+
+    
+    .page { min-height: 100svh !important; }
+    .hero-area { padding: 0 1rem 1rem; flex: none !important; min-height: calc(100svh - 4rem) !important; height: auto; }
+    
+    :root { --hero-title-size: clamp(1.4375rem, 7.6vw, 2.375rem); --hero-copy-size: .875rem; }
+    .hero-heading { font-size: var(--hero-title-size); letter-spacing: -0.3px; margin-bottom: 1rem; white-space: nowrap; }
+    .hero-heading .hero-heading-first, .hero-heading .hero-heading-more { display: block; white-space: nowrap; max-width: none; padding-left: 0; transition: opacity 0.8s ease 0.7s; }
+    .hero-footer span { white-space: normal; line-height: 1.45; }
+    .hero-footer .footer-sentence { display: block; }
+    .hero-recent-tab { padding: .3125rem .75rem .375rem; font-size: .6875rem; }
+    
+    .input-box-wrap:focus-within { transform: none; }
+    .input-box-wrap:focus-within + .hero-recent-tab { transform: none; }
+    .hero-recent-row { padding: .5625rem .25rem; }
+    .hero-recent-row .title { font-size: .8125rem; }
+    .hero-recent-row .meta { font-size: .6875rem; }
+    .hero-recent-float { right: .875rem; bottom: .875rem; padding: .5rem .75rem; font-size: .71875rem; }
+    .hero-recent-pop { right: .875rem; bottom: 3.375rem; }
+    .hero-heading-sub { line-height: 1.45; gap: .375rem; margin-bottom: 1.875rem; max-width: 92vw; }
+    .hero-heading-sub img { width: 1.25rem; height: 1.25rem; }
+
+    .input-box-wrap { max-width: 100%; }
+    .input-textarea-wrap { padding: 1rem 1rem .5rem; }
+    .input-textarea-wrap textarea { min-height: 2.75rem; font-size: 1rem; }
+    .input-toolbar { padding: .5rem .75rem .75rem; }
+
+    .message { max-width: 88%; }
+    .suggestions { gap: .375rem; padding: 0 1rem; }
+    .suggestions-cats { flex-wrap: nowrap !important; overflow-x: auto; justify-content: flex-start; -webkit-overflow-scrolling: touch; }
+    .suggestions-cats::-webkit-scrollbar { display: none; }
+    .suggestion-btn, .cat-pill { padding: .5rem .875rem; font-size: .8125rem; white-space: nowrap; flex-shrink: 0; }
+    .docked-input { padding: .375rem .625rem .5rem; position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; background: rgba(var(--raised-rgb),0.95); backdrop-filter: blur(1.25rem); }
+    .docked-input .input-box-wrap { border-radius: .75rem; }
+    .docked-input textarea { min-height: 2.25rem !important; max-height: 7.5rem !important; font-size: 1rem !important; transition: min-height 0.2s ease; }
+    .docked-input:focus-within textarea { min-height: 4.375rem !important; }
+    .docked-input:focus-within .input-box-wrap { border-color: rgba(var(--accent-strong-rgb),0.3) !important; box-shadow: 0 0 1.25rem rgba(var(--accent-strong-rgb),0.08), 0 0 2.5rem rgba(var(--accent-strong-rgb),0.04) !important; }
+    .docked-input:focus-within .input-box { background: rgba(var(--raised-rgb),0.65) !important; }
+    body.chat-active .chat-messages { padding-bottom: 1.5rem !important; }
+    body.chat-active { overflow: hidden; height: 100dvh; }
+    body.chat-active .page { height: 100dvh !important; }
+    
+    .docked-input::before {
+      content: '';
+      position: absolute;
+      top: -2.5rem;
+      left: 0;
+      right: 0;
+      height: 2.5rem;
+      background: linear-gradient(transparent, rgba(var(--raised-rgb),0.95));
+      pointer-events: none;
+    }
+
+    
+    body.chat-active .activity-sidebar { display: block !important; position: fixed; top: 0; left: 0; bottom: 0; z-index: 30; background: rgba(var(--bg-rgb),0.97); backdrop-filter: blur(1.25rem); transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), visibility 0s linear 0.3s; visibility: hidden; pointer-events: none; }
+    body.chat-active .activity-sidebar.mobile-open { transform: translateX(0); visibility: visible; transition-delay: 0s; pointer-events: auto; }
+    
+    .activity-scrim { position: fixed; inset: 0; z-index: 29; background: rgba(var(--bg-rgb),0.45); opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+    body.chat-active .activity-sidebar.mobile-open ~ .activity-scrim { opacity: 1; pointer-events: auto; }
+
+    
+    body.chat-active .header .back-arrow { display: flex !important; }
+
+    .bridge-pill-wrap { margin-top: .75rem !important; border-radius: .625rem !important; width: 90%; max-width: 25rem; }
+    .bridge-pill-wrap .bridge-cta { padding: .5rem .875rem; gap: .375rem; flex: none !important; width: 50% !important; justify-content: center; overflow: hidden; }
+    .bridge-cta svg { width: .875rem; height: .875rem; }
+    .bridge-cta-text { min-width: 0; }
+    .bridge-cta-text strong { font-size: .6875rem; white-space: nowrap; }
+    .bridge-cta-text span { font-size: .5625rem; white-space: nowrap; }
+    .bridge-cta .bridge-desktop-icon { display: none; }
+    .bridge-cta .bridge-mobile-icon { display: block; }
+    .hero-footer { flex-direction: column; gap: .5rem; margin-top: 1.875rem; }
+    
+    .header-right a[href="/privacy"], .header-right a[href="/terms"] { display: none !important; }
+    .header { position: relative; }
+    
+    .header-center { font-size: .6875rem; pointer-events: none; }
+    .header-center a, .header-center span { pointer-events: auto; }
+    
+    .back-arrow { min-width: 2.25rem; min-height: 2.5rem; align-items: center; justify-content: center; margin-right: -.25rem; }
+    .back-arrow svg { width: 1.375rem; height: 1.375rem; }
+    body.chat-active .back-arrow { display: flex !important; }
+    #mobileActivityBtn { min-width: 2.5rem; min-height: 2.5rem; align-items: center; justify-content: center; }
+    body.chat-active #mobileActivityBtn { display: inline-flex !important; }
+    .send-via a { width: 1.625rem; height: 1.625rem; }
+    .send-via img { width: .8125rem; height: .8125rem; }
+    .send-via-label { font-size: .625rem; }
+  }
+@media (max-width: 767px) {
+    .toolbar-btn, .send-btn, .page-tab { min-height: 2.75rem; min-width: 2.75rem; }
+  }
+.features-page {
+    position: relative;
+    z-index: 1;
+    padding: 5rem 1.5rem 3.75rem;
+  }
+body.library-active .page { min-height:0; }
+@media (max-width:640px) { .rag-privacy-cards { grid-template-columns:1fr; } }
+.features-inner {
+    max-width: 66.25rem;
+    margin: 0 auto;
+  }
+.reveal {
+    opacity: 0;
+    transform: translateY(1.875rem);
+    transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
+  }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.feat-heading {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 72, 'SOFT' 40;
+    font-size: 1.625rem;
+    font-weight: 450;
+    color: var(--fg);
+    text-align: center;
+    margin-bottom: .75rem;
+    letter-spacing: -0.02em;
+  }
+#recall-heading {
+    font-size: clamp(1.375rem, 2.9vw, 1.625rem);
+    font-weight: 500;
+    font-variation-settings: 'opsz' 144, 'SOFT' 60;
+    letter-spacing: -0.015em;
+    line-height: 1.2;
+    text-wrap: balance;
+    max-width: 47.5rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+#recall-heading .ethos-link:hover {
+    color: var(--accent-warm);
+    text-decoration: none;
+  }
+/* The note itself, plainly offered under the heading; the label above also links to it. */
+.feat-more { margin: .875rem 0 0; text-align: center; }
+.feat-more a { display: inline-flex; align-items: center; gap: .375rem; font-size: .875rem; color: var(--muted); text-decoration: none; transition: color .2s; }
+.feat-more a:hover { color: var(--fg); }
+.feat-more a:focus-visible { outline: 2px solid var(--accent); outline-offset: .25rem; border-radius: .25rem; }
+.feat-more svg { width: .875rem; height: .875rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s; }
+.feat-more a:hover svg { transform: translateX(2px); }
+/* The label above links to the same note, skipped by Tab. */
+.feat-kicker .ethos-link:hover { color: var(--accent-pale); }
+.feat-sub {
+    font-size: 1.125rem;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: 3rem;
+    max-width: 37.5rem;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.5;
+  }
+
+.recall-story { margin-bottom: 4.5rem; }
+/* A short label over a section heading, as on the setup page. */
+.feat-kicker { margin: 0 0 .75rem; text-align: center; font-size: .75rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); }
+
+.feat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 4rem;
+  }
+@media (max-width: 700px) { .feat-row { grid-template-columns: 1fr; } }
+.feat-card {
+    background: rgba(var(--raised-rgb),0.6);
+    border: 1px solid rgba(var(--fg-rgb),0.08);
+    border-radius: 1.25rem;
+    padding: 2rem 2rem;
+    backdrop-filter: blur(1.875rem);
+  }
+.feat-card-title {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 72, 'SOFT' 40;
+    font-size: 1.625rem;
+    font-weight: 450;
+    color: var(--fg);
+    margin-bottom: .75rem;
+    letter-spacing: -0.01em;
+  }
+.feat-card-desc {
+    font-size: 1rem;
+    color: rgba(var(--fg-rgb),0.5);
+    line-height: 1.65;
+    margin-bottom: 1.75rem;
+  }
+.feat-card-icons {
+    display: flex;
+    gap: 1.125rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+.feat-card-icons img {
+    width: 2.375rem;
+    height: 2.375rem;
+    opacity: 0.55;
+  }
+  @media (max-width: 600px) {
+    .feat-card-icons { gap: .75rem; flex-wrap: nowrap; }
+    .feat-card-icons img { flex: 0 1 2.375rem; min-width: 0; height: auto; aspect-ratio: 1; }
+  }
+.feat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    margin-bottom: 5rem;
+  }
+@media (max-width: 700px) { .feat-grid { grid-template-columns: 1fr; } }
+.feat-mini {
+    background: rgba(var(--bg-rgb),0.35);
+    border: 1px solid rgba(var(--fg-rgb),0.06);
+    border-radius: 1.125rem;
+    padding: 2.25rem 1.75rem;
+    text-align: center;
+  }
+.feat-mini-icon {
+    display: block;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin: 0 auto 1.125rem;
+    color: var(--fg);
+  }
+.feat-mini-icon svg { display: block; width: 100%; height: 100%; }
+.feat-mini-title {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 48, 'SOFT' 40;
+    font-size: 1.375rem;
+    font-weight: 450;
+    color: var(--fg);
+    margin-bottom: .625rem;
+    letter-spacing: -0.01em;
+  }
+.feat-mini-desc {
+    font-size: 1rem;
+    color: rgba(var(--fg-rgb),0.5);
+    line-height: 1.6;
+  }
+.feat-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 4rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(var(--fg-rgb),0.12);
+    background: rgba(var(--raised-rgb),0.7);
+    backdrop-filter: blur(1rem);
+  }
+.feat-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 1rem;
+    min-width: 37.5rem;
+  }
+.feat-table th {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 36, 'SOFT' 40;
+    padding: 1.125rem 1.5rem;
+    text-align: left;
+    font-weight: 450;
+    font-size: 1.125rem;
+    letter-spacing: -0.01em;
+    color: var(--muted);
+    border-bottom: 1px solid rgba(var(--fg-rgb),0.1);
+    background: rgba(var(--raised-rgb),0.8);
+  }
+.feat-table th:first-child { color: rgba(var(--fg-rgb),0.5); }
+.feat-table th.highlight {
+    color: var(--accent);
+    border-bottom: 2px solid rgba(var(--accent-strong-rgb),0.4);
+  }
+.feat-table td {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid rgba(var(--fg-rgb),0.06);
+    color: var(--muted);
+  }
+.feat-table tr:last-child td { border-bottom: none; }
+.feat-table td:first-child {
+    color: var(--fg);
+    font-weight: 400;
+  }
+.feat-table .yes { color: var(--accent); }
+.feat-table .no { color: rgba(var(--fg-rgb),0.5); }
+.feat-table .partial { color: rgba(208,166,82,0.7); }
+  @media (max-width: 600px) {
+    .feat-table { min-width: 0; }
+    .feat-table, .feat-table tbody, .feat-table tr, .feat-table th, .feat-table td { display: block; }
+    .feat-table th { padding: 1.25rem 1.25rem .5rem; border-bottom: 0; background: none; }
+    .feat-table td { padding: 0 1.25rem 1.5rem; }
+  }
+.feat-cta {
+    text-align: center;
+    padding: 3rem 0 0;
+  }
+.feat-cta-heading {
+    font-family: var(--font-display);
+    font-variation-settings: 'opsz' 72, 'SOFT' 40;
+    font-size: clamp(1.375rem, 3vw, 2rem);
+    font-weight: 450;
+    color: var(--fg);
+    margin-bottom: 1.25rem;
+    letter-spacing: -0.01em;
+  }
+.feat-cta-btns {
+    display: flex;
+    gap: .75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+.feat-cta-btns a {
+    display: inline-flex;
+    align-items: center;
+    gap: .625rem;
+    padding: 1rem 2rem;
+    border-radius: .875rem;
+    font-size: 1.0625rem;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+.feat-cta-btns .btn-primary {
+    background: rgba(var(--accent-strong-rgb),0.12);
+    border: 1px solid rgba(var(--accent-strong-rgb),0.25);
+    color: var(--accent-strong);
+  }
+.feat-cta-btns .btn-primary:hover { background: rgba(var(--accent-strong-rgb),0.2); }
+.feat-cta-btns .btn-secondary {
+    background: rgba(var(--fg-rgb),0.05);
+    border: 1px solid rgba(var(--fg-rgb),0.1);
+    color: var(--muted);
+  }
+.feat-cta-btns .btn-secondary:hover { background: rgba(var(--fg-rgb),0.1); }
+.feat-cta-btns img { height: 1rem; opacity: 0.7; }
+body.canvas-open {
+    overflow-x: hidden;
+  }
+body.canvas-open .activity-sidebar {
+    display: none !important;
+  }
+body.canvas-open .chat-messages {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 1.25rem 1.5rem 0 1.5rem !important;
+  }
+body.canvas-open .message {
+    max-width: 100% !important;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+body.canvas-open .docked-input {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+  }
+body.canvas-open .docked-input .input-box-wrap {
+    max-width: 100%;
+  }
+body.canvas-open .header {
+    padding-left: .5rem;
+  }
+@media (max-width: 899px) { .canvas-panel { width: 100vw; max-width: none; min-width: 0; } .canvas-resize-handle { display: none; } }
+@media (hover: none) and (pointer: coarse) { .dash-grab { display: block; } }
+@media (max-width: 700px) { .dash-slide { width: 100vw; max-width: none; } }
+.page-tabs { display:inline-flex; justify-content:center; gap:.25rem; margin:.375rem auto 0; position:relative; z-index:2; background:rgba(var(--fg-rgb),0.04); border-radius:.75rem; padding:.25rem; border:1px solid rgba(var(--fg-rgb),0.06); }
+.page-tab { padding:.4375rem 1.125rem; background:none; border:1px solid transparent; color:rgba(var(--fg-rgb),0.5); font-size:.8125rem; font-weight:500; cursor:pointer; font-family:inherit; transition:all 0.2s; border-radius:.625rem; display:inline-flex; align-items:center; gap:.375rem; min-height:2.25rem; }
+.page-tab:hover { color:var(--muted); }
+.page-tab.active { color:var(--accent); background:rgba(var(--ok-rgb),0.1); border:1px solid rgba(var(--ok-rgb),0.2); }
+.page-tab svg { width:.875rem; height:.875rem; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.page-view { display:none; }
+.page-view.active { display:block; }
+body.computers-active .page { min-height:0; height:auto; }
+body.chat-active .page-tabs { display:none; }
+body.chat-active .computers-view { display:none !important; }
+body.chat-active .chat-messages.active {
+    height: var(--list-h, calc(100dvh - 23.75rem));
+    max-height: var(--list-h, calc(100dvh - 23.75rem));
+    transition: height 0.25s ease, max-height 0.25s ease;
+  }
+body.chat-active .docked-input.active {
+    position: fixed;
+    bottom: 1.25rem;
+    left: 16.25rem;
+    right: 0;
+    z-index: 10;
+    padding: 0 1.25rem;
+  }
+body.chat-active .chat-messages {
+    padding-bottom: 1.5rem;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 4.5rem), transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 4.5rem), transparent 100%);
+  }
+@media (max-width: 899px) {
+    body.chat-active .docked-input.active {
+      left: 0;
+    }
+  }
+body.mon-dragging iframe, body.mon-dragging webview, body.mon-dragging .mon-screen { pointer-events:none !important; }
+body.chat-active .float-chat { display:none; }
+body.chat-active .mon-area { display:none; }
+.header-center { position:absolute !important; left:50% !important; transform:translateX(-50%) !important; text-align:center; pointer-events:auto; }
+@media (max-width:768px) {
+    .mon-area { width:100%; flex-direction:column; gap:0; padding:0; }
+    .mon-wrap { min-width:0 !important; flex:none !important; width:100%; }
+    .mon-wrap:first-child { height:50%; }
+    .mon-wrap:last-child { height:50%; }
+    .mon { height:100%; min-height:0; border-radius:0; border-left:none; border-right:none; }
+    .mon-wrap:first-child .mon { border-top:none; border-bottom:none; }
+    .mon-wrap:last-child .mon { border-top:none; border-bottom:none; }
+    .mon-stand { display:none; }
+    .mon-bar { padding:.375rem .625rem; min-height:1.75rem; }
+    .mon-dots span { width:.375rem; height:.375rem; }
+    .mon-bar-title { font-size:.6875rem; }
+    .mon-grid { gap:.25rem; padding:.5rem; }
+    .mon-tile { width:4.75rem; }
+    .mon-tile-icon svg { width:2.25rem; height:2.25rem; }
+    .mon-tile-icon { height:2.5rem; }
+    .mon-tile-name { font-size:.6875rem; }
+    
+    .mon-divider { width:100%; height:1.5rem; cursor:ns-resize; flex-direction:row; }
+    .mon-divider::before { top:50%; bottom:auto; left:0; right:0; width:100%; height:1px; }
+    .mon-divider-grip { width:3rem; height:1.5rem; flex-direction:row; gap:.25rem; }
+    .mon-divider-grip span { width:1.5px; height:.625rem; }
+    .mon-divider-arrows { display:none; }
+    .mon-divider-label { display:none; }
+    
+    .float-chat { position:fixed; bottom:.5rem; left:.5rem; right:.5rem; width:auto; max-width:none; margin:0; z-index:10; }
+    .float-chat .suggestions { display:none; }
+    .float-chat:focus-within .suggestions { display:block; }
+    
+    .mon-expand-btn { display:flex; width:1.25rem; height:1.25rem; align-items:center; justify-content:center; background:rgba(var(--fg-rgb),0.06); border:none; border-radius:.25rem; color:rgba(var(--fg-rgb),0.5); cursor:pointer; flex-shrink:0; }
+  }
+
+  /* --- The public front door: the install's homepage, with the two ways in
+         where the chat box would be. --- */
+  .header { position: relative; z-index: 2; }
+  .header-right a { font-size: .8125rem; color: var(--muted); text-decoration: none; margin-left: 1.375rem; }
+  .header-right a:hover { color: var(--fg); }
+  .header-right a.gh { display: inline-flex; align-items: center; gap: .375rem; }
+  .header-right a.gh svg { width: .9375rem; height: .9375rem; fill: currentColor; }
+  .ways {
+    width: 100%; max-width: 56.25rem; margin: 0 auto;
+    background: var(--deep); border: 1.5px solid rgba(var(--accent-strong-rgb),0.3); border-radius: 1.25rem;
+    padding: 2.375rem 1.75rem 1.5rem; box-sizing: border-box; text-align: center;
+    opacity: 0; animation: heroIn 0.8s ease forwards 0.7s;
+    box-shadow: 0 0 0 1px rgba(var(--accent-strong-rgb),0.04), 0 1.875rem 5rem var(--lift);
+  }
+  .ways-label { font-size: .875rem; color: var(--muted); margin: 0 auto .875rem; max-width: 62ch; line-height: 1.55; }
+  .way-app .ways-label { font-size: .9375rem; margin-bottom: 1rem; }
+  .way-app .way-actions { padding-top: 2px; }
+  .ways-label strong { color: var(--fg); font-weight: 500; }
+  .install {
+    display: flex; align-items: center; gap: .75rem;
+    background: var(--bg); border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: .75rem; padding: .625rem .625rem .625rem 1rem;
+  }
+  .install code {
+    flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-all;
+    font: .84375rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg);
+  }
+  .install button {
+    flex: none; font: 500 .8125rem/1 var(--font-ui); color: var(--fg); background: rgba(var(--fg-rgb),0.08);
+    border: 1px solid rgba(var(--fg-rgb),0.14); border-radius: .5rem; padding: .5625rem .875rem; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+    min-width: 4.875rem; /* room for "Copied", so the box keeps its width when it changes */
+  }
+  .install button:hover { background: rgba(var(--accent-strong-rgb),0.14); border-color: rgba(var(--accent-strong-rgb),0.4); }
+  .ways-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .375rem 1.125rem; margin: .75rem 0 0; font-size: .8125rem; color: var(--muted); }
+  .ways-note a { color: var(--muted); text-decoration: underline; text-underline-offset: .1875rem; text-decoration-color: rgba(var(--fg-rgb),0.3); }
+  .ways-note a:hover { color: var(--fg); }
+  .ways-divider { display: flex; align-items: center; gap: .75rem; margin: 1.25rem 0; font-size: .875rem; line-height: 1; color: var(--muted); }
+  .ways-divider::before, .ways-divider::after { content: ''; flex: 1; height: 1px; background: rgba(var(--fg-rgb),0.08); }
+  .install { width: fit-content; max-width: 100%; margin: 0 auto; text-align: left; }
+  .way-actions { display: flex; flex-direction: column; align-items: center; gap: .625rem; margin: 0; }
+  .way-meta { font-size: .78125rem; color: var(--muted); letter-spacing: 0.01em; }
+  /* The one call to action on the page: solid madder, the only filled thing here. */
+  .dl { display: inline-flex; align-items: center; gap: .75rem; font: 500 1.1875rem/1 var(--font-brand); font-variation-settings: 'opsz' 48, 'SOFT' 30; letter-spacing: -0.01em; color: var(--bg); text-decoration: none; padding: .9375rem 1.875rem 1rem; border-radius: .75rem; background: var(--fg); border: 1px solid var(--fg); box-shadow: none; transition: background 0.18s, border-color 0.18s, transform 0.18s; }
+  .dl:hover { background: var(--fg-strong); border-color: rgba(var(--accent-strong-rgb),0.6); transform: translateY(-1px); }
+  .dl:active { transform: translateY(0); background: var(--fg-soft); }
+  .dl:focus-visible { outline: 2px solid var(--accent); outline-offset: .25rem; }
+  .dl svg { width: 1.125rem; height: 1.125rem; fill: currentColor; margin-top: -2px; }
+  .hero-footer { margin-top: 1.375rem; }
+  /* Phones and tablets (html.handheld) can't run Closedhand. There the hero
+     shows what it does, then the two steps in order (a computer first, then
+     this phone), and the Closedhand this phone already opens is one tap
+     away. The downloads are for computers only. */
+  html:not(.handheld) .handheld-only { display: none !important; }
+  html.handheld .computer-only, html.handheld .header-right a.nav-cta { display: none !important; }
+  html.handheld .hero-footer { margin-top: var(--foot-gap, 1.25rem); }
+  html.handheld .hero-footer .footer-sentence { display: block; }
+  /* The fist and its label float with equal room above (from the line of
+     text to the ring's visible edge) and below (to the steps card), and
+     whatever ends the first screen keeps 30px clear of the browser's bar.
+     Phones 713px tall and up fit the local-first line under the card; on
+     shorter ones the card ends the screen and the line waits just below it,
+     never half cut off. The step between the two is (x) * 1000 clamped at
+     zero. The ring shrinks a little only on the shortest phones. The film's
+     ring starts 11.6% of the way down its frame. */
+  html.handheld { --orb-size: 13.5rem; --orb-gap: 2rem; }
+  @supports (height: 100svh) {
+    html.handheld {
+      --orb-size: clamp(7.5rem, calc(100svh - 27.1875rem), 13.5rem);
+      --gap-fits: clamp(1.5rem, calc((100svh - 41.5625rem) / 2), 3.125rem);
+      --gap-short: clamp(1.25rem, calc((100svh - 24.3125rem - var(--orb-size)) / 2), 3.125rem);
+      --orb-gap: max(clamp(0px, calc((100svh - 44.53125rem) * 1000), var(--gap-fits)), clamp(0px, calc((44.53125rem - 100svh) * 1000), var(--gap-short)));
+      --foot-gap: clamp(1.25rem, calc((44.53125rem - 100svh) * 1000), 3rem);
+    }
+  }
+  html.handheld .hero-heading-sub { margin-bottom: calc(var(--orb-gap) - var(--orb-size) * 0.116); }
+  .orb-open { display: flex; flex-direction: column; align-items: center; margin: 0 auto var(--orb-gap, 1.25rem); text-decoration: none; -webkit-tap-highlight-color: transparent; opacity: 0; animation: heroIn 0.8s ease forwards 0.6s; }
+  .orb-stage { position: relative; width: var(--orb-size, 13.5rem); height: var(--orb-size, 13.5rem); display: grid; place-items: center; }
+  /* The light theme plays its own film, toned for cream when it was made
+     (smoke-light.*, tools/ring-video); a filter here darkened it a second
+     time and made the ring heavy. */
+  .orb-film { position: absolute; inset: 0; }
+  /* The smoke ring: filmed, looping. It plays while on screen and flashes
+     when tapped; pressing gives a little, words and light with it. */
+  .orb-smoke { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: transparent; pointer-events: none; }
+  .orb-stage.pulsing .orb-smoke { animation: orb-flash 0.45s ease-out; }
+  @keyframes orb-flash { 0% { filter: brightness(2.2); transform: scale(1.06); } 100% { filter: none; transform: none; } }
+  .orb-body { position: absolute; inset: 0; display: grid; place-items: center; transition: transform .2s ease; }
+  .orb-open:active .orb-body { transform: scale(0.97); }
+  /* Closedhand answering inside the smoke: a question types out and the
+     answer is simply there, as if it already knew. A warm light behind the
+     words breathes, swells as each answer lands and flashes with the tap.
+     Everything is sized to the ring, so a small phone shrinks it whole. */
+  .orb-stage { container-type: size; }
+  .orb-core { position: absolute; left: 50%; top: 50%; width: 64%; height: 64%; translate: -50% -50%; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(closest-side, rgba(var(--accent-soft-rgb),0.26), rgba(var(--accent-soft-rgb),0.09) 58%, rgba(var(--accent-soft-rgb),0));
+    animation: orb-breathe 6s ease-in-out infinite; transition: filter .8s ease; }
+  @keyframes orb-breathe { 0%, 100% { opacity: .7; scale: .94; } 50% { opacity: 1; scale: 1.04; } }
+  .orb-stage.answered .orb-core { filter: brightness(1.6); }
+  .orb-stage.pulsing .orb-core { animation: orb-flash 0.45s ease-out; }
+  .orb-talk { position: relative; width: 66cqw; display: flex; flex-direction: column; align-items: center; gap: 2.4cqw; text-align: center; animation: orb-float 5s ease-in-out infinite; transition: opacity .6s ease; }
+  .orb-talk.is-leaving { opacity: 0; }
+  @keyframes orb-float { 0%, 100% { translate: 0 -1.1cqw; } 50% { translate: 0 1.1cqw; } }
+  .orb-ask { min-height: 1.3em; font: 400 clamp(.6875rem, 6.3cqw, .875rem)/1.3 var(--font-ui); color: var(--muted); text-wrap: balance; }
+  .orb-ask.typing::after { content: ''; display: inline-block; width: .08em; height: 1em; margin-left: .1em; vertical-align: -0.15em; background: currentColor; animation: orb-caret 1s steps(1) infinite; }
+  @keyframes orb-caret { 50% { opacity: 0; } }
+  .orb-answer { font: 500 clamp(.8125rem, 7.4cqw, 1.125rem)/1.2 var(--font-brand); font-variation-settings: 'opsz' 48, 'SOFT' 30; letter-spacing: -0.005em; color: var(--fg); text-wrap: balance;
+    transition: opacity .7s ease, filter .7s ease, translate .7s ease; }
+  /* Hidden at once, so the next answer never shows before its question; only
+     its arrival fades in. */
+  .orb-answer.is-hidden { opacity: 0; filter: blur(.25rem); translate: 0 .375rem; transition: none; }
+  /* A small ring has room for one of them at a time: the answer takes the
+     question's place as it lands. */
+  @container (max-width: 10rem) {
+    .orb-talk { display: grid; place-items: center; width: 76cqw; }
+    .orb-answer { font-size: .75rem; }
+    .orb-ask, .orb-answer { grid-area: 1 / 1; }
+    .orb-talk.answered .orb-ask { opacity: 0; visibility: hidden; transition: opacity .4s ease, visibility 0s .4s; }
+  }
+  .orb-said { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .orb-label { display: inline-flex; align-items: center; gap: .5rem; margin-top: 2px; font: 500 1.4375rem/1.1 var(--font-brand); font-variation-settings: 'opsz' 48, 'SOFT' 30; letter-spacing: -0.01em; color: var(--fg); }
+  .orb-label svg { width: 1.1875rem; height: 1.1875rem; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px; }
+  .orb-address { margin-top: .5rem; font: .8125rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+  /* Until this phone has opened its Closedhand, the ring only shows what it
+     does: no link and no label. */
+  .orb-open:not([href]) { cursor: default; }
+  .orb-open:not([href]) .orb-label { display: none; }
+  .first-steps { display: flex; flex-direction: column; gap: .75rem; width: 100%; max-width: 22.5rem; margin: 0 auto; padding: .875rem .875rem .5rem; border-radius: 1rem; background: rgba(var(--deep-rgb),0.72); border: 1px solid rgba(var(--fg-rgb),0.1); opacity: 0; animation: heroIn 0.8s ease forwards 0.8s; }
+  .first-steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .625rem; }
+  .first-steps-lead { margin: 0 0 .25rem; text-align: center; font-size: .84375rem; line-height: 1.4; color: var(--muted); }
+  .first-steps-lead strong { display: block; margin-bottom: .125rem; font-size: 1rem; font-weight: 600; color: var(--fg); }
+  .first-steps li { display: grid; grid-template-columns: 1.75rem 1fr; gap: .75rem; align-items: center; text-align: left; font-size: .84375rem; line-height: 1.35; color: var(--muted); }
+  .first-steps li strong { display: block; font-size: .9375rem; font-weight: 500; color: var(--fg); }
+  .first-step-n { width: 1.75rem; height: 1.75rem; border-radius: 50%; display: grid; place-items: center; font: 600 .8125rem/1 var(--font-ui); background: var(--fg); color: var(--bg); }
+  .first-steps li + li .first-step-n { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px rgba(var(--fg-rgb),0.25); }
+  .first-step-site { font-weight: 500; color: var(--fg); white-space: nowrap; }
+  .first-steps-have { align-self: center; padding: .5rem .25rem; color: var(--muted); font: 400 .875rem/1.4 var(--font-ui); text-decoration: underline; text-underline-offset: .25rem; text-decoration-color: rgba(var(--fg-rgb),0.25); }
+  .first-steps-have:hover { color: var(--fg); }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  .site-foot {
+    position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: .625rem 1.625rem; justify-content: center; align-items: center;
+    padding: 1.75rem 1.5rem 2.75rem; font-size: .8125rem; color: rgba(var(--fg-rgb),0.5);
+  }
+  .site-foot a { color: rgba(var(--fg-rgb),0.6); text-decoration: none; }
+  .site-foot a:hover { color: var(--fg); }
+  @media (max-width: 600px) {
+    .header-right a { margin-left: .875rem; }
+    .header-right a.gh span { display: none; }
+    .ways { padding: 1.75rem 1rem 1.125rem; border-radius: 1rem; }
+    .dl { width: 100%; justify-content: center; gap: .625rem; padding: .9375rem .875rem 1rem; font-size: clamp(1rem, 4.4vw, 1.1875rem); white-space: nowrap; }
+    .install { padding-left: .75rem; }
+    .install code { font-size: .78125rem; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="blobCanvas" data-theme-ground></canvas>
+
+<div class="page">
+  <div class="header">
+    <div class="header-left-group">
+      <a href="/" class="header-left ch-brand"><img src="/fist.png" alt=""><span>Closedhand</span></a>
+    </div>
+    <div class="header-center"></div>
+    <div class="header-right">
+      <button type="button" class="theme-toggle" aria-label="Light, dark or match this device" title="Light, dark or match this device"><span class="sun"><svg data-icon="sun" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M2351 4438 c-41 -22 -60 -60 -76 -152 -30 -176 -11 -466 35 -541 44 -72 136 -72 180 0 35 56 53 201 47 375 -6 175 -23 261 -59 297 -30 29 -92 40 -127 21z M954 3846 c-46 -46 -45 -84 1 -161 112 -184 355 -395 458 -395 54 0 97 43 97 97 0 103 -211 346 -395 458 -77 46 -115 47 -161 1z M3685 3845 c-184 -112 -395 -355 -395 -458 0 -54 43 -97 97 -97 103 0 346 211 458 395 46 77 47 115 1 161 -46 46 -84 45 -161 -1z M2038 3251 c-75 -24 -155 -70 -248 -142 -164 -126 -276 -298 -332 -508 -30 -113 -30 -324 0 -445 89 -357 375 -638 732 -721 103 -24 318 -24 420 0 415 97 718 448 756 875 18 208 -66 484 -190 629 -26 29 -51 61 -56 72 -17 31 -173 146 -256 188 -113 58 -156 67 -255 55 -58 -7 -111 -6 -183 3 -151 18 -319 16 -388 -6z m433 -171 c21 -11 51 -34 66 -50 14 -17 60 -51 102 -76 98 -61 152 -112 211 -202 75 -112 95 -183 95 -327 -1 -99 -5 -131 -24 -184 -111 -315 -467 -461 -766 -315 -182 90 -292 260 -303 474 -11 217 88 401 283 528 39 25 82 57 97 71 34 32 157 101 181 101 10 0 36 -9 58 -20z M505 2524 c-117 -21 -160 -61 -151 -138 10 -87 84 -115 326 -123 174 -6 319 12 375 47 72 44 72 136 0 180 -75 46 -376 65 -550 34z M3856 2525 c-44 -9 -93 -24 -111 -35 -72 -44 -72 -135 0 -180 56 -35 201 -53 375 -47 255 9 325 38 325 137 0 101 -70 129 -340 136 -123 2 -192 -1 -249 -11z M1316 1475 c-181 -109 -396 -355 -396 -453 0 -48 54 -102 102 -102 69 0 244 129 354 261 136 163 163 241 105 300 -42 41 -90 39 -165 -6z M3319 1481 c-58 -59 -31 -137 105 -300 110 -132 285 -261 354 -261 48 0 102 54 102 102 0 69 -129 244 -261 354 -163 136 -241 163 -300 105z M2352 1098 c-65 -32 -97 -181 -89 -418 9 -255 38 -325 137 -325 99 0 128 70 137 325 6 174 -12 319 -47 375 -31 50 -87 67 -138 43z"/></svg></span><span class="moon"><svg data-icon="moon" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M2610 3989 c-208 -17 -528 -84 -605 -126 -11 -7 -58 -30 -104 -53 -46 -22 -134 -75 -195 -118 -524 -363 -824 -866 -852 -1432 -7 -142 13 -342 45 -450 11 -36 28 -94 39 -130 59 -200 241 -470 424 -630 120 -105 221 -171 387 -255 139 -69 225 -101 346 -129 39 -8 90 -20 115 -27 25 -6 140 -13 255 -16 229 -6 389 9 515 47 36 11 71 20 79 20 24 0 324 122 381 155 30 18 72 40 92 49 20 10 67 40 105 67 37 27 91 65 119 83 142 94 165 246 54 356 -53 53 -109 72 -265 90 -375 43 -704 237 -900 531 -148 222 -203 531 -144 819 13 63 68 240 80 255 4 6 18 37 30 70 54 145 163 336 290 510 16 22 36 63 44 90 13 44 51 115 88 168 21 30 -3 51 -69 58 -80 9 -227 8 -354 -2z m-83 -222 c-231 -246 -413 -627 -463 -973 -25 -178 -15 -421 24 -575 16 -64 44 -149 61 -190 18 -41 39 -91 48 -112 16 -36 73 -131 125 -206 51 -74 213 -243 296 -308 115 -92 175 -130 305 -195 l108 -54 -93 -27 c-337 -96 -644 -82 -973 45 -182 71 -393 239 -508 404 -80 115 -96 143 -104 172 -3 15 -15 46 -25 70 -44 99 -78 281 -78 418 0 91 25 258 53 364 18 66 95 249 128 305 165 279 369 479 664 650 55 32 107 63 115 70 39 32 304 163 332 165 4 0 -3 -11 -15 -23z"/></svg></span><span class="device"><svg data-icon="device" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M2336 4430 c-58 -51 -71 -107 -71 -305 0 -138 3 -180 18 -222 53 -151 181 -151 234 0 26 76 26 369 0 444 -22 63 -74 113 -117 113 -18 0 -42 -11 -64 -30z M949 3851 c-34 -35 -39 -92 -13 -144 72 -144 315 -356 407 -357 61 0 107 46 107 108 -1 91 -214 334 -357 406 -52 26 -109 21 -144 -13z M2530 3518 c-30 -6 -156 -9 -280 -8 -124 0 -249 -4 -278 -9 -130 -26 -338 -151 -474 -285 -166 -164 -269 -346 -322 -569 -76 -318 -15 -662 169 -952 56 -88 314 -341 400 -391 105 -61 232 -112 363 -146 108 -27 130 -30 292 -30 162 0 184 2 292 30 131 34 258 85 363 146 86 50 344 303 400 391 247 389 268 872 54 1264 -130 238 -364 446 -607 540 -76 29 -90 31 -199 30 -65 -1 -143 -6 -173 -11z m-78 -211 c9 -28 32 -95 51 -147 82 -221 112 -428 112 -760 0 -320 -26 -510 -102 -737 l-28 -83 -88 0 c-342 0 -655 212 -777 527 -101 258 -73 548 74 770 52 80 178 205 256 255 216 138 285 175 390 208 88 29 93 27 112 -33z m648 -405 c180 -270 186 -660 14 -930 -37 -57 -115 -154 -120 -149 -1 1 10 49 26 106 16 56 34 146 41 199 14 122 14 428 -1 547 -10 81 -65 310 -90 375 -15 38 71 -60 130 -148z M520 2534 c-107 -21 -180 -75 -180 -134 0 -43 50 -95 113 -117 75 -26 368 -26 444 0 149 52 151 179 5 233 -35 12 -87 17 -202 19 -85 2 -166 1 -180 -1z M1258 1417 c-121 -69 -268 -216 -322 -324 -43 -85 0 -173 84 -173 50 0 85 17 176 86 117 88 254 270 254 336 0 62 -46 108 -107 108 -15 0 -54 -15 -85 -33z M2348 995 c-32 -18 -65 -83 -79 -161 -16 -84 -6 -326 16 -386 20 -58 74 -108 115 -108 41 0 95 50 115 108 22 60 32 302 16 386 -27 144 -98 207 -183 161z"/></svg></span></button>
+      <a class="gh" href="https://github.com/notnotjim/Closedhand" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+      <a href="/open" class="nav-cta" data-account>Sign in</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </div>
+  </div>
+
+  <div class="hero-area" id="heroSection">
+    <div class="hero-space-top" style="flex:0.55"></div>
+    <div class="hero-heading"><span class="hero-heading-first">Control your world</span><span class="hero-heading-more" id="heroMore">and your private data.</span></div>
+    <div class="hero-heading-sub">Personal AI without signing your life away</div>
+    <script>
+      // The second sentence of the heading is measured at its natural width
+      // once the fonts are in, so it can unfold to exactly that; then the hero
+      // is live. Defined here, beside the heading, so nothing further down the
+      // page can hold it back. A computer calls it when the smoke behind starts.
+      window.heroLive = function() {
+        var more = document.getElementById('heroMore');
+        var go = function() {
+          if (more) more.style.setProperty('--more-w', more.scrollWidth + 'px');
+          document.getElementById('heroSection').classList.add('is-live');
+        };
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(go, go); else go();
+      };
+      // Phones and tablets have a still background, so there is nothing to wait
+      // for: the line fades in as the first one lands, from the first frame.
+      if (document.documentElement.classList.contains('handheld')) {
+        requestAnimationFrame(function() { requestAnimationFrame(function() { document.getElementById('heroSection').classList.add('is-live'); }); });
+      }
+    </script>
+
+    <!-- Phones and tablets: Closedhand answering inside the smoke ring, a
+         newcomer's first look at what it does. On a phone that has opened
+         its Closedhand before, the ring becomes the link to that exact
+         address (script below). -->
+    <a class="orb-open handheld-only" id="orbOpen">
+      <span class="orb-stage" aria-hidden="true">
+        <span class="orb-body">
+          <!-- The desktop's own smoke ring, filmed (tools/ring-video), played
+               as a small transparent loop. Its sources are set by script on
+               phones and tablets only, so computers never download it. -->
+          <span class="orb-film"><video class="orb-smoke" id="orbSmoke" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback data-mov="/orb/smoke.mov" data-webm="/orb/smoke.webm" data-poster="/orb/smoke-poster.png"></video></span>
+          <span class="orb-core"></span>
+          <span class="orb-talk" id="orbTalk"><span class="orb-ask" id="orbAsk">What wine did Tom like?</span><span class="orb-answer" id="orbAnswer">A 2019 Rioja. He said so on WhatsApp.</span></span>
+        </span>
+      </span>
+      <span class="orb-label">Open dashboard<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>
+      <span class="orb-address" id="orbAddress" hidden></span>
+    </a>
+
+    <p class="orb-said handheld-only">Ask Closedhand things like “What wine did Tom like?” and it answers from your own mail, calendar and messages: “A 2019 Rioja. He said so on WhatsApp.” It also speaks up before you ask, like “Your flight’s delayed. You’ll miss your train.”</p>
+    <!-- A phone can't run Closedhand: it lives on a computer, and this phone
+         opens it. Two steps say the order; nothing here looks like a
+         download. The link is for people who have done the first step. -->
+    <div class="first-steps handheld-only" id="firstSteps">
+      <p class="first-steps-lead"><strong>Download Closedhand on a computer</strong>Your assistant runs on a computer, so it can't be downloaded on a phone.</p>
+      <ol>
+        <li><span class="first-step-n" aria-hidden="true">1</span><span><strong>On your computer</strong>Go to <span class="first-step-site">closedhand.com</span> to download and set it up</span></li>
+        <li><span class="first-step-n" aria-hidden="true">2</span><span><strong>On this phone</strong>Once setup is complete, talk to Closedhand in the chat apps you already use.</span></li>
+      </ol>
+      <a class="first-steps-have" href="/open?next=%2Fdashboard">Already set up? Sign in</a>
+    </div>
+
+    <div class="ways computer-only" id="ways">
+      <div class="way way-app" id="wayApp">
+        <p class="way-actions">
+          <a class="dl" id="macAppLink" href="https://github.com/notnotjim/Closedhand/releases/latest" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>Download Closedhand for Mac</a>
+          <span class="way-meta" id="macAppNote">For Apple Silicon Macs with macOS 14 or later</span>
+        </p>
+      </div>
+      <div class="ways-divider">Or</div>
+      <div class="way way-docker" id="wayDocker">
+        <p class="ways-label"><strong id="dockerLead">Run it with Docker</strong> on Mac, Windows, Linux or a rented server.</p>
+        <div class="install">
+          <code id="installLine">curl -fsSL https://closedhand.com/install | sh</code>
+          <button type="button" id="copyInstall">Copy</button>
+        </div>
+        <p class="ways-note"><a href="https://github.com/notnotjim/Closedhand#readme" rel="noopener">Read the install script first</a></p>
+      </div>
+    </div>
+
+    <div class="hero-footer">
+      <span><a class="ethos-link" href="/ethos"><span class="computer-only">Your Closedhand assistant</span><span class="handheld-only">Closedhand</span> is local-first and model-agnostic. <span class="footer-sentence">The keys to your digital life stay with you.</span></a></span>
+    </div>
+    <div class="hero-space-bottom" style="flex:1"></div>
+  </div>
+</div>
+
+<div class="features-page" id="featuresPage">
+<div class="features-inner">
+
+  <section class="recall-story" aria-labelledby="recall-heading">
+    <p class="feat-kicker"><a class="ethos-link" href="https://zenodo.org/records/23040634/latest" rel="noopener" tabindex="-1" aria-hidden="true">Preemptive Context Layer</a></p>
+    <h2 class="feat-heading" id="recall-heading"><a class="ethos-link" href="https://zenodo.org/records/23040634/latest" rel="noopener">While other assistants go looking reactively, Closedhand already knows your world.</a></h2>
+    <p class="feat-more"><a href="https://zenodo.org/records/23040634/latest" rel="noopener">Read the technical note<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></a></p>
+    <figure class="recall-demo" id="recallDemo">
+      <div class="recall-comparison">
+      <section class="recall-lane recall-lane-other" aria-labelledby="recall-other-title">
+        <h3 id="recall-other-title">Other assistants</h3>
+        <p class="recall-q">What should I get Sam for his birthday?</p>
+        <div class="recall-box">
+          <ul class="recall-apps">
+            <li class="recall-app is-match" data-app="calendar" data-relevant><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6m10-6v6M3 11h18"/></svg>Calendar</li>
+            <li class="recall-app is-checked" data-app="mail"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>Mail</li>
+            <li class="recall-app is-skipped"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2h9l5 5v15H5Z"/><path d="M14 2v6h5"/></svg>Drive</li>
+            <li class="recall-app is-skipped" data-relevant><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7 21M17 3l-2 18M4 8h17M3 16h17"/></svg>Slack<span class="recall-missed">Missed</span></li>
+            <li class="recall-app is-skipped" data-relevant><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h11l5 5v11H4Z"/><path d="M8 16V8l6 8V8"/></svg>Notion<span class="recall-missed">Missed</span></li>
+            <li class="recall-app is-skipped"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19Z"/><path d="M9 9.5c.5 2.5 2.5 4.5 5 5l1-1.5"/></svg>WhatsApp</li>
+          </ul>
+        </div>
+        <div class="recall-ai">AI</div>
+        <p class="recall-a is-shown">A good bottle of wine is always a safe bet.</p>
+        <div class="recall-timer" aria-hidden="true" style="--done:.9"><svg viewBox="0 0 48 48"><path class="recall-timer-crown" d="M20 3h8M24 3v5"/><circle class="recall-timer-face" cx="24" cy="27" r="17"/><circle class="recall-timer-sweep" cx="24" cy="27" r="8" pathLength="1"/><path class="recall-timer-ticks" d="M24 12v2.5M39 27h-2.5M24 42v-2.5M9 27h2.5"/><line class="recall-timer-hand" x1="24" y1="27" x2="24" y2="14"/><circle class="recall-timer-pin" cx="24" cy="27" r="2"/></svg></div>
+        <span class="recall-token" aria-hidden="true">?</span>
+        <span class="recall-token recall-fetch" aria-hidden="true"></span>
+      </section>
+      <section class="recall-lane recall-lane-ready" aria-labelledby="recall-ready-title">
+        <h3 class="recall-brand" id="recall-ready-title"><img src="/logo.png" alt="">Closedhand</h3>
+        <p class="recall-q">What should I get Sam for his birthday?</p>
+        <div class="recall-box">
+          <ul class="recall-apps">
+            <li class="recall-app is-match" data-relevant><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6m10-6v6M3 11h18"/></svg>Calendar</li>
+            <li class="recall-app is-quiet"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>Mail</li>
+            <li class="recall-app is-quiet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2h9l5 5v15H5Z"/><path d="M14 2v6h5"/></svg>Drive</li>
+            <li class="recall-app is-match" data-relevant><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7 21M17 3l-2 18M4 8h17M3 16h17"/></svg>Slack</li>
+            <li class="recall-app is-match" data-relevant><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h11l5 5v11H4Z"/><path d="M8 16V8l6 8V8"/></svg>Notion</li>
+            <li class="recall-app is-quiet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19Z"/><path d="M9 9.5c.5 2.5 2.5 4.5 5 5l1-1.5"/></svg>WhatsApp</li>
+          </ul>
+        </div>
+        <div class="recall-ai">AI</div>
+        <p class="recall-a is-shown">Get him the new Murakami, not wine. He's off alcohol this year.</p>
+        <div class="recall-timer" aria-hidden="true" style="--done:.36"><svg viewBox="0 0 48 48"><path class="recall-timer-crown" d="M20 3h8M24 3v5"/><circle class="recall-timer-face" cx="24" cy="27" r="17"/><circle class="recall-timer-sweep" cx="24" cy="27" r="8" pathLength="1"/><path class="recall-timer-ticks" d="M24 12v2.5M39 27h-2.5M24 42v-2.5M9 27h2.5"/><line class="recall-timer-hand" x1="24" y1="27" x2="24" y2="14"/><circle class="recall-timer-pin" cx="24" cy="27" r="2"/></svg></div>
+        <span class="recall-token" aria-hidden="true">?</span>
+        <span class="recall-token recall-fetch" aria-hidden="true"></span>
+      </section>
+      </div>
+    </figure>
+  </section>
+
+  <div class="feat-row reveal">
+    <div class="feat-card">
+      <canvas class="feat-3d" id="feat3dPhone" style="width:100%;height:8.75rem;border-radius:.875rem;margin-bottom:.875rem;"></canvas>
+      <div class="feat-card-title">A proactive support team available on your WhatsApp</div>
+      <div class="feat-card-desc">Ask questions and get work done from your connected chat apps, wherever you happen to be.</div>
+      <div class="feat-card-icons">
+        <img src="/logos/whatsapp.svg" alt="WhatsApp"><img src="/logos/telegram.svg" alt="Telegram">
+      </div>
+    </div>
+    <div class="feat-card">
+      <canvas class="feat-3d" id="feat3dMac" style="width:100%;height:8.75rem;border-radius:.875rem;margin-bottom:.875rem;"></canvas>
+      <div class="feat-card-title">Work with your Mac’s files and apps</div>
+      <div class="feat-card-desc">Closedhand works with your Mac’s files and apps through permissions you choose and can take back at any time.</div>
+    </div>
+  </div>
+
+  <div class="feat-grid reveal">
+    <div class="feat-mini">
+      <span class="feat-mini-icon"><svg data-icon="brain" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M1725 4101 c-207 -60 -388 -233 -480 -460 l-23 -54 -88 -31 c-123 -43 -207 -93 -310 -183 -187 -166 -300 -368 -339 -607 -45 -275 12 -540 170 -801 22 -35 25 -52 25 -135 1 -150 41 -304 123 -465 73 -146 269 -365 385 -432 26 -15 65 -39 87 -54 45 -30 236 -110 305 -128 80 -20 221 -41 279 -41 59 0 139 20 256 65 39 15 79 29 89 32 43 13 131 70 134 86 6 31 -17 47 -68 47 -69 0 -208 26 -287 54 -37 13 -97 29 -132 36 -220 41 -444 176 -574 345 -139 181 -182 335 -162 575 4 52 3 95 -4 111 -9 25 -8 27 22 32 18 3 97 -2 177 -10 182 -19 331 -13 422 16 91 29 210 118 239 178 37 76 16 154 -55 207 -24 18 -43 21 -139 22 -62 1 -174 7 -249 14 -241 23 -381 1 -516 -81 -35 -21 -65 -39 -67 -39 -2 0 -8 39 -15 86 -22 155 13 319 96 444 57 86 70 101 127 139 73 49 165 89 245 106 87 18 117 32 158 77 43 45 52 65 68 150 29 149 105 267 207 322 60 33 122 37 269 19 95 -12 109 -16 162 -51 31 -20 41 -22 53 -12 18 15 19 47 1 121 -53 222 -185 320 -430 318 -65 0 -123 -7 -161 -18z M2748 4101 c-117 -38 -180 -90 -224 -184 -48 -106 -66 -215 -39 -237 12 -10 22 -8 53 12 53 35 67 39 162 51 147 18 209 14 269 -19 102 -55 178 -173 207 -322 16 -85 25 -105 68 -150 41 -45 71 -59 158 -77 110 -23 260 -100 311 -159 125 -144 184 -343 157 -530 -7 -47 -13 -86 -15 -86 -2 0 -32 18 -67 39 -135 82 -275 104 -516 81 -75 -7 -187 -13 -249 -14 -96 -1 -115 -4 -139 -22 -71 -53 -92 -131 -55 -207 29 -60 148 -149 239 -178 91 -29 240 -35 422 -16 80 8 159 13 177 10 30 -5 31 -7 22 -32 -7 -16 -8 -59 -4 -111 15 -172 -3 -292 -63 -421 -112 -240 -389 -446 -673 -499 -35 -7 -95 -23 -132 -36 -79 -28 -218 -54 -287 -54 -51 0 -74 -16 -68 -47 3 -16 91 -73 134 -86 10 -3 51 -17 89 -32 117 -45 197 -65 256 -65 58 0 199 21 279 41 69 18 260 98 305 128 22 15 61 39 87 54 116 67 312 286 385 432 82 161 122 315 123 465 0 83 3 100 25 135 158 261 215 526 170 801 -39 239 -152 441 -339 607 -103 90 -187 140 -310 183 l-88 31 -23 54 c-37 92 -62 135 -125 212 -102 127 -233 216 -367 251 -84 22 -241 20 -315 -3z M2332 3643 c-73 -36 -102 -115 -134 -363 -20 -163 -17 -1197 5 -1525 24 -348 31 -408 54 -452 73 -140 107 -200 124 -218 19 -19 19 -19 38 0 17 18 51 78 124 218 35 68 65 505 76 1101 12 707 -18 1092 -94 1192 -46 60 -127 80 -193 47z"/></svg></span>
+      <div class="feat-mini-title">Context Brain</div>
+      <div class="feat-mini-desc">Pinned Facts, Context Notes and your documents, recalled by meaning, not just keywords. You can see, edit and delete any of it on your dashboard.</div>
+    </div>
+    <div class="feat-mini">
+      <span class="feat-mini-icon"><svg data-icon="shield" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M2370 4125 c-7 -8 -10 -25 -6 -40 4 -17 2 -25 -6 -25 -7 0 -51 -7 -98 -16 -47 -8 -155 -19 -240 -23 -85 -5 -204 -18 -263 -30 -244 -47 -475 -47 -665 1 -99 25 -154 19 -210 -22 -70 -50 -84 -85 -93 -229 -23 -366 8 -863 71 -1128 5 -24 15 -64 20 -90 32 -145 127 -444 171 -538 15 -33 37 -85 49 -115 12 -30 30 -68 40 -85 10 -16 39 -70 65 -120 45 -87 183 -302 242 -376 157 -202 293 -347 459 -494 162 -142 366 -290 433 -313 67 -24 138 -10 200 37 19 14 62 46 97 71 282 204 481 397 717 699 58 73 197 289 242 376 26 50 55 104 65 120 10 17 28 55 40 85 12 30 34 82 49 115 44 94 139 393 171 538 5 26 15 66 20 90 63 265 94 762 71 1129 -7 114 -11 132 -35 168 -55 84 -147 116 -248 86 -219 -63 -551 -44 -849 49 -41 13 -129 31 -195 39 -65 9 -153 25 -194 36 -90 24 -104 24 -120 5z m168 -212 c154 -144 170 -153 367 -226 215 -80 404 -117 592 -117 l106 0 -6 -202 c-3 -112 -11 -239 -17 -283 -21 -144 -49 -319 -59 -360 -5 -22 -13 -60 -19 -85 -56 -257 -192 -596 -333 -826 -203 -334 -444 -599 -756 -829 -8 -7 -18 -7 -26 0 -98 72 -157 121 -237 193 -348 318 -610 717 -767 1172 -47 134 -63 189 -83 280 -5 19 -13 58 -19 85 -11 50 -39 219 -61 370 -6 44 -14 171 -17 283 l-6 202 118 0 c252 0 596 81 735 173 68 46 245 176 309 228 31 26 61 44 67 40 7 -3 57 -48 112 -98z M2988 3020 c-112 -13 -122 -18 -219 -99 -186 -155 -343 -326 -508 -553 l-93 -127 -77 64 c-94 77 -218 145 -267 145 -43 0 -80 -18 -119 -60 -27 -29 -30 -37 -29 -98 l0 -67 167 -250 c92 -137 187 -268 211 -291 44 -40 99 -64 151 -64 80 0 166 56 204 132 34 69 102 188 146 258 12 19 41 67 65 105 105 170 266 402 432 620 21 28 40 66 44 85 3 19 12 68 20 108 23 106 19 109 -128 92z"/></svg></span>
+      <div class="feat-mini-title">Stays on your computer</div>
+      <div class="feat-mini-desc">Your conversations, mail and files never reach closedhand.com, so there’s nothing to keep. Only the LLM you choose sees what you ask.</div>
+    </div>
+    <div class="feat-mini">
+      <span class="feat-mini-icon"><svg data-icon="pulse" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M1751 3507 c-19 -6 -60 -35 -93 -65 -72 -67 -109 -140 -173 -347 -124 -399 -153 -473 -228 -585 -65 -97 -110 -115 -336 -130 -293 -20 -297 -21 -427 -87 -124 -62 -146 -81 -128 -110 6 -9 64 -44 129 -77 118 -59 120 -60 250 -72 71 -7 200 -13 286 -13 229 -1 340 32 462 139 100 89 217 263 272 407 l31 82 18 -107 c9 -59 21 -129 26 -157 6 -27 17 -90 26 -140 16 -94 39 -206 73 -364 30 -136 106 -355 146 -421 46 -76 132 -154 191 -174 105 -35 212 -13 296 62 120 109 175 252 273 711 24 117 50 231 56 253 l10 41 44 -64 c63 -95 171 -193 252 -232 62 -29 77 -32 185 -35 64 -2 199 1 300 7 168 9 200 14 388 61 113 28 232 57 264 65 33 8 67 21 75 30 14 13 14 17 0 30 -8 9 -42 22 -75 30 -32 8 -151 37 -264 65 -203 51 -208 52 -446 64 -188 9 -246 15 -265 28 -24 16 -39 38 -155 233 -74 124 -142 200 -218 242 -45 25 -61 28 -141 28 -80 0 -95 -3 -137 -27 -118 -70 -190 -227 -282 -614 -19 -83 -38 -170 -42 -193 -4 -23 -11 -44 -15 -47 -5 -3 -9 -2 -9 3 0 4 -7 40 -15 78 -16 72 -35 181 -110 615 -91 523 -128 646 -224 733 -27 24 -67 49 -89 55 -47 14 -134 14 -181 -1z"/></svg></span>
+      <div class="feat-mini-title">Proactive Pulse</div>
+      <div class="feat-mini-desc">When enabled, Pulse checks your connected services and messages you when something needs your attention.</div>
+    </div>
+  </div>
+
+  <!-- What it takes, and the one place the site says when Closedhand is
+       there: whenever the computer it lives on is awake and online. -->
+  <section class="reveal need" id="need" aria-labelledby="need-heading" style="margin-bottom:1.5rem;">
+    <h2 class="feat-heading" id="need-heading">What you need</h2>
+    <div class="feat-table-wrap">
+      <table class="feat-table">
+        <tbody>
+          <tr><th scope="row">A computer for it</th><td>The Mac app (Apple Silicon, macOS 14 or later), or Docker on any Mac, PC or rented server. It answers while that computer is awake and online, or all the time on one you leave on, like a Mac mini at home, or on a cloud server.</td></tr>
+          <tr><th scope="row">An LLM</th><td>A local one, or a hosted provider, which sees what you ask under its own terms and prices. You can also use Closedhand Managed Models, which only run on LLM providers that keep nothing you send.</td></tr>
+          <tr><th scope="row">Your personal URL</th><td>Setup gives you one, so you can use Closedhand from your phone or any browser, behind your dashboard password.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+</div>
+
+<div class="site-foot">
+  <a href="https://github.com/notnotjim/Closedhand" rel="noopener">Source on GitHub</a>
+  <a href="/account">Account</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function() {
+  var isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  var canvas = document.getElementById('blobCanvas');
+  var renderer;
+
+  // === OIL-SLICK BLOB ===
+  var vertexShader = [
+    'uniform float uTime;',
+    'varying vec3 vNormal;',
+    'varying vec3 vPosition;',
+    'varying float vDisplacement;',
+    '',
+    'vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }',
+    'vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }',
+    'vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }',
+    'vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }',
+    '',
+    'float snoise(vec3 v) {',
+    '  const vec2 C = vec2(1.0/6.0, 1.0/3.0);',
+    '  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);',
+    '  vec3 i = floor(v + dot(v, C.yyy));',
+    '  vec3 x0 = v - i + dot(i, C.xxx);',
+    '  vec3 g = step(x0.yzx, x0.xyz);',
+    '  vec3 l = 1.0 - g;',
+    '  vec3 i1 = min(g.xyz, l.zxy);',
+    '  vec3 i2 = max(g.xyz, l.zxy);',
+    '  vec3 x1 = x0 - i1 + C.xxx;',
+    '  vec3 x2 = x0 - i2 + C.yyy;',
+    '  vec3 x3 = x0 - D.yyy;',
+    '  i = mod289(i);',
+    '  vec4 p = permute(permute(permute(',
+    '    i.z + vec4(0.0, i1.z, i2.z, 1.0))',
+    '    + i.y + vec4(0.0, i1.y, i2.y, 1.0))',
+    '    + i.x + vec4(0.0, i1.x, i2.x, 1.0));',
+    '  float n_ = 0.142857142857;',
+    '  vec3 ns = n_ * D.wyz - D.xzx;',
+    '  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);',
+    '  vec4 x_ = floor(j * ns.z);',
+    '  vec4 y_ = floor(j - 7.0 * x_);',
+    '  vec4 x = x_ * ns.x + ns.yyyy;',
+    '  vec4 y = y_ * ns.x + ns.yyyy;',
+    '  vec4 h = 1.0 - abs(x) - abs(y);',
+    '  vec4 b0 = vec4(x.xy, y.xy);',
+    '  vec4 b1 = vec4(x.zw, y.zw);',
+    '  vec4 s0 = floor(b0)*2.0 + 1.0;',
+    '  vec4 s1 = floor(b1)*2.0 + 1.0;',
+    '  vec4 sh = -step(h, vec4(0.0));',
+    '  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;',
+    '  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;',
+    '  vec3 p0 = vec3(a0.xy, h.x);',
+    '  vec3 p1 = vec3(a0.zw, h.y);',
+    '  vec3 p2 = vec3(a1.xy, h.z);',
+    '  vec3 p3 = vec3(a1.zw, h.w);',
+    '  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));',
+    '  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;',
+    '  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);',
+    '  m = m * m;',
+    '  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));',
+    '}',
+    '',
+    'void main() {',
+    '  float t = uTime * 0.1;',
+    '  float n1 = snoise(position * 0.8 + t) * 0.6;',
+    '  float n2 = snoise(position * 1.5 - t * 0.5) * 0.25;',
+    '  float displacement = n1 + n2;',
+    '  vDisplacement = displacement;',
+    '  vec3 newPos = position + normal * displacement * 0.4;',
+    '  vPosition = (modelViewMatrix * vec4(newPos, 1.0)).xyz;',
+    '',
+    '  float eps = 0.05;',
+    '  vec3 tang = normalize(cross(normal, vec3(0.0,1.0,0.001)));',
+    '  vec3 bitan = cross(normal, tang);',
+    '  float dn1 = snoise((position+tang*eps)*0.8+t)*0.6 + snoise((position+tang*eps)*1.5-t*0.5)*0.25;',
+    '  float dn2 = snoise((position+bitan*eps)*0.8+t)*0.6 + snoise((position+bitan*eps)*1.5-t*0.5)*0.25;',
+    '  vec3 p1 = (position+tang*eps) + normal*dn1*0.4;',
+    '  vec3 p2 = (position+bitan*eps) + normal*dn2*0.4;',
+    '  vNormal = normalize(normalMatrix * normalize(cross(p1 - newPos, p2 - newPos)));',
+    '',
+    '  gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);',
+    '}'
+  ].join('\n');
+
+  var fragmentShader = [
+    'uniform float uTime;',
+    'uniform float uPulse;',
+    'uniform float uLight;',
+    'varying vec3 vNormal;',
+    'varying vec3 vPosition;',
+    'varying float vDisplacement;',
+    '',
+    'vec3 iridescence(float angle, float disp) {',
+    '  float film = 0.5 + disp * 0.2 + angle * 0.3;',
+    '  float phase = film * 14.0 + uTime * 0.08;',
+    '  // The film cycles through the warm end of the palette, the same',
+    '  // ember the still phone ground uses: madder, ochre, a deep plum',
+    '  // and cream soft, blended by phase. Never white.',
+    '  vec3 madder = vec3(0.816, 0.337, 0.247);',
+    '  vec3 plum = vec3(0.42, 0.22, 0.30);',
+    '  vec3 ochre = vec3(0.816, 0.651, 0.322);',
+    '  vec3 soft = vec3(0.714, 0.60, 0.50);',
+    '  float w0 = sin(phase) * 0.5 + 0.5;',
+    '  float w1 = sin(phase + 1.57) * 0.5 + 0.5;',
+    '  float w2 = sin(phase + 3.14) * 0.5 + 0.5;',
+    '  float w3 = sin(phase + 4.71) * 0.5 + 0.5;',
+    '  return (madder * w0 + ochre * w1 + plum * w2 + soft * w3) / (w0 + w1 + w2 + w3);',
+    '}',
+    '',
+    'void main() {',
+    '  vec3 viewDir = normalize(-vPosition);',
+    '  vec3 n = normalize(vNormal);',
+    '  float fresnel = 1.0 - abs(dot(viewDir, n));',
+    '',
+    '  // Smoke: very transparent, wispy edges only',
+    '  float edgeFresnel = pow(fresnel, 3.0);',
+    '  vec3 iridCol = iridescence(fresnel, vDisplacement);',
+    '',
+    '  // On cream the same ember film is laid on, darker, instead of added as light.',
+    '  if (uLight > 0.5) {',
+    '    // A pulse (a tap on Copy, a message sent) makes the wisps bold and',
+    '    // deep ember for a moment, as the light flash does on dark.',
+    '    float la = pow(fresnel, 4.0) * (0.16 + uPulse * 0.55) + uPulse * 0.02;',
+    '    vec3 soft = mix(mix(iridCol, vec3(0.80, 0.40, 0.28), 0.35), vec3(0.94, 0.80, 0.70), 0.3);',
+    '    gl_FragColor = vec4(mix(soft, vec3(0.72, 0.33, 0.22), uPulse * 0.6), clamp(la, 0.0, 0.7));',
+    '    return;',
+    '  }',
+    '  vec3 base = vec3(0.012, 0.011, 0.011);',
+    '',
+    '  // Subtle iridescent colour on the wispy edges',
+    '  vec3 color = base + iridCol * edgeFresnel * 0.3;',
+    '',
+    '  // Faint rim light, ember rather than white',
+    '  color += vec3(0.78, 0.42, 0.30) * pow(fresnel, 4.5) * 0.09;',
+    '',
+    '  // Specular',
+    '  vec3 lightDir = normalize(vec3(0.3, 1.0, 0.6));',
+    '  vec3 halfDir = normalize(lightDir + viewDir);',
+    '  float spec = pow(max(dot(n, halfDir), 0.0), 60.0);',
+    '  color += vec3(0.9, 0.66, 0.50) * spec * 0.06;',
+    '',
+    '  // Pulse flash: briefly brightens everything',
+    '  color += color * uPulse * 3.0;',
+    '  color += vec3(0.5, 0.25, 0.18) * uPulse * 0.12;',
+    '',
+    '  // Gaseous alpha: very faint, edges only',
+    '  float alpha = edgeFresnel * 0.35 + pow(fresnel, 1.5) * 0.08;',
+    '  alpha += uPulse * 0.12;',
+    '  alpha = clamp(alpha, 0.0, 0.55);',
+    '',
+    '  gl_FragColor = vec4(color, alpha);',
+    '}'
+  ].join('\n');
+
+  // Phones and tablets get the still version of the ground: the full-screen
+  // smoke costs battery. Their hero is the fist instead, with its own light
+  // smoke ring (the orb, below).
+  var handheld = document.documentElement.classList.contains('handheld');
+  // The theme in use (theme.js), picked or the device's.
+  var isLight = function () { return document.documentElement.getAttribute('data-theme') === 'light'; };
+  var still = null;
+  function stillGround(on) {
+    if (on && !still) {
+      still = document.createElement('div');
+      still.className = 'no-webgl-bg';
+      document.body.insertBefore(still, document.body.firstChild);
+    } else if (!on && still) {
+      still.remove();
+      still = null;
+    }
+  }
+  try {
+    if (handheld) throw new Error('phone: still background');
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: !isMobileDevice, alpha: true });
+  } catch(e) {
+    if (!/^phone:/.test(e.message)) console.warn('WebGL not available:', e.message);
+    if (canvas) canvas.style.display = 'none';
+    window.heroLive();
+    stillGround(true);
+    return;
+  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobileDevice ? 1.5 : 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x100E0D, 1);
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.z = 5;
+
+  // === STARFIELD (behind everything) ===
+  var starCount = isMobileDevice ? 800 : 2000;
+  var starGeo = new THREE.BufferGeometry();
+  var starPos = new Float32Array(starCount * 3);
+  var starSz = new Float32Array(starCount);
+  for (var i = 0; i < starCount; i++) {
+    starPos[i*3]   = (Math.random() - 0.5) * 140;
+    starPos[i*3+1] = (Math.random() - 0.5) * 100;
+    starPos[i*3+2] = -Math.random() * 70 - 1;
+    starSz[i] = 0.4 + Math.random() * 2.0;
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  starGeo.setAttribute('size', new THREE.BufferAttribute(starSz, 1));
+
+  var starMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: [
+      'attribute float size;',
+      'uniform float uTime;',
+      'varying float vAlpha;',
+      'void main() {',
+      '  vAlpha = 0.4 + 0.6 * sin(uTime * 0.6 + position.x * 0.3 + position.y * 0.2);',
+      '  vec4 mvPos = modelViewMatrix * vec4(position, 1.0);',
+      '  gl_PointSize = size * (50.0 / -mvPos.z);',
+      '  gl_Position = projectionMatrix * mvPos;',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'varying float vAlpha;',
+      'void main() {',
+      '  float d = length(gl_PointCoord - 0.5) * 2.0;',
+      '  float a = smoothstep(1.0, 0.2, d) * vAlpha;',
+      '  gl_FragColor = vec4(0.94, 0.9, 0.84, a);',
+      '}'
+    ].join('\n'),
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  var stars = new THREE.Points(starGeo, starMat);
+  scene.add(stars);
+
+  var geometry = new THREE.IcosahedronGeometry(2.1, isMobileDevice ? 48 : 128);
+  var material = new THREE.ShaderMaterial({
+    vertexShader: vertexShader,
+    fragmentShader: fragmentShader,
+    uniforms: { uTime: { value: 0 }, uPulse: { value: 0 }, uLight: { value: 0 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+
+  var mesh = new THREE.Mesh(geometry, material);
+  mesh.position.y = -0.15;
+  scene.add(mesh);
+
+  // Blob scale target (grows in chat mode)
+  var blobScale = 1;
+  var blobScaleTarget = 1;
+  window._setBlobScale = function(s) { blobScaleTarget = s; };
+
+  var mouseX = 0, mouseY = 0;
+  var pulseValue = 0;
+  document.addEventListener('mousemove', function(e) {
+    mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+    mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+  });
+  document.addEventListener('touchmove', function(e) {
+    var t = e.touches[0];
+    mouseX = (t.clientX / window.innerWidth - 0.5) * 2;
+    mouseY = (t.clientY / window.innerHeight - 0.5) * 2;
+  }, { passive: true });
+
+  // Pulse on focus (one-shot, then decay)
+  document.addEventListener('focusin', function(e) {
+    if (e.target && e.target.id === 'chatInput') pulseValue = 1;
+  });
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.closest('#copyInstall') && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) pulseValue = 1;
+  });
+
+  // === EASTER EGGS: asteroid + satellite drifting across ===
+  var drifters = [];
+  var templates = {};
+
+  function spawnDrifter(type) {
+    var tmpl = templates[type];
+    if (!tmpl) return;
+    // Only 1 of each type on screen at once
+    if (drifters.some(function(d) { return d.userData.type === type; })) return;
+
+    var m = tmpl.clone();
+    var size = type === 'satellite' ? (0.005 + Math.random() * 0.025) : (0.005 + Math.random() * 0.008);
+    var brightness = 0.06 + (size - 0.005) / 0.025 * 0.18;
+    m.traverse(function(c) {
+      if (c.isMesh) {
+        c.material = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(brightness * 1.05, brightness, brightness * 0.9),
+        });
+      }
+    });
+    m.scale.set(size, size, size);
+    var fromLeft = Math.random() > 0.5;
+    var startX = fromLeft ? -14 : 14;
+    var endX = fromLeft ? 14 : -14;
+    var y = (Math.random() - 0.5) * 7;
+    var z = -5 - Math.random() * 15;
+    m.position.set(startX, y, z);
+    m.userData = {
+      type: type,
+      vx: (endX - startX) * (0.00008 + Math.random() * 0.00012),
+      tumbleX: (Math.random() - 0.5) * 0.002,
+      tumbleY: (Math.random() - 0.5) * 0.003,
+      tumbleZ: (Math.random() - 0.5) * 0.001,
+      fromLeft: fromLeft,
+    };
+    m.visible = !isLight();
+    scene.add(m);
+    drifters.push(m);
+  }
+
+  var gltfScript = document.createElement('script');
+  gltfScript.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+  gltfScript.onload = function() {
+    var loader = new THREE.GLTFLoader();
+    loader.load('/models/Asteroid.glb', function(gltf) {
+      templates.asteroid = gltf.scene;
+      setTimeout(function() { spawnDrifter('asteroid'); }, 15000 + Math.random() * 30000);
+    });
+    loader.load('/models/Satellite.glb', function(gltf) {
+      templates.satellite = gltf.scene;
+      setTimeout(function() { spawnDrifter('satellite'); }, 40000 + Math.random() * 60000);
+    });
+  };
+  document.head.appendChild(gltfScript);
+
+
+  // Dark: stars, drifters and smoke added as light to the night. Light: the
+  // page's cream, the smoke laid on as ember, no night sky. Follows the
+  // theme in use (theme.js), also when it changes with the page open.
+  function applyScheme() {
+    var light = isLight();
+    renderer.setClearColor(new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || 0x100E0D), 1);
+    material.uniforms.uLight.value = light ? 1 : 0;
+    material.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending;
+    material.needsUpdate = true;
+    stars.visible = !light;
+    drifters.forEach(function (d) { d.visible = !light; });
+  }
+  applyScheme();
+  // While theme.js draws a switch by hand (Safari before 18), the ground keeps
+  // the old look outside the spreading ring and changes once it is done.
+  document.documentElement.addEventListener('themechange', function () {
+    if (document.documentElement.classList.contains('theme-spreading')) return;
+    requestAnimationFrame(applyScheme);
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    starMat.uniforms.uTime.value += 0.008;
+    material.uniforms.uTime.value += 0.0012;
+
+    // Pulse decays quickly back to 0
+    pulseValue *= 0.96;
+    if (pulseValue < 0.001) pulseValue = 0;
+    material.uniforms.uPulse.value = pulseValue;
+
+    // Smooth blob scale transition
+    blobScale += (blobScaleTarget - blobScale) * 0.015;
+    mesh.scale.set(blobScale, blobScale, blobScale);
+
+    mesh.rotation.x += (mouseY * 0.1 - mesh.rotation.x) * 0.01;
+    mesh.rotation.y += (mouseX * 0.1 - mesh.rotation.y) * 0.01;
+    mesh.rotation.z += 0.0003;
+
+    // Animate drifters: straight line drift + tumble
+    for (var ai = drifters.length - 1; ai >= 0; ai--) {
+      var a = drifters[ai];
+      a.position.x += a.userData.vx;
+      a.rotation.x += a.userData.tumbleX;
+      a.rotation.y += a.userData.tumbleY;
+      a.rotation.z += a.userData.tumbleZ;
+      var gone = a.userData.fromLeft ? a.position.x > 15 : a.position.x < -15;
+      if (gone) {
+        scene.remove(a);
+        var type = a.userData.type;
+        drifters.splice(ai, 1);
+        // Schedule next spawn of same type (long delay)
+        setTimeout(function() { spawnDrifter(type); }, 120000 + Math.random() * 180000);
+      }
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+  // The first frame above compiles the shaders and can hold the thread for a
+  // while; the frame after it is the first one on screen, so the heading's
+  // motion starts from there.
+  requestAnimationFrame(function() { requestAnimationFrame(window.heroLive); });
+
+  window.addEventListener('resize', function() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+</script>
+
+
+<script src="/recall-demo.js" defer></script>
+
+<!-- Scroll reveal for features section -->
+<script>
+(function() {
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(function(el) { observer.observe(el); });
+})();
+</script>
+
+<!-- 3D models for feature cards -->
+<script>
+(function() {
+  if (typeof THREE === 'undefined') return;
+
+  function waitForLoader(cb) {
+    if (typeof THREE.GLTFLoader !== 'undefined') return cb();
+    if (!document.querySelector('script[src*="GLTFLoader"]')) {
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+      s.onload = function() { cb(); };
+      document.head.appendChild(s);
+    } else {
+      var check = setInterval(function() {
+        if (typeof THREE.GLTFLoader !== 'undefined') { clearInterval(check); cb(); }
+      }, 100);
+    }
+  }
+
+  function render3D(canvasId, modelPath, initRotY, initRotX, fitSize, yOffset) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var r;
+    try {
+      r = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+    } catch(e) { console.warn('WebGL context failed for ' + canvasId); return; }
+    r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    r.setSize(canvas.clientWidth, canvas.clientHeight);
+
+    var scene = new THREE.Scene();
+    var cam = new THREE.PerspectiveCamera(28, canvas.clientWidth / canvas.clientHeight, 0.01, 100);
+    cam.position.set(0, 0.15, 3.2);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    var d = new THREE.DirectionalLight(0xffffff, 1);
+    d.position.set(3, 4, 5);
+    scene.add(d);
+    scene.add(new THREE.DirectionalLight(0xB8AC9A, 0.3).position.set(-3, 1, -2) && scene.children[scene.children.length-1] || new THREE.Object3D());
+
+    waitForLoader(function() {
+      new THREE.GLTFLoader().load(modelPath, function(gltf) {
+        var m = gltf.scene;
+        var box = new THREE.Box3().setFromObject(m);
+        var sz = box.getSize(new THREE.Vector3());
+        var ctr = box.getCenter(new THREE.Vector3());
+        var fit = (fitSize || 0.9) / Math.max(sz.x, sz.y, sz.z);
+        m.scale.multiplyScalar(fit);
+        m.position.sub(ctr.multiplyScalar(fit));
+        m.position.y += (yOffset || 0.05);
+        if (initRotY) m.rotation.y = initRotY;
+        scene.add(m);
+
+        var t = 0;
+        (function loop() {
+          requestAnimationFrame(loop);
+          t += 0.012;
+          m.rotation.y = (initRotY || 0) + Math.sin(t) * 0.3;
+          m.rotation.x = (initRotX || 0) + Math.sin(t * 0.7 + 0.5) * 0.2;
+          m.rotation.z = Math.cos(t * 0.5) * 0.08;
+          r.render(scene, cam);
+        })();
+      });
+    });
+
+    window.addEventListener('resize', function() {
+      cam.aspect = canvas.clientWidth / canvas.clientHeight;
+      cam.updateProjectionMatrix();
+      r.setSize(canvas.clientWidth, canvas.clientHeight);
+    });
+  }
+
+  // Lazy-load 3D models when they scroll into view (skip on mobile)
+  if (!/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+    var models = [
+      { id: 'feat3dPhone', url: '/models/iphone_3gs_low_poly.glb', rotX: -Math.PI / 2, rotY: 0.5, camZ: 0.7, camY: 0.2 },
+      { id: 'feat3dMac', url: '/models/vintage_computer.glb', rotX: 0 },
+    ];
+    var loaded3d = {};
+    var obs3d = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting && !loaded3d[entry.target.id]) {
+          loaded3d[entry.target.id] = true;
+          var m = models.find(function(x) { return x.id === entry.target.id; });
+          if (m) render3D(m.id, m.url, m.rotX, m.rotY, m.camZ, m.camY);
+        }
+      });
+    }, { rootMargin: '200px' });
+    models.forEach(function(m) {
+      var el = document.getElementById(m.id);
+      if (el) obs3d.observe(el);
+    });
+  }
+})();
+</script>
+
+
+<script>
+(function () {
+  var btn = document.getElementById('copyInstall'), line = document.getElementById('installLine');
+  btn.addEventListener('click', function () {
+    var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1800); };
+    function fallback() { var r = document.createRange(); r.selectNodeContents(line); var s = getSelection(); s.removeAllRanges(); s.addRange(r); try { document.execCommand('copy'); done(); } catch (e) {} }
+    if (navigator.clipboard) navigator.clipboard.writeText(line.textContent).then(done, fallback); else fallback();
+  });
+  // Everyone sees both installation options. Release metadata only updates
+  // the download destination and version, never the visitor's presumed setup.
+  fetch('https://api.github.com/repos/notnotjim/Closedhand/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (rel) {
+      var arm = rel && rel.assets ? rel.assets.find(function (a) { return /arm64\.dmg$/i.test(a.name); }) : null;
+      var intel = rel && rel.assets ? rel.assets.find(function (a) { return /x86_64\.dmg$/i.test(a.name); }) : null;
+      var pick = arm || intel;
+      if (!pick) return;
+      var link = document.getElementById('macAppLink'), note = document.getElementById('macAppNote');
+      link.href = pick.browser_download_url;
+      note.textContent = (arm ? 'Apple Silicon' : 'Intel') + ', macOS 14 or later \u00b7 ' + Math.round(pick.size / 1048576) + ' MB \u00b7 ' + rel.tag_name;
+      if (arm && intel) { var alt = document.createElement('a'); alt.href = intel.browser_download_url; alt.textContent = 'Intel version'; alt.className = 'way-meta'; alt.style.textDecoration = 'underline'; note.after(alt); }
+    })
+    .catch(function () { /* The release-page link remains usable. */ });
+})();
+</script>
+<script>
+// The orb on phones and tablets: the filmed smoke ring plays only while on
+// screen and the page is visible, and stays on its first frame for reduced
+// motion or when the phone won't autoplay (Low Power Mode). Safari plays the
+// HEVC file, which carries transparency there; other browsers skip it (they
+// don't play QuickTime) and take the WebM. Tapping it flashes the ring, then
+// opens.
+(function () {
+  var smoke = document.getElementById('orbSmoke'), link = document.getElementById('orbOpen');
+  if (!smoke || !link || !document.documentElement.classList.contains('handheld')) return;
+  var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches, onScreen = true;
+  smoke.muted = true;
+  // The film of the theme in use: the light theme has its own ring
+  // (smoke-light.*), never the dark one filtered, and it changes with it.
+  function film() {
+    var light = document.documentElement.getAttribute('data-theme') === 'light';
+    var of = function (src) { return light ? src.replace('/smoke', '/smoke-light') : src; };
+    smoke.poster = of(smoke.dataset.poster);
+    var mov = document.createElement('source'), webm = document.createElement('source');
+    mov.src = of(smoke.dataset.mov); mov.type = 'video/quicktime; codecs="hvc1"';
+    webm.src = of(smoke.dataset.webm); webm.type = 'video/webm';
+    smoke.replaceChildren(mov, webm);
+    smoke.preload = 'auto';
+    smoke.load();
+  }
+  film();
+  document.documentElement.addEventListener('themechange', function () { film(); sync(); });
+  function sync() {
+    if (still || !onScreen || document.hidden) smoke.pause();
+    else { var p = smoke.play(); if (p && p.catch) p.catch(function () {}); }
+  }
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (entries) { onScreen = entries[0].isIntersecting; sync(); }).observe(smoke);
+  document.addEventListener('visibilitychange', sync);
+  // A phone that refused to autoplay may allow it after a touch.
+  document.addEventListener('touchstart', sync, { once: true, passive: true });
+  sync();
+  // Inside it, Closedhand talks, made-up examples in turn. Asked something,
+  // the question types out and the answer is simply there. Unasked, as Pulse
+  // does, the light swells first and its message arrives with the time, like
+  // one landing on your phone. Reduced motion keeps the first, as the page
+  // has it. Paused, like the film, while off screen or hidden.
+  var EXAMPLES = [
+    { ask: 'What wine did Tom like?', say: 'A 2019 Rioja. He said so on WhatsApp.' },
+    { at: '7:05am', say: 'Your flight’s delayed. You’ll miss your train.' },
+    { ask: 'Did I pay that parking fine?', say: 'Yes, £35 on 2\u00a0May. Receipt’s in your inbox.' },
+    { at: '4:12pm', say: 'Sam moved dinner to 7, during your call.' },
+    { ask: 'What’s Leo’s shoe size?', say: 'Size 31, from his last shoe receipt.' },
+    { at: '9:00am', say: 'Your passport runs out before the Lisbon trip.' },
+  ];
+  var ask = document.getElementById('orbAsk'), answer = document.getElementById('orbAnswer'), talk = document.getElementById('orbTalk');
+  var orb = link.querySelector('.orb-stage');
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  async function awake() { while (!onScreen || document.hidden) await wait(400); }
+  async function converse() {
+    for (var i = 0; ; i = (i + 1) % EXAMPLES.length) {
+      var example = EXAMPLES[i];
+      await awake();
+      answer.classList.add('is-hidden');
+      talk.classList.remove('answered');
+      answer.textContent = example.say;
+      ask.textContent = '';
+      talk.classList.remove('is-leaving');
+      if (example.ask) {
+        ask.classList.add('typing');
+        await wait(500);
+        for (var c of example.ask) { await awake(); ask.textContent += c; await wait(60 + Math.random() * 60); }
+        await wait(500);
+        ask.classList.remove('typing');
+      } else {
+        await wait(900);
+        orb.classList.add('answered');
+        await wait(500);
+        ask.textContent = example.at;
+      }
+      answer.classList.remove('is-hidden');
+      talk.classList.add('answered');
+      orb.classList.add('answered');
+      setTimeout(function () { orb.classList.remove('answered'); }, 1200);
+      await wait(3800);
+      talk.classList.add('is-leaving');
+      await wait(800);
+    }
+  }
+  if (still) talk.classList.add('answered');
+  else {
+    answer.classList.add('is-hidden');
+    ask.textContent = '';
+    wait(1200).then(converse);
+  }
+  link.addEventListener('click', function (e) {
+    if (!link.getAttribute('href') || still || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    var stage = link.querySelector('.orb-stage');
+    stage.classList.remove('pulsing'); void stage.offsetWidth; stage.classList.add('pulsing');
+    var href = link.href;
+    setTimeout(function () { location.href = href; }, 420);
+  });
+})();
+</script>
+<script>
+// A phone that has opened its Closedhand before, signed in or by typing its
+// personal URL on the sign-in page (kept in this browser, only ever an
+// address): the ring opens that exact Closedhand's dashboard and shows its
+// address, and the steps for newcomers go.
+(function () {
+  if (!document.documentElement.classList.contains('handheld')) return;
+  var personal = /^https:\/\/[a-z][a-z0-9-]{1,30}[a-z0-9]\.closedhand\.ai$/;
+  function opens(url) {
+    if (!personal.test(url || '')) return;
+    var link = document.getElementById('orbOpen');
+    link.href = url + '/dashboard';
+    link.setAttribute('aria-label', 'Open your dashboard');
+    var address = document.getElementById('orbAddress');
+    address.textContent = url.slice('https://'.length);
+    address.hidden = false;
+    document.getElementById('firstSteps').style.setProperty('display', 'none', 'important');
+  }
+  try { opens(localStorage.getItem('closedhand-personal-url')); } catch (e) { /* not kept in this browser */ }
+  fetch('/api/account', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (a) { opens(a && a.url); }).catch(function () {});
+})();
+</script>
+</body>
+</html>

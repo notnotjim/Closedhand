@@ -1,0 +1,35 @@
+# Root build context = the bot image. Keep it to what index.js needs.
+node_modules
+# Hidden files and folders: git, editor and tool settings.
+.*
+.env
+.env.*
+!.env.example
+data
+attachments
+assets/voice/kokoro-v1
+assets/listen/whisper-base
+config.json
+.DS_Store
+
+# The webapp is its own image (build context ./webapp) — not needed in the bot,
+# except the fonts its pages are typeset in, which the bot uses when it sends
+# a page as a PDF (lib/run-pdf.js).
+webapp
+!webapp/fonts
+
+# Not needed at runtime.
+# The Mac app's sources and its build output (gigabytes of cached Node,
+# Postgres and finished apps) never go into the bot image.
+desktop
+sandbox-image
+bridge-app
+tasks
+reference
+mcp-library
+*.md
+Dockerfile
+docker-compose.yml
+
+# The fist in every version (scripts/brand.py); the image only needs the one in place.
+brand

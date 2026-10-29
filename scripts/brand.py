@@ -1,0 +1,577 @@
+#!/usr/bin/env python3
+# scripts/brand.py: Closedhand's fist, everywhere it appears, from one place.
+#
+# Each mark is a full set of the files the fist lives in (brand/marks/<name>/,
+# mirroring the repo's paths) plus the two installer art lines. Putting a set
+# in place is a copy, and the pages that carry fist.png inside them get the
+# set's one, so going back is one command:
+#
+#   python3 scripts/brand.py use brush        the brush-drawn one-line fist
+#   python3 scripts/brand.py use original     the fist before it
+#   python3 scripts/brand.py which            the set in place now
+#
+# Building the brush set (needs Pillow and potrace):
+#
+#   python3 scripts/brand.py build-brush
+#
+# The installer's fist, painted along the stroke as an install runs (every
+# set; the original, with no stroke to follow, is swept top to bottom):
+#
+#   python3 scripts/brand.py build-install-art
+#
+# The icons pages show beside the fist, drawn with the same brush (brand/icons,
+# one SVG each in the colour of the text around it; pages carry them inline):
+#
+#   python3 scripts/brand.py build-icons
+#
+# The link preview, drawn from brand/og.html with each set's fist (needs
+# Chrome; run it after changing the home page's heading):
+#
+#   python3 scripts/brand.py build-og
+#
+# closedhand.com's icons for every set: the app's tab icon, and for Google,
+# which shows no SVG and sets every icon on a white disc, the dark fist on white:
+#
+#   python3 scripts/brand.py build-favicon
+#
+# The Mac download window's background for every set, drawn again from
+# desktop/dmg/background.html with that set's fist (needs Chrome):
+#
+#   python3 scripts/brand.py build-dmg
+#
+# The Mac app icon for every set: its square art (desktop/AppIcon-art.png, not
+# copied into place) as a rounded square with the Mac's margins and shadow:
+#
+#   python3 scripts/brand.py build-app-icon
+#
+# Every file is drawn the way the original is: the same canvas, colour and
+# placement, the app icon on the same dark gradient, the circle mark in the
+# same ring, the favicon the same colour-following mask.
+import math, os, shutil, subprocess, sys, base64, re, tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MARKS = os.path.join(ROOT, "brand", "marks")
+ACTIVE = os.path.join(ROOT, "brand", "ACTIVE")
+
+# The files a set holds, by their place in the repo.
+FILES = [
+    "closedhand-com/public/fist.png",
+    "closedhand-com/public/logo.png",
+    "closedhand-com/public/logocircle.png",
+    "closedhand-com/public/og.png",
+    "closedhand-com/public/favicon.svg",
+    "closedhand-com/public/favicon.png",
+    "webapp/public/fist.png",
+    "webapp/public/logo.png",
+    "webapp/public/logocircle.png",
+    "webapp/public/logo-full.png",
+    "webapp/public/favicon.svg",
+    "webapp/public/favicon.ico",
+    "desktop/AppIcon.icns",
+    "desktop/dmg/fist-dark.png",
+    "desktop/dmg/background.png",
+    "desktop/dmg/background@2x.png",
+    "desktop/Sources/ClosedHand/Resources/logo.png",
+    "bridge-app/Sources/Resources/logo.png",
+]
+INSTALL = os.path.join(ROOT, "install.sh")
+ART = re.compile(r"^(HAND_FIST_(?:32|64))='[^']*'$", re.M)
+
+# Pages that carry fist.png inside them, as the only picture they hold: the
+# relay's pages, shown while the computer is away, so they can load nothing
+# from it. The relay is deployed again for a change here to show.
+INLINE = [
+    "closedhand-com/workers/edge/offline.html",
+    "closedhand-com/workers/edge/moved.html",
+    "closedhand-com/workers/edge/nothing.html",
+]
+PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/=]+")
+
+# Cream on dark, ink on light, white for the menu bar, and the mid-tone the
+# .ico favicon uses so it reads on light and dark tab bars alike.
+CREAM, INK, WHITE, MID = (239, 230, 214), (16, 14, 13), (255, 255, 255), (134, 129, 120)
+
+
+def use(name):
+    src = os.path.join(MARKS, name)
+    if not os.path.isdir(src):
+        sys.exit(f"No mark called {name}. There are: {', '.join(sorted(os.listdir(MARKS)))}")
+    for rel in FILES:
+        shutil.copyfile(os.path.join(src, rel), os.path.join(ROOT, rel))
+    fist = "data:image/png;base64," + base64.b64encode(open(os.path.join(src, "closedhand-com/public/fist.png"), "rb").read()).decode()
+    for rel in INLINE:
+        page = os.path.join(ROOT, rel)
+        html = open(page).read()
+        open(page, "w").write(PNG_URI.sub(lambda m: fist, html))
+    art = dict(line.split("=", 1) for line in open(os.path.join(src, "install-art.txt")).read().splitlines() if "=" in line)
+    script = open(INSTALL).read()
+    script = ART.sub(lambda m: f"{m.group(1)}={art[m.group(1)]}", script)
+    open(INSTALL, "w").write(script)
+    open(ACTIVE, "w").write(name + "\n")
+    print(f"The {name} fist is in place ({len(FILES)} files, {len(INLINE)} pages and the installer art).")
+
+
+def save(name):
+    """Copy the files in place now into a set (used once, to keep the original)."""
+    dst = os.path.join(MARKS, name)
+    for rel in FILES:
+        os.makedirs(os.path.dirname(os.path.join(dst, rel)), exist_ok=True)
+        shutil.copyfile(os.path.join(ROOT, rel), os.path.join(dst, rel))
+    open(os.path.join(dst, "install-art.txt"), "w").write("".join(m.group(0) + "\n" for m in ART.finditer(open(INSTALL).read())))
+    print(f"Saved the files in place as {name}.")
+
+
+# --- The brush fist -----------------------------------------------------------
+# One unbroken line on a 120 grid: up the outer edge, four knuckles (the little
+# finger smallest), down the far side, along the base, then the thumb across
+# the front. A soft brush: full through the middle, tapering at both ends.
+START = (38, 104)
+SEGS = [
+    ((31, 90), (27, 72), (31, 57)),
+    ((33, 43), (50, 42), (51, 55)),
+    ((53, 40), (70, 40), (71, 54)),
+    ((73, 41), (89, 42), (89, 56)),
+    ((96, 50), (104, 60), (98, 72)),
+    ((96, 86), (92, 97), (84, 103)),
+    ((74, 98), (60, 96), (53, 87)),
+    ((47, 79), (51, 68), (63, 70)),
+    ((75, 72), (83, 74), (89, 70)),
+]
+
+
+def _cubic(p0, p1, p2, p3, t):
+    u = 1 - t
+    return (u**3 * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t**3 * p3[0],
+            u**3 * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t**3 * p3[1])
+
+
+def _taper(t, start, end):
+    a = min(1, t / start) if start else 1
+    b = min(1, (1 - t) / end) if end else 1
+    return (0.35 + 0.65 * a) * (0.25 + 0.75 * b)
+
+
+SCALE = 40
+
+
+def _stamps(per=240):
+    """Where the brush touches, in the order it does: x, y and radius on the
+    120 grid, and how far along the line (0 to 1)."""
+    pts, cur = [START], START
+    for c1, c2, end in SEGS:
+        pts += [_cubic(cur, c1, c2, end, i / per) for i in range(1, per + 1)]
+        cur = end
+    n = len(pts)
+    for i, (x, y) in enumerate(pts):
+        t = i / (n - 1)
+        yield x, y, max(0.8, (1.6 + 3.4 * math.sin(math.pi * t) ** 0.5) * _taper(t, 0.04, 0.05)), t
+
+
+def brush_mask(scale=SCALE):
+    """The mark as a white-on-black mask, cropped to the ink."""
+    from PIL import Image, ImageDraw
+    im = Image.new("L", (120 * scale, 120 * scale), 0)
+    d = ImageDraw.Draw(im)
+    for x, y, r, _ in _stamps():
+        d.ellipse([(x - r) * scale, (y - r) * scale, (x + r) * scale, (y + r) * scale], fill=255)
+    return im.crop(im.getbbox())
+
+
+# --- The installer's fist ------------------------------------------------------
+# install.sh paints the fist as Closedhand installs: one brush stroke, from the
+# wrist up over the knuckles, down the far side and round into the thumb, as
+# far along as the install has got. Each pixel holds when the brush first
+# reaches it, 1 to 24 (0 is no ink); the installer shows those up to its
+# progress. Two sizes, 32 by 28 and 64 by 56 pixels, run-length coded as
+# <count><letter>, a for 0 and b..y for 1..24.
+PAINT_STEPS = 24
+
+
+def paint_order(scale=10):
+    """The brush mark with each pixel's step in the painting, cropped to the ink."""
+    from PIL import Image, ImageDraw
+    im = Image.new("L", (120 * scale, 120 * scale), 0)
+    d = ImageDraw.Draw(im)
+    # The earliest touch is drawn last, so it is the one a pixel keeps.
+    for x, y, r, t in reversed(list(_stamps())):
+        d.ellipse([(x - r) * scale, (y - r) * scale, (x + r) * scale, (y + r) * scale],
+                  fill=1 + min(PAINT_STEPS - 1, int(t * PAINT_STEPS)))
+    return im.crop(im.getbbox())
+
+
+def swept_order(png):
+    """A fist with no stroke to follow (the original): painted top to bottom."""
+    from PIL import Image
+    a = Image.open(png).convert("RGBA").split()[3]
+    a = a.crop(a.getbbox())
+    out = Image.new("L", a.size, 0)
+    src, dst = a.load(), out.load()
+    for y in range(a.height):
+        for x in range(a.width):
+            if src[x, y] > 128:
+                dst[x, y] = 1 + min(PAINT_STEPS - 1, int(y / a.height * PAINT_STEPS))
+    return out
+
+
+def install_art(order, w, h, cover=0.38):
+    """One size of the installer's fist: the order picture fitted inside a
+    one-pixel margin, each pixel inked where the brush covers enough of it,
+    with the earliest step it covers, then run-length coded."""
+    W, H = order.size
+    k = min((w - 2) / W, (h - 2) / H)
+    pw, ph = round(W * k), round(H * k)
+    ox, oy = (w - pw) // 2, (h - ph) // 2
+    px = order.load()
+    cells = []
+    for gy in range(h):
+        for gx in range(w):
+            cx, cy = gx - ox, gy - oy
+            v = 0
+            if 0 <= cx < pw and 0 <= cy < ph:
+                x0, x1 = int(cx * W / pw), max(int(cx * W / pw) + 1, int((cx + 1) * W / pw))
+                y0, y1 = int(cy * H / ph), max(int(cy * H / ph) + 1, int((cy + 1) * H / ph))
+                inked = [px[x, y] for y in range(y0, y1) for x in range(x0, x1) if px[x, y]]
+                if len(inked) >= cover * (x1 - x0) * (y1 - y0):
+                    v = min(inked)
+            cells.append(v)
+    runs, prev, count = [], cells[0], 0
+    for v in cells + [-1]:
+        if v == prev:
+            count += 1
+        else:
+            runs.append(f"{count}{chr(97 + prev)}")
+            prev, count = v, 1
+    return "".join(runs)
+
+
+def build_install_art():
+    """The installer's fist for every set: the brush one painted along its
+    stroke, the original swept top to bottom."""
+    for name in sorted(os.listdir(MARKS)):
+        order = paint_order() if name == "brush" else swept_order(os.path.join(MARKS, name, "webapp/public/fist.png"))
+        open(os.path.join(MARKS, name, "install-art.txt"), "w").write(
+            f"HAND_FIST_32='{install_art(order, 32, 28)}'\nHAND_FIST_64='{install_art(order, 64, 56)}'\n")
+    print("Built the installer's fist for every set; `use` puts the active one in install.sh.")
+
+
+def fit(mask, size, colour, box=None):
+    """The mark in one colour on transparent, as large as fits in box (x, y, w, h) of a canvas size."""
+    from PIL import Image
+    W, H = size
+    bx, by, bw, bh = box or (0, 0, W, H)
+    k = min(bw / mask.width, bh / mask.height)
+    m = mask.resize((max(1, round(mask.width * k)), max(1, round(mask.height * k))), Image.LANCZOS)
+    out = Image.new("RGBA", size, (0, 0, 0, 0))
+    solid = Image.new("RGBA", m.size, colour + (255,))
+    out.paste(solid, (bx + (bw - m.width) // 2, by + (bh - m.height) // 2), m)
+    return out
+
+
+def build_brush():
+    from PIL import Image
+    orig = os.path.join(MARKS, "original")
+    dst = os.path.join(MARKS, "brush")
+    out = lambda rel: (os.makedirs(os.path.dirname(os.path.join(dst, rel)), exist_ok=True), os.path.join(dst, rel))[1]
+    mask = brush_mask()
+    # Cream on transparent, the original's own canvases.
+    for rel in ("closedhand-com/public/fist.png", "webapp/public/fist.png"):
+        fit(mask, (242, 267), CREAM).save(out(rel), optimize=True)
+    for rel in ("closedhand-com/public/logo.png", "webapp/public/logo.png"):
+        fit(mask, (3579, 3959), CREAM).save(out(rel), optimize=True)
+    fit(mask, (242, 267), INK).save(out("desktop/dmg/fist-dark.png"), optimize=True)
+    for rel in ("desktop/Sources/ClosedHand/Resources/logo.png", "bridge-app/Sources/Resources/logo.png"):
+        fit(mask, (64, 64), WHITE).save(out(rel), optimize=True)
+    # The circle mark: the original's ring, the fist inside it where the old one sat.
+    ring = Image.open(os.path.join(orig, "closedhand-com/public/logocircle.png")).convert("RGBA")
+    cx = cy = ring.width / 2
+    px = ring.load()
+    inner = next(x for x in range(int(cx) + 140, ring.width) if px[x, int(cy)][3] > 128) - cx
+    for y in range(ring.height):
+        for x in range(ring.width):
+            if (x - cx) ** 2 + (y - cy) ** 2 < (inner - 3) ** 2:
+                px[x, y] = (0, 0, 0, 0)
+    ring.alpha_composite(fit(mask, (242, 267), CREAM), (191, 178))
+    for rel in ("closedhand-com/public/logocircle.png", "webapp/public/logocircle.png"):
+        ring.save(out(rel), optimize=True)
+    # The favicon: the same colour-following mask, over the new fist.
+    svg = open(os.path.join(orig, "webapp/public/favicon.svg")).read()
+    fist64 = base64.b64encode(open(out("webapp/public/fist.png"), "rb").read()).decode()
+    svg = re.sub(r'href="data:image/png;base64,[^"]+"', f'href="data:image/png;base64,{fist64}"', svg)
+    open(out("webapp/public/favicon.svg"), "w").write(svg)
+    ico = Image.open(os.path.join(orig, "webapp/public/favicon.ico"))
+    sizes = sorted(ico.info.get("sizes", {(16, 16), (32, 32)}))
+    big = fit(mask, (256, 256), MID, (16, 0, 224, 256))
+    big.save(out("webapp/public/favicon.ico"), sizes=sizes)
+    _site_icons(dst)
+    # The app icon: the original's dark gradient, the fist where the old one stood.
+    app = Image.open(os.path.join(orig, "desktop/AppIcon-art.png")).convert("RGBA")
+    ap = app.load()
+    for y in range(app.height):
+        edge = ap[8, y]
+        for x in range(200, 824):
+            ap[x, y] = edge
+    app.alpha_composite(fit(mask, (1024, 1024), CREAM, (234, 214, 554, 612)))
+    app.save(out("desktop/AppIcon-art.png"), optimize=True)
+    _icns_write(_mac_shape(app), out("desktop/AppIcon.icns"))
+    # The link preview is drawn from its page: brand.py build-og.
+    # The old wordmark with the fist above it, in its grey.
+    full = Image.open(os.path.join(orig, "webapp/public/logo-full.png")).convert("RGBA")
+    full.paste((0, 0, 0, 0), (1090, 0, 1332, 267))
+    full.alpha_composite(fit(mask, (242, 267), (193, 191, 192)), (1090, 0))
+    full.save(out("webapp/public/logo-full.png"), optimize=True)
+    # The Mac download window, drawn again from its page with the new ink fist.
+    _dmg_background(out("desktop/dmg/fist-dark.png"), out("desktop/dmg/background.png"), out("desktop/dmg/background@2x.png"))
+    # The installer's fist, painted along the same stroke.
+    order = paint_order()
+    open(os.path.join(dst, "install-art.txt"), "w").write(
+        f"HAND_FIST_32='{install_art(order, 32, 28)}'\nHAND_FIST_64='{install_art(order, 64, 56)}'\n")
+    print("Built the brush set in brand/marks/brush.")
+
+
+# The icons, on a 48 grid: each stroke a start point then segments, a segment
+# being a straight line (one point) or a curve (two controls and an end), and
+# optionally a weight (1 is the usual brush).
+ICONS = {
+    # A brain from the front: two halves, the line between them, a fold in each.
+    "brain": [((23, 39), [((15, 41), (8, 35), (9, 28)), ((5, 23), (7, 15), (14, 14)), ((15, 8), (21, 7), (23, 11))]),
+              ((25, 39), [((33, 41), (40, 35), (39, 28)), ((43, 23), (41, 15), (34, 14)), ((33, 8), (27, 7), (25, 11))]),
+              ((24, 12), [((24, 20),), ((24, 37),)]),
+              ((9.5, 26), [((13, 23.5), (16, 26.5), (19, 24))]),
+              ((38.5, 26), [((35, 23.5), (32, 26.5), (29, 24))])],
+    # A shield, one line round, with a tick inside.
+    "shield": [((24, 7), [((29, 10), (34, 11), (38, 10)), ((39, 25), (33, 35), (24, 41)), ((15, 35), (9, 25), (10, 10)), ((14, 11), (19, 10), (24, 7.6))]),
+               ((17.5, 24.5), [((19.5, 26), (21, 28), (22, 29.5)), ((24.5, 25), (27.5, 21), (31, 18))])],
+    # A pulse along a line.
+    "pulse": [((4, 26), [((10, 26),), ((13, 26), (14, 25), (15.5, 22)), ((17, 18), (17.5, 15), (18.5, 15)), ((20, 15), (21, 32), (23.5, 33)),
+                         ((26, 34), (26.5, 21), (28.5, 21)), ((30.5, 21), (31, 26), (34, 26)), ((44, 26),)])],
+    # Two links of a chain on the diagonal, each a hook round the other's end.
+    "link": [((20, 26), [((24.7, 31), (29.7, 31.3), (35.1, 27.1)), ((41.1, 21.1),), ((50.5, 11.6), (36.4, -2.5), (26.9, 6.9)), ((23.5, 10.4),)]),
+             ((28, 22), [((23.3, 17), (18.3, 16.7), (12.9, 20.9)), ((6.9, 26.9),), ((-2.5, 36.4), (11.6, 50.5), (21.1, 41.1)), ((24.5, 37.6),)])],
+    # A bolt of lightning.
+    "bolt": [((29, 5), [((17, 26),), ((28, 25),), ((19, 43),)])],
+    # A tick.
+    "tick": [((11, 25), [((14, 28), (17, 31), (19.5, 35)), ((25, 25), (31, 17), (38, 11))])],
+    # The sun: a round stroke and eight fine rays.
+    "sun": [((24, 16.4), [((28.20, 16.4), (31.6, 19.80), (31.6, 24)), ((31.6, 28.20), (28.20, 31.6), (24, 31.6)), ((19.80, 31.6), (16.4, 28.20), (16.4, 24)), ((16.4, 19.80), (19.80, 15.799999999999999), (26.2, 16.099999999999998))]),
+            ((24.00, 10.50), [((24.00, 4.00),)], 0.62),
+            ((33.55, 14.45), [((38.14, 9.86),)], 0.62),
+            ((37.50, 24.00), [((44.00, 24.00),)], 0.62),
+            ((33.55, 33.55), [((38.14, 38.14),)], 0.62),
+            ((24.00, 37.50), [((24.00, 44.00),)], 0.62),
+            ((14.45, 33.55), [((9.86, 38.14),)], 0.62),
+            ((10.50, 24.00), [((4.00, 24.00),)], 0.62),
+            ((14.45, 14.45), [((9.86, 9.86),)], 0.62)],
+    # The moon: a crescent in one stroke, round the outside and back inside.
+    "moon": [((30, 8.5), [((16, 9), (7.5, 21), (11.5, 31)), ((15, 39.5), (27, 43), (36.5, 35.5)), ((26.5, 35), (19.5, 26), (24, 16)), ((25.5, 12.5), (27.5, 10), (30, 8.5))])],
+    # Matching the device's light or dark: the sun and the moon in one, a
+    # round stroke with the sun's rays down its left half and the moon's
+    # crescent inside its right.
+    "device": [((24, 13.5), [((29.80, 13.5), (34.5, 18.20), (34.5, 24)), ((34.5, 29.80), (29.80, 34.5), (24, 34.5)), ((18.20, 34.5), (13.5, 29.80), (13.5, 24)), ((13.5, 18.20), (18.60, 12.9), (26.2, 13.8))]),
+               ((25.2, 13.6), [((29.6, 17.8), (29.6, 30.2), (25.2, 34.4))]),
+               ((24.00, 9.50), [((24.00, 4.00),)], 0.62),
+               ((13.75, 13.75), [((9.86, 9.86),)], 0.62),
+               ((9.50, 24.00), [((4.00, 24.00),)], 0.62),
+               ((13.75, 34.25), [((9.86, 38.14),)], 0.62),
+               ((24.00, 38.50), [((24.00, 44.00),)], 0.62)],
+    # A computer, for whether Closedhand can reach the person's Mac: a laptop,
+    # its screen one rounded stroke round and its base one wider swipe; with
+    # a lighter stroke across the screen when it can't.
+    "computer": [((13, 11.5), [((35, 11.5),), ((37, 11.5), (37.5, 12), (37.5, 14)), ((37.5, 29),), ((37.5, 31), (37, 31.5), (35, 31.5)), ((13, 31.5),), ((11, 31.5), (10.5, 31), (10.5, 29)), ((10.5, 14),), ((10.5, 12), (11, 11.5), (14.5, 11.6))]),
+                 ((5, 36.5), [((15, 36.3), (33, 36.3), (43, 36.5))])],
+    "computeroff": [((13, 11.5), [((35, 11.5),), ((37, 11.5), (37.5, 12), (37.5, 14)), ((37.5, 29),), ((37.5, 31), (37, 31.5), (35, 31.5)), ((13, 31.5),), ((11, 31.5), (10.5, 31), (10.5, 29)), ((10.5, 14),), ((10.5, 12), (11, 11.5), (14.5, 11.6))]),
+                    ((5, 36.5), [((15, 36.3), (33, 36.3), (43, 36.5))]),
+                    ((9.5, 7), [((22, 19.5), (30, 28), (38.5, 37))], 0.75)],
+}
+
+
+# The underline under the header's one link to your own Closedhand: a single
+# swipe of the same brush, heavier and with a long flick at its end, on a
+# wide 240 by 16 grid stretched to the words.
+UNDERLINE = ((240, 16), [((6, 10.5), [((62, 7.5), (160, 6), (234, 8))])])
+# Where pages read it from; each is a copy of brand/icons/underline.svg.
+UNDERLINE_COPIES = ["closedhand-com/public/brush-underline.svg", "webapp/public/brush-underline.svg"]
+
+
+def icon_mask(strokes, scale=10, per=120, size=(48, 48), weight=1.0, taper=(0.06, 0.08)):
+    """An icon as a white-on-black mask on its grid, each stroke tapering like the fist's line."""
+    from PIL import Image, ImageDraw
+    im = Image.new("L", (size[0] * scale, size[1] * scale), 0)
+    d = ImageDraw.Draw(im)
+    for start, segs, *rest in strokes:
+        stroke_weight = weight * (rest[0] if rest else 1)
+        pts, cur = [start], start
+        for seg in segs:
+            end = seg[-1]
+            if len(seg) == 1:
+                pts += [(cur[0] + (end[0] - cur[0]) * i / per, cur[1] + (end[1] - cur[1]) * i / per) for i in range(1, per + 1)]
+            else:
+                pts += [_cubic(cur, seg[0], seg[1], end, i / per) for i in range(1, per + 1)]
+            cur = end
+        n = len(pts)
+        for i, (x, y) in enumerate(pts):
+            t = i / (n - 1)
+            r = (0.95 + 1.25 * math.sin(math.pi * t) ** 0.5) * _taper(t, *taper) * stroke_weight * scale
+            d.ellipse([x * scale - r, y * scale - r, x * scale + r, y * scale + r], fill=255)
+    return im
+
+
+def _traced(mask):
+    """A mask traced to one path: (the path's transform, its outline)."""
+    from PIL import Image
+    tmp = tempfile.mkdtemp()
+    Image.eval(mask, lambda v: 255 - v).convert("1").save(os.path.join(tmp, "m.bmp"))
+    subprocess.run(["potrace", "-s", "-o", os.path.join(tmp, "m.svg"), os.path.join(tmp, "m.bmp")], check=True)
+    traced = open(os.path.join(tmp, "m.svg")).read()
+    g = re.search(r'<g transform="([^"]+)"[^>]*>(.*?)</g>', traced, re.S)
+    return g.group(1), re.sub(r"\s+", " ", " ".join(re.findall(r' d="([^"]+)"', g.group(2)))).strip()
+
+
+def build_icons():
+    out = os.path.join(ROOT, "brand", "icons")
+    os.makedirs(out, exist_ok=True)
+    for name, strokes in ICONS.items():
+        transform, d = _traced(icon_mask(strokes))
+        svg = f'<svg viewBox="0 0 480 480" aria-hidden="true"><path transform="{transform}" fill="currentColor" d="{d}"/></svg>'
+        open(os.path.join(out, name + ".svg"), "w").write(svg + "\n")
+        print(f"brand/icons/{name}.svg")
+    # The underline is a mask (the page paints it), so it stretches to fit.
+    (w, h), strokes = UNDERLINE
+    transform, d = _traced(icon_mask(strokes, size=(w, h), weight=1.55, taper=(0.05, 0.3)))
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w * 10} {h * 10}" preserveAspectRatio="none"><path transform="{transform}" fill="#000" d="{d}"/></svg>\n'
+    for rel in ["brand/icons/underline.svg"] + UNDERLINE_COPIES:
+        open(os.path.join(ROOT, rel), "w").write(svg)
+        print(rel)
+
+
+def build_og():
+    """The link preview for every set, from brand/og.html with that set's fist."""
+    chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    for mark in sorted(os.listdir(MARKS)):
+        tmp = tempfile.mkdtemp()
+        shutil.copyfile(os.path.join(ROOT, "brand/og.html"), os.path.join(tmp, "og.html"))
+        shutil.copyfile(os.path.join(MARKS, mark, "closedhand-com/public/fist.png"), os.path.join(tmp, "fist.png"))
+        dest = os.path.join(MARKS, mark, "closedhand-com/public/og.png")
+        subprocess.run([chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files",
+                        "--window-size=1200,627", "--virtual-time-budget=8000", f"--screenshot={dest}",
+                        "file://" + os.path.join(tmp, "og.html")], capture_output=True, check=True)
+        print(f"brand/marks/{mark}/closedhand-com/public/og.png")
+    use(open(ACTIVE).read().strip() if os.path.exists(ACTIVE) else "original")
+
+
+def _site_icons(mark_dir):
+    from PIL import Image
+    shutil.copyfile(os.path.join(mark_dir, "webapp/public/favicon.svg"), os.path.join(mark_dir, "closedhand-com/public/favicon.svg"))
+    fist = Image.open(os.path.join(mark_dir, "desktop/dmg/fist-dark.png")).convert("RGBA")
+    fist = fist.resize((round(fist.width * 128 / fist.height), 128), Image.LANCZOS)
+    icon = Image.new("RGBA", (192, 192), (255, 255, 255, 255))
+    icon.alpha_composite(fist, ((192 - fist.width) // 2, (192 - fist.height) // 2))
+    icon.convert("RGB").save(os.path.join(mark_dir, "closedhand-com/public/favicon.png"), optimize=True)
+
+
+def build_favicon():
+    for mark in sorted(os.listdir(MARKS)):
+        _site_icons(os.path.join(MARKS, mark))
+        print(f"brand/marks/{mark}/closedhand-com/public/favicon.svg, favicon.png")
+    use(open(ACTIVE).read().strip() if os.path.exists(ACTIVE) else "original")
+
+
+def build_dmg():
+    for mark in sorted(os.listdir(MARKS)):
+        dmg = os.path.join(MARKS, mark, "desktop/dmg")
+        _dmg_background(os.path.join(dmg, "fist-dark.png"), os.path.join(dmg, "background.png"), os.path.join(dmg, "background@2x.png"))
+        print(f"brand/marks/{mark}/desktop/dmg/background.png, background@2x.png")
+    use(open(ACTIVE).read().strip() if os.path.exists(ACTIVE) else "original")
+
+
+def _dmg_background(fist, one, two):
+    tmp = tempfile.mkdtemp()
+    shutil.copyfile(os.path.join(ROOT, "desktop/dmg/background.html"), os.path.join(tmp, "background.html"))
+    shutil.copyfile(fist, os.path.join(tmp, "fist-dark.png"))
+    chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    for scale, dest in ((1, one), (2, two)):
+        subprocess.run([chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files",
+                        "--window-size=640,400", f"--force-device-scale-factor={scale}", "--virtual-time-budget=6000",
+                        f"--screenshot={dest}", "file://" + os.path.join(tmp, "background.html")], capture_output=True, check=True)
+
+
+def build_app_icon():
+    """The Mac app icon for every set, from its square art (desktop/AppIcon-art.png)."""
+    from PIL import Image
+    for mark in sorted(os.listdir(MARKS)):
+        art = Image.open(os.path.join(MARKS, mark, "desktop/AppIcon-art.png")).convert("RGBA")
+        _icns_write(_mac_shape(art), os.path.join(MARKS, mark, "desktop/AppIcon.icns"))
+        print(f"brand/marks/{mark}/desktop/AppIcon.icns")
+    use(open(ACTIVE).read().strip() if os.path.exists(ACTIVE) else "original")
+
+
+def _mac_shape(art):
+    """Square art on the Mac's app icon grid: a rounded square of 824 on a 1024
+    canvas, its corners the continuous curve Mac icons have (a superellipse),
+    over the soft shadow every icon in the Dock casts."""
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
+    S, side, k = 1024, 824, 4
+    c, half = S * k / 2, side * k / 2
+    curve = lambda v: math.copysign(abs(v) ** 0.4, v)
+    points = [(c + half * curve(math.cos(t)), c + half * curve(math.sin(t))) for t in (2 * math.pi * i / 1440 for i in range(1440))]
+    big = Image.new("L", (S * k, S * k), 0)
+    ImageDraw.Draw(big).polygon(points, fill=255)
+    shape = big.resize((S, S), Image.LANCZOS)
+    inset = (S - side) // 2
+    body = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    body.paste(art.resize((side, side), Image.LANCZOS), (inset, inset))
+    body.putalpha(shape)
+    # A faint light rim just inside the edge, as the Mac's own icons have, so
+    # a dark icon still reads on a dark Dock.
+    rim = ImageChops.subtract(shape, shape.filter(ImageFilter.MinFilter(7)))
+    light = Image.new("RGBA", (S, S), (255, 255, 255, 0))
+    light.putalpha(rim.point(lambda a: a * 16 // 100))
+    body.alpha_composite(light)
+    drop = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    drop.paste(Image.new("RGBA", (S, S), (0, 0, 0, 255)), (0, 10), shape.point(lambda a: a * 3 // 10))
+    icon = drop.filter(ImageFilter.GaussianBlur(10))
+    icon.alpha_composite(body)
+    return icon
+
+
+def _icns_png(path):
+    from PIL import Image
+    tmp = tempfile.mkdtemp()
+    subprocess.run(["sips", "-s", "format", "png", path, "--out", os.path.join(tmp, "a.png")], capture_output=True, check=True)
+    return Image.open(os.path.join(tmp, "a.png")).convert("RGBA").resize((1024, 1024))
+
+
+def _icns_write(img, path):
+    from PIL import Image
+    tmp = tempfile.mkdtemp()
+    iconset = os.path.join(tmp, "AppIcon.iconset")
+    os.makedirs(iconset)
+    for s in (16, 32, 128, 256, 512):
+        img.resize((s, s), Image.LANCZOS).save(os.path.join(iconset, f"icon_{s}x{s}.png"))
+        img.resize((s * 2, s * 2), Image.LANCZOS).save(os.path.join(iconset, f"icon_{s}x{s}@2x.png"))
+    subprocess.run(["iconutil", "-c", "icns", iconset, "-o", path], check=True)
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1:] or ["which"]
+    if cmd[0] == "use" and len(cmd) == 2:
+        use(cmd[1])
+    elif cmd[0] == "save" and len(cmd) == 2:
+        save(cmd[1])
+    elif cmd[0] == "build-brush":
+        build_brush()
+    elif cmd[0] == "build-install-art":
+        build_install_art()
+    elif cmd[0] == "build-icons":
+        build_icons()
+    elif cmd[0] == "build-og":
+        build_og()
+    elif cmd[0] == "build-favicon":
+        build_favicon()
+    elif cmd[0] == "build-app-icon":
+        build_app_icon()
+    elif cmd[0] == "build-dmg":
+        build_dmg()
+    elif cmd[0] == "which":
+        print(open(ACTIVE).read().strip() if os.path.exists(ACTIVE) else "original")
+    else:
+        sys.exit("Usage: brand.py use <mark> | which | build-brush | build-icons | build-og | build-favicon | build-dmg | save <name>")

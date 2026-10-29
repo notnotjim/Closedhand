@@ -1,0 +1,503 @@
+// Shared bot/web transport. Internal requests and responses use content blocks.
+const { createHash } = require("crypto");
+const policy = require("./model-policy");
+function convertToolToOpenAI(tool) {
+  return {
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description || "",
+      parameters: tool.input_schema || { type: "object", properties: {} },
+    },
+  };
+}
+
+function convertMessagesToOpenAI(systemPrompt, messages, identity) {
+  const out = [];
+  // System can be an array of blocks (Anthropic prompt-caching shape): flatten to string
+  if (Array.isArray(systemPrompt)) systemPrompt = systemPrompt.map(b => b?.text || "").join("");
+  if (systemPrompt) out.push({ role: "system", content: systemPrompt });
+
+  for (const msg of messages) {
+    if (typeof msg.content === "string") {
+      out.push({ role: msg.role, content: msg.content });
+      continue;
+    }
+    if (!Array.isArray(msg.content)) {
+      out.push({ role: msg.role, content: String(msg.content ?? "") });
+      continue;
+    }
+
+    if (msg.role === "assistant") {
+      const textParts = [];
+      const toolCalls = [];
+      for (const block of msg.content) {
+        if (block.type === "text") textParts.push(block.text);
+        else if (block.type === "tool_use") {
+          toolCalls.push({
+            id: block.id,
+            type: "function",
+            function: {
+              name: block.name,
+              arguments: typeof block.input === "string" ? block.input : JSON.stringify(block.input ?? {}),
+            },
+          });
+        }
+        // Skip thinking blocks
+      }
+      // A turn with neither text nor a tool call still has to carry content:
+      // DeepSeek refuses null there ("content or tool_calls must be set").
+      const converted = { role: "assistant", content: textParts.join("\n") || (toolCalls.length > 0 ? null : "") };
+      if (toolCalls.length > 0) converted.tool_calls = toolCalls;
+      const replay = msg.content.find(b => b.type === "provider_state" && b.identity === identity);
+      if (replay) Object.assign(converted, replay.value);
+      out.push(converted);
+
+    } else if (msg.role === "user") {
+      const toolResults = [];
+      const otherParts = []; // can be strings or objects (for multimodal)
+      let hasMultimodal = false;
+      for (const block of msg.content) {
+        if (block.type === "tool_result") toolResults.push(block);
+        else if (block.type === "text") otherParts.push({ type: "text", text: block.text });
+        else if (block.type === "image" && block.source?.data) {
+          // Convert Anthropic image format to OpenAI image_url format
+          hasMultimodal = true;
+          otherParts.push({
+            type: "image_url",
+            image_url: { url: `data:${block.source.media_type || "image/jpeg"};base64,${block.source.data}` },
+          });
+        }
+        else if (block.type === "video" && (block.source?.data || block.source?.url)) {
+          // The OpenAI-compatible video part (OpenRouter, vLLM, Qwen's services).
+          hasMultimodal = true;
+          otherParts.push({ type: "video_url", video_url: { url: block.source.data ? `data:${block.source.media_type || "video/mp4"};base64,${block.source.data}` : block.source.url } });
+        }
+        else if (block.type === "document") otherParts.push({ type: "text", text: `[Document: ${block.source?.filename || block.filename || "file"}]` });
+        else otherParts.push({ type: "text", text: block.text || "" });
+      }
+      // Images returned BY a tool need care here. The OpenAI-compatible chat
+      // format has no way to put an image inside a role:"tool" message, and
+      // this used to flatten them to the literal string "[Image]", so a
+      // screenshot or an attachment the model had just fetched arrived as two
+      // words and it stayed blind to its own tool output. They are carried
+      // across as a user message straight after the tool results instead,
+      // which is the only slot the format allows an image to travel in.
+      const toolImages = [];
+      for (const tr of toolResults) {
+        let content = tr.content;
+        if (typeof content === "object" && content !== null) {
+          if (Array.isArray(content)) {
+            content = content.map((b) => {
+              if (b.type === "text") return b.text;
+              if (b.type === "image" && b.source?.data) {
+                toolImages.push({
+                  type: "image_url",
+                  image_url: { url: `data:${b.source.media_type || "image/jpeg"};base64,${b.source.data}` },
+                });
+                return "[image follows below]";
+              }
+              return JSON.stringify(b);
+            }).join("\n");
+          } else {
+            content = JSON.stringify(content);
+          }
+        }
+        out.push({ role: "tool", tool_call_id: tr.tool_use_id, content: (tr.is_error ? "Error: " : "") + (content || "") });
+      }
+      if (toolImages.length > 0) {
+        out.push({
+          role: "user",
+          content: [
+            { type: "text", text: toolImages.length === 1
+                ? "This is the image returned by the tool call above."
+                : `These are the ${toolImages.length} images returned by the tool calls above.` },
+            ...toolImages,
+          ],
+        });
+      }
+      if (otherParts.length > 0) {
+        // If there are images, send as multimodal content array; otherwise flatten to string
+        if (hasMultimodal) {
+          out.push({ role: "user", content: otherParts });
+        } else {
+          out.push({ role: "user", content: otherParts.map(p => p.text || "").join("\n") });
+        }
+      }
+
+    } else {
+      const text = msg.content.map((b) => b.text || "").filter(Boolean).join("\n");
+      out.push({ role: msg.role, content: text || "" });
+    }
+  }
+  return out;
+}
+
+function convertResponseFromOpenAI(openaiResponse, identity) {
+  const choice = openaiResponse.choices?.[0];
+  if (!choice) return { content: [{ type: "text", text: "" }], stop_reason: "end_turn", usage: { input_tokens: 0, output_tokens: 0 } };
+
+  const message = choice.message || {};
+  const content = [];
+  const state = {};
+  for (const field of ["reasoning_content", "reasoning_details"]) {
+    if (message[field] !== undefined) state[field] = message[field];
+  }
+  if (Object.keys(state).length) content.push({ type: "provider_state", identity, value: state });
+  if (message.content) {
+    // Strip reasoning tags (<think>...</think>) some models emit; keep only the visible response
+    let text = message.content;
+    text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    content.push({ type: "text", text });
+  }
+  if (message.tool_calls?.length > 0) {
+    for (const tc of message.tool_calls) {
+      let parsed;
+      try { parsed = JSON.parse(tc.function.arguments); } catch { parsed = tc.function.arguments; }
+      content.push({ type: "tool_use", id: tc.id, name: tc.function.name, input: parsed });
+    }
+  }
+  if (content.length === 0) content.push({ type: "text", text: "" });
+
+  // A reply cut off by the output limit is unfinished whatever it holds: a
+  // tool call in it may have half its arguments. Otherwise tool calls make it
+  // a tool turn, whichever finish reason the provider gave alongside them.
+  const stopReason = choice.finish_reason === "length" ? "max_tokens"
+    : choice.finish_reason === "tool_calls" || message.tool_calls?.length > 0 ? "tool_use" : "end_turn";
+
+  return {
+    content,
+    stop_reason: stopReason,
+    usage: {
+      input_tokens: openaiResponse.usage?.prompt_tokens || 0,
+      output_tokens: Math.max(openaiResponse.usage?.completion_tokens || 0,
+        (openaiResponse.usage?.total_tokens || 0) - (openaiResponse.usage?.prompt_tokens || 0)),
+      reasoning_tokens: openaiResponse.usage?.completion_tokens_details?.reasoning_tokens || 0,
+      cost_in_usd_ticks: openaiResponse.usage?.cost_in_usd_ticks ?? null,
+      // Cache hits: prompt_tokens_details (xAI, OpenAI, OpenRouter) or
+      // prompt_cache_hit_tokens (DeepSeek), counted inside input_tokens.
+      cache_read_input_tokens: openaiResponse.usage?.prompt_tokens_details?.cached_tokens || openaiResponse.usage?.prompt_cache_hit_tokens || 0,
+      input_includes_cache: true,
+      // What the call cost, where the provider says so (OpenRouter's usage.cost, in dollars).
+      cost_usd: typeof openaiResponse.usage?.cost === "number" ? openaiResponse.usage.cost : null,
+    },
+  };
+}
+
+// =============================================================================
+// Anthropic -> Gemini format conversion
+// =============================================================================
+
+function convertToolToGemini(tool) {
+  return {
+    name: tool.name,
+    description: tool.description || "",
+    parameters: tool.input_schema || { type: "object", properties: {} },
+  };
+}
+
+function convertMessagesToGemini(systemPrompt, messages, identity) {
+  // Gemini uses { contents: [...], systemInstruction: { parts: [...] } }
+  // System can be an array of blocks (Anthropic prompt-caching shape): flatten to string
+  if (Array.isArray(systemPrompt)) systemPrompt = systemPrompt.map(b => b?.text || "").join("");
+  const contents = [];
+
+  for (const msg of messages) {
+    const role = msg.role === "assistant" ? "model" : "user";
+    const parts = [];
+
+    if (typeof msg.content === "string") {
+      parts.push({ text: msg.content });
+    } else if (Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if (block._geminiPart && block._identity === identity) {
+          parts.push(block._geminiPart);
+        } else if (block.type === "provider_state") {
+          if (block.identity === identity && block.geminiPart) parts.push(block.geminiPart);
+        } else if (block.type === "text") {
+          parts.push({ text: block.text });
+        } else if (block.type === "tool_use") {
+          parts.push({ functionCall: { name: block.name, args: block.input || {} } });
+        } else if (block.type === "tool_result") {
+          // Gemini: tool results go in a user message with functionResponse parts
+          parts.push({
+            functionResponse: {
+              name: block.name || block._toolName || "unknown",
+              response: typeof block.content === "string" ? { result: block.content }
+                : Array.isArray(block.content) ? { result: block.content.map(b => b.text || JSON.stringify(b)).join("\n") }
+                : { result: JSON.stringify(block.content) },
+            },
+          });
+        } else if (block.type === "image") {
+          if (block.source?.data) {
+            parts.push({ inlineData: { mimeType: block.source.media_type || "image/png", data: block.source.data } });
+          }
+        } else if (block.type === "video") {
+          // A YouTube link is opened by Gemini itself; anything else is sent inline.
+          if (block.source?.url) parts.push({ fileData: { fileUri: block.source.url } });
+          else if (block.source?.data) parts.push({ inlineData: { mimeType: block.source.media_type || "video/mp4", data: block.source.data } });
+        }
+        // Skip thinking, document blocks
+      }
+    }
+
+    if (parts.length > 0) contents.push({ role, parts });
+  }
+
+  return { contents, systemInstruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined };
+}
+
+function convertResponseFromGemini(geminiResponse, identity) {
+  const candidate = geminiResponse.candidates?.[0];
+  if (!candidate) return { content: [{ type: "text", text: "" }], stop_reason: "end_turn", usage: { input_tokens: 0, output_tokens: 0 } };
+
+  const content = [];
+  let hasToolCalls = false;
+
+  for (const part of candidate.content?.parts || []) {
+    if (part.thought) {
+      content.push({ type: "provider_state", identity, geminiPart: part });
+    } else if (part.text) {
+      content.push({ type: "text", text: part.text, _identity: identity, _geminiPart: part });
+    } else if (part.functionCall) {
+      hasToolCalls = true;
+      content.push({
+        type: "tool_use", _identity: identity, _geminiPart: part,
+        id: `toolu_${Math.random().toString(36).slice(2, 14)}`,
+        name: part.functionCall.name,
+        input: part.functionCall.args || {},
+      });
+    }
+  }
+
+  if (content.length === 0) content.push({ type: "text", text: "" });
+
+  const stopReason = hasToolCalls ? "tool_use"
+    : candidate.finishReason === "MAX_TOKENS" ? "max_tokens" : "end_turn";
+
+  const usage = {
+    input_tokens: geminiResponse.usageMetadata?.promptTokenCount || 0,
+    output_tokens: (geminiResponse.usageMetadata?.candidatesTokenCount || 0) + (geminiResponse.usageMetadata?.thoughtsTokenCount || 0),
+    cache_read_input_tokens: geminiResponse.usageMetadata?.cachedContentTokenCount || 0,
+    input_includes_cache: true,
+  };
+
+  return { content, stop_reason: stopReason, usage };
+}
+
+// =============================================================================
+// Patch tool_result blocks with tool names (needed for Gemini which has no IDs)
+// =============================================================================
+
+function enrichToolResults(messages) {
+  // Build a map of tool_use_id -> tool_name from assistant messages
+  const idToName = {};
+  for (const msg of messages) {
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block.type === "tool_use") idToName[block.id] = block.name;
+    }
+  }
+  // Patch tool_result blocks with _toolName
+  for (const msg of messages) {
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block.type === "tool_result" && block.tool_use_id) {
+        block._toolName = idToName[block.tool_use_id] || "unknown";
+      }
+    }
+  }
+}
+
+// =============================================================================
+// Client factory
+// =============================================================================
+
+
+// Prompt caching. Anthropic caches only what is marked; OpenAI, DeepSeek,
+// Gemini and most others reuse a repeated prompt start automatically, so for
+// them the marks are dropped in translation and a stable start is what counts.
+// The system prompt comes after the tools, so marking it caches both. In the
+// middle of a task, after tool results, the conversation so far is marked
+// too: the next step resends it within seconds. The model sees exactly the
+// same prompt either way. Anthropic allows four marks; a caller's own count.
+const CACHE_MARK = { type: "ephemeral" };
+function markCache(body) {
+  const marked = b => !!b?.cache_control;
+  let marks = (Array.isArray(body.system) ? body.system.filter(marked).length : 0) +
+    body.messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter(marked).length : 0), 0);
+  if (typeof body.system === "string" && body.system) { body.system = [{ type: "text", text: body.system, cache_control: CACHE_MARK }]; marks++; }
+  else if (Array.isArray(body.system) && body.system.length && !body.system.some(marked)) {
+    body.system = body.system.map((b, i) => i === body.system.length - 1 ? { ...b, cache_control: CACHE_MARK } : b); marks++;
+  }
+  const last = body.messages[body.messages.length - 1];
+  if (marks < 4 && last?.role === "user" && Array.isArray(last.content) && last.content.some(b => b.type === "tool_result") && !last.content.some(marked)) {
+    const i = last.content.length - 1;
+    last.content[i] = { ...last.content[i], cache_control: CACHE_MARK };
+  }
+}
+function identity(conn, model) {
+  return createHash("sha256").update([conn.baseUrl, conn.apiKey || "", model].join("|")).digest("hex");
+}
+// API keys have shapes model IDs never have: a provider's key prefix, or a
+// long unbroken run of letters and digits. A key pasted where a model ID goes
+// is never sent as a model name (providers repeat the name in their errors),
+// and nothing key-shaped from a provider's error reaches the log.
+const KEY_PREFIX = /^(?:sk-|sk_|xai-|gsk_|AIza|pplx-|hf_|r8_|nvapi-|fw_|csk-)/;
+const KEY_RUN = /[A-Za-z0-9]{32,}/g;
+const longRunIsKey = (run) => /\d/.test(run) && /[A-Za-z]/.test(run);
+function looksLikeKey(text) {
+  const s = String(text || "").trim();
+  return KEY_PREFIX.test(s) || (s.match(KEY_RUN) || []).some(longRunIsKey);
+}
+function hideKeys(text, conn) {
+  let out = String(text || "");
+  if (conn?.apiKey) out = out.split(conn.apiKey).join("<hidden>");
+  return out.replace(/\b(?:sk-|sk_|xai-|gsk_|AIza|pplx-|hf_|r8_|nvapi-|fw_|csk-)[A-Za-z0-9_-]{8,}/g, "<hidden>")
+    .replace(KEY_RUN, (run) => (longRunIsKey(run) ? "<hidden>" : run));
+}
+const KEY_AS_MODEL = "That looks like an API key, not a model ID, so Closedhand didn't send it anywhere. To use another provider, choose it under Provider and paste the key in its API key box.";
+// Models that refused to skip thinking; their fast jobs think as little as they allow.
+const mustThink = new Set();
+// A runner on this computer that has stopped or is still loading its model.
+function runnerAway(e) {
+  const code = e?.cause?.code || e?.code;
+  return e?.status === 503 || ["ECONNREFUSED", "ECONNRESET", "UND_ERR_SOCKET", "UND_ERR_CLOSED"].includes(code) || /fetch failed/i.test(String(e?.message || ""));
+}
+async function request(conn, params, options = {}) {
+  // A job run on this computer (webapp/run-here.js) goes to the person's
+  // provider for any request its runner can't take.
+  if (conn.fallback) {
+    try { return await request({ ...conn, fallback: null }, params, options); }
+    catch (e) {
+      if (!runnerAway(e)) throw e;
+      return request(conn.fallback, { ...params, model: conn.fallback.model }, options);
+    }
+  }
+  const model = params.model || conn.model;
+  if (looksLikeKey(model)) throw Object.assign(new Error(KEY_AS_MODEL), { status: 400, code: "model_id_is_key" });
+  const cap = conn.capabilities || policy.capabilities(conn, model);
+  // Video only goes to a model known to take it; the caller falls back to frames.
+  const hasVideo = (params.messages || []).some(m => Array.isArray(m.content) && m.content.some(b => b.type === "video"));
+  if (hasVideo && cap.video !== true) throw Object.assign(new Error("This model doesn't take video."), { status: 400, code: "video_not_supported" });
+  const id = identity(conn, model);
+  const effort = params.effort || (params.thinking?.type === "enabled" ? "strong" : "default");
+  const max = params.max_tokens || 4096;
+  const controls = policy.effortOptions(cap, effort, max);
+  if (controls.reasoning?.enabled === false && mustThink.has(model)) controls.reasoning = { effort: "low" };
+  const headers = { "Content-Type": "application/json" };
+  let url, body, convert;
+  if (conn.backend === "anthropic") {
+    headers["x-api-key"] = conn.apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+    const messages = (params.messages || []).map(m => ({ ...m, content: Array.isArray(m.content) ? m.content.filter(b =>
+      b.type !== "provider_state" && (!["thinking", "redacted_thinking"].includes(b.type) || b._identity === id)
+    ).map(b => {
+      const { _geminiPart, _identity, ...clean } = b; return clean;
+    }) : m.content }));
+    body = { model, messages, max_tokens: max, ...controls };
+    if (params.system) body.system = params.system;
+    if (params.tools?.length) body.tools = params.tools;
+    if (params.tool_choice) body.tool_choice = params.tool_choice;
+    markCache(body);
+    url = conn.baseUrl + "/messages";
+    convert = data => ({ ...data, content: data.content?.map(b => ["thinking", "redacted_thinking"].includes(b.type) ? { ...b, _identity: id } : b) });
+  } else if (conn.backend === "gemini") {
+    const source = structuredClone(params.messages || []);
+    enrichToolResults(source);
+    const { contents, systemInstruction } = convertMessagesToGemini(params.system, source, id);
+    body = { contents, generationConfig: { maxOutputTokens: max, ...controls } };
+    if (systemInstruction) body.systemInstruction = systemInstruction;
+    if (params.tools?.length) body.tools = [{ functionDeclarations: params.tools.map(convertToolToGemini) }];
+    if (params.tool_choice?.type === "any") body.toolConfig = { functionCallingConfig: { mode: "ANY" } };
+    headers["x-goog-api-key"] = conn.apiKey;
+    url = conn.baseUrl + "/models/" + encodeURIComponent(model) + ":generateContent";
+    convert = data => convertResponseFromGemini(data, id);
+  } else {
+    if (conn.apiKey) headers.Authorization = "Bearer " + conn.apiKey;
+    body = { model, messages: convertMessagesToOpenAI(params.system, params.messages || [], id), ...controls };
+    body[cap.reasoning === "openai" ? "max_completion_tokens" : "max_tokens"] = max;
+    if (params.tools?.length) {
+      body.tools = params.tools.map(convertToolToOpenAI);
+      body.tool_choice = params.tool_choice?.type === "any" ? "required" : params.tool_choice?.type === "tool"
+        ? { type: "function", function: { name: params.tool_choice.name } } : "auto";
+    }
+    url = conn.baseUrl + "/chat/completions"; convert = data => convertResponseFromOpenAI(data, id);
+  }
+  named(conn, headers);
+  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body),
+    signal: options.signal || AbortSignal.timeout(90000), redirect: "error" });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    const said = String(detail.error?.message || "");
+    if (response.status === 400 && (/context.*(?:length|window|size)|maximum.*(?:prompt|tokens)/i.test(said) || /exceed_context/i.test(String(detail.error?.type || "")))) {
+      // How much the model could take and how much was sent, when the
+      // provider says (Ollama does), so a caller can trim to fit.
+      const limit = Number(detail.error?.n_ctx) || Number((said.match(/context size \((\d+) tokens\)/i) || [])[1]) || null;
+      const used = Number(detail.error?.n_prompt_tokens) || Number((said.match(/request \((\d+) tokens\)/i) || [])[1]) || null;
+      throw Object.assign(new Error("The model context window was exceeded."), { status: 400, code: "context_length_exceeded", limit, used });
+    }
+    if (response.status === 400 && body.reasoning?.enabled === false && /reasoning is mandatory/i.test(said)) {
+      mustThink.add(model);
+      return request(conn, params, options);
+    }
+    // The provider's own message goes to the log, trimmed, so a 400 can be
+    // diagnosed; never to the user, and never the body, which can carry the request.
+    if (detail.error?.message) console.warn(`[model-wire] ${conn.provider || conn.backend} HTTP ${response.status}: ${hideKeys(detail.error.message, conn).slice(0, 200)}`);
+    const error = new Error("The model provider returned HTTP " + response.status + ". " + providerProblem(response.status, "Check the model, access and balance."));
+    error.status = response.status;
+    // OpenRouter refuses a key past its own spending limit with 403, not 402.
+    if (response.status === 403 && (detail.error?.metadata?.limit_source === "openrouter_key_limit" || /key limit/i.test(said))) error.code = "key_limit";
+    throw error;
+  }
+  return convert(await response.json());
+}
+// OpenRouter credits the traffic to the app that names itself; nothing about
+// the person goes with it. Every call to an LLM endpoint adds these, so none
+// shows there as an unknown app.
+function appHeaders(url) {
+  let host = "";
+  try { host = new URL(url).hostname; } catch (_) {}
+  return host === "openrouter.ai" ? { "HTTP-Referer": "https://closedhand.com", "X-Title": "Closedhand" } : {};
+}
+function named(conn, headers) {
+  Object.assign(headers, appHeaders(conn.baseUrl));
+}
+// What a provider's status code means for the person reading it. Bodies are never echoed.
+function providerProblem(status, fallback) {
+  return { 401: "The provider rejected the API key.", 402: "The provider says this account needs payment or more credit.",
+    403: "The provider refused this key access to the model.", 404: "The provider has no model with this ID.",
+    429: "The provider is limiting requests right now. Try again shortly." }[status] || fallback;
+}
+async function listModels(conn) {
+  const headers = {};
+  if (conn.backend === "anthropic") Object.assign(headers, { "x-api-key": conn.apiKey, "anthropic-version": "2023-06-01" });
+  else if (conn.backend === "gemini") headers["x-goog-api-key"] = conn.apiKey;
+  else if (conn.apiKey) headers.Authorization = "Bearer " + conn.apiKey;
+  named(conn, headers);
+  const response = await fetch(conn.baseUrl + "/models", { headers, signal: AbortSignal.timeout(12000), redirect: "error" });
+  if (!response.ok) { const e = new Error("Could not load models (HTTP " + response.status + "). " + providerProblem(response.status, "You can enter the model ID.")); e.status = response.status; throw e; }
+  const data = await response.json();
+  const models = (data.data || data.models || []).map(m => ({ id: (m.id || m.name || "").replace(/^models\//, ""), metadata: m })).filter(m => m.id);
+  if (conn.provider === "ollama") await describeOllama(conn, models);
+  return models;
+}
+// Ollama's model list says nothing about what each model can do, but its own
+// /api/show does ("vision", "tools"), so local image models can be offered
+// for images like any other, and the check still proves them before saving.
+async function describeOllama(conn, models) {
+  const root = conn.baseUrl.replace(/\/v1$/, "");
+  await Promise.all(models.slice(0, 50).map(async (m) => {
+    try {
+      const response = await fetch(root + "/api/show", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: m.id }), signal: AbortSignal.timeout(5000), redirect: "error" });
+      if (!response.ok) return;
+      const abilities = (await response.json()).capabilities;
+      if (!Array.isArray(abilities)) return;
+      m.metadata = { ...m.metadata, input_modalities: abilities.includes("vision") ? ["text", "image"] : ["text"],
+        supported_parameters: abilities.includes("tools") ? ["tools"] : [] };
+    } catch { /* the model stays listed, its abilities unknown */ }
+  }));
+}
+function responseText(response) { return (response?.content || []).filter(b => b.type === "text").map(b => b.text || "").join("\n"); }
+module.exports = { responseText, request, listModels, looksLikeKey, appHeaders, hideKeys, KEY_AS_MODEL, convertToolToOpenAI, convertMessagesToOpenAI, convertResponseFromOpenAI, convertToolToGemini, convertMessagesToGemini, convertResponseFromGemini };

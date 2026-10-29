@@ -1,0 +1,86 @@
+FROM python:3.12-slim
+
+# Install Node.js 20 LTS + gosu (for entrypoint user switching) + tini (reaps
+# the processes a crashed browser leaves behind) + Playwright system deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates gosu tini && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Pre-install Python packages (including Playwright, data science, and utilities)
+RUN pip install --no-cache-dir \
+    pandas numpy requests matplotlib beautifulsoup4 pillow openpyxl \
+    playwright lxml scipy scikit-learn seaborn tabulate \
+    python-dateutil pytz httpx pydantic chardet \
+    yt-dlp av
+
+# Browser (user-facing + automation target via CDP). Stock Google Chrome on
+# amd64 (Chrome for Testing showed a permanent "automated testing only"
+# banner); Google ships no arm64 Linux Chrome, so other arches get Debian's
+# Chromium. chromium-launcher picks whichever binary exists.
+RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg && \
+    if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+      wget -qO- https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor > /usr/share/keyrings/google-chrome.gpg && \
+      echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+      apt-get update && apt-get install -y --no-install-recommends google-chrome-stable; \
+    else \
+      apt-get install -y --no-install-recommends chromium; \
+    fi && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Minimal display stack: Xvfb + VNC + openbox (lightweight WM for browser window).
+# websockify only relays the screen; the viewer is the dashboard's own copy
+# (webapp/public/novnc), so Debian's noVNC pages, with their password
+# sign-in code, are not installed.
+# x11-utils is xdpyinfo, how agent/screen-watch.js asks the display to answer.
+# Debian's Chromium (arm64) brings it, Google Chrome (amd64) does not, and
+# without it the display was taken for dead and restarted every 90 seconds.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb x11vnc python3-websockify x11-utils \
+    openbox \
+    xdotool scrot fonts-liberation dbus-x11 procps \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+
+# Copy gateway + browser Python helpers to importable path
+COPY agent/gateway_client.py /usr/local/lib/python3.12/gateway_client.py
+COPY agent/browser_helper.py /usr/local/lib/python3.12/browser_helper.py
+
+# Openbox config (auto-maximize, no decorations)
+COPY openbox-config/rc.xml /etc/xdg/openbox/rc.xml
+
+# Google is the starting search engine, and so the new tab page, in either
+# browser: Debian's Chromium (arm64) otherwise starts on DuckDuckGo.
+# Recommended, not enforced, so a person can still choose another.
+COPY chrome-policies.json /etc/opt/chrome/policies/recommended/closedhand.json
+COPY chrome-policies.json /etc/chromium/policies/recommended/closedhand.json
+
+# Chromium launcher
+COPY chromium-launcher.sh /usr/local/bin/chromium-launcher
+RUN chmod +x /usr/local/bin/chromium-launcher
+
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash sandbox && \
+    mkdir -p /workspace && chown sandbox:sandbox /workspace
+
+# Matplotlib: use non-interactive backend, writable config dir
+ENV MPLBACKEND=Agg
+ENV MPLCONFIGDIR=/tmp/matplotlib
+ENV DISPLAY=:99
+
+# Install agent
+WORKDIR /app
+COPY agent/package.json agent/package-lock.json* ./
+RUN npm install --production
+COPY agent/ .
+
+# Entrypoint fixes volume permissions then drops to sandbox user
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8080 6080
+WORKDIR /workspace
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["node", "/app/server.js"]

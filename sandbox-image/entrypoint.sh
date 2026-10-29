@@ -1,0 +1,149 @@
+#!/bin/bash
+set -e
+
+# 1. Fix workspace ownership (Railway volumes mount as root)
+chown sandbox:sandbox /workspace 2>/dev/null || true
+mkdir -p /tmp/matplotlib && chown sandbox:sandbox /tmp/matplotlib
+# Browser profile lives ON the volume so logins survive redeploys
+mkdir -p /workspace/.chromium-profile && chown -R sandbox:sandbox /workspace/.chromium-profile
+
+# 2. Downloads go to workspace
+mkdir -p /home/sandbox/.config
+cat > /home/sandbox/.config/user-dirs.dirs <<'XDGEOF'
+XDG_DOWNLOAD_DIR="/workspace"
+XDG_DOCUMENTS_DIR="/workspace"
+XDGEOF
+chown -R sandbox:sandbox /home/sandbox/.config
+
+# 3. Start Xvfb (1280x1280, showing 1280x800), supervised. Chrome already had a supervisor; the
+# display it depends on did not, so an OOM-killed Xvfb left Chrome
+# crash-looping on "Missing X server" for ever with nothing to heal it.
+# The size is what a person watching over the internet pays for: every
+# redraw crosses the tunnel, and at 1920x1080 a full one was about 290 KB,
+# close to a second on a phone. 1280x800 is a normal laptop screen for the
+# sites and about 45% less to send. The screen is taller than that so a phone
+# can get a tall phone-shaped part instead (agent /desktop/shape); only the
+# part shown is sent (x11vnc -clip), and openbox keeps windows inside it.
+# The lock and socket Xvfb leaves when it is killed outright (out of memory)
+# outlive it, and so do ones from before a restart (the container keeps /tmp).
+# Xvfb then refuses to start while the lock's process number is in use, by
+# anything at all, so the screen stayed grey for good. A lock not held by an
+# Xvfb that is running is stale.
+clear_stale_display() {
+    local pid
+    [ -f /tmp/.X99-lock ] || return 0
+    pid=$(tr -d ' \n' < /tmp/.X99-lock || true)
+    if [ -n "$pid" ] && [ "$(cat /proc/"$pid"/comm 2>/dev/null)" != "Xvfb" ]; then
+        rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+        echo "[entrypoint] cleared a stale display lock" >&2
+    fi
+}
+xvfb_supervisor() {
+    while true; do
+        clear_stale_display
+        gosu sandbox Xvfb :99 -screen 0 1280x1280x24 -ac +extension GLX +render -noreset || true
+        echo "[entrypoint] Xvfb exited, restarting" >&2
+        sleep 1
+    done
+}
+xvfb_supervisor &
+sleep 0.5
+
+export DISPLAY=:99
+
+# 4. Openbox, same treatment: without it windows lose management quietly.
+# A restart starts in the laptop shape, whatever shape it stopped in.
+rm -f /home/sandbox/.config/openbox/rc.xml
+openbox_supervisor() {
+    while true; do
+        gosu sandbox env DISPLAY=:99 openbox || true
+        echo "[entrypoint] openbox exited, restarting" >&2
+        sleep 1
+    done
+}
+openbox_supervisor &
+sleep 0.3
+
+# 5. Launch Chrome in near-fullscreen (persistent profile on volume).
+# Fresh profile: open Google sign-in so the first thing a user does is log in.
+# Otherwise its new tab page, which is Google's (chrome-policies.json).
+START_URL=""
+if [ ! -d /workspace/.chromium-profile/Default ]; then
+    START_URL="https://accounts.google.com"
+fi
+
+# Chrome IS the interface on this machine. There is no dock, panel or desktop to
+# relaunch it from, so closing the last tab used to quit Chrome and leave the
+# user staring at a black screen with no way back, and take the CDP port down
+# with it so the bot could not use the browser either. Keep it running: on exit
+# it comes straight back on a new tab page, the way closing the last tab behaves
+# on a normal desktop.
+browser_supervisor() {
+    local url="$1"
+    local fails=0 started ran
+    while true; do
+        started=$(date +%s)
+        if [ -n "$url" ]; then
+            gosu sandbox env DISPLAY=:99 /usr/local/bin/chromium-launcher \
+                --start-maximized --window-size=1280,760 --window-position=0,0 \
+                --disable-session-crashed-bubble --hide-crash-restore-bubble --no-first-run "$url" || true
+        else
+            gosu sandbox env DISPLAY=:99 /usr/local/bin/chromium-launcher \
+                --start-maximized --window-size=1280,760 --window-position=0,0 \
+                --disable-session-crashed-bubble --hide-crash-restore-bubble --no-first-run || true
+        fi
+        ran=$(( $(date +%s) - started ))
+        url=""  # relaunches land on the new tab page, not the first-run sign-in
+        echo "[entrypoint] Chrome exited after ${ran}s, restarting" >&2
+
+        # Exiting instantly and repeatedly means the profile or display is
+        # broken, not that a user closed a tab. Back off rather than spin.
+        if [ "$ran" -lt 5 ]; then fails=$((fails + 1)); else fails=0; fi
+        if [ "$fails" -ge 5 ]; then
+            echo "[entrypoint] Chrome failed to stay up $fails times, waiting 30s" >&2
+            sleep 30
+            fails=0
+        else
+            sleep 1
+        fi
+    done
+}
+browser_supervisor "$START_URL" &
+sleep 1
+
+# 6. VNC server, supervised: -forever only survives client disconnects, not
+# the X server it is attached to going away.
+x11vnc_supervisor() {
+    while true; do
+        gosu sandbox x11vnc -display :99 -nopw -shared -forever -rfbport 5900 -xkb -q -clip 1280x800+0+0 || true
+        echo "[entrypoint] x11vnc exited, restarting" >&2
+        sleep 2
+    done
+}
+x11vnc_supervisor &
+sleep 0.3
+
+# 7. Start websockify. Railway routes internal traffic over IPv6, so it listens
+# there; a host with no IPv6 at all (Nodion) refuses that outright, so it
+# listens on IPv4 instead.
+if python3 -c 'import socket; s = socket.socket(socket.AF_INET6); s.bind(("::", 0)); s.close()' 2>/dev/null; then
+    WS_LISTEN="[::]:6080"
+else
+    WS_LISTEN="0.0.0.0:6080"
+fi
+# Supervised like the rest: it carries the screen to the Computers tab, and
+# without it the browser runs on with nobody able to see it.
+websockify_supervisor() {
+    while true; do
+        gosu sandbox websockify "$WS_LISTEN" localhost:5900 || true
+        echo "[entrypoint] websockify exited, restarting" >&2
+        sleep 2
+    done
+}
+websockify_supervisor &
+
+# 8. Run the CMD (agent server), under tini: the agent server would otherwise
+# be process 1, which collects no finished processes, and each browser that
+# crashed stayed in the process table (thousands after a few hours of a grey
+# screen). -s collects them even where tini is not process 1.
+exec tini -s -- gosu sandbox env DISPLAY=:99 "$@"

@@ -1,0 +1,28 @@
+/* Privacy and Terms inside Closedhand: the website's reading page
+   (closedhand-com/public/ethos.css), with the lockup and a way back. */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ui-text); font-size: 1.125rem; line-height: 1.7; }
+header, main, footer { width: min(100%, 48.75rem); margin: 0 auto; padding-left: 1.75rem; padding-right: 1.75rem; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: 1.75rem; padding-bottom: 1.25rem; }
+header > a:last-child { display: inline-flex; align-items: center; min-height: 2.75rem; font-size: 0.9375rem; color: var(--ui-muted); text-decoration: none; }
+header > a:last-child:hover { color: var(--ui-text); }
+main { padding-top: 2.5rem; padding-bottom: 3.5rem; }
+h1 { font-family: var(--font-brand); font-weight: 500; font-size: clamp(2.125rem, 5vw, 3rem); line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.5rem; }
+.lead { font-size: 1.4375rem; line-height: 1.45; color: var(--ui-text); }
+.updated { margin: -0.75rem 0 2rem; font-size: 0.875rem; color: var(--dim); }
+h2 { font-size: 1.1875rem; font-weight: 600; line-height: 1.35; margin: 2.25rem 0 0.75rem; text-wrap: balance; }
+p { margin: 0 0 1.25rem; color: var(--ui-muted); }
+ul { margin: 0 0 1.25rem; padding-left: 1.375rem; color: var(--ui-muted); }
+li { margin: 0 0 0.5rem; }
+a { color: var(--ui-text); text-underline-offset: 0.3125rem; text-decoration-color: var(--accent); }
+a:hover { color: var(--accent-pale); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.3125rem; }
+::selection { background: var(--accent); color: var(--bg); }
+footer { padding-top: 1.5rem; padding-bottom: 2.5rem; font-size: 0.9375rem; color: var(--dim); }
+@media (max-width: 600px) {
+  header, main, footer { padding-left: 1.5rem; padding-right: 1.5rem; }
+  header { padding-top: 1.125rem; }
+  main { padding-top: 1.5rem; }
+  h2 { font-size: 1.125rem; }
+  .lead { font-size: 1.3125rem; }
+}

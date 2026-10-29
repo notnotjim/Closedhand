@@ -1,0 +1,60 @@
+# API keys
+.env
+# Docker secret files made by install.sh: never committed
+secrets/
+
+# Personal config (name, email accounts, routing)
+config.json
+
+# All user data (tokens, conversations, attachments)
+data/
+
+# Dependencies (thousands of files, re-downloadable)
+node_modules/
+
+# Python environments for MCP servers
+mcp-library/*/venv/
+
+# macOS junk
+.DS_Store
+
+# User attachments
+attachments/
+
+# Local working notes
+CLOSEDHAND-PROJECT-CONTEXT.md
+.agents/
+reference/
+
+# Swift build artifacts (Mac Bridge app)
+bridge-app/.build/
+
+# Local MCP config — carries API keys, never commit (recreate locally)
+.mcp.json
+
+# Supabase CLI residue (contains project ref + pooler URL)
+supabase/.temp/
+
+# Python bytecode
+__pycache__/
+
+# Personal working notes and references (never publish)
+tasks/
+
+
+# Maintainer working notes, local only
+OSS-NOTES.md
+# Where check-own-data.js finds the maintainer's own Closedhand on Railway.
+.own-data-railway
+
+# Desktop app build outputs
+desktop/.build/
+desktop/.cache/
+desktop/dist/
+
+# Verified at build time, bundled in app/image rather than stored in Git.
+assets/voice/kokoro-v1/
+assets/listen/whisper-base/
+
+# The daily update's last run (scripts/closedhand-update.sh)
+update.log

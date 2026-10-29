@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>Closedhand</string>
+    <key>CFBundleDisplayName</key><string>Closedhand</string>
+    <!-- Bridge's identity, kept on purpose: a Mac that already granted
+         Bridge its permissions keeps them across the upgrade. -->
+    <key>CFBundleIdentifier</key><string>ai.closedhand.bridge</string>
+    <key>CFBundleVersion</key><string>__VERSION__</string>
+    <key>CFBundleShortVersionString</key><string>__VERSION__</string>
+    <key>CFBundleExecutable</key><string>ClosedHand</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSHumanReadableCopyright</key><string>Closedhand</string>
+    <key>NSAppleEventsUsageDescription</key><string>Closedhand needs to control apps on your behalf to carry out your requests.</string>
+    <!-- macOS refuses Calendar, Reminders and Contacts access to an app that
+         doesn't say why, so EventKit never worked and calendars were read by
+         launching the Calendar app through AppleScript. -->
+    <key>NSCalendarsFullAccessUsageDescription</key><string>Closedhand reads your calendar to answer questions about your schedule and adds events when you ask. Your calendar stays on this Mac.</string>
+    <key>NSRemindersFullAccessUsageDescription</key><string>Closedhand reads your reminders and adds new ones when you ask.</string>
+    <key>NSContactsUsageDescription</key><string>Closedhand looks up contacts when you ask it to email or message someone.</string>
+    <key>ClosedHandSHA</key><string>__SHA__</string>
+    <key>ClosedHandGoogleClientID</key><string>__GOOGLE_CLIENT_ID__</string>
+    <key>ClosedHandGoogleClientSecret</key><string>__GOOGLE_CLIENT_SECRET__</string>
+    <!-- Updates (Sources/ClosedHand/Updater.swift): the newest release's feed,
+         checked daily, downloaded and installed without asking. Only an
+         update signed with the private half of this key is installed. -->
+    <key>SUFeedURL</key><string>https://github.com/notnotjim/Closedhand/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key><string>9iWa5mtJekA6SXhW3h8WN8RkPZlj7MkmC9pfqLScfkM=</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUAutomaticallyUpdate</key><true/>
+</dict>
+</plist>

@@ -1,0 +1,265 @@
+// The AI that comes with Closedhand (lib/included-ai.js), against a stand-in
+// OpenRouter and a stand-in database: nothing leaves this machine.
+// Run: node --test closedhand-com/test/included-ai.js
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { create } = require('../lib/included-ai');
+
+const MANAGEMENT = 'sk-or-v1-' + 'm'.repeat(64);
+
+// OpenRouter as far as Closedhand uses it: keys with a limit and usage, and
+// guardrails that keys are attached to.
+function openRouter({ down = false, failAssign = false } = {}) {
+  const keys = new Map(), guardrails = [], calls = [];
+  const reply = (status, body) => new Response(body === undefined ? '' : JSON.stringify(body), { status });
+  const request = async (url, opts = {}) => {
+    const method = opts.method || 'GET', path = url.replace('https://openrouter.ai/api/v1', '');
+    calls.push(method + ' ' + path);
+    assert.equal(opts.headers.Authorization, 'Bearer ' + MANAGEMENT, 'only the management key is used');
+    if (down) throw new Error('fetch failed');
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    if (method === 'GET' && path.startsWith('/guardrails')) return reply(200, { data: guardrails });
+    if (method === 'POST' && path === '/guardrails') { const g = { id: crypto.randomUUID(), ...body }; guardrails.push(g); return reply(201, { data: g }); }
+    if (method === 'PATCH' && path.startsWith('/guardrails/')) { Object.assign(guardrails.find(g => g.id === path.split('/')[2]), body); return reply(200, { data: {} }); }
+    let m = path.match(/^\/guardrails\/([^/]+)\/assignments\/keys$/);
+    if (m && method === 'POST') {
+      if (failAssign) return reply(500, { error: 'boom' });
+      for (const hash of body.key_hashes) keys.get(hash).guardrail = m[1];
+      return reply(200, { assigned_count: body.key_hashes.length });
+    }
+    if (method === 'POST' && path === '/keys') {
+      const hash = crypto.randomBytes(32).toString('hex'), key = 'sk-or-v1-' + crypto.randomBytes(32).toString('hex');
+      keys.set(hash, { name: body.name, limit: body.limit, limit_reset: body.limit_reset || null, usage: 0, usage_monthly: 0, key, guardrail: null });
+      return reply(201, { data: { hash, name: body.name, limit: body.limit, limit_remaining: body.limit, usage: 0 }, key });
+    }
+    m = path.match(/^\/keys\/([a-f0-9]{64})$/);
+    if (m && method === 'GET') {
+      const k = keys.get(m[1]);
+      return k ? reply(200, { data: { hash: m[1], limit: k.limit, usage: k.usage, limit_remaining: k.limit - k.usage } }) : reply(404, { error: 'not found' });
+    }
+    if (m && method === 'PATCH') { Object.assign(keys.get(m[1]), body); return reply(200, { data: keys.get(m[1]) }); }
+    if (m && method === 'DELETE') { keys.delete(m[1]); return reply(200, { deleted: true }); }
+    m = path.match(/^\/keys\?offset=(\d+)$/);
+    if (m && method === 'GET') return reply(200, { data: [...keys.values()].slice(Number(m[1]), Number(m[1]) + 100).map(k => ({ usage_monthly: k.usage_monthly })) });
+    throw new Error('unexpected ' + method + ' ' + url);
+  };
+  return { request, keys, guardrails, calls };
+}
+
+// The few queries included-ai.js makes, over lists of rows: accounts (owners),
+// their keys (included_ai_keys) and the first months given (starter_grants).
+function database() {
+  const rows = [], grants = [], owners = new Map(), retired = new Set();
+  const result = list => ({ rows: list, rowCount: list.length });
+  return {
+    rows, grants, owners, retired,
+    async query(sql, args = []) {
+      if (sql.startsWith('SELECT * FROM included_ai_keys') || sql.startsWith('SELECT key_hash FROM included_ai_keys')) return result(rows.filter(r => r.owner_id === args[0]));
+      if (sql.startsWith('INSERT INTO included_ai_keys')) {
+        if (rows.some(r => r.owner_id === args[0])) return result([]);
+        rows.push({ owner_id: args[0], key_hash: args[1], granted_usd: args[2], granted_at: new Date(), ends_at: new Date(Date.now() + args[3] * DAY), stopped_at: null });
+        return result([{ owner_id: args[0] }]);
+      }
+      // Replaced only while it still holds the key that was read; the old
+      // key waits to be deleted, as 018_key_upkeep.sql's trigger does.
+      if (sql.startsWith('UPDATE included_ai_keys SET key_hash')) {
+        const row = rows.find(r => r.owner_id === args[0] && r.key_hash === args[3]);
+        if (!row) return result([]);
+        retired.add(row.key_hash);
+        Object.assign(row, { key_hash: args[1], base_usd: args[2] });
+        return result([{ owner_id: args[0] }]);
+      }
+      if (sql.startsWith('INSERT INTO retired_ai_keys')) { retired.add(args[0]); return result([]); }
+      if (sql.startsWith('DELETE FROM retired_ai_keys')) { retired.delete(args[0]); return result([]); }
+      if (sql.startsWith('SELECT key_hash FROM retired_ai_keys')) return result([...retired].map(key_hash => ({ key_hash })));
+      if (sql.startsWith('UPDATE retired_ai_keys')) return result([]);
+      if (sql.startsWith('UPDATE included_ai_keys SET stopped_at = now()')) { rows.find(r => r.owner_id === args[0]).stopped_at = new Date(); return result([]); }
+      if (sql.includes('FROM included_ai_keys k')) return result(rows.filter(r => !r.stopped_at && r.ends_at && r.ends_at <= new Date()).map(r => ({ owner_id: r.owner_id })));
+      if (sql.startsWith('SELECT provider, subject FROM owners')) return result(owners.has(args[0]) ? [owners.get(args[0])] : []);
+      // Closedhand+ is test/plus.js's: nobody here subscribes.
+      if (sql.includes('FROM plus_subscriptions')) return result([]);
+      if (sql.startsWith('UPDATE starter_grants SET network_hash = NULL')) { for (const g of grants) if (Date.now() - g.granted_at > 30 * DAY) g.network_hash = null; return result([]); }
+      if (sql.startsWith('SELECT 1 FROM starter_grants WHERE person_hash')) return result(grants.filter(g => g.person_hash === args[0]));
+      if (sql.includes('FROM starter_grants WHERE network_hash')) return result([{ n: grants.filter(g => g.network_hash === args[0] && Date.now() - g.granted_at < 30 * DAY).length }]);
+      if (sql.startsWith('INSERT INTO starter_grants')) {
+        if (grants.some(g => g.person_hash === args[0])) return result([]);
+        const g = { id: grants.length + 1, person_hash: args[0], network_hash: args[1], granted_usd: args[2], granted_at: new Date() };
+        grants.push(g);
+        return result([{ id: g.id }]);
+      }
+      if (sql.startsWith('DELETE FROM starter_grants')) { grants.splice(grants.findIndex(g => g.id === args[0]), 1); return result([]); }
+      throw new Error('unexpected query ' + sql);
+    },
+  };
+}
+const DAY = 24 * 3600 * 1000;
+// An account signed in with an invented Google account.
+const ACCOUNT_KEY = 'k'.repeat(44);
+const env = (more = {}) => ({ OPENROUTER_PROVISIONING_KEY: MANAGEMENT, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, ...more });
+let people = 0;
+const owner = (db, subject = 'g-' + (++people)) => { const id = crypto.randomUUID(); db?.owners.set(id, { provider: 'google', subject }); return id; };
+// Each claim from its own connection unless a test says otherwise.
+let addresses = 0;
+const from = () => ({ ip: '198.51.100.' + (++addresses % 250) });
+const quiet = fn => async () => { const log = console.log, err = console.error; console.log = console.error = () => {}; try { await fn(); } finally { console.log = log; console.error = err; } };
+
+test('a claim gets a first month of its own: the fair-use ceiling, never reset, the chosen model only, on providers that keep nothing', async () => {
+  const or = openRouter(), db = database();
+  const ai = create({ db, env: env(), request: or.request });
+  const id = owner(db);
+  const given = await ai.forOwner(id, from());
+  assert.match(given.key, /^sk-or-v1-[a-f0-9]{64}$/);
+  assert.deepEqual(given.models, { chat: 'deepseek/deepseek-v4.1-flash', background: 'deepseek/deepseek-v4.1-flash', vision: 'xiaomi/mimo-v2.6-flash' });
+  const [hash, made] = [...or.keys][0];
+  assert.deepEqual([made.limit, made.limit_reset], [20, null], 'the whole month, not reset');
+  assert.equal(made.name, 'Closedhand ' + id, 'named by the account, never its email');
+  const rail = or.guardrails[0];
+  assert.equal(made.guardrail, rail.id, 'attached to the guardrail');
+  assert.deepEqual(rail.allowed_models, ['deepseek/deepseek-v4.1-flash', 'xiaomi/mimo-v2.6-flash'], 'the chat model and the one for pictures and videos only');
+  for (const field of ['enforce_zdr_other', 'enforce_zdr_anthropic', 'enforce_zdr_openai', 'enforce_zdr_google', 'enforce_zdr_xai']) assert.equal(rail[field], true, field);
+  for (const field of ['allow_safety_retention_other', 'allow_safety_retention_google', 'enable_paid_model_training', 'enable_free_model_training', 'enable_free_model_publication']) assert.equal(rail[field], false, field);
+  assert.deepEqual(db.rows.map(r => [r.key_hash, r.granted_usd]), [[hash, 20]], 'only the hash is kept');
+  const days = (db.rows[0].ends_at - Date.now()) / DAY;
+  assert.ok(days > 29.9 && days <= 30, 'the first month ends in 30 days');
+  assert.ok(!JSON.stringify(db.rows).includes(given.key), 'the key itself is never stored');
+  // A second account reuses the guardrail instead of making another.
+  await ai.forOwner(owner(db), from());
+  assert.equal(or.guardrails.length, 1);
+});
+
+test('claiming again gets a new key with what was left and the same end; the old one stops working', async () => {
+  const or = openRouter(), db = database();
+  const ai = create({ db, env: env(), request: or.request });
+  const id = owner(db);
+  await ai.forOwner(id, from());
+  const [firstHash, first] = [...or.keys][0];
+  first.usage = 6.25;
+  const again = await ai.forOwner(id, from());
+  assert.ok(again.key);
+  assert.ok(!or.keys.has(firstHash), 'the old key is deleted');
+  const [, second] = [...or.keys][0];
+  assert.equal(second.limit, 13.75, 'it carries what was left');
+  assert.equal(db.rows.length, 1);
+  const ends = db.rows[0].ends_at;
+  assert.ok(ends > new Date(), 'the same first month');
+  // Once the month is over, claiming again brings nothing.
+  db.rows[0].ends_at = new Date(Date.now() - 1000);
+  assert.equal(await ai.forOwner(id, from()), null);
+});
+
+test('how many people start is never a reason to refuse one', quiet(async () => {
+  const or = openRouter(), db = database();
+  const ai = create({ db, env: env({ INCLUDED_AI_MONTHLY_PEOPLE: '2', INCLUDED_AI_DAILY_PEOPLE: '2' }), request: or.request });
+  for (let i = 0; i < 6; i++) assert.ok(await ai.forOwner(owner(db), from()), 'person ' + (i + 1));
+  assert.equal(await ai.offered(from()), true);
+  assert.equal(or.keys.size, 6);
+}));
+
+test('the hourly sweep stops a first month that has run out, once', quiet(async () => {
+  const or = openRouter(), db = database();
+  const ai = create({ db, env: env(), request: or.request });
+  const id = owner(db), still = owner(db);
+  await ai.forOwner(id, from());
+  await ai.forOwner(still, from());
+  const made = or.keys.get(db.rows[0].key_hash);
+  made.usage = 7.326;
+  db.rows[0].ends_at = new Date(Date.now() - 1000);
+  assert.equal(await ai.sweep(), 1);
+  assert.deepEqual([made.limit, made.limit_reset], [7.32, null], 'stopped where it stands');
+  assert.ok(db.rows[0].stopped_at);
+  assert.equal(or.keys.get(db.rows[1].key_hash).limit, 20, 'a month still running is left alone');
+  assert.equal(await ai.sweep(), 0, 'stopped once');
+}));
+
+test('as closedhand.com starts, the guardrail is brought up to the models chosen now, so keys already given can use them', quiet(async () => {
+  const or = openRouter();
+  or.guardrails.push({ id: 'g1', name: 'Closedhand included AI', allowed_models: ['deepseek/deepseek-v4-flash'] });
+  const ai = create({ db: database(), env: env(), request: or.request });
+  await ai.settle();
+  assert.deepEqual(or.guardrails[0].allowed_models, ['deepseek/deepseek-v4.1-flash', 'xiaomi/mimo-v2.6-flash']);
+  const patches = () => or.calls.filter(c => c.startsWith('PATCH /guardrails/')).length;
+  const once = patches();
+  assert.equal(once, 1);
+  await ai.sweep();
+  assert.equal(patches(), once, 'once a start, not every hour');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'), /const \{ app, hourly, settle \} = createApp\(\{ db \}\);\n\s+settle\(\);/, 'as it starts, before computers ask');
+}));
+
+test('this month\'s spend is added up across every key, a page at a time', async () => {
+  const or = openRouter(), db = database();
+  const ai = create({ db, env: env(), request: or.request });
+  for (let i = 0; i < 150; i++) or.keys.set(String(i), { usage_monthly: 0.5 });
+  assert.equal(await ai.spentThisMonth(), 75);
+  assert.deepEqual(or.calls.filter(c => c.startsWith('GET /keys?')), ['GET /keys?offset=0', 'GET /keys?offset=100', 'GET /keys?offset=150']);
+});
+
+test('nothing is made without a management key, or when OpenRouter is unreachable', quiet(async () => {
+  const or = openRouter();
+  assert.equal(await create({ db: database(), env: {}, request: or.request }).forOwner(owner(), from()), null);
+  assert.equal(or.calls.length, 0);
+  const down = openRouter({ down: true });
+  assert.equal(await create({ db: database(), env: env(), request: down.request }).forOwner(owner(), from()), null);
+}));
+
+test('a key the guardrail could not be attached to is deleted, never handed over', quiet(async () => {
+  const or = openRouter({ failAssign: true }), db = database();
+  const ai = create({ db, env: env(), request: or.request });
+  assert.equal(await ai.forOwner(owner(db), from()), null);
+  assert.equal(or.keys.size, 0, 'the unguarded key is gone');
+  assert.equal(db.rows.length, 0);
+  assert.equal(db.grants.length, 0, 'the first month it held is given back');
+}));
+
+test('deleting the account deletes its key', async () => {
+  const or = openRouter(), db = database();
+  const ai = create({ db, env: env(), request: or.request });
+  const id = owner(db);
+  await ai.forOwner(id, from());
+  await ai.forget(id);
+  assert.equal(or.keys.size, 0);
+});
+
+test('the models come from the settings: chat first, support second; ones being switched away from stay allowed', async () => {
+  const or = openRouter();
+  const ai = create({ db: database(), env: env({ INCLUDED_AI_MODELS: 'deepseek/deepseek-v4.1-flash, qwen/qwen3-next', INCLUDED_AI_RETIRING_MODELS: 'deepseek/deepseek-v4-flash', INCLUDED_AI_FAIR_USE_USD: '5' }), request: or.request });
+  const given = await ai.forOwner(owner(), from());
+  assert.deepEqual(given.models, { chat: 'deepseek/deepseek-v4.1-flash', background: 'qwen/qwen3-next', vision: 'xiaomi/mimo-v2.6-flash' });
+  assert.deepEqual(ai.current(), given.models, 'computers asking get the same pick');
+  assert.deepEqual(or.guardrails[0].allowed_models, ['deepseek/deepseek-v4.1-flash', 'qwen/qwen3-next', 'xiaomi/mimo-v2.6-flash', 'deepseek/deepseek-v4-flash']);
+  const none = create({ db: database(), env: env({ INCLUDED_AI_VISION_MODEL: '' }), request: openRouter().request });
+  assert.deepEqual(none.current(), { chat: 'deepseek/deepseek-v4.1-flash', background: 'deepseek/deepseek-v4.1-flash' }, 'set empty, the chat model reads pictures itself');
+  assert.equal(create({ db: database(), env: {}, request: or.request }).current(), null, 'none without a management key');
+  assert.equal([...or.keys.values()][0].limit, 5);
+});
+
+test('a first month is given once per person: deleting the account and claiming again gives nothing new', quiet(async () => {
+  const or = openRouter(), db = database();
+  const ai = create({ db, env: env(), request: or.request });
+  const first = owner(db, 'g-avery');
+  assert.ok(await ai.forOwner(first, from()));
+  await ai.forget(first);
+  db.rows.length = 0; // the account's row goes with it
+  assert.equal(await ai.forOwner(owner(db, 'g-avery'), from()), null, 'the same sign-in, as a new account');
+  assert.ok(await ai.forOwner(owner(db, 'g-blake'), from()), 'someone else still gets it');
+  const kept = JSON.stringify(db.grants);
+  for (const plain of ['g-avery', 'g-blake', '198.51.100.']) assert.ok(!kept.includes(plain), 'only fingerprints are kept, never ' + plain);
+}));
+
+test('one connection gets it a few times a month, then no more; others still do', quiet(async () => {
+  const or = openRouter(), db = database();
+  const ai = create({ db, env: env(), request: or.request });
+  const home = { ip: '2001:db8:4:7:a::1' };
+  // Ten by default, so an office or a household sharing one connection all get theirs.
+  for (let i = 0; i < 10; i++) assert.ok(await ai.forOwner(owner(db), home), 'claim ' + (i + 1));
+  assert.equal(await ai.forOwner(owner(db), { ip: '2001:db8:4:7:b::2' }), null, 'another address in the same home');
+  assert.equal(await ai.offered(home), false, 'setup is told before claiming');
+  assert.equal(await ai.offered({ ip: '203.0.113.9' }), true);
+  assert.ok(await ai.forOwner(owner(db), { ip: '203.0.113.9' }));
+  // After 30 days the connection's fingerprint is forgotten.
+  for (const g of db.grants) g.granted_at = new Date(Date.now() - 31 * 24 * 3600 * 1000);
+  assert.ok(await ai.forOwner(owner(db), home));
+  assert.equal(db.grants.filter(g => g.network_hash === null).length, 11);
+}));

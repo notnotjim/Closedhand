@@ -1,0 +1,18 @@
+{
+  "index.js": 1,
+  "lib/admin.js": 3,
+  "lib/bridge-server.js": 1,
+  "lib/conversation.js": 14,
+  "lib/platforms/web.js": 2,
+  "lib/platforms/whatsapp-linked.js": 3,
+  "lib/proactive.js": 1,
+  "lib/scheduling.js": 2,
+  "lib/services/bridge-relay.js": 1,
+  "lib/services/data-sync.js": 4,
+  "lib/tools/handlers.js": 8,
+  "lib/workspace-cache.js": 1,
+  "user-store.js": 16,
+  "webapp/admin.js": 3,
+  "webapp/rag-processor.js": 13,
+  "webapp/server.js": 34
+}

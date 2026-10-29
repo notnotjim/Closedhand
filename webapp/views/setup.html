@@ -1,0 +1,1933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <script src="/theme.js"></script>
+  <script src="/move-progress.js" defer></script>
+  <script src="/llm-hint.js"></script>
+  <title>Set up Closedhand</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --text-primary: rgba(var(--fg-rgb),0.92);
+      --text-secondary: rgba(var(--fg-rgb),0.65);
+      --text-tertiary: rgba(var(--fg-rgb),0.4);
+      --bg-raised: rgba(var(--raised-rgb),0.55);
+      --bg-input: var(--raised);
+      --border-default: rgba(var(--fg-rgb),0.1);
+      --border-faint: rgba(var(--fg-rgb),0.06);
+      --action: var(--accent-strong);
+      --done: var(--ok);
+      --done-dim: rgba(var(--ok-rgb),0.45);
+      --done-faint: rgba(var(--ok-rgb),0.12);
+      --accent-dim: rgba(var(--accent-strong-rgb),0.15);
+      --accent-faint: rgba(var(--accent-strong-rgb),0.07);
+      --warn-dim: rgba(var(--warn-rgb),0.18);
+      --font-body: 'DM Sans', system-ui, sans-serif;
+      --font-display: 'Fraunces', ui-serif, Georgia, serif;
+      --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+      --rail-w: 5.25rem;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 0.9375rem;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      background: radial-gradient(35rem 23.75rem at 12% -6%, rgba(var(--accent-strong-rgb),0.06), transparent 70%);
+      pointer-events: none;
+    }
+
+    .wrap { max-width: 47.5rem; margin: 0 auto; padding: 2.75rem 1.75rem 6rem; position: relative; }
+
+    header.top {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 3.75rem; gap: 1rem;
+    }
+    .watch-chip {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-size: 0.75rem; color: var(--text-tertiary); white-space: nowrap;
+    }
+    .watch-chip.is-offline { color: var(--warn); }
+    @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+    /* A note that is waiting on something: a breathing dot in front of it,
+       so a sentence that does not change is still visibly alive. */
+    .note.is-busy::before {
+      content: ""; display: inline-block; width: 0.4375rem; height: 0.4375rem; border-radius: 50%;
+      margin-right: 0.5625rem; vertical-align: 1px;
+      background: var(--accent); box-shadow: 0 0 0.5rem rgba(var(--accent-strong-rgb),0.8);
+      animation: breathe 1.4s ease-in-out infinite;
+    }
+
+    .hero { margin-bottom: 1.25rem; }
+    .kicker {
+      font-size: 0.7188rem; letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--text-tertiary); margin-bottom: 0.875rem;
+    }
+    h1 {
+      font-family: var(--font-display);
+      font-weight: 480; font-size: clamp(2.125rem, 6vw, 3.125rem);
+      line-height: 1.08; letter-spacing: -0.01em; margin-bottom: 1.125rem;
+    }
+    h1 em { font-style: italic; font-weight: 400; color: var(--accent); }
+    .hero p { color: var(--text-secondary); max-width: 56ch; }
+
+    .summary {
+      display: flex; align-items: center; gap: 0.875rem; flex-wrap: wrap;
+      margin: 2.125rem 0 2.875rem; padding: 0.875rem 1.125rem;
+      border: 1px solid var(--border-faint); border-radius: 0.75rem;
+      background: var(--bg-raised); backdrop-filter: blur(0.375rem);
+      font-size: 0.8125rem; color: var(--text-secondary);
+    }
+    .summary .count { font-family: var(--font-display); font-size: 1.0625rem; color: var(--text-primary); }
+    .summary .count b { color: var(--accent); font-weight: 600; }
+    .summary .next-chip {
+      margin-left: auto; padding: 0.25rem 0.75rem; border-radius: 6.1875rem;
+      border: 1px solid var(--accent-dim); background: var(--accent-faint);
+      color: var(--accent); font-size: 0.75rem; white-space: nowrap;
+    }
+    .summary .next-chip:empty { display: none; }
+
+    .ready {
+      display: none; margin: 0 0 2.875rem; padding: 1.625rem 1.625rem 1.5rem;
+      border: 1px solid var(--accent-dim); border-radius: 1rem;
+      background: linear-gradient(140deg, rgba(var(--accent-strong-rgb),0.1), rgba(var(--accent-strong-rgb),0.02) 55%);
+    }
+    .ready.is-on { display: block; animation: rise 0.5s ease both; }
+    .ready h2 { font-family: var(--font-display); font-weight: 500; font-size: 1.625rem; margin-bottom: 0.5rem; }
+    .ready h2 span { color: var(--accent); }
+    .ready p { color: var(--text-secondary); max-width: 52ch; margin-bottom: 1.125rem; }
+    .g-tabs { margin: -2px 0 0.75rem; }
+    /* In each Google step, what to do reads plainly; why stays quiet (p.note). */
+    .g-step p.g-do { font-size: 0.9062rem; line-height: 1.6; color: var(--text-primary); margin: 0 0 0.75rem; }
+
+    ol.spine { list-style: none; }
+    .step {
+      display: grid; grid-template-columns: var(--rail-w) 1fr;
+      position: relative;
+      opacity: 0; animation: rise 0.55s ease both;
+    }
+    .step:nth-child(1) { animation-delay: 0.05s; }
+    .step:nth-child(2) { animation-delay: 0.13s; }
+    .step:nth-child(3) { animation-delay: 0.21s; }
+    .step:nth-child(4) { animation-delay: 0.29s; }
+    .step:nth-child(5) { animation-delay: 0.37s; }
+    @keyframes rise { from { opacity: 0; transform: translateY(0.875rem); } to { opacity: 1; transform: none; } }
+
+    .rail { position: relative; padding-top: 0.375rem; }
+    .rail::before {
+      content: ""; position: absolute; top: 0; bottom: 0; left: 0.8125rem;
+      width: 1px; background: rgba(var(--fg-rgb),0.08);
+    }
+    .step:first-child .rail::before { top: 0.875rem; }
+    .step:last-child .rail::before { bottom: auto; height: 0.875rem; }
+    .step.is-done .rail::before { background: linear-gradient(to bottom, var(--done), rgba(var(--ok-rgb),0.25)); }
+    .node {
+      position: absolute; top: 0.625rem; left: 0.5625rem;
+      width: 0.5625rem; height: 0.5625rem; border-radius: 50%;
+      border: 1.5px solid rgba(var(--fg-rgb),0.25); background: var(--bg);
+      transition: all 0.3s ease;
+    }
+    .step.is-next .node { border-color: var(--text-primary); }
+    .step.is-done .node { background: var(--done); border-color: var(--done); box-shadow: 0 0 0.625rem rgba(var(--ok-rgb),0.6); }
+    .step.just-done .node { animation: detected 1.1s ease-out; }
+    @keyframes detected {
+      0%   { box-shadow: 0 0 0 0 rgba(var(--accent-strong-rgb),0.55); }
+      100% { box-shadow: 0 0 0 1.375rem rgba(var(--accent-strong-rgb),0); }
+    }
+    .num {
+      position: absolute; left: 1.875rem; top: -0.375rem;
+      font-family: var(--font-display); font-style: italic; font-weight: 350;
+      font-size: 1.875rem; color: rgba(var(--fg-rgb),0.5);
+      font-variation-settings: "SOFT" 100;
+      transition: color 0.3s ease;
+    }
+    .step.is-next .num { color: var(--text-primary); }
+    .step.is-done .num { color: var(--done); }
+
+    .card {
+      margin: 0 0 1.625rem; border: 1px solid var(--border-faint); border-radius: 0.875rem;
+      background: var(--bg-raised); backdrop-filter: blur(0.375rem);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+      overflow: hidden;
+    }
+    .step.is-next .card { border-color: rgba(var(--accent-strong-rgb),0.28); box-shadow: 0 0 0 1px rgba(var(--accent-strong-rgb),0.08), 0 0.75rem 2.5rem rgba(var(--raised-rgb),0.35); }
+    .step.is-done .card { background: transparent; }
+    .step.just-done .card { animation: cardflash 1.1s ease-out; }
+    @keyframes cardflash {
+      0% { border-color: rgba(var(--accent-strong-rgb),0.6); }
+      100% { border-color: var(--border-faint); }
+    }
+
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.875rem;
+      width: 100%; padding: 1.125rem 1.25rem; cursor: pointer;
+      background: none; border: none; text-align: left; font-family: inherit; color: inherit;
+    }
+    .card-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 0.875rem; }
+    .card-head h2 {
+      font-family: var(--font-display); font-weight: 500; font-size: 1.1875rem; letter-spacing: 0.005em;
+    }
+    .whisper { font-size: 0.8125rem; color: var(--text-tertiary); margin-top: 2px; }
+    .step.is-done .whisper { display: none; }
+    .done-note { display: none; font-size: 0.8125rem; color: var(--text-tertiary); margin-top: 2px; }
+    .step.is-done .done-note { display: block; }
+
+    .state-chip {
+      flex-shrink: 0; padding: 0.1875rem 0.6875rem; border-radius: 6.1875rem; font-size: 0.7188rem; letter-spacing: 0.02em;
+      border: 1px solid var(--border-default); color: var(--text-tertiary); white-space: nowrap;
+    }
+    .step.is-done .state-chip { border-color: var(--done-dim); background: var(--done-faint); color: var(--done); }
+    .step.is-next .state-chip { border-color: rgba(var(--fg-rgb),0.2); color: var(--text-secondary); }
+    .step.is-skipped .state-chip { font-style: italic; }
+    /* Chat apps wait for the personal URL (see render). The card keeps any
+       open state, so it shows the moment the lock lifts. */
+    .step.is-locked .card { opacity: 0.55; }
+    .step.is-locked .card-body { display: none !important; }
+
+    .card-body { display: none; padding: 2px 1.25rem 1.375rem; }
+    .bring.is-open .card-body { display: block; }
+    .bring #bring-form { margin-top: 0.875rem; }
+    .bring-progress { margin-top: 1rem; }
+    .bring-progress[hidden] { display: none; }
+    .step.is-next .card-body, .step.is-open .card-body { display: block; }
+    .card-body p { color: var(--text-secondary); font-size: 0.875rem; max-width: 60ch; margin-bottom: 0.875rem; }
+    /* Notes are quiet text. Only a warning carries a bar, so the bar still means something. */
+    .card-body p.note { font-size: 0.8125rem; color: var(--text-tertiary); }
+    /* Plain links in the text; buttons made of links keep their own look. */
+    .card-body a:not([class]) { color: var(--accent); text-decoration: none; }
+    .card-body a:not([class]):hover { text-decoration: underline; }
+    .card-body ol.mini { margin: 0 0 0.875rem 1.125rem; color: var(--text-secondary); font-size: 0.875rem; }
+    .card-body ol.mini li { margin-bottom: 0.375rem; }
+    .card-body ol.mini li::marker { color: var(--text-tertiary); }
+
+    /* Forms: the wizard writes config itself; nobody edits files. */
+    #step-admin_password [hidden], #step-accounts [hidden], #step-personal_url [hidden] { display: none !important; }
+    #setup-personal-url h3 { margin-bottom: 0.75rem; }
+    #setup-personal-url .field label { color: var(--text-primary); }
+    #setup-personal-url .save-btn { min-height: 2.75rem; white-space: normal; }
+    #url-saved { padding: 0 1.25rem 1.125rem; }
+    .personal-url-row { display: flex; align-items: center; border: 1px solid var(--border-default); border-radius: 0.625rem; overflow: hidden; }
+    #url-value { flex: 1; min-width: 0; width: 0; border: 0; background: transparent; padding: 0.75rem 0.875rem; color: var(--text-primary); font: inherit; font-size: 0.875rem; }
+    #url-copy { flex: 0 0 2.75rem; min-height: 2.75rem; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
+    #url-copy:hover { color: var(--text-primary); background: var(--accent-faint); }
+    #url-copy:focus-visible, #url-value:focus-visible { outline: 2px solid var(--accent); outline-offset: -0.1875rem; }
+    #url-copy-status { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--text-secondary); }
+    #setup-personal-url p.url-why { color: var(--text-primary); font-weight: 500; }
+    /* One shake and a glow when setup was where the dashboard sent them. */
+    #url-start.nudge { animation: claimShake 0.6s ease 0.5s, claimGlow 1.6s ease 0.5s; }
+    @keyframes claimShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-0.375rem); } 40% { transform: translateX(0.375rem); } 60% { transform: translateX(-0.25rem); } 80% { transform: translateX(0.1875rem); } }
+    @keyframes claimGlow { 0% { box-shadow: 0 0 0 0 rgba(var(--accent-strong-rgb),0.55); } 70% { box-shadow: 0 0 0 0.75rem rgba(var(--accent-strong-rgb),0); } 100% { box-shadow: 0 0 0 0 rgba(var(--accent-strong-rgb),0); } }
+    @media (prefers-reduced-motion: reduce) { #url-start.nudge { animation: claimGlow 1.6s ease 0.5s; } }
+    #url-continue, #url-start.is-quiet { background: transparent; color: var(--text-primary); border: 1px solid var(--border-default); }
+    #url-code-form { margin-top: 1.5rem; }
+    #url-password-note { color: var(--text-primary); font-weight: 500; }
+    .url-where-line { color: var(--text-primary); }
+    .url-where-line strong { font-weight: 500; overflow-wrap: anywhere; }
+    #url-new-preview { color: var(--text-primary); }
+    #url-rename-form { margin-top: 0.75rem; }
+    #url-rename-cancel { background: transparent; color: var(--text-primary); border: 1px solid var(--border-default); }
+    .field { margin-bottom: 0.75rem; }
+    .field label { display: block; font-size: 0.7812rem; color: var(--text-tertiary); margin-bottom: 0.375rem; }
+    .field input, .field select {
+      width: 100%; max-width: 30rem; padding: 0.625rem 0.8125rem;
+      background: var(--bg-input); border: 1px solid var(--border-default); border-radius: 0.5625rem;
+      color: var(--text-primary); font-family: var(--font-mono); font-size: 0.8125rem; outline: none;
+      transition: border-color 0.15s ease;
+    }
+    .field select { font-family: var(--font-body); font-size: 0.875rem; }
+    .field input:focus, .field select:focus { border-color: var(--accent-dim); }
+    .save-btn { margin: 0.25rem 0 0.375rem; }
+    .form-msg { display: none; font-size: 0.8125rem; margin: 0.375rem 0 2px; max-width: 60ch; }
+    .form-msg.err { color: var(--warn); }
+    .form-msg.ok { color: var(--done); }
+
+    .qr-row { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 0.875rem; flex-wrap: wrap; }
+    .qr { border-radius: 0.625rem; background: var(--accent-strong); padding: 0.375rem; flex-shrink: 0; }
+    .qr-row > div { flex: 1; min-width: 13.75rem; }
+    .memory-note {
+      display: none; margin-top: 1rem; padding: 0.875rem 1rem;
+      border: 1px solid var(--warn-dim); border-radius: 0.625rem;
+      background: rgba(var(--warn-rgb),0.05);
+    }
+    .memory-note.is-on { display: block; }
+    .memory-note p { font-size: 0.8438rem; color: var(--text-secondary); margin-bottom: 0.625rem; }
+    .dl-bar { height: 0.375rem; border-radius: 0.1875rem; background: rgba(var(--fg-rgb),0.08); overflow: hidden; margin: 2px 0 0.625rem; }
+    .dl-fill { height: 100%; width: 0; background: var(--done); transition: width 0.6s ease; }
+
+    .skip {
+      background: none; border: none; cursor: pointer; font-family: inherit;
+      font-size: 0.7812rem; color: var(--text-tertiary); text-decoration: underline;
+      text-underline-offset: 0.1875rem; padding: 0; margin-top: 0.25rem;
+    }
+    .fb-block { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--line, rgba(var(--fg-rgb),0.08)); }
+    .fb-block h3 { font-size: 0.9375rem; margin: 0 0 0.375rem; }
+    /* One chat app open at a time. Two QR codes side by side is a camera
+       picking up the wrong one, so each app unfolds from its heading and
+       opening one folds the other. */
+    .choose { cursor: pointer; display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 0.25rem 0; }
+    .choose::after { content: "+"; font-weight: 300; font-size: 1.125rem; color: var(--text-tertiary); margin-left: 0.75rem; }
+    .chooser.is-open .choose::after { content: "\2212"; }
+    .choose:hover { color: var(--text-primary); }
+    .choice-body { display: none; margin-top: 0.5rem; }
+    .chooser.is-open .choice-body { display: block; }
+
+    /* Connect to Google: six steps inside the card, one on screen at a time. */
+    .g-head { display: flex; align-items: center; justify-content: space-between; margin: 1.125rem 0 0.625rem; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+    .g-dots span { display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: rgba(var(--fg-rgb),0.14); margin-left: 0.375rem; }
+    .g-dots span.on { background: var(--done); }
+    .g-dots span.done { background: rgba(var(--ok-rgb),0.45); }
+    /* The sign-in is the finish line, shown at the end of the dots from step one. */
+    .g-dots span.g-goal { width: auto; height: auto; background: none; border-radius: 0; margin-left: 0.625rem;
+      letter-spacing: 0.08em; color: var(--text-tertiary); vertical-align: 1px; }
+    .g-dots span.g-goal.on { color: var(--done); }
+    .g-final h3 { font-size: 1.0625rem; }
+    .card-body a.g-signin { margin: 0.25rem 0 0.75rem; }
+    .g-step { display: none; }
+    .g-step.is-on { display: block; }
+    .g-step h3 { font-size: 0.9375rem; margin: 0 0 0.375rem; }
+    .card-body p.quiet-links { font-size: 0.8125rem; margin: 0 0 0.25rem; }
+    /* Closedhand Managed Models' name. */
+    .card-body p.model-current { margin: 0 0 0.75rem; padding: 0; color: var(--text-secondary); line-height: 1.6; }
+    .card-body p.model-current strong { color: var(--text-primary, var(--fg)); font-weight: 600; }
+    .card-body p.model-current .status { display: block; }
+    .card-body p.quiet-links a { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 0.1875rem; }
+    .deep { margin: 0.25rem 0.5rem 0.75rem 0; }
+    .deep.is-locked { pointer-events: none; opacity: 0.35; }
+    .card-body p.note.warn { border-left: 2px solid var(--warn); padding-left: 0.75rem; color: var(--text-secondary); }
+    /* A helpful aside: a thin bar, quieter than a warning's. */
+    .card-body p.note.hint { border-left: 2px solid var(--accent-dim); padding-left: 0.75rem; }
+    .code { position: relative; margin: 0 0 0.75rem; background: var(--bg); border: 1px solid rgba(var(--fg-rgb),0.06); border-radius: 0.625rem; }
+    /* Long addresses wrap inside the box, clear of the Copy button, instead of scrolling under it. */
+    .code pre { padding: 0.6875rem 5.25rem 0.6875rem 0.875rem; white-space: pre-wrap; overflow-wrap: anywhere; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.7812rem; color: var(--text-secondary); margin: 0; }
+    .copy { position: absolute; top: 0.4375rem; right: 0.4375rem; padding: 0.1875rem 0.625rem; font-family: inherit; font-size: 0.7188rem; color: var(--text-tertiary); background: rgba(var(--fg-rgb),0.04); border: 1px solid rgba(var(--fg-rgb),0.06); border-radius: 0.4375rem; cursor: pointer; }
+    .copy.did { color: var(--done); border-color: var(--done-dim); }
+    /* Filling in Google's forms: each field by Google's own label, and a value to paste
+       shown as a field of its own with one Copy button, so it reads as "this goes there". */
+    .gform { display: grid; gap: 0.875rem; max-width: 30rem; margin: 2px 0 1rem; }
+    .gf-label { display: block; font-size: 0.7812rem; color: var(--text-tertiary); margin-bottom: 0.375rem; }
+    .card-body .gform p.gf-how { font-size: 0.875rem; color: var(--text-primary); margin: 0; }
+    .card-body .gform p.gf-aside { font-size: 0.8125rem; color: var(--text-tertiary); margin: 0.25rem 0 0; }
+    .gf-how + .gf-box { margin-top: 0.5rem; }
+    .gf-box { display: flex; align-items: center; gap: 0.5rem; padding-right: 0.4375rem; background: var(--bg-input); border: 1px solid var(--border-default); border-radius: 0.5625rem; }
+    .gf-val { flex: 1; min-width: 0; padding: 0.625rem 0 0.625rem 0.8125rem; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--text-primary); overflow-wrap: anywhere; user-select: all; }
+    .gf-box .copy { position: static; flex: none; }
+    /* A sign-in code is read and typed by eye, so it is big and spaced. */
+    #m-code { font-size: 1.25rem; letter-spacing: 0.14em; color: var(--text-primary); }
+    .g-step textarea { width: 100%; box-sizing: border-box; padding: 0.625rem 0.75rem; margin: 0.25rem 0 0.5rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.625rem; color: var(--text-primary); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.7812rem; resize: vertical; }
+    .g-nav { display: flex; align-items: center; justify-content: space-between; margin-top: 0.875rem; }
+    /* The end of the spine, where the eye is when the last step lands. */
+    .finish { margin: 1.625rem 0 0; padding: 1.625rem 1.75rem; border: 1px solid var(--accent-dim); border-radius: 1rem;
+      background: linear-gradient(140deg, rgba(var(--accent-strong-rgb),0.1), rgba(var(--accent-strong-rgb),0.02) 55%); }
+    .finish h2 { font-family: var(--font-display); font-weight: 500; font-size: 1.625rem; margin: 0 0 0.5rem; }
+    .finish h2 span { color: var(--accent); }
+    .finish p { color: var(--text-secondary); max-width: 60ch; margin: 0 0 1rem; }
+    .finish p.hint { border-left: 2px solid var(--accent-dim); padding-left: 0.75rem; font-size: 0.8125rem; color: var(--text-tertiary); }
+    .finish-actions { display: flex; flex-wrap: wrap; gap: 0.625rem; align-items: center; }
+    .g-file { margin: 2px 0 0.375rem; }
+    .g-file .deep { cursor: pointer; margin-bottom: 0.375rem; }
+    .g-step textarea.is-drop { border-color: var(--accent); }
+    /* A small picture of the screen a step talks about; click for full size. */
+    .peek { display: inline-flex; flex-direction: column; gap: 0.25rem; vertical-align: top; margin: 0.25rem 0 0.75rem; text-decoration: none; color: var(--text-tertiary); font-size: 0.75rem; }
+    .peek img { width: 10.5rem; border-radius: 0.5rem; border: 1px solid rgba(var(--fg-rgb),0.12); cursor: zoom-in; display: block; }
+    .peek:hover img { border-color: rgba(var(--fg-rgb),0.3); }
+    .lightbox { position: fixed; inset: 0; background: rgba(var(--bg-rgb),0.86); display: flex; align-items: center; justify-content: center; z-index: 60; cursor: zoom-out; }
+    .lightbox img { max-width: 92vw; max-height: 90vh; border-radius: 0.75rem; box-shadow: 0 1.5rem 5rem rgba(var(--bg-rgb),0.6); }
+    .fb-block .cta { margin-top: 0.5rem; }
+    /* A quiet fact about the quick route, not a ranking. */
+    .fb-quick { font-size: 0.6875rem; font-weight: 400; color: var(--text-tertiary); border: 1px solid var(--border-default); border-radius: 6.1875rem; padding: 1px 0.5rem; margin-left: 0.5rem; vertical-align: 2px; }
+    .fb-done { font-size: 0.6875rem; color: var(--ok); border: 1px solid rgba(var(--ok-rgb),0.35); border-radius: 6.1875rem; padding: 1px 0.5rem; margin-left: 0.375rem; vertical-align: 2px; }
+    .fb-again { font-size: 0.6875rem; color: var(--warn); border: 1px solid var(--warn-dim); border-radius: 6.1875rem; padding: 1px 0.5rem; margin-left: 0.375rem; vertical-align: 2px; }
+    .skip:hover { color: var(--text-secondary); }
+    .manual-link {
+      display: block; background: none; border: none; cursor: pointer; font-family: inherit;
+      font-size: 0.7812rem; color: var(--text-tertiary); text-decoration: none;
+      padding: 0; margin-top: 0.875rem;
+    }
+    .manual-link:hover { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 0.1875rem; }
+
+    .cta { margin-bottom: 0.875rem; }
+
+    @media (max-width: 620px) {
+      #step-accounts .card-head { flex-wrap: wrap; }
+      #step-accounts .card-head > span:first-child { flex: 1 1 13.75rem; }
+      :root { --rail-w: 3.25rem; }
+      .num { display: none; }
+      .wrap { padding: 1.875rem 1.125rem 4.5rem; }
+      header.top { margin-bottom: 2.625rem; }
+      .summary .next-chip { margin-left: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .step, .ready.is-on { opacity: 1; }
+    }
+  </style>
+  <link rel="stylesheet" href="/welcome.css">
+  <link rel="stylesheet" href="/interface.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/logocircle.png">
+  <meta name="theme-color" content="#100E0D">
+  <link rel="stylesheet" href="/model-settings.css">
+  <script src="/model-settings.js"></script>
+  <script src="/ask.js"></script>
+  <script src="/text-motion.js"></script>
+  <script src="/setup-personal-url.js"></script>
+</head>
+<body class="setup-page">
+<div class="wrap">
+
+  <header class="top">
+    <a class="ch-brand" href="/"><img src="/fist.png" alt=""><span>Closedhand</span></a>
+    <span class="watch-chip" id="watch-chip" role="status" aria-live="polite" hidden>
+      <span id="watch-text"></span>
+    </span>
+  </header>
+
+  <section class="hero">
+    <h1>Bring Closedhand <em>to life</em></h1>
+    <p data-railway="Welcome. Closedhand is an AI assistant that lives in your own Railway account and gives you total sovereignty over your own data.">Welcome. Closedhand is an AI assistant that lives on your own computer and gives you total sovereignty over your own data.</p>
+  </section>
+
+  <!-- Closedhand already runs on another computer: bring it here, all of it
+       and its personal URL, instead of starting anew (move.js). Only before a
+       password exists here. -->
+  <article class="card bring" id="bring" hidden>
+    <button class="card-head bring-head" type="button" aria-expanded="false">
+      <span>
+        <h2>Bring Closedhand from another computer</h2>
+        <p class="whisper">Already use Closedhand somewhere else? Move it here, personal URL and all.</p>
+      </span>
+    </button>
+    <div class="card-body">
+      <p class="note">Everything Closedhand has moves here, and the other computer stops running Closedhand. On it, open My Account, choose Get a move code under Always on, and type what it shows.</p>
+      <form id="bring-form">
+        <div class="field">
+          <label for="bring-url">Personal URL</label>
+          <input id="bring-url" placeholder="name.closedhand.ai" autocomplete="off" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="bring-code">Move code</label>
+          <input id="bring-code" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" required>
+        </div>
+        <button class="save-btn" id="bring-go" type="submit">Bring it here</button>
+        <p class="form-msg" id="bring-msg" role="status" aria-live="polite"></p>
+        <div class="bring-progress" id="bring-progress" hidden></div>
+        <button class="btn-quiet" id="bring-again" type="button" hidden>Try again</button>
+      </form>
+    </div>
+  </article>
+
+  <section class="ready" id="ready-banner">
+    <h2>Closedhand is <span>alive.</span></h2>
+    <p id="ready-line">The required pieces are running.</p>
+    <a class="go" id="ready-cta" href="/">Open Closedhand</a>
+    <p class="note" id="ready-cta-note" style="display:none;margin-top:0.625rem;"></p>
+  </section>
+
+  <!-- Everything done: this card takes the banner's place, the one way in. -->
+  <section class="finish" id="finish" hidden>
+    <h2>All set. <span>Closedhand is yours.</span></h2>
+    <p id="finish-line">Talk to it in the web chat or your chat apps.</p>
+    <p class="hint" id="finish-home" hidden></p>
+    <p class="hint">Closedhand's sandbox computer has its own browser. Sign in there to anything you want Closedhand to have persistent access to. <a class="done-signins-link" href="/#computers">Sign in on the sandbox computer</a></p>
+    <div class="finish-actions">
+      <a class="go" href="/">Open Closedhand</a>
+    </div>
+  </section>
+
+  <div class="summary">
+    <span class="count"><b id="done-count">0</b> of <span id="total-count">5</span> unlocked</span>
+    <span id="summary-note">Checking setup…</span>
+    <span class="next-chip" id="next-chip"></span>
+  </div>
+
+  <ol class="spine" id="spine">
+
+    <li class="step" data-step="database" id="step-database">
+      <div class="rail"><span class="node"></span><span class="num">01</span></div>
+      <article class="card">
+        <button class="card-head" aria-expanded="false">
+          <span>
+            <h2>Database</h2>
+            <p class="whisper" data-railway="Where Closedhand keeps what it learns, in your Railway account.">Where Closedhand keeps what it learns, on your computer.</p>
+          </span>
+          <span class="state-chip">Required</span>
+        </button>
+        <div class="card-body">
+          <p>It starts by itself with Closedhand.</p>
+          <p class="note">Still not lit after a minute? Run the installer again.</p>
+        </div>
+      </article>
+    </li>
+
+    <li class="step" data-step="model" id="step-model">
+      <div class="rail"><span class="node"></span><span class="num">02</span></div>
+      <article class="card">
+        <button class="card-head" aria-expanded="false">
+          <span>
+            <h2>Models</h2>
+            <p class="whisper">Choose the models Closedhand uses.</p>
+            <p class="done-note" id="model-done-note"></p>
+          </span>
+          <span class="state-chip">Required</span>
+        </button>
+        <div class="card-body">
+          <div id="model-included" hidden>
+            <p class="model-current"><strong>Closedhand Managed Models</strong><span id="model-included-line" class="status"></span></p>
+            <p class="note">Closedhand picks the best LLM for each job, from any provider, and switches when a better one is out.</p>
+            <p class="note">Managed Models only ever uses LLM providers that do not store or train on your data or conversations.</p>
+            <p class="quiet-links"><a href="#" id="model-own">Use your own LLM provider instead</a></p>
+          </div>
+          <div id="model-own-account">
+            <p data-railway="The provider you choose sees what you ask.">The provider you choose sees what you ask. With a model on your own computer, no company does.</p>
+            <div id="model-configuration"></div>
+          </div>
+            <div class="memory-note" id="memory-note">
+              <p><strong id="memory-note-title">About recall.</strong> <span id="memory-note-lead"></span></p>
+              <div class="dl-bar" id="dl-bar" hidden><div class="dl-fill" id="dl-fill"></div></div>
+              <form id="memory-form">
+                <div class="field">
+                  <label for="memory-key">DeepInfra API key</label><input type="password" id="memory-key" autocomplete="off" spellcheck="false" placeholder="DeepInfra API key for recall">
+                </div>
+                <button class="save-btn" type="submit" id="memory-btn">Enable recall</button>
+                <p class="form-msg" id="memory-msg"></p>
+              </form>
+            </div>
+
+        </div>
+      </article>
+    </li>
+
+    <li class="step" data-step="admin_password" id="step-admin_password">
+      <div class="rail"><span class="node"></span><span class="num">03</span></div>
+      <article class="card">
+        <button class="card-head" aria-expanded="false">
+          <span>
+            <h2>Password</h2>
+                      </span>
+          <span class="state-chip">Required</span>
+        </button>
+        <div class="card-body">
+          <p>Your password protects your dashboard wherever you open it.</p>
+          <p id="password-saved" hidden>Your dashboard password is set.</p>
+          <form id="password-form" method="post">
+            <div class="field">
+              <label for="pw-input">Choose a password</label>
+              <input type="password" id="pw-input" autocomplete="new-password" minlength="8" required>
+            </div>
+            <button class="save-btn" type="submit">Set password</button>
+            <p class="form-msg" id="pw-msg"></p>
+          </form>
+        </div>
+      </article>
+    </li>
+    <li class="step" data-step="accounts" id="step-accounts">
+      <div class="rail"><span class="node"></span><span class="num">04</span></div>
+      <article class="card">
+        <button class="card-head" aria-expanded="false">
+          <span>
+            <h2>Email and calendar</h2>
+            <p class="whisper">Google, Microsoft or both.</p>
+          </span>
+          <span class="state-chip">Recommended</span>
+        </button>
+        <div class="card-body">
+          <p>Connect the account with your mail and calendar. You can add more later.</p>
+          <p class="note hint" data-railway="This access goes to Closedhand in your Railway account, not to closedhand.com.">This access goes to Closedhand on your computer, not to closedhand.com.</p>
+          <p class="note hint" id="mac-calendar-note" hidden>Click Allow when your Mac asks to give Closedhand permission to use your calendar. Nothing goes to closedhand.com.</p>
+          <div class="fb-block chooser" id="g-block">
+          <h3 class="choose" data-choose="google"><span>Google <span class="fb-done" id="g-done" style="display:none;">Connected</span><span class="fb-again" id="g-again-badge" style="display:none;">Sign in again</span></span></h3>
+          <div class="choice-body">
+          <p class="note warn" id="g-again" hidden>Google stopped accepting Closedhand's sign-in for <span id="g-again-who">this account</span>. Sign in again to carry on.</p>
+          <div id="g-quick" hidden>
+            <p class="note" data-railway="Google's sign-in shows Closedhand's name, but your mail comes straight to Closedhand in your Railway account.">Google's sign-in shows Closedhand's name, but your mail goes straight between Google and your computer, with no company in between.</p>
+            <a class="cta" id="g-quick-start" href="/auth/google?return=setup&amp;quick=1" target="_blank" rel="noopener">Sign in with Google</a>
+            <p class="note hint">On Google's last screen, tick Select all.</p>
+            <p class="note">Rather own the connection yourself? <a href="#g-intro" id="g-own-open">Use a Google Cloud project of your own</a>.</p>
+          </div>
+          <p class="note" id="g-intro">Google’s usual sign-in, through a free Google Cloud project you own, so no company sits between you and your mail.</p>
+          <p class="note hint" id="g-ownership">About 5 minutes.</p>
+          <button class="cta" type="button" id="g-start">Connect to Google</button>
+
+          <div id="g-connected" style="display:none;">
+            <p><span id="g-account">Connected.</span> Closedhand reads this account's mail, calendar and Drive, and changes nothing unless you ask.</p>
+            <p class="quiet-links"><a href="/auth/google?return=setup" target="_blank" rel="noopener">Connect another Google account</a></p>
+          </div>
+
+          <div id="g-flow" style="display:none;">
+            <div class="g-head"><span id="g-count">Step 1 of 5</span><span class="g-dots" id="g-dots"></span></div>
+            <p class="note g-tabs" id="g-tabs">Each step's link opens Google in a new tab. Do the step there, then close that tab and carry on here.</p>
+
+            <div class="g-step" data-g="1">
+              <h3>Create your project</h3>
+              <p class="g-do">Open the New Project screen below and fill it in like this:</p>
+              <div class="gform">
+                <div><span class="gf-label">Project name</span><p class="gf-how">Anything you like.</p></div>
+                <div><span class="gf-label">Project ID</span><p class="gf-how">Shown under the name. Copy it into the box below.</p>
+                  <a class="peek" href="/setup-google-project-id.png" id="g-peek"><img src="/setup-google-project-id.png" alt="The New Project screen, with the Project ID line marked"><span>Where the ID is</span></a></div>
+                <div><span class="gf-label">Location</span><p class="gf-how">Leave it as <strong>No organization</strong>.</p></div>
+                <div><span class="gf-label">Finish</span><p class="gf-how">Click <strong>Create</strong>.</p></div>
+              </div>
+              <a class="deep" href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Open the New Project screen</a>
+              <div class="field"><input type="text" id="g-project" placeholder="project id, e.g. closedhand-4a7f" autocomplete="off" spellcheck="false"></div>
+              <p class="note hint">Missed the Project ID? Google Cloud's project menu lists it.</p>
+            </div>
+
+            <div class="g-step" data-g="2">
+              <h3>Enable the services</h3>
+              <p class="g-do">Click the button below, then on the screen that appears click
+                 <strong>Next</strong>, then <strong>Enable</strong>. This switches on Gmail, Calendar
+                 and Drive together.</p>
+              <a class="deep" data-deep href="https://console.cloud.google.com/flows/enableapi?apiid=gmail.googleapis.com,calendar-json.googleapis.com,drive.googleapis.com" target="_blank" rel="noopener">Enable the three services</a>
+            </div>
+
+            <div class="g-step" data-g="3">
+              <h3>Introduce the app</h3>
+              <p class="g-do">Open the form below and fill it in like this:</p>
+              <div class="gform">
+                <div><span class="gf-label">App name</span><div class="gf-box"><span class="gf-val">Closedhand</span><button class="copy" type="button">Copy</button></div></div>
+                <div><span class="gf-label">User support email</span><p class="gf-how">Choose your email address from the list.</p></div>
+                <div><span class="gf-label">Audience</span><p class="gf-how">Choose <strong>External</strong>.</p>
+                  <p class="gf-aside">Google's word for an app ordinary accounts can sign in to. It shares nothing.</p></div>
+                <div><span class="gf-label">Contact information</span><p class="gf-how">Type your email address.</p></div>
+                <div><span class="gf-label">Finish</span><p class="gf-how">Tick to agree, then click <strong>Create</strong>.</p></div>
+              </div>
+              <a class="deep" data-deep href="https://console.cloud.google.com/auth/overview/create" target="_blank" rel="noopener">Open the form</a>
+            </div>
+
+            <div class="g-step" data-g="4">
+              <h3>Make the sign-in key</h3>
+              <p class="g-do">Open the Clients page below, click <strong>+ Create client</strong> and fill it in like this:</p>
+              <div class="gform">
+                <div><span class="gf-label">Application type</span><p class="gf-how">Choose <strong>Web application</strong>.</p></div>
+                <div><span class="gf-label">Name</span><p class="gf-how">Leave it as it is.</p></div>
+                <div><span class="gf-label">Authorized redirect URIs</span><p class="gf-how">Click <strong>+ Add URI</strong>, then paste:</p>
+                  <div class="gf-box"><span class="gf-val" id="g-redirect">http://localhost:3000/auth/google/callback</span><button class="copy" type="button">Copy</button></div></div>
+                <div><span class="gf-label">This client will be used by an AI-powered agent</span><p class="gf-how">Leave it unticked.</p></div>
+                <div><span class="gf-label">Finish</span><p class="gf-how">Click <strong>Create</strong>.</p></div>
+                <div><span class="gf-label">OAuth client created</span><p class="gf-how">Click <strong>Download JSON</strong> before closing it.</p>
+                  <a class="peek" href="/setup-google-download-json.png"><img src="/setup-google-download-json.png" alt="The OAuth client created dialog, with Download JSON marked"><span>Where Download JSON is</span></a></div>
+              </div>
+              <p class="note hint"><strong>Important:</strong> Google shows that file only once. If you
+                 miss it, create another client.</p>
+              <a class="deep" data-deep href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">Open the Clients page</a>
+              <p class="g-do">Then give Closedhand the file you downloaded: pick it, drop it on the box or paste its contents.</p>
+              <div class="g-file">
+                <label class="deep" for="g-file">Choose the downloaded file</label>
+                <input type="file" id="g-file" accept=".json,application/json" style="display:none;">
+              </div>
+              <textarea id="g-creds" rows="3" spellcheck="false" placeholder='or paste the whole file here, it starts {"web":{"client_id": ...'></textarea>
+              <button class="save-btn" type="button" id="g-save">Save</button>
+              <p class="form-msg" id="g-msg"></p>
+            </div>
+
+            <div class="g-step" data-g="5">
+              <h3>Publish the app</h3>
+              <p class="note">While the app stays in "Testing", Google makes you sign in again every
+                 seven days, so it needs publishing.</p>
+              <p class="g-do">Open the Branding page below, scroll down to <strong>App domain</strong> and fill it in like this:</p>
+              <div class="gform">
+                <div><span class="gf-label">Application home page</span><div class="gf-box"><span class="gf-val">https://closedhand.com</span><button class="copy" type="button">Copy</button></div></div>
+                <div><span class="gf-label">Application privacy policy link</span><div class="gf-box"><span class="gf-val">https://closedhand.com/privacy</span><button class="copy" type="button">Copy</button></div></div>
+                <div><span class="gf-label">Authorized domains</span><p class="gf-how">Click <strong>+ Add domain</strong>, then paste:</p>
+                  <div class="gf-box"><span class="gf-val">closedhand.com</span><button class="copy" type="button">Copy</button></div></div>
+                <div><span class="gf-label">Finish</span><p class="gf-how">Click <strong>Save</strong> at the bottom.</p></div>
+              </div>
+              <a class="deep" data-deep href="https://console.cloud.google.com/auth/branding" target="_blank" rel="noopener">Open the Branding page</a>
+              <p class="g-do">Then open the Audience page below, click <strong>Publish app</strong> and
+                 <strong>Confirm</strong>.</p>
+              <p class="note">The “Push to production?” box is Google’s standard wording. Nobody else can reach your data through this app.</p>
+              <a class="deep" data-deep href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">Open the Audience page</a>
+            </div>
+
+            <div class="g-step g-final" data-g="6">
+              <h3>Sign in with Google</h3>
+              <p class="g-do">Sign in with the Google account you want Closedhand to use for mail, calendar and Drive. It can differ from the one that owns your Google Cloud project.</p>
+              <p class="note hint">Google will warn that the app isn’t verified, as it does for any private app of your own. Click <strong>Advanced</strong>, then <strong>Go to Closedhand</strong>, and on the next screen tick <strong>Select all</strong>.</p>
+              <a class="g-signin" id="g-connect" href="/auth/google?return=setup" target="_blank" rel="noopener" style="display:none;">Sign in with Google</a>
+              <p class="note" id="g-nocreds">The sign-in button appears once the file from step four is saved.</p>
+            </div>
+
+            <div class="g-nav">
+              <button class="skip" type="button" id="g-back">Back</button>
+              <button class="cta" type="button" id="g-next">Next</button>
+            </div>
+          </div>
+          </div>
+          </div>
+
+          <div class="fb-block chooser" id="m-block">
+          <h3 class="choose" data-choose="microsoft"><span>Microsoft <span class="fb-done" id="m-done" style="display:none;">Connected</span><span class="fb-again" id="m-again-badge" style="display:none;">Sign in again</span></span></h3>
+          <div class="choice-body">
+            <p class="note warn" id="m-again" hidden>Microsoft stopped accepting Closedhand's sign-in for <span id="m-again-who">this account</span>. Sign in again to carry on.</p>
+            <div id="m-connected" style="display:none;">
+              <p><span id="m-account">Connected.</span> Closedhand reads this account's mail, calendar and OneDrive, and changes nothing unless you ask.</p>
+            </div>
+            <div id="m-intro">
+              <p class="note" data-railway="Microsoft's sign-in shows Closedhand's name, but your mail comes straight to Closedhand in your Railway account.">Microsoft's sign-in shows Closedhand's name, but your mail goes straight between Microsoft and your computer, with no company in between.</p>
+              <button class="cta" type="button" id="m-start">Sign in with Microsoft</button>
+            </div>
+            <div id="m-code-wrap" style="display:none;">
+              <p>Enter this code on Microsoft's page, then choose the account you want Closedhand to use for mail, calendar and OneDrive.</p>
+              <div class="code"><button class="copy" type="button">Copy</button><pre id="m-code"></pre></div>
+              <a class="cta" id="m-open" href="https://microsoft.com/devicelogin" target="_blank" rel="noopener">Copy the code and open Microsoft</a>
+              <p class="note is-busy" id="m-status" role="status">Waiting for you to finish on Microsoft's page.</p>
+            </div>
+            <p class="form-msg err" id="m-msg" role="alert"></p>
+            <p class="note" id="m-own-intro">Rather own the connection yourself? <a href="#m-own" id="m-own-open">Register it with Microsoft</a>.</p>
+            <div id="m-own" style="display:none;">
+              <p class="note">In Microsoft Entra, open <strong>App registrations</strong> and click <strong>New registration</strong>.
+                 Choose accounts in any organisation and personal Microsoft accounts, pick <strong>Web</strong>
+                 for the redirect, and paste this line exactly:</p>
+              <div class="gform"><div><span class="gf-label">Redirect URI</span><div class="gf-box"><span class="gf-val" id="m-redirect">http://localhost:3000/auth/microsoft/callback</span><button class="copy" type="button" id="m-own-copy">Copy</button></div></div></div>
+              <a class="deep" href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Open App registrations</a>
+              <p class="note">Under <strong>API permissions</strong>, add these Microsoft Graph permissions:
+                 <span id="m-scopes">offline_access, User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.Read.All</span>.
+                 Under <strong>Certificates &amp; secrets</strong>, make a new client secret. Paste its value and the
+                 Application (client) ID here.</p>
+              <div class="field"><input type="text" id="m-client-id" placeholder="Application (client) ID" autocomplete="off" spellcheck="false"></div>
+              <div class="field"><input type="password" id="m-client-secret" placeholder="Client secret value" autocomplete="new-password" spellcheck="false"></div>
+              <button class="save-btn" type="button" id="m-own-save">Save and sign in with Microsoft</button>
+              <p class="form-msg err" id="m-own-msg" role="alert"></p>
+            </div>
+          </div>
+          </div>
+        </div>
+      </article>
+    </li>
+
+    <li class="step" data-step="personal_url" id="step-personal_url">
+      <div class="rail"><span class="node"></span><span class="num">05</span></div>
+      <article class="card">
+        <button class="card-head" aria-expanded="false">
+          <span>
+            <h2 id="personal-url-heading">Personal URL</h2>
+          </span>
+          <span class="state-chip">Required</span>
+        </button>
+        <div id="url-saved" hidden>
+          <div class="personal-url-row">
+            <input id="url-value" aria-label="Your personal URL" readonly>
+            <button id="url-copy" type="button" aria-label="Copy personal URL" title="Copy personal URL">
+              <svg width="1.25rem" height="1.25rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>
+            </button>
+          </div>
+          <p id="url-copy-status" role="status" aria-live="polite" hidden></p>
+        </div>
+        <div class="card-body">
+            <section id="setup-personal-url" aria-labelledby="personal-url-heading">
+              <p id="url-password-note">Connect Google or Microsoft above first.</p>
+              <p>Open Closedhand from your phone or any device at an address like amber-fox-42.closedhand.ai. Claiming one creates your Closedhand account, which stores your email and nothing else.</p>
+              <div id="url-controls" hidden>
+                <form id="url-form">
+                  <p class="url-why" id="url-why" hidden>Claim your personal URL to finish setup.</p>
+                  <p>You claim it by signing in on closedhand.com below.</p>
+                  <button class="save-btn" id="url-start" type="submit">Claim your personal URL</button>
+                </form>
+                <div id="url-ready" hidden>
+                  <p class="url-where-line">Your Closedhand is at <strong id="url-where"></strong> <a href="#" id="url-change">Change</a></p>
+                  <form id="url-rename-form" hidden>
+                    <div class="field">
+                      <label for="url-new-name">New name</label>
+                      <input id="url-new-name" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="40" aria-describedby="url-new-preview url-new-help">
+                      <p id="url-new-preview" aria-live="polite" style="overflow-wrap:anywhere"></p>
+                      <p id="url-new-help">The old address sends people to the new one for 30 days.</p>
+                    </div>
+                    <button class="save-btn" id="url-rename-submit" type="submit">Save</button>
+                    <button class="btn-quiet" id="url-rename-cancel" type="button">Cancel</button>
+                  </form>
+                </div>
+                <form id="url-code-form" hidden>
+                  <div class="field">
+                    <label for="url-code">Paste the code from closedhand.com</label>
+                    <input id="url-code" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="ABC 234" aria-describedby="url-code-help">
+                    <p id="url-code-help">closedhand.com shows you a code once you've claimed it.</p>
+                  </div>
+                  <button class="save-btn" id="url-code-submit" type="submit">Finish</button>
+                </form>
+                <p id="url-status" role="status" aria-live="polite"></p>
+                <p><button class="save-btn" id="url-continue" type="button">Continue without a personal URL</button></p>
+              </div>
+            </section>
+        </div>
+      </article>
+    </li>
+
+    <li class="step" data-step="chat" id="step-chat">
+      <div class="rail"><span class="node"></span><span class="num">06</span></div>
+      <article class="card">
+        <button class="card-head" aria-expanded="false">
+          <span>
+            <h2>Chat apps</h2>
+            <p class="whisper">Talk to Closedhand from WhatsApp or Telegram.</p>
+            <p class="done-note" id="chat-done-note"></p>
+          </span>
+          <span class="state-chip">Recommended</span>
+        </button>
+        <div class="card-body">
+          <div class="fb-block chooser" id="wa-linked-block">
+            <h3 class="choose" data-choose="wa"><span>WhatsApp on your own number <span class="fb-done" id="wa-done" style="display:none;">Connected</span></span></h3>
+            <div class="choice-body">
+            <p class="note">Closedhand lives in your “Message Yourself” chat and doesn’t message anyone else unless you ask it to.</p>
+            <button class="cta" type="button" id="wa-enable">Connect WhatsApp</button>
+            <div id="wa-qr-wrap" style="display:none;margin-top:0.625rem;">
+              <p class="note">Scan this with the WhatsApp camera to link the device.</p>
+              <img id="wa-qr" alt="WhatsApp pairing QR" style="width:15rem;height:15rem;border-radius:0.625rem;background:var(--fg);padding:0.5rem;">
+            </div>
+            <p class="note" id="wa-status"></p>
+            <button class="skip" type="button" id="wa-disable" style="display:none;">Disconnect</button>
+            </div>
+          </div>
+        
+          <div class="fb-block chooser" id="tg-block">
+            <h3 class="choose" data-choose="tg"><span>Telegram <span class="fb-done" id="tg-done" style="display:none;">Connected</span></span></h3>
+            <div class="choice-body">
+            <p class="note">Closedhand gets a bot of its own instead of your number. About a minute.</p>
+
+          <div id="tg-setup">
+            <div class="qr-row">
+              <img class="qr" src="/api/setup/qr?target=botfather" alt="QR code opening BotFather in Telegram" width="120" height="120">
+              <div>
+                <ol class="mini" style="margin-bottom:0.5rem;">
+                  <li>Scan to open <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>, or tap it if you're on this device.</li>
+
+                  <li>Send <strong>/newbot</strong> with any name: the bot takes whatever you call Closedhand. The username must end in &ldquo;bot&rdquo;.</li>
+                  <li>Paste the token it gives you below.</li>
+                </ol>
+              </div>
+            </div>
+            <form id="tg-form">
+              <div class="field">
+                <label for="tg-token">Bot token</label>
+                <input type="password" id="tg-token" autocomplete="off" spellcheck="false" placeholder="123456:paste the whole line">
+              </div>
+              <button class="save-btn" type="submit">Connect Telegram</button>
+              <p class="form-msg" id="tg-msg"></p>
+            </form>
+          </div>
+          <div id="tg-claim" style="display:none;">
+            <div class="qr-row">
+              <img class="qr" id="tg-qr" src="" alt="QR code opening your Closedhand bot in Telegram" width="140" height="140">
+              <div>
+                <p style="margin-bottom:0.375rem;">Scan this and send your bot any message. From then on it answers only you.</p>
+                <p class="note" style="margin:0;">On this device instead? <a id="tg-link" href="#" target="_blank" rel="noopener">Open your bot</a>.</p>
+              </div>
+            </div>
+          </div>
+          </div>
+          </div>
+          <button class="skip" type="button">Skip for now</button>
+        </div>
+      </article>
+    </li>
+
+
+  </ol>
+
+
+  <!-- The hello: once every step is done or skipped, setup gives way to a
+       blank screen and Closedhand says hello, shows what it has read so far,
+       where to reach it, and where to carry on talking. -->
+  <dialog class="hello-screen" id="hello-screen" aria-labelledby="hello-words">
+    <div class="hello">
+      <img class="hello-fist" src="/fist.png" alt="">
+      <h2 class="hello-words" id="hello-words" tabindex="-1"><span id="hello-said" class="hello-sr"></span><span aria-hidden="true"><span id="hello-typed"></span><span id="hello-name"></span><span class="hello-caret"></span></span></h2>
+      <p class="hello-part hello-line" id="hello-read" hidden></p>
+      <p class="hello-part hello-line" id="hello-where" hidden>Reach your dashboard from any device at <a class="hello-url" id="hello-url-link" href="#" target="_blank" rel="noopener"><span class="hello-sr" id="hello-url-said"></span><span id="hello-url" aria-hidden="true"></span></a></p>
+      <!-- The phone is one scan away: a code of the dashboard at the
+           personal URL, on a computer only (welcome.css). Its first open
+           there runs the dashboard's tour. -->
+      <div class="hello-part hello-phone" id="hello-phone" hidden><img class="qr" id="hello-qr" alt="QR code that opens your dashboard" width="132" height="132"><p>Scan the QR code with your phone's camera to open it there.</p></div>
+      <div class="hello-part hello-next" id="hello-next" hidden>
+        <p class="hello-line" id="hello-next-line" role="status"></p>
+        <a class="deep hello-go" id="hello-go" href="#" target="_blank" rel="noopener" hidden></a>
+        <form class="hello-say" id="hello-say" hidden>
+          <input id="hello-say-input" type="text" placeholder="Say hello back…" aria-label="Say hello back" autocomplete="off" maxlength="2000">
+          <button type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>Send</button>
+        </form>
+        <a class="hello-web" id="hello-web" href="/" hidden>Or open the web chat</a>
+      </div>
+    </div>
+  </dialog>
+
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  function setupDestination() {
+    var next = new URLSearchParams(location.search).get('next');
+    if (!next || !next.startsWith('/') || /[\\\x00-\x20]/.test(next)) return '/';
+    try {
+      var url = new URL(next, location.origin);
+      return url.origin === location.origin && ['/', '/dashboard', '/keep'].includes(url.pathname)
+        ? url.pathname + url.search + url.hash : '/';
+    } catch (_) { return '/'; }
+  }
+  document.querySelectorAll('.finish .go').forEach(function(link) { link.href = setupDestination(); });
+
+  var POLL_MS = 2500;
+  var lastDone = {};
+  var firstLoad = true;
+  var lastComplete = null; // null until the first render, then a boolean
+  var finishedBefore = false; // setup was finished before this page opened
+  var lastState = null;
+
+  // Only optional steps can hold a skip. The filter also heals stale
+  // localStorage from a build where a styling-class collision let the manual
+  // toggle write a bogus skip for the (required) model step.
+  var SKIPPABLE = { chat: 1 };
+  var skips = {};
+  // Skips are per install, not per browser: the same localhost answered for
+  // every install this machine has ever run, so a skip clicked in a previous
+  // one silently marked the step Skipped in the next. The key is filled in
+  // from the status payload, and until then nothing is treated as skipped.
+  var _skipKey = null;
+  skips = {};
+  Object.keys(skips).forEach(function (k) { if (!SKIPPABLE[k]) delete skips[k]; });
+  function saveSkips() { try { if (_skipKey) localStorage.setItem(_skipKey, JSON.stringify(skips)); } catch (e) {} }
+  function loadSkipsFor(installId) {
+    if (!installId) return false;
+    var key = "ch-setup-skips:" + installId;
+    if (_skipKey === key) return false;
+    _skipKey = key;
+    try { skips = JSON.parse(localStorage.getItem(key) || "{}"); } catch (e) { skips = {}; }
+    Object.keys(skips).forEach(function (k) { if (!SKIPPABLE[k]) delete skips[k]; });
+    return true;
+  }
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  // Says something only when this page loses touch with Closedhand.
+  function setChip(text, offline) {
+    $("#watch-chip").hidden = !text;
+    $("#watch-text").textContent = text;
+    $("#watch-chip").classList.toggle("is-offline", !!offline);
+  }
+
+  // --- Shared form helper: post JSON, show the result inline ---------------
+  function postJSON(url, method, body, msgEl, btn, onOk) {
+    msgEl.className = "form-msg"; msgEl.style.display = "none";
+    if (btn) btn.disabled = true;
+    fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, j: j }; }); })
+      .then(function (r) {
+        if (btn) btn.disabled = false;
+        if (r.ok) {
+          msgEl.className = "form-msg ok"; msgEl.style.display = "block";
+          msgEl.textContent = (onOk && onOk(r.j)) || "Saved.";
+          poll();
+        } else {
+          msgEl.className = "form-msg err"; msgEl.style.display = "block";
+          msgEl.textContent = (r.j && r.j.error) || "That didn't save. Try again.";
+        }
+      })
+      .catch(function () {
+        if (btn) btn.disabled = false;
+        msgEl.className = "form-msg err"; msgEl.style.display = "block";
+        msgEl.textContent = "Could not reach the server.";
+      });
+  }
+
+  // --- Model provider form -------------------------------------------------
+  window.ClosedHandModels.mount(document.getElementById("model-configuration"));
+
+  var personalUrl = window.ClosedHandSetupUrl.mount(document.getElementById("step-personal_url"), function () {
+    document.getElementById("step-personal_url").classList.remove("is-open");
+    if (lastState) render(lastState);
+  });
+
+  // --- Password form -------------------------------------------------------
+  $("#password-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    postJSON("/api/setup/password", "POST", { password: $("#pw-input").value }, $("#pw-msg"), null,
+      function () { $("#pw-input").value = ""; return "Password set. You're logged in on this browser."; });
+  });
+
+  // --- Telegram form -------------------------------------------------------
+  $("#tg-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    postJSON("/api/setup/telegram", "POST", { token: $("#tg-token").value.trim() }, $("#tg-msg"), null,
+      function (j) {
+        return j.username
+          ? "Connected. Open t.me/" + j.username + " and say hello; the first sender becomes the owner."
+          : "Connected. Message your bot to claim it.";
+      });
+  });
+
+  // --- Memory (embeddings) form -------------------------------------------
+  $("#memory-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    postJSON("/api/setup/memory-key", "POST", { apiKey: $("#memory-key").value.trim() }, $("#memory-msg"), null,
+      function () { return "Recall is on. It starts reading with your first connected service."; });
+  });
+
+  // --- Closedhand Managed Models ------------------------------------------------
+  // Shown while it is in use or on its way with the personal URL, with the
+  // person's own LLM provider one click away.
+  var ownAccount = false;
+  function included() { return !!(lastState && lastState.modelIncluded) && !ownAccount; }
+  function renderIncluded(state) {
+    $("#model-included").hidden = !included();
+    $("#model-own-account").hidden = included();
+    $("#model-included-line").textContent = state.modelIncluded === "ready" ? "Ready."
+      : personalUrl.settled() ? "Getting it ready." : "Ready once your personal URL is claimed.";
+  }
+  $("#model-own").addEventListener("click", function (ev) {
+    ev.preventDefault();
+    ownAccount = true;
+    renderIncluded(lastState);
+  });
+
+  // --- Bringing Closedhand from another computer (move.js) -----------------
+  // The personal URL and the move code the other computer's My Account
+  // shows; this computer fetches everything through that URL, then starts
+  // with it. The steps say where it has got to.
+  var bringing = false;
+  $(".bring-head").addEventListener("click", function () {
+    var card = $("#bring");
+    card.classList.toggle("is-open");
+    this.setAttribute("aria-expanded", String(card.classList.contains("is-open")));
+  });
+  // The move drawn as it goes (move-progress.js): from the other computer,
+  // or Railway, to this one.
+  var BRING_STEPS = ["Checking with the other computer", "Moving everything", "Taking it all in", "Starting here"];
+  var BRING_AT = { checking: 0, pausing: 0, receiving: 1, importing: 2, "handing-over": 3, done: 4 };
+  function bringShow(st) {
+    var box = $("#bring-progress");
+    var shown = st.step !== "idle" && (st.step in BRING_AT || st.step === "failed" || st.step === "unconfirmed");
+    box.hidden = !shown;
+    if (!shown || !window.MoveProgress) return;
+    var fromRailway = st.from === "railway";
+    var failed = st.step === "failed" || st.step === "unconfirmed";
+    MoveProgress.show(box, {
+      from: fromRailway ? "Railway" : "Your other computer", fromKind: fromRailway ? "server" : "computer",
+      to: "This computer", toKind: "desktop",
+      steps: BRING_STEPS, at: st.step in BRING_AT ? BRING_AT[st.step] : 1,
+      percent: typeof st.percent === "number" ? st.percent : null, moved: st.receivedMb ? st.receivedMb + " MB moved" : "",
+      said: st.step === "done" ? "Done. Closedhand is starting here with everything it had. Sign in with your dashboard password in a moment."
+        : failed ? st.error || "The move stopped. Closedhand carries on where it was."
+        : "Closedhand pauses " + (fromRailway ? "on Railway" : "on the other computer") + " while it moves, then carries on here. Keep both on and online until it is done.",
+      done: st.step === "done", failed: failed,
+    });
+  }
+  function bringSay(text) { $("#bring-msg").textContent = text; }
+  async function followBring() {
+    var st;
+    try {
+      var r = await fetch("/api/move/in/status", { cache: "no-store" });
+      st = await r.json();
+    } catch (e) {
+      // Closedhand here restarts with everything once it is done: sign in
+      // as soon as it answers again.
+      if (bringing === "done") {
+        var back = async function () {
+          try { var h = await fetch("/health", { cache: "no-store" }); if (h.ok) { location.href = "/"; return; } } catch (_) {}
+          setTimeout(back, 2000);
+        };
+        setTimeout(back, 3000);
+        return;
+      }
+      setTimeout(followBring, 3000);
+      return;
+    }
+    $("#bring-again").hidden = st.step !== "unconfirmed";
+    var going = ["checking", "pausing", "receiving", "importing", "handing-over", "done"].indexOf(st.step) >= 0;
+    $("#bring-go").hidden = going;
+    bringSay("");
+    bringShow(st);
+    if (st.step === "done") bringing = "done";
+    if (["failed", "unconfirmed", "idle"].indexOf(st.step) < 0) setTimeout(followBring, st.step === "done" ? 2000 : 1500);
+    else bringing = false;
+  }
+  $("#bring-form").addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    $("#bring-go").disabled = true;
+    bringSay("Starting the move.");
+    try {
+      var r = await fetch("/api/move/in/start", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: $("#bring-url").value, code: $("#bring-code").value }) });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok) throw new Error(j.error || "The move couldn't start.");
+      bringing = true;
+      followBring();
+    } catch (e) { bringSay(e.message); $("#bring-go").disabled = false; }
+  });
+  $("#bring-again").addEventListener("click", async function () {
+    this.hidden = true;
+    var r = await fetch("/api/move/in/retry", { method: "POST" }).catch(function () { return null; });
+    if (r && r.ok) { bringing = true; followBring(); } else bringSay("Couldn't try again just now.");
+  });
+
+  // --- Render --------------------------------------------------------------
+  function render(state) {
+    lastState = state;
+    var passwordDone = state.steps.some(function (s) { return s.key === "admin_password" && s.done; });
+    // Bringing Closedhand here is only for a computer where it is new.
+    $("#bring").hidden = passwordDone && !bringing;
+    var accountDone = state.steps.some(function (s) { return s.key === "accounts" && s.done; });
+    // The personal URL is claimed once mail is connected: through Closedhand's
+    // own Google or Microsoft app, by that same sign-in; otherwise by one
+    // button, signing in on closedhand.com with the account just connected.
+    var connected = state.googleConnected && state.googleAccount && state.googleAccount.email ? { via: "google", hint: state.googleAccount.email }
+      : state.microsoftConnected && state.microsoftAccount && state.microsoftAccount.email ? { via: "microsoft", hint: state.microsoftAccount.email } : null;
+    personalUrl.update(state.installId, passwordDone && accountDone, connected);
+    $("#password-form").hidden = passwordDone;
+    $("#password-saved").hidden = !passwordDone;
+    var doneCount = 0, requiredDone = true;
+    var next = null;
+
+    // The personal URL is a step of its own, right after mail: every
+    // Closedhand gets one, claimed with the account just connected.
+    var steps = [];
+    state.steps.forEach(function (s) {
+      steps.push(s);
+      if (s.key === "accounts") steps.push({ key: "personal_url", label: "Personal URL", required: true, done: !!(s.done && personalUrl.settled()) });
+    });
+    steps.forEach(function (serverStep) {
+      var s = Object.assign({}, serverStep);
+      if (s.key === "admin_password") s.label = "Password";
+      var li = $("#step-" + s.key);
+      if (!li) return;
+      var chip = $(".state-chip", li);
+      var head = $(".card-head", li);
+
+      if (s.done) doneCount++;
+      if (s.required && !s.done) requiredDone = false;
+      var freshlyDone = s.done && lastDone[s.key] === false;
+      lastDone[s.key] = s.done;
+
+      li.classList.toggle("is-done", s.done);
+      li.classList.toggle("is-skipped", !s.done && !!skips[s.key]);
+      if (freshlyDone && !firstLoad) {
+        li.classList.remove("is-open");
+        li.classList.add("just-done");
+        setTimeout(function () { li.classList.remove("just-done"); }, 1200);
+      }
+
+      // Chat apps come after the personal URL, so the first welcome and the
+      // pinned dashboard link have the address to give. Claimed is enough
+      // (it may still be connecting), and so is carrying on without one
+      // while closedhand.com can't give it out.
+      var locked = s.key === "chat" && !s.done && !personalUrl.settled();
+      li.classList.toggle("is-locked", locked);
+
+      if (s.done) {
+        chip.textContent = s.key === "accounts" ? "Connected" : s.key === "personal_url" ? "Claimed" : s.key === "model" && included() ? "Managed" : "Done";
+      } else if (locked) {
+        chip.style.cursor = "";
+        chip.title = "";
+        chip.onclick = null;
+        chip.textContent = "Claim personal URL first";
+      } else if (skips[s.key]) {
+        chip.textContent = "Skipped, show it";
+        chip.style.cursor = "pointer";
+        chip.title = "Bring this step back";
+        chip.onclick = function (ev) {
+          ev.stopPropagation();
+          skips[s.key] = false;
+          saveSkips();
+          li.classList.add("is-open");
+          poll();
+        };
+      } else {
+        chip.style.cursor = "";
+        chip.title = "";
+        chip.onclick = null;
+        chip.textContent = s.required ? "Required" : "Recommended";
+      }
+
+      if (!next && !s.done && !skips[s.key]) next = s;
+      li.classList.toggle("is-next", !!next && next.key === s.key);
+      head.setAttribute("aria-expanded", String(!locked && (li.classList.contains("is-next") || li.classList.contains("is-open"))));
+    });
+
+    // On the Mac app, macOS asks about the calendar while the mail and
+    // calendar sync for the first time.
+    $("#mac-calendar-note").hidden = !state.desktop;
+    // Done-notes: name what's connected without exposing anything secret.
+    var provLabel = state.chatProviderLabel || (state.chatProvider === "deepinfra" ? "DeepInfra" : state.chatProvider);
+    renderIncluded(state);
+    $("#model-done-note").textContent = included() ? "Closedhand Managed Models"
+      : provLabel ? "Models connected through " + provLabel
+      : "";
+    chatDoneNote(state);
+    // Connected: swap the BotFather instructions for a scan-and-say-hello QR.
+    var tgConnected = !!state.botUsername;
+    $("#tg-setup").style.display = tgConnected ? "none" : "";
+    $("#tg-claim").style.display = tgConnected ? "" : "none";
+    $("#tg-done").style.display = tgConnected ? "inline-block" : "none";
+    if (tgConnected) autoOpenChooser("tg");
+    if (tgConnected && !$("#tg-qr").getAttribute("src")) {
+      $("#tg-qr").setAttribute("src", "/api/setup/qr?target=bot&v=" + encodeURIComponent(state.botUsername));
+      $("#tg-link").setAttribute("href", "https://t.me/" + state.botUsername + "?start=hello");
+    }
+
+    // Setup only shows recall when something is happening or needs attention.
+    var modelDone = state.steps.some(function (s) { return s.key === "model" && s.done; });
+    var emb = (state.localModels || {}).embedder;
+    var downloading = modelDone && state.memoryMode === "local" && emb && emb.state === "downloading";
+    var failed = modelDone && state.memoryMode === "local" && emb && emb.state === "error";
+    var missing = modelDone && state.memoryMode !== "local" && !state.memory;
+    $("#memory-note-title").textContent = "Recall";
+    $("#memory-note-lead").textContent = downloading ? "Downloading the embedding model: " + (emb.pct || 0) + "%. You can continue setup."
+      : failed ? "The embedding model could not finish downloading. Closedhand will retry when syncing."
+      : missing ? "Recall needs a model to find things by meaning across your files, past chats and everything you connect. Add a DeepInfra key to enable it; chat works without it." : "";
+    $("#dl-bar").hidden = !downloading;
+    if (downloading) $("#dl-fill").style.width = Math.max(2, Math.min(100, emb.pct || 0)) + "%";
+    $("#memory-form").hidden = !missing;
+    $("#memory-note").classList.toggle("is-on", !!(downloading || failed || missing));
+
+    $("#done-count").textContent = String(doneCount);
+    $("#total-count").textContent = String(steps.length);
+    $("#next-chip").textContent = next ? (next.key === "personal_url" ? "next: claim your personal URL" : "next: " + next.label.toLowerCase()) : "";
+    var stopped = state.addedSignInAgain || [];
+    $("#summary-note").textContent = requiredDone
+      ? (stopped.length ? stopped.join(", ") + " needs signing in again on the dashboard"
+        : doneCount === steps.length ? "everything is connected" : "ready, with more to unlock")
+      : "";
+
+    var chatStep = (state.steps || []).find(function (s) { return s.key === "chat"; });
+    $("#ready-line").textContent = chatStep && chatStep.done
+      ? "Mail and calendar are connected. Say hello in your chat app, or open the web chat and ask your inbox something."
+      : "Mail and calendar are connected and Closedhand is reading them. Connect a chat app below and it will introduce itself.";
+    // This banner is where people leave the wizard, so it must not invite
+    // them out through a door that is still unlocked. Until the password step
+    // is done, the button points at it rather
+    // than at the dashboard it protects.
+    var pwStep = (state.steps || []).find(function (s) { return s.key === "admin_password"; });
+    var pwSettled = !!(pwStep && pwStep.done);
+    var cta = $("#ready-cta"), ctaNote = $("#ready-cta-note");
+    if (cta) {
+      if (pwSettled) {
+        cta.textContent = "Open Closedhand";
+        cta.setAttribute("href", setupDestination());
+        cta.removeAttribute("target");
+        cta.onclick = null;
+        if (ctaNote) ctaNote.style.display = "none";
+      } else {
+        cta.textContent = "Choose a dashboard password";
+        cta.setAttribute("href", "#step-admin_password");
+        cta.onclick = function (ev) {
+          ev.preventDefault();
+          var li = document.getElementById("step-admin_password");
+          if (!li) return;
+          li.classList.add("is-open");
+          li.scrollIntoView({ behavior: "smooth", block: "center" });
+          var input = li.querySelector("input");
+          if (input) setTimeout(function () { input.focus(); }, 400);
+        };
+        if (ctaNote) {
+          ctaNote.style.display = "";
+          ctaNote.textContent = "The dashboard holds everything Closedhand knows about you, and right now it opens to anyone who can reach this address. Set your password in step three to continue.";
+        }
+      }
+    }
+    // Open only once every required step is done, the personal URL included:
+    // the dashboard sends anyone back here until then.
+    $("#ready-banner").classList.toggle("is-on", requiredDone && doneCount !== steps.length);
+
+    // Every required step done: tell the assistant, which holds a chat app's
+    // welcome until then.
+    if (requiredDone && !_finishedSent) {
+      _finishedSent = true;
+      fetch("/api/setup/finished", { method: "POST" }).then(function (r) { if (!r.ok) _finishedSent = false; }, function () { _finishedSent = false; });
+    }
+    // Everything done: the finish card appears at the top in the banner's
+    // place, and the page brings it into view once.
+    var allDone = doneCount === steps.length;
+    var fin = $("#finish");
+    if (allDone) {
+      // How to keep the computer it runs on there day and night, for the
+      // way it was set up: the Mac app's menu bar, or Docker's own start-up.
+      var home = $("#finish-home");
+      home.textContent = document.documentElement.dataset.host === "railway"
+        ? "Closedhand runs day and night on your Railway server."
+        : state.desktop
+        ? "Closedhand answers whenever this Mac is awake and online. To keep it there day and night, turn on Keep Mac Awake in the menu bar."
+        : "Closedhand answers whenever the computer running it is awake and online.";
+      home.hidden = false;
+      if (fin.hidden) { fin.hidden = false; if (!firstLoad) setTimeout(function () { fin.scrollIntoView({ behavior: "smooth", block: "center" }); }, 350); }
+    } else {
+      fin.hidden = true;
+    }
+    // Every step done or skipped: Closedhand says hello, once per install,
+    // as the last one lands (never on a reload of a finished setup).
+    var complete = requiredDone && steps.every(function (s) { return s.done || !!skips[s.key]; });
+    if (firstLoad) finishedBefore = !!state.finished;
+    if (lastComplete === false && complete && !finishedBefore && !celebrated()) celebrate();
+    lastComplete = complete;
+    if (firstLoad) openFromHash();
+    firstLoad = false;
+  }
+
+  // A dashboard card sends people here to set up one app: /setup#step-chat=telegram
+  // (or =whatsapp). Open that step even when it reads Done, unfold the named app,
+  // and bring it into view. A bare #step-<key> opens the step only.
+  function openFromHash() {
+    var m = (window.location.hash || "").match(/^#step-([a-z_]+)(?:=([a-z]+))?$/);
+    if (!m) return;
+    var li = document.getElementById("step-" + m[1]);
+    if (!li) return;
+    li.classList.add("is-open");
+    $(".card-head", li).setAttribute("aria-expanded", "true");
+    if (m[1] === "chat" && m[2]) {
+      var which = /^(tg|telegram)$/.test(m[2]) ? "tg" : /^(wa|whatsapp)$/.test(m[2]) ? "wa" : null;
+      if (which) { _chooserAuto = true; openChooser(which); }
+    }
+    // The dashboard's Connect sends Microsoft here: the person already asked
+    // to sign in, so the code comes up straight away.
+    if (m[1] === "accounts" && /^(google|microsoft)$/.test(m[2] || "")) {
+      _accountsAuto = true;
+      openChooser(m[2]);
+      if (m[2] === "microsoft") msStart();
+    }
+    setTimeout(function () { li.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80);
+  }
+
+  function poll() {
+    fetch("/api/setup/status", { headers: { "Accept": "application/json" } })
+      .then(function (res) {
+        if (!res.ok) throw new Error("status " + res.status);
+        return res.json();
+      })
+      .then(function (state) {
+        setChip("", false);
+        loadSkipsFor(state.installId);
+        if (_gKey === null) gLoad(state.installId);
+        _celebKey = "ch-celebrated:" + (state.installId || "x");
+        reflectMicrosoft(state);
+        render(state);
+        reflectGoogle(state);
+        autoOpenAccounts(state);
+        noticeMail(state);
+        // Nothing live yet: WhatsApp starts unfolded, so the card opens on
+        // the thing most people came for rather than two closed headings.
+        if (typeof reflectWa === "function") reflectWa(state);
+        autoOpenChooser("wa");
+      })
+      .catch(function () {
+        setChip("Connection lost. Retrying…", true);
+      });
+  }
+
+  ["database", "model", "admin_password", "accounts", "chat"].forEach(function (k) { lastDone[k] = false; });
+
+  $all(".card-head").forEach(function (head) {
+    head.addEventListener("click", function () {
+      var li = head.closest(".step");
+      if (!li) return;
+      // A step still waiting on the personal URL leads to it instead.
+      if (li.classList.contains("is-locked")) {
+        var url = document.getElementById("step-personal_url");
+        url.classList.add("is-open");
+        url.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      li.classList.toggle("is-open");
+      head.setAttribute("aria-expanded", String(li.classList.contains("is-next") || li.classList.contains("is-open")));
+    });
+  });
+
+  $all(".skip").forEach(function (btn) {
+    btn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      var li = btn.closest(".step");
+      var key = li.getAttribute("data-step");
+      if (!SKIPPABLE[key]) return;
+      skips[key] = !skips[key];
+      saveSkips();
+      btn.textContent = skips[key] ? "Changed my mind, show this step" : "Skip for now";
+      if (skips[key]) li.classList.remove("is-open");
+      poll();
+    });
+    var li = btn.closest(".step");
+    if (skips[li.getAttribute("data-step")]) btn.textContent = "Changed my mind, show this step";
+  });
+
+  function fbPost(url, body, statusId, btn, okText) {
+    var status = document.getElementById(statusId);
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = "Checking…";
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (out) {
+        if (btn) btn.disabled = false;
+        if (status) status.textContent = out.ok ? okText : (out.j && out.j.error) || "That didn't work.";
+        if (out.ok) poll();
+        return out.ok;
+      })
+      .catch(function () {
+        if (btn) btn.disabled = false;
+        if (status) status.textContent = "Could not reach the server.";
+        return false;
+      });
+  }
+
+  // --- Linked-device WhatsApp card ---
+  var _waState = { enabled: false, linked: false, hasQr: false };
+
+  // Under Chat apps once it is done: the chat apps connected, the way the
+  // models step names what it is connected to.
+  function chatDoneNote(st) {
+    var on = [];
+    if ((st && st.waLinked ? st.waLinked : _waState).linked) on.push("WhatsApp");
+    if (st && st.botUsername) on.push("Telegram");
+    $("#chat-done-note").textContent = on.join(" and ");
+  }
+
+  function reflectWa(st) {
+    if (st && st.waLinked) _waState = st.waLinked;
+    var done = $("#wa-done"), qrWrap = $("#wa-qr-wrap"), qrImg = $("#wa-qr");
+    var enableBtn = $("#wa-enable"), disableBtn = $("#wa-disable"), status = $("#wa-status");
+    if (!enableBtn) return;
+    done.style.display = _waState.linked ? "inline-block" : "none";
+    enableBtn.style.display = _waState.enabled ? "none" : "";
+    disableBtn.style.display = _waState.enabled ? "" : "none";
+    var pairing = _waState.enabled && !_waState.linked;
+    qrWrap.style.display = pairing && _waState.hasQr ? "block" : "none";
+    if (pairing && _waState.hasQr) qrImg.src = "/api/setup/wa-qr?t=" + Date.now();
+    if (status) {
+      status.textContent = _waState.linked ? "Connected. Talk to Closedhand in your Message Yourself chat."
+        : pairing ? (_waState.hasQr ? "Waiting for the scan…" : "Getting a QR code ready…")
+        : "";
+      status.classList.toggle("is-busy", pairing);
+    }
+    // Before the phone has scanned there is nothing to disconnect, only a pairing to stop.
+    disableBtn.textContent = _waState.linked ? "Disconnect" : "Cancel";
+    if (_waState.enabled || _waState.linked) autoOpenChooser("wa");
+  }
+
+  // The hello, once per install. Setup gives way to a blank screen and
+  // Closedhand types hello, wakes, shows what it has read so far (still
+  // counting), where to reach it, and where to carry on talking: the chat app
+  // it has just messaged, or, with no chat app, a box to answer it in the web
+  // chat. A tap or a key skips to the end.
+  var _celebKey = null, _helloRun = 0, _helloPoll = null, _finishedSent = false;
+  function celebrated() {
+    try { return !!(_celebKey && localStorage.getItem(_celebKey)); } catch (e) { return false; }
+  }
+  var READ_KINDS = [["mail", "email", "emails"], ["events", "calendar event", "calendar events"], ["whatsapp", "WhatsApp message", "WhatsApp messages"]];
+  function celebrate() {
+    try { if (_celebKey) localStorage.setItem(_celebKey, "1"); } catch (e) {}
+    var M = window.TextMotion, dialog = $("#hello-screen"), run = ++_helloRun;
+    var skipped = false, stage = 0, latest = null, polls = 0;
+    function gone() { return run !== _helloRun || !dialog.open; }
+    function skip() { return skipped || gone(); }
+    function pause(ms) { return M.wait(skip() || M.still() ? 0 : ms); }
+    // Each new line fades in below, and what is already there glides up to
+    // keep the whole thing centred rather than jumping.
+    function show(el) {
+      var box = $(".hello", dialog), before = box.getBoundingClientRect().top;
+      el.hidden = false;
+      var moved = before - box.getBoundingClientRect().top;
+      if (moved && !M.still() && box.animate) box.animate([{ transform: "translateY(" + moved + "px)" }, { transform: "none" }], { duration: 800, easing: "cubic-bezier(.2,.8,.2,1)" });
+      void el.offsetWidth; el.classList.add("is-in");
+    }
+    function onSkip(e) { if (e.key !== "Escape") skipped = true; }
+
+    clearTimeout(_helloPoll);
+    dialog.classList.remove("is-awake");
+    $all(".hello-part", dialog).forEach(function (el) { el.hidden = true; el.classList.remove("is-in"); });
+    $("#hello-typed").textContent = ""; $("#hello-name").textContent = ""; $("#hello-said").textContent = "Hello.";
+    $("#hello-read").dataset.kinds = "";
+    if (!dialog.open) dialog.showModal();
+    $("#hello-words").focus();
+    dialog.addEventListener("pointerdown", onSkip);
+    dialog.addEventListener("keydown", onSkip);
+
+    async function read() {
+      try {
+        var r = await fetch("/api/setup/hello", { cache: "no-store" });
+        if (r.ok) latest = await r.json();
+      } catch (e) { /* the next poll tries again */ }
+      if (!gone()) refresh();
+    }
+    // Brings whatever is already showing up to date with the latest numbers
+    // and whether the WhatsApp message has gone.
+    function refresh() {
+      if (stage >= 1) showRead();
+      if (stage >= 3) showNext();
+    }
+    function showRead() {
+      var r = latest && latest.read, line = $("#hello-read");
+      if (!r) return;
+      var kinds = READ_KINDS.filter(function (k) { return r[k[0]] > 0; });
+      var shape = kinds.map(function (k) { return k[0] + (r[k[0]] === 1 ? "1" : ""); }).join();
+      if (line.dataset.kinds !== shape) {
+        var was = {};
+        $all(".hello-n", line).forEach(function (n) { was[n.dataset.kind] = n._motionValue || 0; });
+        line.dataset.kinds = shape;
+        line.textContent = "";
+        var stays = document.documentElement.dataset.host === "railway" ? "It all stays in your Railway account." : "It all stays on your computer.";
+        if (!kinds.length) line.append("I'm starting on your mail and calendar now. " + stays);
+        else {
+          line.append("I've learned from ");
+          kinds.forEach(function (k, i) {
+            if (i) line.append(i === kinds.length - 1 ? " and " : ", ");
+            var n = document.createElement("b");
+            n.className = "hello-n"; n.dataset.kind = k[0];
+            n._motionValue = was[k[0]] || 0; n.textContent = new Intl.NumberFormat().format(n._motionValue);
+            line.append(n, " " + (r[k[0]] === 1 ? k[1] : k[2]));
+          });
+          line.append(" so far. " + stays);
+        }
+      }
+      kinds.forEach(function (k) { M.tick($('.hello-n[data-kind="' + k[0] + '"]', line), r[k[0]]); });
+      if (line.hidden) show(line);
+    }
+    // The chat app's own logo beside its name, as on its tile in Connections.
+    function appLink(go, name, logo) {
+      var img = document.createElement("img");
+      img.src = logo; img.alt = ""; img.width = 20; img.height = 20;
+      go.replaceChildren(img, document.createTextNode("Open " + name));
+    }
+    function showNext() {
+      var st = lastState || {}, line = $("#hello-next-line"), go = $("#hello-go");
+      var num = st.waLinked && st.waLinked.linked && st.waLinked.number;
+      if (num) {
+        var sent = latest && latest.whatsapp && latest.whatsapp.sent;
+        line.textContent = sent ? "I've just messaged you on WhatsApp. Let's carry on there."
+          : polls > 20 ? "My WhatsApp message is taking a little longer. It will be there soon."
+          : "I'm messaging you on WhatsApp…";
+        appLink(go, "WhatsApp", "/logos/whatsapp.svg"); go.href = "https://wa.me/" + num;
+      } else if (st.botUsername) {
+        line.textContent = "Message me on Telegram and let's carry on there.";
+        appLink(go, "Telegram", "/logos/telegram.svg"); go.href = "https://t.me/" + st.botUsername + "?start=hello";
+      }
+      var chatApp = !!(num || st.botUsername);
+      line.hidden = !chatApp; go.hidden = !chatApp; $("#hello-web").hidden = !chatApp;
+      $("#hello-say").hidden = chatApp;
+    }
+
+    read();
+    (async function () {
+      await pause(700);
+      // The name comes with the first reading, usually within that pause.
+      for (var i = 0; !latest && i < 20 && !skip(); i++) await M.wait(100);
+      if (gone()) return;
+      var name = latest && latest.name, greeting = name ? "Hi " + name : "Hello";
+      $("#hello-said").textContent = greeting + ".";
+      await M.type($("#hello-typed"), greeting, { skip: skip });
+      await M.type($("#hello-name"), ".", { skip: skip });
+      await pause(500);
+      if (gone()) return;
+      dialog.classList.add("is-awake");
+      await pause(900);
+      stage = 1; showRead();
+      await pause(1800);
+      if (gone()) return;
+      if (latest && latest.url) {
+        var host = latest.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+        $("#hello-url-said").textContent = host + ".";
+        $("#hello-url-link").href = latest.url.replace(/\/$/, "") + "/dashboard";
+        show($("#hello-where"));
+        await M.unscramble($("#hello-url"), host, { skip: skip });
+        $("#hello-qr").src = "/api/setup/qr?target=phone";
+        show($("#hello-phone"));
+        await pause(600);
+      }
+      if (gone()) return;
+      stage = 3; showNext(); show($("#hello-next"));
+      dialog.removeEventListener("pointerdown", onSkip);
+      dialog.removeEventListener("keydown", onSkip);
+      ($("#hello-say").hidden ? $("#hello-go") : $("#hello-say-input")).focus();
+    })();
+    // Keeps reading while the screen is open: the counts climb as the first
+    // sync carries on, and the WhatsApp line changes once the message goes.
+    (function again() {
+      _helloPoll = setTimeout(function () {
+        if (gone() || ++polls > 200) return;
+        read().then(again);
+      }, 3000);
+    })();
+  }
+  // With no chat app, the answer goes to the web chat as its first message,
+  // handed over in this tab only, never in the address.
+  $("#hello-say").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var words = $("#hello-say-input").value.trim();
+    try { if (words) sessionStorage.setItem("ch-first-words", words); } catch (err) {}
+    location.href = "/";
+  });
+  $("#hello-screen").addEventListener("close", function () { ++_helloRun; clearTimeout(_helloPoll); });
+
+  // Microsoft signs in by code: this page shows the code, the person enters
+  // it on Microsoft's page, and the server hears back from Microsoft. The
+  // checks stop once the sign-in lands, fails, or the code runs out.
+  var _msTimer = null, _msBusy = false;
+  function msShow(which) {
+    $("#m-intro").style.display = which === "intro" ? "" : "none";
+    $("#m-code-wrap").style.display = which === "code" ? "" : "none";
+  }
+  function msError(text) {
+    clearInterval(_msTimer); _msTimer = null;
+    var msg = $("#m-msg");
+    msg.textContent = text || ""; msg.style.display = text ? "block" : "none";
+    if (text) msShow("intro");
+  }
+  function msCheck() {
+    if (_msBusy) return;
+    _msBusy = true;
+    fetch("/api/setup/microsoft/check", { method: "POST" })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (out) {
+        _msBusy = false;
+        if (!out.ok) return msError(out.j.error || "Microsoft sign-in could not finish. Try again.");
+        if (out.j.connected) {
+          clearInterval(_msTimer); _msTimer = null;
+          _msAnother = false;
+          msShow("none");
+          poll();
+        } else if (out.j.idle) {
+          msError("That sign-in is no longer waiting. Start again.");
+        }
+      })
+      .catch(function () { _msBusy = false; });
+  }
+  var _msAnother = false;
+  function msStart() {
+    if (!_msCode) { window.open("/auth/microsoft?return=setup", "_blank", "noopener"); return; }
+    msError("");
+    _msAnother = true;
+    $("#m-start").disabled = true;
+    fetch("/api/setup/microsoft/start", { method: "POST" })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (out) {
+        $("#m-start").disabled = false;
+        if (!out.ok) return msError(out.j.error || "Microsoft did not answer. Try again in a moment.");
+        $("#m-code").textContent = out.j.code;
+        $("#m-open").href = out.j.url || "https://microsoft.com/devicelogin";
+        $("#m-status").textContent = "Waiting for you to finish on Microsoft's page.";
+        $("#m-connected").style.display = "none";
+        msShow("code");
+        clearInterval(_msTimer);
+        _msTimer = setInterval(msCheck, 3000);
+      })
+      .catch(function () { $("#m-start").disabled = false; msError("Could not reach the server."); });
+  }
+  function msCopy() {
+    var code = $("#m-code").textContent;
+    if (!code || !navigator.clipboard || !navigator.clipboard.writeText) return Promise.resolve(false);
+    return navigator.clipboard.writeText(code).then(function () { return true; }, function () { return false; });
+  }
+  $("#m-start").addEventListener("click", msStart);
+  $("#m-open").addEventListener("click", function () { msCopy(); });
+  $("#m-block .copy").addEventListener("click", function () {
+    var btn = this;
+    msCopy().then(function (ok) {
+      if (!ok) return;
+      btn.classList.add("did"); btn.textContent = "Copied";
+      setTimeout(function () { btn.classList.remove("did"); btn.textContent = "Copy"; }, 1600);
+    });
+  });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && _msTimer) msCheck(); });
+  // Microsoft through an app of the person's own: the same client the
+  // dashboard's connection list saves, then the sign-in comes back here.
+  $("#m-own-open").addEventListener("click", function (e) {
+    e.preventDefault();
+    var box = $("#m-own"), opening = box.style.display === "none";
+    box.style.display = opening ? "" : "none";
+    if (!opening) return;
+    $("#m-client-id").focus();
+    fetch("/api/connection-catalogue", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var ms = d && (d.services || []).filter(function (x) { return x.key === "microsoft"; })[0];
+        if (!ms) return;
+        $("#m-redirect").textContent = ms.redirectUri;
+        var perms = (ms.scopes || []).filter(function (x) { return !/^(openid|profile|email)$/.test(x); });
+        if (perms.length) $("#m-scopes").textContent = perms.join(", ");
+      })
+      .catch(function () {});
+  });
+  $("#m-own-copy").addEventListener("click", function () {
+    var btn = this;
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+    navigator.clipboard.writeText($("#m-redirect").textContent).then(function () {
+      btn.classList.add("did"); btn.textContent = "Copied";
+      setTimeout(function () { btn.classList.remove("did"); btn.textContent = "Copy"; }, 1600);
+    }, function () {});
+  });
+  $("#m-own-save").addEventListener("click", function () {
+    var btn = this, msg = $("#m-own-msg");
+    var id = $("#m-client-id").value.trim(), secret = $("#m-client-secret").value.trim();
+    msg.style.display = "none";
+    if (!id || !secret) { msg.textContent = "Paste both the Application (client) ID and the client secret value."; msg.style.display = "block"; return; }
+    btn.disabled = true;
+    fetch("/api/connection-catalogue/microsoft/client", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId: id, clientSecret: secret }) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (out) {
+        if (!out.ok) throw new Error(out.j.error || "Could not save. Try again.");
+        $("#m-client-secret").value = "";
+        location.href = "/auth/microsoft?return=setup";
+      })
+      .catch(function (e) { btn.disabled = false; msg.textContent = e.message || "Could not reach Closedhand. Try again."; msg.style.display = "block"; });
+  });
+  var _msCode = true;
+  // A saved account its provider stopped accepting: not connected, and the
+  // card says so above the usual sign-in.
+  function againNote(prefix, again, account) {
+    $("#" + prefix + "-again-badge").style.display = again ? "" : "none";
+    $("#" + prefix + "-again").hidden = !again;
+    if (again) $("#" + prefix + "-again-who").textContent = (account && account.email) || "this account";
+  }
+  function reflectMicrosoft(st) {
+    _msCode = !!st.microsoftCode;
+    var done = !!st.microsoftConnected;
+    $("#m-done").style.display = done ? "" : "none";
+    againNote("m", st.microsoftSignInAgain, st.microsoftAccount);
+    var acct = st.microsoftAccount || {};
+    $("#m-account").textContent = acct.email ? "Connected as " + acct.email + "." : "Connected.";
+    // Connected: say who, and keep a way to add another account. A sign-in
+    // in progress keeps the code on screen until it lands.
+    if (_msTimer) return;
+    $("#m-connected").style.display = done ? "" : "none";
+    $("#m-start").textContent = done ? "Connect another Microsoft account" : "Sign in with Microsoft";
+    msShow("intro");
+  }
+
+  // --- Connect to Google, six steps inside the card ---
+  // One step on screen at a time; progress and the project id survive a
+  // reload, which matters because step six leaves for Google and comes back.
+  // Five numbered steps, then the sign-in as the finish (step six).
+  var G_TOTAL = 5, G_LAST = 6;
+  var gStep = 0;
+  var _gKey = null, _gProjKey = null;
+  function gLoad(installId) {
+    // Both keys carry the install id: a reset must not hand the next setup
+    // the project from the last one.
+    _gKey = "ch-google-step:" + (installId || "x");
+    _gProjKey = "ch-google-project:" + (installId || "x");
+    try { gStep = parseInt(localStorage.getItem(_gKey) || "0", 10) || 0; } catch (e) { gStep = 0; }
+    try { $("#g-project").value = localStorage.getItem(_gProjKey) || ""; } catch (e) {}
+    gApplyProject();
+    gRender();
+  }
+  function gSave() { try { if (_gKey) localStorage.setItem(_gKey, String(gStep)); } catch (e) {} }
+  function gApplyProject() {
+    var id = $("#g-project").value.trim();
+    try { if (_gProjKey) localStorage.setItem(_gProjKey, id); } catch (e) {}
+    // Every console link carries the project, and stays locked until there is
+    // one: an untargeted link opens whichever project was last active.
+    $all("#g-flow [data-deep]").forEach(function (a) {
+      var base = a.getAttribute("data-base");
+      if (!base) { base = a.getAttribute("href"); a.setAttribute("data-base", base); }
+      if (id) {
+        a.setAttribute("href", base + (base.indexOf("?") === -1 ? "?" : "&") + "project=" + encodeURIComponent(id));
+        a.classList.remove("is-locked");
+      } else {
+        a.setAttribute("href", base);
+        a.classList.add("is-locked");
+      }
+    });
+  }
+  // Builds that carry Closedhand's own Google app sign in straight away, and
+  // the person's own Google project stays one link away.
+  var _gQuick = false, _gOwn = false, _gDone = false;
+  function gRender() {
+    var on = gStep >= 1;
+    var quickFirst = _gQuick && !_gOwn;
+    $("#g-flow").style.display = on ? "" : "none";
+    $("#g-quick").hidden = on || !quickFirst || _gDone;
+    var pitch = on || quickFirst || _gDone ? "none" : "";
+    $("#g-intro").style.display = pitch;
+    $("#g-ownership").style.display = pitch;
+    $("#g-start").style.display = pitch;
+    if (!on) return;
+    $all("#g-flow .g-step").forEach(function (el) { el.classList.toggle("is-on", parseInt(el.getAttribute("data-g"), 10) === gStep); });
+    $("#g-count").textContent = gStep === G_LAST ? "Last step" : "Step " + gStep + " of " + G_TOTAL;
+    var dots = "";
+    for (var i = 1; i <= G_TOTAL; i++) dots += '<span class="' + (i < gStep ? "done" : i === gStep ? "on" : "") + '"></span>';
+    dots += '<span class="g-goal' + (gStep === G_LAST ? " on" : "") + '">Sign in</span>';
+    $("#g-dots").innerHTML = dots;
+    // The first step has nowhere to go back to.
+    $("#g-back").style.display = gStep === 1 ? "none" : "";
+    $("#g-tabs").style.display = gStep === 1 ? "" : "none";
+    var next = $("#g-next");
+    next.style.display = gStep === G_LAST ? "none" : "";
+    next.disabled = gStep === 1 && !$("#g-project").value.trim();
+    if (gStep === 1) setTimeout(function () { $("#g-project").focus(); }, 50);
+  }
+  $("#g-start").addEventListener("click", function () { gStep = 1; gSave(); gRender(); });
+  $("#g-own-open").addEventListener("click", function (ev) { ev.preventDefault(); _gOwn = true; gRender(); });
+  $all("#g-flow .peek").forEach(function (peek) {
+    peek.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      var box = document.createElement("div");
+      box.className = "lightbox";
+      var img = document.createElement("img");
+      img.src = peek.querySelector("img").getAttribute("src"); img.alt = peek.querySelector("img").getAttribute("alt");
+      box.appendChild(img);
+      box.addEventListener("click", function () { box.remove(); });
+      document.body.appendChild(box);
+    });
+  });
+  $("#g-next").addEventListener("click", function () { if (gStep < G_LAST) { gStep++; gSave(); gRender(); } });
+  $("#g-back").addEventListener("click", function () { if (gStep > 1) { gStep--; gSave(); gRender(); } });
+  $("#g-project").addEventListener("input", function () { gApplyProject(); gRender(); });
+  $all("#g-flow .copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = btn.parentElement.querySelector("pre, .gf-val");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pre ? pre.textContent : "").then(function () {
+          btn.classList.add("did"); btn.textContent = "Copied";
+          setTimeout(function () { btn.classList.remove("did"); btn.textContent = "Copy"; }, 1600);
+        }).catch(function () {});
+      }
+    });
+  });
+  // The file the console gives you: read it here, no need to open it in
+  // whatever app the computer has decided owns .json files.
+  function gTakeFile(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      $("#g-creds").value = String(reader.result || "");
+      $("#g-save").click();
+    };
+    reader.onerror = function () {
+      var msg = $("#g-msg"); msg.style.display = "block"; msg.className = "form-msg err"; msg.textContent = "Could not read that file.";
+    };
+    reader.readAsText(file);
+  }
+  $("#g-file").addEventListener("change", function () { gTakeFile(this.files && this.files[0]); this.value = ""; });
+  var gCreds = $("#g-creds");
+  gCreds.addEventListener("dragover", function (ev) { ev.preventDefault(); gCreds.classList.add("is-drop"); });
+  gCreds.addEventListener("dragleave", function () { gCreds.classList.remove("is-drop"); });
+  gCreds.addEventListener("drop", function (ev) {
+    ev.preventDefault(); gCreds.classList.remove("is-drop");
+    var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if (f) gTakeFile(f);
+  });
+  $("#g-save").addEventListener("click", function () {
+    var msg = $("#g-msg"); msg.className = "form-msg"; msg.style.display = "none";
+    $("#g-save").disabled = true;
+    fetch("/api/setup/google", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ json: $("#g-creds").value }) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (r) {
+        $("#g-save").disabled = false; msg.style.display = "block";
+        if (r.ok) { msg.className = "form-msg ok"; msg.textContent = "Saved. Carry on to the next step."; $("#g-connect").style.display = "inline-block"; $("#g-nocreds").style.display = "none"; }
+        else { msg.className = "form-msg err"; msg.textContent = (r.j && r.j.error) || "That didn't save."; }
+      })
+      .catch(function () { $("#g-save").disabled = false; msg.style.display = "block"; msg.className = "form-msg err"; msg.textContent = "Could not reach the server."; });
+  });
+  // Server truth on every poll: the exact redirect line, whether the key is
+  // already saved (then the only thing left is the sign-in), and completion.
+  function reflectGoogle(st) {
+    if (st.googleRedirectUri) $("#g-redirect").textContent = st.googleRedirectUri;
+    $("#g-connect").style.display = st.googleCreds ? "inline-block" : "none";
+    $("#g-nocreds").style.display = st.googleCreds ? "none" : "";
+    var done = !!st.googleConnected;
+    if (_gQuick !== !!st.googleQuick || _gDone !== done) { _gQuick = !!st.googleQuick; _gDone = done; if (gStep === 0) gRender(); }
+    if (done && gStep !== 0) { gStep = 0; gSave(); gRender(); }
+    // Connected: the pitch and the steps give way to who is connected and
+    // what can be done about it.
+    $("#g-done").style.display = done ? "" : "none";
+    againNote("g", st.googleSignInAgain, st.googleAccount);
+    $("#g-connected").style.display = done ? "" : "none";
+    if (done) {
+      var acct = st.googleAccount || {};
+      $("#g-account").textContent = acct.email ? "Connected as " + acct.email + "." : "Connected.";
+      $("#g-intro").style.display = "none";
+      $("#g-ownership").style.display = "none";
+      $("#g-start").style.display = "none";
+      $("#g-flow").style.display = "none";
+    }
+  }
+
+  // The chooser: one option unfolded at a time within a step. In the chat
+  // step that means a phone camera only ever sees one QR code. The live one
+  // (pairing, linked, or connected) opens itself once per page load.
+  var _chooserAuto = false, _accountsAuto = false;
+  function openChooser(which) {
+    var target = $('.choose[data-choose="' + which + '"]');
+    if (!target) return;
+    $all(".chooser", target.closest(".card-body")).forEach(function (el) {
+      el.classList.toggle("is-open", el.querySelector(".choose").getAttribute("data-choose") === which);
+    });
+  }
+  // Email and calendar: unfold the account already connected, if there is one.
+  function autoOpenAccounts(st) {
+    if (_accountsAuto) return;
+    _accountsAuto = true;
+    if ((st.googleConnected || st.microsoftConnected) && !personalUrl.settled()) { revealClaim(); return; }
+    if (st.googleConnected || st.googleSignInAgain) openChooser("google");
+    else if (st.microsoftConnected || st.microsoftSignInAgain) openChooser("microsoft");
+  }
+  // Fold the account choosers and scroll to the claim, once the page has drawn it.
+  // Sent here from the dashboard or home page because the personal URL is
+  // the one thing left: say so once, and draw the eye to the button.
+  var _claimAsked = /(?:^|[?&])claim=1(?:&|$)/.test(location.search);
+  function revealClaim() {
+    $all("#step-accounts .chooser").forEach(function (el) { el.classList.remove("is-open"); });
+    setTimeout(function () {
+      var url = $("#step-personal_url");
+      if (url) url.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (_claimAsked && url) {
+        _claimAsked = false;
+        $("#url-why").hidden = false;
+        var btn = $("#url-start");
+        btn.classList.remove("nudge"); void btn.offsetWidth; btn.classList.add("nudge");
+      }
+    }, 120);
+  }
+  var _mailWasConnected = null;
+  function noticeMail(st) {
+    var now = !!(st.googleConnected || st.microsoftConnected);
+    // Connected while this page was open (the sign-in tab came back, or this
+    // page polled it): the claim is next.
+    if (_mailWasConnected === false && now && !personalUrl.settled()) revealClaim();
+    _mailWasConnected = now;
+  }
+  function autoOpenChooser(which) {
+    if (_chooserAuto) return;
+    _chooserAuto = true;
+    openChooser(which);
+  }
+  $all(".choose").forEach(function (h) {
+    h.addEventListener("click", function () {
+      var el = h.closest(".chooser");
+      if (el.classList.contains("is-open")) el.classList.remove("is-open");
+      else openChooser(h.getAttribute("data-choose"));
+    });
+  });
+
+  var _waEnableBtn = $("#wa-enable");
+  if (_waEnableBtn) _waEnableBtn.addEventListener("click", function () {
+    $("#wa-status").classList.add("is-busy");
+    fbPost("/api/setup/whatsapp-linked", { enable: true }, "wa-status", _waEnableBtn, "Getting a QR code ready…");
+  });
+  var _waDisableBtn = $("#wa-disable");
+  if (_waDisableBtn) _waDisableBtn.addEventListener("click", async function () {
+    // Before the phone has scanned there is nothing linked: just stop.
+    if (!_waState.linked) {
+      fbPost("/api/setup/whatsapp-linked", { enable: false }, "wa-status", _waDisableBtn, "Stopped.");
+      return;
+    }
+    if (!(await askFirst(_waDisableBtn, { text: "Disconnect WhatsApp?", yes: "Disconnect" }))) return;
+    fbPost("/api/setup/whatsapp-linked", { enable: false }, "wa-status", _waDisableBtn, "Disconnected.");
+  });
+
+  poll();
+  setInterval(poll, POLL_MS);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(); });
+})();
+</script>
+</body>
+</html>

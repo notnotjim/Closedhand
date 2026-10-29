@@ -1,0 +1,72 @@
+/* A label inside a section, the dashboard's own: small grey capitals, so it
+   never reads as level with the section heading above it. */
+.add-sub {font-size:0.875rem;font-weight:600;color:rgba(var(--fg-rgb),0.85);margin:0 0 0.75rem;}
+#apple-local-section {margin:0.5rem 0 1.25rem;}
+#connected-section #apple-local-section {margin:0.5rem 0 0;}
+#mcp-section.setting-up #apple-local-section {display:none!important;}
+#mcp-list:not(:empty) {margin-top:0.5rem;}
+.catalogue-tiles {display:grid;grid-template-columns:repeat(auto-fill,minmax(10rem,1fr));gap:0.5rem;margin:0 0 2rem;}
+.catalogue-tile {display:flex;align-items:center;gap:0.625rem;min-width:0;min-height:3rem;padding:0.625rem 0.75rem;border:1px solid rgba(var(--fg-rgb),.16);border-radius:0.625rem;background:var(--raised);color:var(--fg);font:inherit;font-size:0.875rem;text-align:left;cursor:pointer;transition:border-color .15s,background .15s;}
+.catalogue-tile:hover {border-color:rgba(var(--accent-strong-rgb),.4);background:var(--raised-hover);}
+.catalogue-tile img {flex:none;border-radius:0.3125rem;}
+.catalogue-tile span {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.catalogue-choice {display:flex;flex-wrap:wrap;align-items:center;gap:0.75rem 1.25rem;margin-top:1.25rem;}
+.catalogue-quiet {border:0;background:none;padding:0;color:var(--muted);font:inherit;font-size:0.875rem;text-decoration:underline;text-underline-offset:0.1875rem;cursor:pointer;}
+.catalogue-quiet:hover {color:var(--fg);}
+.catalogue-form input {width:100%;box-sizing:border-box;border:1px solid rgba(var(--fg-rgb),.25);background:var(--bg);color:var(--fg);border-radius:0.5rem;padding:0.75rem;font:inherit;min-height:2.75rem;}
+.catalogue-empty,.catalogue-status,#catalogue-setup p {font-size:0.9375rem;color:var(--muted);line-height:1.6;}
+.catalogue-action,.catalogue-back {min-height:2.75rem;cursor:pointer;font:inherit;border:1px solid rgba(var(--fg-rgb),.24);border-radius:0.5rem;background:var(--control);color:var(--fg);padding:0.625rem 1rem;}
+.catalogue-action:hover,.catalogue-back:hover {background:var(--control-hover);}
+.catalogue-action:disabled {opacity:.65;cursor:default;}
+.catalogue-back {margin-bottom:1.25rem;}
+#catalogue-setup .catalogue-return {display:inline-flex;align-items:center;gap:0.375rem;min-height:2rem;margin:0 0 0.75rem -2px;padding:0 2px;border:0;background:none;color:var(--muted);font:inherit;font-size:0.875rem;cursor:pointer;}
+#catalogue-setup .catalogue-return:hover {color:var(--fg);}
+#catalogue-setup {padding-bottom:1.5rem;}
+#catalogue-setup h3 {font-size:1.3125rem;margin:0 0 0.75rem;}
+#catalogue-setup h3:focus {outline:none;}
+#catalogue-setup a {color:var(--accent-link);text-underline-offset:0.25rem;}
+#catalogue-setup a.catalogue-deep {display:inline-flex;align-items:center;min-height:2.75rem;box-sizing:border-box;margin-top:1rem;padding:0.625rem 1rem;border:1px solid rgba(var(--accent-strong-rgb),.45);border-radius:0.5625rem;background:rgba(var(--accent-strong-rgb),.08);color:var(--accent-link);font-size:0.9375rem;font-weight:500;text-decoration:none;}
+#catalogue-setup a.catalogue-deep:hover {background:rgba(var(--accent-strong-rgb),.18);}
+.catalogue-form {display:grid;gap:1.25rem;margin-top:1.5rem;max-width:40rem;}
+.catalogue-form label {display:grid;gap:0.5rem;}
+.catalogue-form .catalogue-action {justify-self:start;}
+.catalogue-callback {display:grid;gap:0.5rem;}
+.catalogue-callback>span {font-size:0.9375rem;}
+.catalogue-copybox {display:flex;align-items:center;gap:0.5rem;min-height:2.75rem;padding-right:0.25rem;border:1px solid rgba(var(--fg-rgb),.25);border-radius:0.5rem;background:var(--bg);}
+.catalogue-copybox code {flex:1;min-width:0;padding:0.6875rem 0 0.6875rem 0.75rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.875rem;color:var(--fg);overflow-wrap:anywhere;user-select:all;}
+.catalogue-copy-btn {flex:none;display:grid;place-items:center;width:2.375rem;height:2.375rem;border:0;border-radius:0.4375rem;background:none;color:var(--muted);cursor:pointer;}
+.catalogue-copy-btn:hover {background:rgba(var(--fg-rgb),.08);color:var(--fg);}
+.catalogue-copy-btn.done {color:var(--ok);}
+#catalogue-setup .catalogue-steps {display:grid;gap:0.5rem;margin:1rem 0 0;padding-left:1.375rem;font-size:0.9375rem;color:var(--muted);line-height:1.6;}
+#catalogue-setup .catalogue-accounts {display:grid;gap:0.375rem;margin:0;padding-left:1.375rem;font-size:0.9375rem;color:var(--fg);line-height:1.5;}
+#catalogue-setup p.catalogue-notice {color:var(--warn-soft);}
+.connection-catalogue .mcp-hero {padding:1.5rem 0 2rem!important;margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;backdrop-filter:none!important;background:none!important;overflow:visible!important;}
+.connection-catalogue .mcp-copy {text-align:center;max-width:none;padding:0!important;margin:0 0 0.75rem!important;}
+.connection-catalogue .mcp-description {font-size:0.9375rem!important;color:var(--muted)!important;}
+.connection-catalogue .mcp-pill {max-width:40rem!important;margin:0 auto!important;}
+.connection-catalogue #mcp-credentials {max-width:40rem!important;margin-left:0!important;}
+.connection-catalogue #mcp-auth-status {text-align:left!important;}
+.connection-catalogue .mcp-scan {display:flex;width:fit-content;align-items:center;gap:0.375rem;margin:0.75rem auto 0;padding:0.25rem 0.625rem 0.25rem 0.5rem;border:1px solid rgba(var(--ok-rgb),.22);border-radius:62.4375rem;background:rgba(var(--ok-rgb),.06);color:var(--muted);font-size:0.7812rem;line-height:1.4;}
+.connection-catalogue .mcp-scan svg {flex:none;color:var(--ok);}
+.connection-catalogue .mcp-browse {justify-content:center;}
+.connection-catalogue :is(button,input,textarea,summary,a):focus-visible {outline:2px solid var(--accent-link);outline-offset:0.25rem;}
+.connection-catalogue [hidden] {display:none!important;}
+/* Two columns on a phone, each half the width whatever the names: a plain 1fr
+   column grows to fit the longest name, which pushed the page past the screen.
+   A long name takes a second line there rather than being cut short. */
+@media(max-width:480px){.catalogue-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.catalogue-tile span{white-space:normal;overflow-wrap:break-word;line-height:1.3}}
+
+
+.mcp-setup-choice {text-align:left;padding:1.25rem 0;border-top:1px solid rgba(var(--fg-rgb),.16);margin-top:1.25rem;overflow-wrap:anywhere;}
+.mcp-setup-choice strong {display:block;margin-bottom:0.75rem;}
+.mcp-setup-where {margin:0 0 0.25rem;}
+.mcp-setup-choice > a {display:inline-block;margin-bottom:1rem;}
+.mcp-setup-choice pre {white-space:pre-wrap;overflow-wrap:anywhere;font-size:0.875rem;}
+.mcp-setup-choice label {display:grid;gap:0.5rem;margin:1rem 0;}
+.mcp-setup-choice input {min-width:0;width:100%;box-sizing:border-box;font:inherit;font-size:1rem;padding:0.75rem;border-radius:0.5rem;border:1px solid rgba(var(--fg-rgb),.25);background:var(--bg);color:var(--fg);}
+.mcp-setup-choice button {margin-top:1rem;min-height:2.75rem;}
+
+#mcp-auth-status > a, .mcp-setup-choice > a {color:var(--accent-link);text-underline-offset:0.1875rem;}
+/* The Mac card, while it waits under Add a connection, sits as far from Apps
+   as Apps sits from Connect anything. */
+#mcp-section > #apple-local-section {margin-bottom:2rem;}

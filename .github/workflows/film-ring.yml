@@ -1,0 +1,47 @@
+# Films closedhand.com's smoke ring for phones (closedhand-com/tools/ring-video),
+# on GitHub's Mac rather than a laptop already running Closedhand. preview: a
+# few frames on each theme's ground, to look at before filming; otherwise the
+# films themselves. Both come back as the run's artifact, to be committed by hand.
+name: Film the smoke ring
+on:
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: "Frames to preview first (like 0,66,133); empty films the whole ring"
+        required: false
+        default: ""
+      only:
+        description: "light, dark, or empty for both"
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  film:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          brew install ffmpeg
+          python3 -m pip install --break-system-packages pillow==11.3.0
+      - name: Film
+        env:
+          SOFTWARE_GL: "1"
+          PREVIEW: ${{ inputs.preview }}
+          PREVIEW_DIR: ${{ runner.temp }}/preview
+          ONLY: ${{ inputs.only }}
+          # No hardware HEVC encoder here: Safari's films are encoded from these
+          # by mov.sh on a Mac.
+          LOSSLESS_DIR: ${{ runner.temp }}/lossless
+        run: sh closedhand-com/tools/ring-video/make.sh
+      - name: Keep the result
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.preview != '' && 'ring-preview' || 'ring-films' }}
+          path: |
+            ${{ runner.temp }}/preview
+            ${{ runner.temp }}/lossless
+            closedhand-com/public/orb/smoke*
+          if-no-files-found: error

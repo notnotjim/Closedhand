@@ -1,0 +1,158 @@
+(() => {
+  const $ = id => document.getElementById(id), navigation = window.ClosedHandEntry;
+  const next = navigation.destination(location), query = new URLSearchParams(location.search);
+  const failedSignIn = query.has('sign_in_error');
+  // Signed in with a provider that has no Closedhand account (none=…): most
+  // often the other one was used at setup. Nothing is made for it.
+  const none = ['google', 'microsoft'].includes(query.get('none')) ? query.get('none') : null;
+  const choosing = query.get('choose') === '1';
+  let automatic = !choosing && !failedSignIn;
+  const back = encodeURIComponent('/open?next=' + encodeURIComponent(next));
+  $('login-google').href = '/auth/google?return_to=' + back;
+  $('login-microsoft').href = '/auth/microsoft?return_to=' + back;
+  const say = (text, warn) => { $('status').textContent = text || ''; $('status').classList.toggle('warn', !!warn); };
+  const providerName = p => p === 'microsoft' ? 'Microsoft' : 'Google';
+  // The page shows one screen, whichever fits the visitor (see
+  // navigation.openScreen): on the way to their personal URL ("found"),
+  // claimed but not connected yet ("connecting"), signed in without one
+  // ("not-set-up"), or not signed in ("find"). It never guesses that someone
+  // has no Closedhand; a quiet line for newcomers sits under sign-in and
+  // setup. Nothing shows until it knows which. Where the page can't see
+  // Closedhand here, a plain link opens it on this computer.
+  $('local-open').href = navigation.LOCAL + (next === '/' ? '/' : next);
+  function show(screen) {
+    $('title').hidden = !screen;
+    $('title').textContent = screen === 'find' ? 'Sign in' : 'Open your Closedhand';
+    for (const id of ['found', 'connecting', 'not-set-up', 'find']) $(id).hidden = id !== screen;
+    $('newcomer').hidden = !['find', 'not-set-up'].includes(screen);
+    $('local-link').hidden = !['find', 'not-set-up', 'connecting'].includes(screen);
+  }
+  // Typing the address is the way in when signing in can't help right now:
+  // offered then, and opened when asked for.
+  function offerTyping() { if ($('address-form').hidden) $('type-it').hidden = false; }
+  function typeIt(focus) {
+    $('type-it').hidden = true;
+    $('address-form').hidden = false;
+    if (focus) $('address').focus();
+  }
+  // A personal URL this device has opened from here before: a sign they
+  // have Closedhand, and the address to offer again. Kept in this browser
+  // only, and only ever an address.
+  const KNOWN = 'closedhand-personal-url';
+  const remember = url => { try { localStorage.setItem(KNOWN, new URL(url).origin); } catch (_) {} };
+  const known = (() => { try { return navigation.address(localStorage.getItem(KNOWN) || ''); } catch (_) { return null; } })();
+  if (known) $('address').value = new URL(known).host;
+  $('type-it').addEventListener('click', () => { automatic = false; typeIt(true); });
+
+  $('address').addEventListener('input', () => { automatic = false; $('address-error').hidden = true; });
+  $('address-form').addEventListener('submit', event => {
+    event.preventDefault(); automatic = false;
+    const url = navigation.address($('address').value);
+    if (!url) {
+      $('address-error').textContent = 'That doesn’t look like a personal URL. It ends in .closedhand.ai, like yourname.closedhand.ai.';
+      $('address-error').hidden = false; $('address').focus(); return;
+    }
+    remember(url);
+    location.assign(next === '/' ? url : new URL(next, url).href);
+  });
+
+  // On the computer running Closedhand, open it there. Docker uses 3000; the
+  // Mac app takes 3000 or the next free port beside a Docker one. Phones and
+  // tablets never run it. Chrome asks once before a website may look for
+  // programs on this computer, and only when something is running there
+  // (checked in Chrome 2026-09-26: with nothing listening the request just
+  // fails, no question). Arriving here means "open my Closedhand", so it
+  // asks now; allowing it opens Closedhand straight away, and after that
+  // Chrome remembers and it is automatic.
+  const desktop = !document.documentElement.classList.contains('handheld');
+  const PORTS = [3000, 3002, 3001, 3003, 3004, 3005];
+  function findLocal() {
+    const ask = port => fetch('http://localhost:' + port + '/closedhand-here', { cache: 'no-store', signal: AbortSignal.timeout(1500) })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => (d && d.closedhand === true ? 'http://localhost:' + port : Promise.reject(new Error('not here'))));
+    return Promise.any(PORTS.map(ask)).catch(() => null);
+  }
+  function openLocal(base) { show(null); say('Opening Closedhand on this computer…'); location.replace(base + (next === '/' ? '/' : next)); }
+  async function permission() {
+    if (!navigator.permissions?.query) return null;
+    for (const name of ['loopback-network', 'local-network-access']) {
+      try { return await navigator.permissions.query({ name }); } catch (_) {}
+    }
+    return null;
+  }
+  // Settles quickly: where Closedhand answers on this computer, or null.
+  // While Chrome is still asking it settles null, so a personal URL still
+  // opens; allowing afterwards opens Closedhand here instead.
+  const lookingHere = (async () => {
+    if (!desktop || !automatic) return null;
+    const status = await permission();
+    if (!status || status.state === 'granted') return findLocal();
+    if (status.state === 'denied') return null;
+    $('here-note').hidden = false;
+    status.addEventListener('change', async () => {
+      $('here-note').hidden = true;
+      const found = status.state === 'granted' && automatic ? await findLocal() : null;
+      if (found && automatic) openLocal(found);
+    }, { once: true });
+    // These requests are what make Chrome ask. Ports with nothing on them
+    // fail at once; one with Closedhand waits for the answer. If none waits,
+    // or the question is closed unanswered, the note goes away.
+    Promise.allSettled(PORTS.map(port => fetch('http://localhost:' + port + '/closedhand-here', { cache: 'no-store' })))
+      .then(() => { if (status.state === 'prompt') $('here-note').hidden = true; });
+    return null;
+  })();
+  lookingHere.then(found => { if (found && automatic) openLocal(found); });
+
+  let checking = false, again = null;
+  async function check() {
+    if (checking) return;
+    checking = true;
+    clearTimeout(again);
+    try {
+      const response = await fetch('/api/account', { cache: 'no-store' });
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      const found = navigation.registeredAddress(data.url);
+      const pending = !found && /^[a-z][a-z0-9-]{1,30}[a-z0-9]\.closedhand\.ai$/.test(data.address || '');
+      const who = data.email || 'your ' + providerName(data.provider) + ' account';
+      const screen = navigation.openScreen({ signedIn: data.signedIn, found, pending, available: data.available, choosing, failedSignIn });
+      if (screen === 'find') {
+        show('find');
+        if (none) {
+          const other = none === 'microsoft' ? 'Google' : 'Microsoft';
+          $('none-note').textContent = 'No Closedhand account uses this ' + providerName(none) + ' sign-in. If you set up with ' + other + ', sign in with ' + other + ' instead.';
+          $('none-note').hidden = false;
+        }
+        if (failedSignIn || !data.available) offerTyping();
+        if (failedSignIn) say('Sign-in didn’t finish. Try again, or type your personal URL.', true);
+        else say(data.available ? '' : 'Looking up personal URLs isn’t working right now. You can still type yours.', !data.available);
+      } else if (screen === 'connecting') {
+        show('connecting');
+        $('connecting-address').textContent = data.address;
+        $('connecting-who').textContent = 'Linked to ' + who;
+        say('');
+        again = setTimeout(check, 5000);
+      } else if (screen === 'found') {
+        const url = new URL(next, data.url).href;
+        show('found');
+        $('found-address').textContent = new URL(data.url).hostname;
+        $('found-open').href = url;
+        $('found-who').textContent = 'Linked to ' + who;
+        remember(data.url);
+        say(automatic ? 'Opening your Closedhand…' : '');
+        // On the computer running Closedhand, opening it there comes first.
+        if (automatic && !(await lookingHere) && automatic) location.replace(url);
+      } else {
+        show('not-set-up');
+        $('not-set-up-who').textContent = 'No personal URL is linked to ' + who + ' yet.';
+        say('');
+      }
+    } catch (_) {
+      show('find');
+      offerTyping();
+      say('Couldn’t check just now. You can still type your personal URL.', true);
+    } finally { checking = false; }
+  }
+  window.addEventListener('focus', check);
+  check();
+})();
