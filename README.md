@@ -2,7 +2,7 @@
 
 Personal AI without signing your life away.
 
-Closedhand is a private AI assistant that runs on a computer you control. Connect your mail, calendar, messages, files or anything else, and it knows your world without that world ever being handed to closedhand.com or an AI company to keep: it all stays on your computer, and the LLM you choose sees only what each question needs. Talk to it in WhatsApp, Telegram or the web chat. Ask "What wine did Tom like?" and it answers "A 2019 Rioja. He said so on WhatsApp." It also speaks up before you ask: "Your flight's delayed. You'll miss your train."
+Closedhand is a private AI assistant that runs on your own computer. Connect any app or service you use, from your mail and chats to your files, bank and work tools, and none of it ever needs to leave your computer. Talk to it in WhatsApp, Telegram or the web chat. Ask "What wine did Tom like?" and it answers "A 2019 Rioja. He said so on WhatsApp." It also speaks up before you ask: "Your flight's delayed. You'll miss your train."
 
 ## Why Closedhand
 
@@ -14,7 +14,7 @@ AI assistants from the frontier labs run on the lab's own servers, with its own 
 
 **Any LLM, chosen for you, not for a lab.** A frontier lab's assistant runs on that lab's own models and works with what fits its platform. Closedhand works with any LLM from any provider, free ones included, and you can switch the day a better one is out. It has no LLM of its own to promote, so the only things it weighs are how well it works for you and how private it keeps you. If you'd rather not choose, Closedhand Managed Models pick the best LLM for each job, only from LLM providers that keep nothing you send.
 
-**It can know what you'd never hand over.** An assistant is only as good as what it knows about you, and most people would never give a big tech company their health records or bank statements to keep. Closedhand keeps them on your computer, so it can know them: the LLM sees only what a question needs, and with a local LLM nothing leaves your computer at all.
+**It can know what you'd never hand over.** An assistant is only as good as what it knows about you, and most people would never give a big tech company their health records or bank statements to keep. Closedhand keeps them on your computer, so it can know them, and with a local LLM nothing ever leaves it.
 
 **It already knows your world.** The Preemptive Context Layer keeps one live picture of your world and searches it once, before the LLM reads your message, so every answer starts from what you've said, sent and planned. The design is published at [closedhand.com/pcl](https://closedhand.com/pcl) for anyone to use.
 
