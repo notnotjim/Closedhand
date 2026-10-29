@@ -132,7 +132,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   const includedAi = require('./lib/included-ai').create({ db, env, request });
   const plus = require('./lib/plus').create({ db, env, request, includedAi, baseUrl });
   const notices = require('./lib/operator-notices').create({ db, env, request });
-  const capacity = require('./lib/capacity').create({ db, env, includedAi, notices });
+  const capacity = require('./lib/capacity').create({ db, env, notices });
   const backup = require('./lib/backup').create({ db, env, notices });
   require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, notices });
   plus.register(app, { sessions });

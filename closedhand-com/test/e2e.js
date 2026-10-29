@@ -214,6 +214,8 @@ test('personal URL: request, confirm, type the code, build, connect, and every r
   const done = await (await json('POST', '/api/phone-enrollment/claim', { code: approved.code.slice(0, 3).toLowerCase() + ' ' + approved.code.slice(3) }, copy.auth)).json();
   assert.deepEqual(done, { state: 'pending', url: 'https://alex.closedhand.ai' }, 'typed with a space and in lower case still works');
   assert.equal((await json('POST', '/api/phone-enrollment/claim', { code: approved.code }, copy.auth)).status, 409, 'a code works once');
+  const signUps = async () => (await db.query("SELECT text FROM operator_notices WHERE text LIKE '%claimed a personal URL%'")).rows.map(r => r.text);
+  assert.deepEqual(await signUps(), ['Closedhand: someone new claimed a personal URL, so 1 person has one now. closedhand.com/insights shows who.'], 'the maintainer hears of a new account, naming nobody');
   // Somebody else asking for the same name is refused before any code.
   const otherTicket = await ask(newCopy(), 'alex');
   const taken = await json('POST', '/api/phone-enrollment/approve', { ticket: otherTicket }, signedIn(rival.cookie));
@@ -258,6 +260,7 @@ test('personal URL: request, confirm, type the code, build, connect, and every r
   assert.equal(moving.move, true);
   assert.equal((await account(owner.cookie)).url, 'https://alex.closedhand.ai', 'confirming alone moves nothing');
   assert.deepEqual(await (await json('POST', '/api/phone-enrollment/claim', { code: moving.code }, fresh.auth)).json(), { state: 'provisioning', url: 'https://alex.closedhand.ai' });
+  assert.equal((await signUps()).length, 1, 'a move is no new account');
   assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: copy.auth })).json(), { state: 'unconfirmed' }, 'the old copy lost it');
   assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: fresh.auth })).json(), { state: 'provisioning' });
   // The Worker cuts the old computer off, then builds the route again, keeping its name.

@@ -67,21 +67,6 @@ test('a burst of first months in a day is told once that day', async () => {
   assert.deepEqual(await watch.check(), [], 'once a day');
 });
 
-test('this month\'s OpenRouter spend is told against the budget, only when the budget is set', async () => {
-  await fresh();
-  let spent = 120;
-  const includedAi = { enabled: () => true, spentThisMonth: async () => spent };
-  const queue = notices.create({ db, env: {} });
-  assert.deepEqual(await capacity.create({ db, env: {}, includedAi, notices: queue }).check(), [], 'no budget, nothing said');
-  const watch = capacity.create({ db, env: { OPENROUTER_MONTHLY_BUDGET_USD: '200' }, includedAi, notices: queue });
-  assert.deepEqual(await watch.check(), []);
-  spent = 150.5;
-  assert.deepEqual(await watch.check(), ['Closedhand: OpenRouter spend this month is $150.50 of your $200 budget. Raise the budget in OpenRouter before it is reached, or every Managed Models key stops.']);
-  assert.deepEqual(await watch.check(), []);
-  spent = 181;
-  assert.equal((await watch.check()).length, 1, '90%');
-});
-
 test('notices go to the maintainer\'s own Closedhand once, and by email when it has not collected them in a day', async () => {
   await fresh();
   const operator = await person('Maintainer@Example.com'), someone = await person();

@@ -1,19 +1,16 @@
 // What the maintainer is told, in time to raise a limit before anyone is
 // refused (lib/operator-notices.js says where). Nothing here stops anything:
-// first months keep being given past the expected number, and OpenRouter's
-// own monthly budget is the only stop there is, which is why its spend is
-// watched too. Each threshold is told once per period (operator_alerts).
+// first months keep being given past the expected number. OpenRouter's own
+// budget and credit are the stop for spending, and OpenRouter emails its
+// low-balance alert itself. Each threshold is told once per period
+// (operator_alerts).
 //
 // - First months started this calendar month, against
 //   INCLUDED_AI_MONTHLY_PEOPLE: at 75%, 90% and 100%, then every further 25%.
 // - First months started in the last 24 hours reaching
 //   INCLUDED_AI_DAILY_PEOPLE: once a UTC day, as a burst worth a look.
-// - This month's OpenRouter spend across all keys, against
-//   OPENROUTER_MONTHLY_BUDGET_USD when it is set: at 75%, 90% and 100%.
 // - Personal URLs taken, against ADDRESS_LIMIT: at 75%, 90% and 100%, told
 //   again once the limit is raised. Past it nobody new can claim one.
-const money = n => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-
 // The thresholds a share has reached: the fixed ones, then every 25% past 100.
 function reached(share, fixed, every = 0) {
   const levels = fixed.filter(level => share >= level);
@@ -21,10 +18,9 @@ function reached(share, fixed, every = 0) {
   return levels;
 }
 
-function create({ db, env = process.env, includedAi, notices }) {
+function create({ db, env = process.env, notices }) {
   const monthlyPeople = Number(env.INCLUDED_AI_MONTHLY_PEOPLE || 100);
   const dailyPeople = Number(env.INCLUDED_AI_DAILY_PEOPLE || 25);
-  const budget = Number(env.OPENROUTER_MONTHLY_BUDGET_USD || 0);
   const urlLimit = Number.parseInt(env.ADDRESS_LIMIT || '100', 10);
 
   // Claims the levels not yet told for this period; true when any was new, so
@@ -54,12 +50,6 @@ function create({ db, env = process.env, includedAi, notices }) {
     }
     if (dailyPeople > 0 && lastDay >= dailyPeople && await claim('burst', day, [100])) {
       told.push(`Closedhand: ${lastDay} first months of Managed Models started in the last 24 hours, more than usual. Worth a look for account farming.`);
-    }
-    if (budget > 0 && includedAi?.enabled()) {
-      const spent = await includedAi.spentThisMonth();
-      if (await claim('openrouter-spend', month, reached(spent / budget * 100, [75, 90, 100]))) {
-        told.push(`Closedhand: OpenRouter spend this month is $${money(spent)} of your $${money(budget)} budget. Raise the budget in OpenRouter before it is reached, or every Managed Models key stops.`);
-      }
     }
     // Counted as the limit counts them (lib/addresses.js): working ones and
     // fresh reservations.
