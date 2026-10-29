@@ -108,3 +108,55 @@ test("a result already delivered into the chat is not sent again", async () => {
   assert.doesNotMatch(state, /result_excerpt/);
   assert.ok(state.length < 400, "statuses only");
 });
+
+// Condensing a long history into a Context Note happens before a reply's first
+// call and trims the saved history in place, so neither the reply's own tool
+// work nor the reply itself is lost.
+const read = (f) => require("node:fs").readFileSync(require("node:path").join(__dirname, "..", f), "utf8");
+const harbour = (n) => Array.from({ length: n }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: "The Harbour Street lease ".repeat(40) }));
+test("chat condenses history only before a reply's first call", () => {
+  const engine = read("lib/engine.js");
+  assert.match(engine, /if \(!historyChecked && !opts\.resume && shouldSummarise\(tokenEstimate\)\) \{\n\s*await timing\.time\("condense", vectoriseOldMessages\(/, "never midway, where reloading the history would drop the reply's tool work");
+  assert.match(engine, /messages = \[\.\.\.conversation\];\n\s*if \(firstAttachmentContent\) messages\[messages\.length - 1\]/, "the message's attachment stays");
+  assert.doesNotMatch(engine, /compressToolResponses|shouldCompressTools/);
+});
+test("condensing trims the history a reply holds, so the reply that follows is kept", async () => {
+  const Module = require("node:module");
+  const at = (f) => require.resolve(require("node:path").join(__dirname, "..", f));
+  const archived = [];
+  const supabase = { from() {
+    const q = { select() { return q; }, eq() { return q; }, upsert(rows) { archived.push(...[].concat(rows)); return q; },
+      then(resolve, reject) { return Promise.resolve({ count: 0, error: null }).then(resolve, reject); } };
+    return q;
+  } };
+  const stubs = new Map([
+    [at("lib/context.js"), { store: { conversations: {} }, activeThreadId: null }],
+    [at("lib/storage.js"), { saveStore() {} }],
+    [at("lib/llm.js"), { getInternalClient: () => ({ model: "fixture", client: { messages: { create: async () => ({ content: [{ type: "text", text: "You went over the Harbour Street lease." }] }) } } }) }],
+    [at("user-store.js"), { supabase }],
+    [at("lib/services/usi.js"), { embedDocument: async () => null }],
+  ]);
+  const load = Module._load;
+  Module._load = function (request, parent) { return stubs.get(Module._resolveFilename(request, parent)) || load.apply(this, arguments); };
+  try {
+    delete require.cache[at("lib/conversation.js")];
+    const { getConversation, vectoriseOldMessages } = require("../lib/conversation");
+    const held = getConversation("fixture");
+    held.push(...harbour(320));
+    await vectoriseOldMessages("fixture", "Read sources carefully.", [], { contextWindow: 100000 });
+    assert.ok(held.length < 320 && archived.length > 0, "condensed, raw turns archived first");
+    assert.equal(getConversation("fixture"), held, "the same history, trimmed in place");
+    held.push({ role: "assistant", content: "The lease runs to March." });
+    assert.equal(getConversation("fixture").at(-1).content, "The lease runs to March.", "the reply lands in the saved history");
+  } finally { Module._load = load; }
+});
+test("a long file is read in parts that each fit whole in one tool result", () => {
+  const { textPart, RESULT_PART } = require("../lib/file-reader");
+  const text = Array.from({ length: 3000 }, (_, i) => `Line ${i}: the Harbour Street "lease" schedule`).join("\n");
+  const first = textPart(text, 1, 100000, RESULT_PART), second = textPart(text, 2, 100000, RESULT_PART);
+  assert.ok(first.parts > 1);
+  assert.equal(first.text + second.text, text.slice(0, first.text.length + second.text.length), "each part starts where the last ended");
+  assert.match(read("lib/engine.js"), /const MAX_RESULT_CHARS = 40000;/);
+  assert.ok(JSON.stringify(`[Part 1 of ${first.parts}. Ask for part 2 for what follows.]\n\n` + first.text).length <= 40000, "the whole part survives the 40,000-character cap");
+  for (const f of ["lib/tools/handlers.js", "lib/services/data-access.js"]) assert.match(read(f), /textPart\((?:text, part \|\| 1|extractedText, 1), require\("\.\.\/token-tracker"\)\.chatWindow\(\), RESULT_PART\)/, `${f} sizes parts the same way`);
+});

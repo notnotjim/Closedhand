@@ -16,7 +16,7 @@ test('the line groups repeated steps and puts the biggest first', async () => {
 
 test('the reply loop times recall, model calls, tools and checks, and queues log their wait', () => {
   const engine = fs.readFileSync(path.join(__dirname, '..', 'lib', 'engine.js'), 'utf8');
-  for (const label of ['"recall"', '"model"', '"tool " + block.name', '"check: asked for"', '"check: figures"', '"compress"']) assert.ok(engine.includes('timing.time(' + label), label);
+  for (const label of ['"recall"', '"model"', '"tool " + block.name', '"check: asked for"', '"check: figures"', '"condense"']) assert.ok(engine.includes('timing.time(' + label), label);
   assert.match(engine, /saveStore\(\);\n\s*console\.log\(timing\.line\(\)\);/);
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'lib', 'context.js'), 'utf8'), /\[Queue\] waited/);
 });
