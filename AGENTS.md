@@ -271,6 +271,17 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   a real Closedhand, even when the bug came from one. `scripts/check-own-data.js` compares each
   outgoing commit with the database of the Docker setup on your computer and lists any match.
 
+## Maintainer notices
+
+What only the maintainer should hear (sign-ups, limits nearing, a failed backup)
+goes through closedhand.com's maintainer notices (`closedhand-com/lib/operator-notices.js`),
+which only the maintainer's own Closedhand collects: an account whose sign-in
+email is in `OPERATOR_EMAILS` and verified by its provider. That channel is the
+one place another person's details (a sign-up's email) may be said. Nothing
+meant for the maintainer or the system ever reaches anyone else's chat, and a
+notice says what happened in plain words, never a raw error, key or account id:
+the log keeps those.
+
 ## Bug reports
 
 Every Closedhand reports bugs the same way. `/bug`, with a description or on its

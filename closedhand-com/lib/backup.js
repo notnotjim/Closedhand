@@ -70,7 +70,9 @@ function create({ db, env = process.env, aws, notices, now = () => Date.now() })
   }
 
   // Run hourly: a backup when the newest is nearly a day old. A failure is
-  // told to the maintainer once a day, and tried again the next hour.
+  // told to the maintainer once a day in plain words, never the raw error
+  // (it can carry account ids and internal names; the log keeps it), and
+  // tried again the next hour.
   async function daily() {
     if (!bucket || !env.AWS_REGION) return null;
     try {
@@ -80,7 +82,9 @@ function create({ db, env = process.env, aws, notices, now = () => Date.now() })
     } catch (error) {
       const day = new Date(now()).toISOString().slice(0, 10);
       const first = (await db.query("INSERT INTO operator_alerts (kind, period, level) VALUES ('backup-failed', $1, 1) ON CONFLICT DO NOTHING RETURNING level", [day])).rowCount;
-      if (first && notices) await notices.queue(`Closedhand: today's backup of closedhand.com's database failed (${error.name || 'error'}: ${String(error.message).slice(0, 160)}). It tries again every hour.`);
+      const why = /AccessDenied|Forbidden|NotAuthorized/i.test(String(error.name) + ' ' + String(error.message)) ? 'AWS refused to save it, so its permission for backups needs a look'
+        : 'it could not be saved';
+      if (first && notices) await notices.queue(`Closedhand: today's backup of closedhand.com's database failed: ${why}. It tries again every hour, and closedhand.com's log on Railway has the details.`);
       throw error;
     }
   }

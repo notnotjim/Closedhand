@@ -107,5 +107,6 @@ test('a failed backup is told to the maintainer once a day, and tried again', as
   await assert.rejects(daily.daily(), /Access Denied/);
   await assert.rejects(daily.daily(), /Access Denied/, 'tried again the next hour');
   assert.equal(told.length, 1);
-  assert.match(told[0], /backup of closedhand\.com's database failed \(AccessDenied/);
+  assert.equal(told[0], "Closedhand: today's backup of closedhand.com's database failed: AWS refused to save it, so its permission for backups needs a look. It tries again every hour, and closedhand.com's log on Railway has the details.");
+  assert.doesNotMatch(told[0], /arn:|Access Denied|\d{12}/, 'plain words, never the raw error with its account ids');
 });
