@@ -2,7 +2,7 @@
 
 Personal AI without signing your life away.
 
-Closedhand is an AI assistant that runs on a computer you control and already knows your world. It reads the mail, calendar, messages and files you connect, and answers from them in WhatsApp, Telegram or the web chat. Ask "What wine did Tom like?" and it answers "A 2019 Rioja. He said so on WhatsApp." It also speaks up before you ask: "Your flight's delayed. You'll miss your train."
+Closedhand is a private AI assistant that runs on a computer you control. Connect your mail, calendar, messages, files or anything else, and it knows your world without that world ever being handed to closedhand.com or an AI company to keep: it all stays on your computer, and the LLM you choose sees only what each question needs. Talk to it in WhatsApp, Telegram or the web chat. Ask "What wine did Tom like?" and it answers "A 2019 Rioja. He said so on WhatsApp." It also speaks up before you ask: "Your flight's delayed. You'll miss your train."
 
 ## Why Closedhand
 
