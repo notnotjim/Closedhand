@@ -7,9 +7,9 @@
 //   railway ssh --service closedhand-com -- node tools/backup.js restore <key>
 //
 // restore puts a backup into the database DATABASE_URL names, and only when
-// that database is empty: after losing the old one, point closedhand-com at a
-// new Postgres, then run it. It makes the schema with the migrations and puts
-// every row back; a database that already holds rows is refused.
+// that database holds no accounts: after losing the old one, point
+// closedhand-com at a new Postgres, then run it. It makes the schema with the
+// migrations and puts every row back; a database with accounts is refused.
 const { create, restore } = require('../lib/backup');
 
 const mb = (n) => (n / 1048576).toFixed(2) + ' MB';

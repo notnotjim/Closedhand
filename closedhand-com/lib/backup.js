@@ -106,24 +106,23 @@ function parse(text) {
 }
 
 // Puts a backup's rows into a database whose schema the migrations have just
-// made and which holds no rows yet; anything else is refused, so a restore can
-// never mix with or overwrite data. Foreign keys are checked only at the end,
-// as the tables go in alphabetically, and each id sequence is moved past the
-// highest id restored.
+// made. It must hold no accounts: a live closedhand.com always has some, so a
+// restore can never mix with or overwrite one. A new database does hold the
+// rows the migrations seed (mail_relay_controls' settings), and those give way
+// to the backup's. Foreign keys and triggers are held off while the tables go
+// in, and each id sequence is moved past the highest id restored.
 async function restore(pool, { head, rows }) {
   const client = await pool.connect();
   try {
     const present = new Set((await client.query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).rows.map(r => r.tablename));
     const missing = head.tables.filter(t => !present.has(t));
     if (missing.length) throw new Error(`This database has no table ${missing.join(', ')}: run the migrations first.`);
-    for (const t of head.tables) {
-      if ((await client.query(`SELECT 1 FROM ${quote(t)} LIMIT 1`)).rowCount) throw new Error(`${t} already has rows: restore only into an empty database.`);
-    }
+    if ((await client.query('SELECT 1 FROM owners LIMIT 1')).rowCount) throw new Error('This database already holds accounts: restore only into a new, empty one.');
     await client.query('BEGIN');
-    await client.query('SET CONSTRAINTS ALL DEFERRED');
     await client.query("SET LOCAL session_replication_role = 'replica'");
     let count = 0;
     for (const t of head.tables) {
+      await client.query(`DELETE FROM ${quote(t)}`);
       const list = rows.get(t) || [];
       for (let i = 0; i < list.length; i += 500) {
         const batch = list.slice(i, i + 500);

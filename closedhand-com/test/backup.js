@@ -77,7 +77,9 @@ test('a backup holds every table and restores into an empty database exactly, se
   const highest = (await target.query('SELECT max(id) AS m FROM starter_grants')).rows[0].m;
   const next = (await target.query("INSERT INTO starter_grants (person_hash, granted_usd) VALUES ('fresh', 20) RETURNING id")).rows[0].id;
   assert.ok(Number(next) > Number(highest), 'a new row never collides with a restored one');
-  await assert.rejects(backup.restore(target, data), /already has rows/, 'never into a database that holds rows');
+  await assert.rejects(backup.restore(target, data), /already holds accounts/, 'never into a database that has accounts');
+  const controls = async (p) => JSON.stringify((await p.query('SELECT * FROM mail_relay_controls')).rows);
+  assert.equal(await controls(target), await controls(db), 'the settings a new database seeds give way to the backed-up ones');
 });
 
 test('once a day, the newest fourteen kept, and nothing without a bucket', async () => {
