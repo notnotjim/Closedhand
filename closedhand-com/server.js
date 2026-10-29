@@ -133,6 +133,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   const plus = require('./lib/plus').create({ db, env, request, includedAi, baseUrl });
   const notices = require('./lib/operator-notices').create({ db, env, request });
   const capacity = require('./lib/capacity').create({ db, env, includedAi, notices });
+  const backup = require('./lib/backup').create({ db, env, notices });
   require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, notices });
   plus.register(app, { sessions });
   require('./lib/bugs').register(app, { db, secret: env.BUG_RECEIPT_SECRET || secret });
@@ -174,13 +175,14 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   });
   // Run hourly: first months that have run out and months carried on past
   // fair use end, keys are brought in line with their subscriptions, the
-  // maintainer is told what needs raising, and a notice their computer has
-  // not collected for a day goes by email.
+  // maintainer is told what needs raising, a notice their computer has not
+  // collected for a day goes by email, and once a day the database is backed up.
   async function hourly() {
     await includedAi.sweep().catch(e => console.error('[included ai] sweep:', e.message));
     await plus.sweep().catch(e => console.error('[plus] sweep:', e.message));
     await capacity.check().catch(e => console.error('[capacity] check:', e.message));
     await notices.emailStale().catch(e => console.error('[operator] notices:', e.message));
+    await backup.daily().catch(e => console.error('[backup] daily:', e.message));
   }
   return { app, sessions, plus, hourly, settle: () => includedAi.settle(), stopMail: () => typeof mailWorker === 'function' && mailWorker() };
 }
