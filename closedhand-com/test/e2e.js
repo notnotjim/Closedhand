@@ -214,8 +214,8 @@ test('personal URL: request, confirm, type the code, build, connect, and every r
   const done = await (await json('POST', '/api/phone-enrollment/claim', { code: approved.code.slice(0, 3).toLowerCase() + ' ' + approved.code.slice(3) }, copy.auth)).json();
   assert.deepEqual(done, { state: 'pending', url: 'https://alex.closedhand.ai' }, 'typed with a space and in lower case still works');
   assert.equal((await json('POST', '/api/phone-enrollment/claim', { code: approved.code }, copy.auth)).status, 409, 'a code works once');
-  const signUps = async () => (await db.query("SELECT text FROM operator_notices WHERE text LIKE '%claimed a personal URL%'")).rows.map(r => r.text);
-  assert.deepEqual(await signUps(), ['Closedhand: someone new claimed a personal URL, so 1 person has one now. closedhand.com/insights shows who.'], 'the maintainer hears of a new account, naming nobody');
+  const signUps = async () => (await db.query("SELECT text FROM operator_notices WHERE text LIKE 'Closedhand: new sign-up%'")).rows.map(r => r.text);
+  assert.deepEqual(await signUps(), ['Closedhand: new sign-up, alex@example.com (Microsoft), took alex.closedhand.ai. 1 person has a personal URL now.'], 'the maintainer hears who signed up');
   // Somebody else asking for the same name is refused before any code.
   const otherTicket = await ask(newCopy(), 'alex');
   const taken = await json('POST', '/api/phone-enrollment/approve', { ticket: otherTicket }, signedIn(rival.cookie));
@@ -853,7 +853,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     // The computer can ask which models are current, and only a known computer.
     // This account is the maintainer's, so the earlier tests' sign-ups wait for
     // it; they are taken here, and the notices below start from none.
-    await db.query("DELETE FROM operator_notices WHERE text LIKE '%claimed a personal URL%'");
+    await db.query("DELETE FROM operator_notices WHERE text LIKE 'Closedhand: new sign-up%'");
     const asked = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
     assert.deepEqual(asked.models, done.included_ai.models);
     assert.deepEqual(asked.plan, { name: 'first-month', ends_at: new Date(row.ends_at).toISOString(), email: false, plus_trial: true }, 'and that it is in its first month');

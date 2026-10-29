@@ -294,11 +294,14 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   };
   // The maintainer hears of each account's first personal URL through their
   // own Closedhand (lib/operator-notices.js), which no other account can
-  // collect. It names nobody: who it was is on the insights page.
-  const announce = async (first) => {
+  // collect: who signed up (the sign-in's email and provider, all that is
+  // kept) and the URL they took.
+  const announce = async (first, ownerId, row) => {
     if (!first || !notices) return;
+    const who = (await db.query('SELECT email, provider FROM owners WHERE id = $1', [ownerId])).rows[0] || {};
     const n = (await db.query("SELECT count(DISTINCT owner_id)::int AS n FROM addresses WHERE state <> 'revoked'")).rows[0].n;
-    await notices.queue(`Closedhand: someone new claimed a personal URL, so ${n} ${n === 1 ? 'person has' : 'people have'} one now. closedhand.com/insights shows who.`)
+    const by = { google: 'Google', microsoft: 'Microsoft' }[who.provider] || who.provider || 'a sign-in';
+    await notices.queue(`Closedhand: new sign-up, ${who.email || 'no email'} (${by}), took ${row.hostname}. ${n} ${n === 1 ? 'person has' : 'people have'} a personal URL now.`)
       .catch(e => console.error('[operator] notice:', e.message));
   };
   const limit = Number.parseInt(env.ADDRESS_LIMIT || '100', 10);
@@ -432,7 +435,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const a = used.rows[0];
     const first = !(await db.query('SELECT 1 FROM addresses WHERE owner_id = $1', [a.owner_id])).rowCount;
     const row = await reserve(db, { ownerId: a.owner_id, secretHash: copy.secret_hash, hostname: a.hostname, port: a.web_port, limit });
-    await announce(first);
+    await announce(first, a.owner_id, row);
     res.json(await claimed(row, a.owner_id, req));
   }));
 
@@ -463,7 +466,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       if ((mine && mine.state !== 'revoked') || (held && held.owner_id !== owner)) return res.json({ state: 'unconfirmed', claimHere: true });
       const hostname = mine ? mine.hostname : await heldName(db, owner) || await freeName(db);
       const row = await reserve(db, { ownerId: owner, secretHash: copy.secret_hash, hostname, port, limit });
-      await announce(!mine);
+      await announce(!mine, owner, row);
       res.json(await claimed(row, owner, req));
     }));
 
