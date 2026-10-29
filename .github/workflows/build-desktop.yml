@@ -149,7 +149,8 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p ci build.keychain
           security import /tmp/cert.p12 -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+          # It prints the key's attributes, its label (the holder's name) among them.
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain >/dev/null
           ID="$(security find-identity -v -p codesigning build.keychain | grep 'Developer ID Application' | head -1 | sed 's/.*"\(.*\)"/\1/')"
           # The identity carries the account holder's name, and a public
           # repo's logs are open to anyone: masked wherever it is printed.
