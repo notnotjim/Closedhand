@@ -851,6 +851,9 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     assert.ok(!JSON.stringify(row).includes(done.included_ai.key), 'the key itself is not kept');
     assert.equal([...keys.values()][0].name, 'Closedhand ' + row.owner_id, 'named by the account, not its email');
     // The computer can ask which models are current, and only a known computer.
+    // This account is the maintainer's, so the earlier tests' sign-ups wait for
+    // it; they are taken here, and the notices below start from none.
+    await db.query("DELETE FROM operator_notices WHERE text LIKE '%claimed a personal URL%'");
     const asked = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
     assert.deepEqual(asked.models, done.included_ai.models);
     assert.deepEqual(asked.plan, { name: 'first-month', ends_at: new Date(row.ends_at).toISOString(), email: false, plus_trial: true }, 'and that it is in its first month');
