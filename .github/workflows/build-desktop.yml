@@ -150,7 +150,13 @@ jobs:
           security unlock-keychain -p ci build.keychain
           security import /tmp/cert.p12 -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
-          echo "IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep 'Developer ID Application' | head -1 | sed 's/.*"\(.*\)"/\1/')" >> "$GITHUB_ENV"
+          ID="$(security find-identity -v -p codesigning build.keychain | grep 'Developer ID Application' | head -1 | sed 's/.*"\(.*\)"/\1/')"
+          # The identity carries the account holder's name, and a public
+          # repo's logs are open to anyone: masked wherever it is printed.
+          HOLDER="${ID#Developer ID Application: }"; HOLDER="${HOLDER% (*}"
+          [ -z "$ID" ] || echo "::add-mask::$ID"
+          [ -z "$HOLDER" ] || echo "::add-mask::$HOLDER"
+          echo "IDENTITY=$ID" >> "$GITHUB_ENV"
 
       - name: Build
         env:
