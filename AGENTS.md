@@ -10,7 +10,6 @@ Rules for working on this codebase, for anyone doing it, human or agent.
 - Vanilla HTML/CSS/JS only for the dashboard. No React, no Tailwind, no build step.
 
 ## Code Standards
-- No emdashes anywhere. Use commas, full stops, or rewrite.
 - Simplicity first. Minimal changes. Don't over-engineer.
 - No temporary fixes. Find root causes.
 - Verify syntax before committing. Run `node -c` on all changed JS files.
@@ -223,6 +222,11 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   Models" once that is clear. Never another name for it.
 - No staccato ad-copy ("We do X. We don't do Y. No Z."). Plain flowing sentences that
   state facts directly.
+- No em dashes (the long dash) in anything people read. Where a dash reads best, a hyphen
+  with a space each side ( - ) is right; otherwise a comma, colon or full stop, whichever reads
+  best. An en dash only joins a range (10–12). Closedhand's own replies follow the same rule
+  (lib/response-presentation.js), and lib/plain-dashes.js turns any that slip through into that
+  hyphen.
 - Connected services sort to the top, not the bottom.
 - The stance is part of the copy: anti big tech, pro privacy, the user owns the lot.
   Explain a chore by who gets to see your data, in words anyone knows: "other apps
