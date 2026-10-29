@@ -423,14 +423,14 @@ body.library-active .page { min-height:0; }
     color: var(--accent-warm);
     text-decoration: none;
   }
-/* The note itself, plainly offered under the heading; the label above also links to it. */
+/* The note itself, plainly offered under the heading; the label and heading above lead to /pcl. */
 .feat-more { margin: .875rem 0 0; text-align: center; }
 .feat-more a { display: inline-flex; align-items: center; gap: .375rem; font-size: .875rem; color: var(--muted); text-decoration: none; transition: color .2s; }
 .feat-more a:hover { color: var(--fg); }
 .feat-more a:focus-visible { outline: 2px solid var(--accent); outline-offset: .25rem; border-radius: .25rem; }
 .feat-more svg { width: .875rem; height: .875rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s; }
 .feat-more a:hover svg { transform: translateX(2px); }
-/* The label above links to the same note, skipped by Tab. */
+/* The label above links to the same page, skipped by Tab. */
 .feat-kicker .ethos-link:hover { color: var(--accent-pale); }
 .feat-sub {
     font-size: 1.125rem;
@@ -977,8 +977,8 @@ body.chat-active .mon-area { display:none; }
 <div class="features-inner">
 
   <section class="recall-story" aria-labelledby="recall-heading">
-    <p class="feat-kicker"><a class="ethos-link" href="https://zenodo.org/records/23040634/latest" rel="noopener" tabindex="-1" aria-hidden="true">Preemptive Context Layer</a></p>
-    <h2 class="feat-heading" id="recall-heading"><a class="ethos-link" href="https://zenodo.org/records/23040634/latest" rel="noopener">While other assistants go looking reactively, Closedhand already knows your world.</a></h2>
+    <p class="feat-kicker"><a class="ethos-link" href="/pcl" tabindex="-1" aria-hidden="true">Preemptive Context Layer</a></p>
+    <h2 class="feat-heading" id="recall-heading"><a class="ethos-link" href="/pcl">While other assistants go looking reactively, Closedhand already knows your world.</a></h2>
     <p class="feat-more"><a href="https://zenodo.org/records/23040634/latest" rel="noopener">Read the technical note<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></a></p>
     <figure class="recall-demo" id="recallDemo">
       <div class="recall-comparison">
@@ -1077,6 +1077,7 @@ body.chat-active .mon-area { display:none; }
 </div>
 
 <div class="site-foot">
+  <a href="/architecture">How Closedhand works</a>
   <a href="https://github.com/notnotjim/Closedhand" rel="noopener">Source on GitHub</a>
   <a href="/account">Account</a>
   <a href="/privacy">Privacy</a>

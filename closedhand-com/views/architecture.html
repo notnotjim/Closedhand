@@ -42,9 +42,12 @@
       <p>This is the <a href="/pcl">Preemptive Context Layer</a>: preparing useful context before the LLM decides which tools to use. Pulse can also notice things worth bringing to your attention and message you through your connected chat apps.</p>
       <h2>Live tools still have a job</h2>
       <p>Fresh flight status, weather, purchases and other actions still need live tools. Connections share a common way to describe information worth keeping; permissions and what each service makes available determine coverage. Recent updates, missing history and retrieval limits still matter. No system can promise perfect recall.</p>
-      <h2>You choose the boundaries</h2>
-      <p>Run Closedhand on your own computer or server. Choose hosted or local models, inspect and edit what it remembers, and grant access to your real computer separately from Closedhand’s sandbox computer. Hosted models receive the content needed for their work.</p>
-      <p>The software is fully open source under Apache 2.0. You can inspect how it works and keep using it without committing your memory to one model provider.</p>
+      <h2>Where your data goes</h2>
+      <p>Everything Closedhand knows stays in its database on the computer running it, your own computer or server: what it remembers, your conversations and the keys to your connections, encrypted where they are stored. You can see, edit and delete what it remembers, and its sandbox computer is kept apart from your real one, which it reaches only with the access you grant.</p>
+      <p>When you send a message, the context it needs goes from that computer straight to the LLM you chose, and with a local LLM it never leaves. closedhand.com never sees your conversations, mail or files. It holds your Closedhand account, which stores your email and nothing else, and your personal URL passes through Closedhand’s relay on Cloudflare, encrypted on the way and not kept. Mail to Closedhand’s own email address, if you turn it on, passes through closedhand.com sealed so only your computer can read it. There is no telemetry.</p>
+
+      <h2>Not tied to any lab</h2>
+      <p>A frontier lab’s assistant keeps your memory on its own platform and works with its own models and the tools that platform allows. Closedhand is the layer around the LLM, and that layer is yours: open source under Apache 2.0, with memory, connections and tools that work with any LLM. Switch the day a better one is out, and nothing you have built up is lost.</p>
     </article>
     <nav class="ethos-actions" aria-label="Explore Closedhand">
       <a class="get-closedhand" href="/#ways">Get Closedhand</a>

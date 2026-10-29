@@ -3,6 +3,11 @@ body { margin: 0; background: var(--bg); color: var(--ui-text); font-size: 1.125
 main, footer { width: min(100%, 48.75rem); margin: 0 auto; padding-left: 1.75rem; padding-right: 1.75rem; }
 main { padding-top: 3rem; padding-bottom: 3.5rem; }
 h1 { font-family: var(--font-brand); font-weight: 500; font-size: clamp(2.125rem, 5vw, 3rem); line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.5rem; }
+/* The page a section belongs to, above its title: the same small label as
+   the home page's sections (feat-kicker). */
+.kicker { margin: 0 0 .75rem; font-size: .75rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; }
+.kicker a { color: var(--accent); text-decoration: none; }
+.kicker a:hover { color: var(--accent-pale); }
 .lead { font-size: 1.4375rem; line-height: 1.45; color: var(--ui-text); }
 h2 { font-size: 1.4375rem; font-weight: 600; line-height: 1.35; margin: 2.75rem 0 1rem; text-wrap: balance; }
 p { margin: 0 0 1.25rem; color: var(--ui-muted); }
