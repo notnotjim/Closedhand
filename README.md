@@ -1,27 +1,38 @@
 # Closedhand
 
-A personal AI assistant you actually own. It lives in your chat apps, reads the email and calendar you already have, remembers what matters, and keeps working while you sleep, all from a box you control with keys you hold.
+Personal AI without signing your life away.
 
-> **Demo coming.** A 30-second ask-your-inbox GIF will sit here once it is recorded on the shipped build.
-<!-- DEMO GIF PLACEHOLDER: 30s of "ask your inbox anything", recorded on a live Closedhand. -->
+Closedhand is an AI assistant that runs on a computer you control and already knows your world. It reads the mail, calendar, messages and files you connect, and answers from them in WhatsApp, Telegram or the web chat. Ask "What wine did Tom like?" and it answers "A 2019 Rioja. He said so on WhatsApp." It also speaks up before you ask: "Your flight's delayed. You'll miss your train."
 
-## Why this exists
+## Why Closedhand
 
-Most AI assistants are a tab you visit, rented from a company that holds your data. Closedhand flips both parts. It comes to where you already talk (WhatsApp and Telegram, with Discord, Slack and LINE coming soon), and everything about it is yours: the server, the database, the model keys, the Context Brain. There is no telemetry. The only Closedhand account is the one on closedhand.com that holds your personal URL. You sign in to it with Google or Microsoft, and closedhand.com keeps only the email you sign in with.
+AI assistants from the frontier labs run on the lab's own servers, with its own models, on its own terms. Closedhand runs on a computer you control, works with any LLM and belongs to you.
 
-It is strictly single-tenant. Each Closedhand serves one person, and the first account to message your bot becomes its owner. Everyone else is politely refused.
+**Built for local, because local is safer.** AI is making attacks cheaper, faster and more convincing, and a company holding the mail, messages and health questions of millions of people is the prize that makes them worth it. Closedhand keeps your data on a computer you control: your own Mac or PC, a rented server or a server in your own Railway account. One computer can be attacked too, but it holds one person's life, not millions. Your conversations, mail and files never reach closedhand.com. If you turn on Closedhand's own email address, mail to it passes through closedhand.com sealed so that only your computer can read it.
 
-## Quickstart
+**The LLM can be local too.** LLMs keep getting smarter and smaller, and more of them run well on an ordinary computer. Closedhand can use one today, and then no company sees what you ask at all. With a hosted LLM you still need no company in the middle: with your own LLM provider's key, Closedhand talks to that provider directly.
 
-**Download the Closedhand app for Mac** from the [latest release](https://github.com/notnotjim/Closedhand/releases/latest), drag it to Applications and open it. The current download is for Apple Silicon Macs with macOS 14 or later. It runs Closedhand from the menu bar and opens the setup page on first launch. Access to that Mac’s files and apps is built in; choose what to allow from the menu bar. Your data lives in `~/Library/Application Support/ClosedHand`. The app is signed and notarised; source is in [`desktop/`](desktop/).
+**Any LLM, chosen for you, not for a lab.** A frontier lab's assistant runs on that lab's own models and works with what fits its platform. Closedhand works with any LLM from any provider, free ones included, and you can switch the day a better one is out. It has no LLM of its own to promote, so the only things it weighs are how well it works for you and how private it keeps you. If you'd rather not choose, Closedhand Managed Models pick the best LLM for each job, only from LLM providers that keep nothing you send.
 
-**Or install with Docker** on Mac, Windows or Linux, including a rented server (VPS). Docker is software that runs each part of Closedhand (the assistant, the dashboard, its database and the sandbox computer) in its own sealed-off container, so nothing else needs installing. On a Mac or Windows PC that means installing [Docker Desktop](https://www.docker.com/products/docker-desktop/), free for personal use; on Linux, [Docker Engine](https://docs.docker.com/engine/install/). A Mac can use either installation method. With Docker installed, run:
+**It can know what you'd never hand over.** An assistant is only as good as what it knows about you, and most people would never give a big tech company their health records or bank statements to keep. Closedhand keeps them on your computer, so it can know them: the LLM sees only what a question needs, and with a local LLM nothing leaves your computer at all.
+
+**It already knows your world.** The Preemptive Context Layer keeps one live picture of your world and searches it once, before the LLM reads your message, so every answer starts from what you've said, sent and planned. The design is published at [closedhand.com/pcl](https://closedhand.com/pcl) for anyone to use.
+
+**It comes to you.** You talk to it in the chat apps you already use, and with Pulse turned on it checks your connected services and messages you when something needs your attention.
+
+**It's yours.** Closedhand is free and open source under the Apache 2.0 licence. There's no subscription to use it, no change of terms can take back the code you run, and you can change any part of it to suit you.
+
+## Get started
+
+**The Mac app.** Download Closedhand for Mac from the [latest release](https://github.com/notnotjim/Closedhand/releases/latest), drag it to Applications and open it. It needs an Apple Silicon Mac with macOS 14 or later. It runs from the menu bar, opens the setup page the first time, and can work with that Mac's files and apps through permissions you choose. Your data lives in `~/Library/Application Support/ClosedHand`. The app is signed and notarised, and its source is in [`desktop/`](desktop/).
+
+**Docker**, on a Mac, a Windows PC, Linux or a rented server. Docker runs each part of Closedhand (the assistant, the dashboard, its database and the sandbox computer) in its own sealed-off container, so nothing else needs installing. On a Mac or a Windows PC that means [Docker Desktop](https://www.docker.com/products/docker-desktop/), free for personal use; on Linux, [Docker Engine](https://docs.docker.com/engine/install/). Then run:
 
 ```sh
 curl -fsSL https://closedhand.com/install | sh
 ```
 
-Or, if piping strangers' scripts into your shell is exactly what you self-host to avoid, download it, read it (it is short), then run it:
+Or, if piping a script into your shell is what you self-host to avoid, download it, read it (it is short) and run it:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/notnotjim/Closedhand/main/install.sh -o install.sh
@@ -29,7 +40,7 @@ less install.sh
 sh install.sh
 ```
 
-Either way it checks for Docker, clones the repo, writes a `.env` with generated secrets, downloads pre-built images (nothing compiles on your machine), and starts the stack. The same steps by hand:
+It checks for Docker, clones this repo, writes a `.env` with generated secrets, downloads pre-built images (nothing compiles on your machine) and starts everything. The same by hand:
 
 ```sh
 git clone https://github.com/notnotjim/Closedhand.git closedhand
@@ -40,82 +51,88 @@ docker compose up -d
 
 If you run Closedhand with Docker on a Mac, it can use that Mac’s files and apps through the optional Closedhand Bridge app: download it from your dashboard and install it on the same Mac. Choose what to allow from Bridge in the menu bar.
 
-Hacking on Closedhand itself? Build from source with `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` (or `CLOSEDHAND_BUILD=1 sh install.sh`).
+Working on Closedhand itself? Build from source with `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` (or `CLOSEDHAND_BUILD=1 sh install.sh`).
 
-The installer opens the setup page in your browser when the stack is up (or tells you the address, **http://localhost:3000**, if it cannot). It walks you through the rest and lights each step up as it detects you have done it: paste one model provider key, choose a dashboard password, connect Google, Microsoft or both, then connect Telegram with a token from BotFather. Microsoft is a code you type on Microsoft's own page. Google takes six short steps inside the setup page that open the exact console pages you need: that part is yours to do because Closedhand runs on a machine you control rather than on a company's, and the steps take you through it one at a time. By the time you say hello in Telegram, Closedhand has already read your inbox and calendar, and the first conversation is usually about twenty minutes in.
+**Setup.** The setup page opens in your browser (or at **http://localhost:3000**) and ticks off each step as it sees it done:
 
-Bring whichever model provider you prefer. A single DeepInfra key is the golden path because one key covers chat plus the embedding model, but OpenAI, Anthropic, Gemini, Groq, xAI and any OpenAI-compatible endpoint (including a local Ollama) are all first-class.
+1. **Models.** Closedhand Managed Models, with a first month at no charge and no card needed, or your own LLM provider.
+2. **A password** for your dashboard.
+3. **Email and calendar.** Google, Microsoft or both. Google takes one sign-in through Closedhand's own Google app, or about five minutes through a free Google Cloud project of your own, which setup walks you through.
+4. **Your personal URL**, so you can open Closedhand from your phone or any browser.
+5. **Chat apps.** WhatsApp on your own number, linked the way WhatsApp on a laptop is, with Closedhand in your "Message Yourself" chat. Or Telegram, with a bot of its own.
 
-## What you get
+By the time you say hello, Closedhand has already read your inbox and calendar.
 
-**Chat that can act.** Ask questions, but also send mail, create events, set reminders, track flights, and run multi-step background agents that report back when they finish.
+## What it does
 
-**Context Brain.** Closedhand continuously indexes your mail, calendar and files, and recalls by meaning, not just keywords. Ask "what did the accountant say about the deadline" and it finds the thread even though you never said "email"; ask for an invoice number and it matches the number itself.
+**Chat that acts.** Closedhand answers, and it also sends mail, books calendar events, sets reminders, tracks flights and runs tasks in the background that report back when they're done. Sending a message on your behalf or spending money is put to you first.
 
-**A real computer, sandboxed.** Closedhand browses and runs code on the sandbox computer, which has its own Chrome and files that survive restarts. It cannot see your files or the rest of the machine it runs on unless you connect them yourself. Watch it work live on the dashboard's Computers tab.
+**Context Brain.** Pinned Facts about you, Context Notes from past conversations and your documents, all recalled by meaning, not just keywords. Ask "what did the accountant say about the deadline" and it finds the thread though you never said "email"; ask for an invoice number and it matches the number itself. You can see, edit and delete any of it on the dashboard.
 
-**Chat apps.** WhatsApp links your own number as a device, the way WhatsApp on a laptop does, and Telegram uses a bot you make with BotFather in three taps. Both work on a laptop behind your router. Discord, Slack and LINE are coming soon.
+**File Search.** Your files, PDFs, scans, pictures and recordings, found by what is in them.
 
-**Any MCP server, any way it is published.** Paste a server's web address, the `npx` or `uvx` command from its README, or its JSON block into the dashboard and Closedhand connects to it: remote servers with a key or a sign-in, servers that run on your machine, and servers that offer documents and ready-made prompts as well as tools. Everything is scanned for prompt injection and impersonation before it is switched on, an action that deletes or sends is put to you first, and the connection is there for agents, routines and Pulse, not only the chat window. Skill files work from the same box.
+**Pulse.** When it is on, Closedhand checks your connected services and messages you when something needs your attention: a delayed flight, a reply you were waiting for, a clash in your plans.
 
-**Calendar without Google, if you prefer.** A generic CalDAV client covers iCloud, Fastmail, Nextcloud and friends with an app-specific password, no OAuth consent screens involved.
+**Projects.** A move, a wedding or a client gets its own conversation, notes and files, and an emoji that files a message into it from any chat app.
 
-**A dashboard that tells the truth.** Connections, agents, routines, Context Brain and a usage tab that shows where your key money goes, token by token, feature by feature, from your providers' own numbers.
+**Pages.** When something works better as a page than a chat reply, Closedhand makes one, with PDF, Word and Excel versions, and keeps it under Pages on the dashboard.
 
-## How it compares
+**The sandbox computer.** Closedhand browses and runs code on its sandbox computer, which has its own Chrome and files that survive restarts. It can't see your files or the rest of the computer it runs on unless you connect them yourself. Watch it work on the dashboard's Computers tab.
 
-Honest version, because you will find out anyway:
+**Connect anything.** Paste an MCP server's web address, the `npx` or `uvx` command from its README or its JSON block, and Closedhand connects to it; skill files work the same way, and each is checked for prompt injection and impersonation before it is switched on. Calendars over CalDAV (iCloud, Fastmail, Nextcloud) need no Google or Microsoft at all, and bank accounts connect read-only through SimpleFIN (US) or Lunch Flow (UK and EU).
 
-| | Closedhand | Khoj | Onyx (Danswer) | Memory layers (Mem0, Zep, ...) |
-|---|---|---|---|---|
-| Shape | Personal assistant in your chat apps | Personal search/chat over your notes and docs | Team RAG over workplace apps | Developer libraries, not assistants |
-| Acts on your behalf (send, schedule, browse, run agents) | Yes | Limited | No, retrieval-focused | No |
-| Continuous email/calendar sync | Yes | No (notes, docs, web) | Yes (team connectors) | No |
-| Multi-user | No, deliberately one owner | Yes | Yes | N/A |
-| Runs fully on your keys and your box | Yes | Yes (self-host) | Yes (self-host) | Yes |
+**A dashboard that tells the truth.** Connections, tasks, projects, pages, Context Brain and a usage tab that shows what your own LLM provider charges, feature by feature, from its own numbers.
 
-If you want team knowledge search, use Onyx. If you want your notes chatted with, Khoj is lovely. Closedhand is for one person who wants an assistant with hands.
+## LLMs
 
-What it is not: multi-user, a hosted service, or mature. It is a young project with one maintainer, support happens in GitHub issues with no SLA, and WhatsApp requires your own Meta business app and a public URL, which is genuinely tedious and documented as such.
+Closedhand is free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does.
+
+Closedhand Managed Models are a convenience if you'd rather not choose. They come with a first month at no charge, once per person, and then carry on with Closedhand+, an optional monthly subscription. You can switch to your own LLM provider at any time.
+
+## Where it runs
+
+Closedhand lives on one computer and you reach it from anywhere. On a laptop it is there while the laptop is awake. When it wakes, it fetches the mail and calendar changes it missed and answers WhatsApp messages sent in the last 12 hours, but a schedule due while it slept is skipped. On a computer that stays on (a desktop, a Mac mini, an old PC or a small rented server), Pulse, schedules and tasks run day and night.
+
+Closedhand's data moves from Always on in My Account, to a computer that stays on. It can go to a computer of your own, like a Mac mini at home: set Closedhand up there, choose Bring Closedhand from another computer in its setup, and type the move code My Account shows; it fetches everything through your personal URL. Or it can go to a server in your own Railway account, and from there back to a computer of your own the same way, after which you delete the project on Railway. Either way this computer then stops running Closedhand and, once the new one runs, clears everything Closedhand kept on it. Setting Closedhand up anywhere else without moving it starts with an empty Context Brain, no connections and no history.
+
+Closedhand starts again by itself after a restart, once someone logs in; a Mac with FileVault turned on waits for that login. The Mac app turns on Launch at Login the first time it opens, and the installer turns on Docker Desktop's "Start Docker Desktop when you sign in"; either can be turned off. On Linux, Docker itself must start with the computer (`sudo systemctl enable docker`). With the Mac app, also turn on Keep Mac Awake in the menu bar; it can't stop a laptop sleeping when its lid is closed.
+
+**On a rented server.** Rent a small Linux server (see Requirements for how much memory), install [Docker Engine](https://docs.docker.com/engine/install/), connect over SSH and run the install command above. It then prints an `ssh -N -L 3000:127.0.0.1:3000 user@server` command: run that on your own computer, keep it open and open http://localhost:3000 to finish setup. After that your personal URL reaches Closedhand from any device. The hosting company provides the machine, so choose one you trust and turn on disk encryption where it offers it.
+
+## Your personal URL and account
+
+Setup gives Closedhand a personal URL, two ordinary words and a number like amber-fox-42, so it says nothing about you. Open it from any device whenever the computer running Closedhand is awake and online; your dashboard password is always required. Bookmark it, pin it in a chat app or add it to your phone's home screen.
+
+Claiming the URL creates your Closedhand account on closedhand.com. You sign in to it with Google or Microsoft, and it stores your email and nothing else; the [privacy page](https://closedhand.com/privacy) lists the routing details it needs to carry the connection. Connecting Google or Microsoft through Closedhand's own app claims the URL with that same sign-in. With your own Google project, setup asks for a second sign-in on closedhand.com, because closedhand.com can't trust a sign-in made by someone else's project.
+
+You can rename the URL in **Settings → Personal URL**; the old address points to the new one for 30 days. **Delete account** in My Account deletes your Closedhand account and everything Closedhand keeps on that computer. Without the computer, sign in at closedhand.com/account to delete the account alone.
+
+## Privacy and security
+
+Each Closedhand serves one person. The first person to message it on a chat app becomes its owner, and strangers get one polite refusal; `ALLOWED_*` lists in `.env` can extend or restrict that. The dashboard password you choose in setup locks every page but setup itself; `ADMIN_PASSWORD` in `.env` overrides it for scripted setups. Keys and sign-ins are encrypted on disk. Your data goes only to the services you connect and the LLM provider you choose. There is no telemetry: a bug report is sent only when you send `/bug` and say yes. Pages you open through your personal URL pass through Closedhand's relay on Cloudflare, encrypted on the way and not kept.
+
+## Requirements
+
+The Mac app, or Docker with the compose plugin on amd64 or arm64 (Apple Silicon and ARM servers included). With an LLM provider that also serves an embedding model, such as DeepInfra, OpenAI or Gemini, 2 GB of RAM runs everything. With one that doesn't, such as Anthropic, xAI or Groq, Closedhand downloads a small local embedding model (about 330 MB, once) so recall still works, and up to 500 MB more the first time File Search reads a picture or a recording: plan for 4 GB. On a tight server you can leave out the sandbox computer and stay nearer 2 GB.
 
 ## Architecture
 
 ```mermaid
 graph LR
-  TG[WhatsApp / Telegram] --> Bot
-  Browser[Your browser] --> Webapp[Dashboard webapp]
+  Chat[WhatsApp / Telegram] --> Bot
+  Browser[Web chat and dashboard] --> Webapp[Webapp]
   Bot[Bot service] <--> DB[(Postgres + pgvector)]
   Webapp <--> DB
-  Bot <--> Sandbox[Sandbox: code + Chrome]
-  Bot --> Providers[Your model provider]
-  Bot <--> Mail[Gmail / Outlook / CalDAV]
+  Bot <--> Sandbox[Sandbox computer: code + Chrome]
+  Bot --> LLM[Your LLM provider]
+  Bot <--> Mail[Gmail / Outlook / IMAP / CalDAV]
 ```
 
-Two Node services (bot and dashboard) that share a Postgres with pgvector and never import each other's code, plus the sandbox container. `docker compose up` starts all four and applies the schema on first boot. The same codebase runs against Supabase for a managed-Postgres deployment; a driver layer keeps both paths honest.
+Two Node services, the bot and the webapp, share a Postgres database with pgvector and never import each other's code; the sandbox computer runs beside them. `docker compose up` starts all four and sets up the database on first start. The Mac app runs the same services on the Mac itself.
 
-## Requirements
+## What it isn't
 
-The Mac app, or Docker with the compose plugin, and at least one model provider key. Docker supports amd64 and arm64, including Apple Silicon and ARM VPSes.
-
-Setup gives Closedhand a personal URL, straight after you choose your dashboard password, to open it from any device, wherever you are (see below). Your dashboard and data stay on the computer running Closedhand, and the personal URL reaches them whenever that computer is awake and online, behind your dashboard password. Temporary addresses are also available, but change when the connection restarts.
-
-If you run Closedhand with Docker on your own domain instead, set `WEBAPP_URL` in `.env` to your permanent HTTPS address that forwards to the webapp, then recreate the bot and webapp with `docker compose up -d`. Setting this value does not create a tunnel or host the dashboard. Leave `BASE_URL` as configured for your account connections. A permanent address takes precedence over the temporary address.
-
-RAM needs depend on your provider. With a full-service key (DeepInfra, OpenAI, Gemini), 2 GB of RAM runs everything and no local models are ever downloaded. With a chat-only provider (xAI, Anthropic, Groq), Closedhand fetches a compact local embedding model (about 330 MB, once, with progress shown) so recall works anyway, and up to 500 MB more the first time File Search reads a picture or a recording; plan for 4 GB in that case. On a tight box you can drop the sandbox service and stay closer to 2 GB.
-
-## Where it lives
-
-Closedhand lives on one computer and you reach it from anywhere. On a laptop it is there while the laptop is awake. When it wakes, it fetches the mail and calendar changes it missed and answers WhatsApp messages sent in the last 12 hours, but a schedule due while it slept is skipped. On a computer that stays on (a desktop, a Mac mini, an old PC or a small VPS), Pulse, schedules and agents run day and night.
-
-Closedhand starts again by itself after a restart, once someone logs in; a Mac with FileVault turned on waits for that login. The Mac app turns on Launch at Login the first time it opens, and the installer turns on Docker Desktop's "Start Docker Desktop when you sign in". Either can be turned off: Launch at Login in the menu bar, or that setting in Docker Desktop. On Linux, Docker itself must start with the computer (`sudo systemctl enable docker`). With the Mac app, also turn on Keep Mac Awake in the menu bar; it can't stop a laptop sleeping when its lid is closed.
-
-Closedhand's data moves from Always on in My Account, to a computer that stays on. It can go to a computer of your own, like a Mac mini at home: install Closedhand there, choose Bring Closedhand from another computer in its setup, and type the move code My Account shows; it fetches everything through your personal URL. Or it can go to a server in your own Railway account, and from there back to a computer of your own the same way, after which you delete the project on Railway. Either way this computer then stops running Closedhand and, once the new one runs, clears everything Closedhand kept on it. Setting Closedhand up anywhere else without moving it starts with an empty Context Brain, no connections and no history.
-
-**On a rented server.** Rent a small Linux server (2 GB of RAM with a full-service key, 4 GB otherwise), install [Docker Engine](https://docs.docker.com/engine/install/) on it, connect over SSH and run the install command above. The installer then prints an `ssh -N -L 3000:127.0.0.1:3000 user@server` command: run it on your own computer, keep it open and open http://localhost:3000 there to finish setup. After setup your personal URL reaches Closedhand from any device, so the tunnel is only needed for setup. The hosting company provides the machine, so choose one you trust and turn on disk encryption where it offers it.
-
-## Security posture
-
-Single-tenant by construction, not by configuration: every request resolves to the one admin. The first person to message it on a chat app becomes its owner and strangers get one polite refusal; `ALLOWED_*` env lists can extend or restrict that. You choose the dashboard password on the setup page, and it locks every page but setup itself; `ADMIN_PASSWORD` in `.env` overrides it for scripted setups. OAuth tokens are encrypted at rest when `TOKEN_ENCRYPTION_KEY` is set. Your data goes only to the services you connect and the AI model provider you choose. Pages you open through your personal URL pass through Closedhand's relay on Cloudflare, encrypted on the way and not kept.
+Closedhand serves one person, deliberately, and it is not a hosted service: it runs where you put it. It is a young project with one maintainer, and support happens in GitHub issues with no promise of response times.
 
 ## Reporting a problem
 
@@ -126,54 +143,8 @@ problem is fixed, Closedhand tells you.
 
 ## Contributing
 
-Issues and PRs welcome. Open an issue before starting anything sizeable so the approach can be agreed first. A genuinely useful first contribution: run `install.sh` on a clean Linux box or WSL and report what breaks.
+Issues and pull requests are welcome. Open an issue before starting anything sizeable so the approach can be agreed first. A genuinely useful first contribution: run `install.sh` on a clean Linux box or WSL and report what breaks. Contributor rules are in [AGENTS.md](AGENTS.md).
 
 ## License
 
-[Apache License 2.0](LICENSE). Third-party components retain their own licences.
-
-Earlier versions released under MIT remain available under that licence.
-
-
-### Open Closedhand from anywhere
-
-Setup gets Closedhand its personal URL as you connect your mail and calendar (or
-use **Settings → Personal URL** later). closedhand.com picks the name, two
-ordinary words and a number like amber-fox-42, so it says nothing about you.
-Connecting Google or Microsoft through Closedhand's own app claims it with that
-same sign-in, which closedhand.com checks against Google's or Microsoft's keys.
-Otherwise, claim it on closedhand.com by signing in with Google or Microsoft,
-then paste the code closedhand.com shows you back into Closedhand. Connecting
-Google through your own Google project takes this second sign-in: closedhand.com
-can't tell a sign-in made by your own project from one made by any other app.
-Either way, claiming creates your Closedhand account, which holds your personal
-URL. You sign in to it with Google or Microsoft, and closedhand.com keeps only
-the email you sign in with. The code, or the sign-in through Closedhand's own
-app, means a claim link sent by somebody else can never point your address at
-their computer. Bookmark your address, pin it in a chat app,
-or add it to your phone's home screen (in Safari on iPhone, **Share → Add to Home
-Screen**).
-
-Your dashboard and data stay on the computer running Closedhand. Your Closedhand
-account on closedhand.com keeps only your personal URL, the Google or Microsoft
-sign-in that claimed it, and what Cloudflare needs to carry the connection to
-that computer. Open the
-address from any device whenever the computer running Closedhand is awake and
-online; your dashboard password is always required. Pausing the link stops the
-connection and resuming keeps the same address. Change the name in **Settings →
-Personal URL**: the old address sends people to the new one for 30 days, then
-says it has moved. It stays yours to take back for six months after the rename,
-then anyone can have it. If you set Closedhand up again and claim with
-the same account, your personal URL moves there. Using
-Closedhand on the computer itself needs no sign-in to closedhand.com.
-
-**Delete account** in Settings deletes your Closedhand account and everything
-Closedhand keeps on that computer. Without the computer, sign in at
-closedhand.com/account to delete the account alone. Either way the personal URL
-comes down and closedhand.com forgets your sign-in straight away; the name stays
-unavailable for six months with nothing linking it to you. A personal URL whose
-computer hasn't connected for 90 days is released, its name kept for you for six
-months, and a sign-in that holds no personal URL is forgotten after a day.
-
-A temporary link remains available in Settings. Its address changes when
-the connection restarts, so use a personal URL before bookmarking or pinning.
+[Apache License 2.0](LICENSE). Third-party components keep their own licences.
