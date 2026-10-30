@@ -67,12 +67,18 @@ test("the web chat shows the parts as separate messages", () => {
   assert.match(page, /else setTimeout\(function \(\) \{ addOneMessage\(part, role, null, ts, text\); \}, i \* 900\);/, "a beat apart when live");
 });
 
-test("the model is told: complete in chat, answer first, parts past a screen, pages only as an extra", () => {
+test("the model is told: the answer in chat at the question's size, answer first, parts past a screen, pages only as an extra", () => {
   const { responsePresentation } = require("../lib/response-presentation");
   const guide = responsePresentation("web");
-  assert.match(guide, /Answer in chat, completely/);
-  assert.match(guide, /Lead with the answer/);
-  assert.match(guide, /Put a line holding only \[\[next\]\] between them\. Never split a short reply, and never more than three parts\./);
+  assert.match(guide, /Answer in chat, at the question's size: the reply itself carries the answer, so they never have to open something else to get it\./);
+  assert.match(guide, /Lead with the answer \(the decision, the picks, the yes or no, the time\), then give only what they need to act on it or trust it/);
+  assert.match(guide, /when they ask for depth, give it/);
+  assert.match(guide, /the answer in the first, and each one a whole thought\. Put a line holding only \[\[next\]\] between them\. Never split a short reply, and never more than three parts\./);
+  assert.doesNotMatch(guide, /caveat or next step/, "no set part for a caveat, which the model filled every time");
+  const engine = read("lib/engine.js");
+  assert.doesNotMatch(engine, /ANSWER AT THE QUESTION'S SIZE/, "the length rule lives in one place, RESPONSE PRESENTATION");
+  // The same rule said where the model writes, which is what shortened replies.
+  assert.match(engine, /const ANSWER_SIZE_TURN = "\[Write this reply as briefly as it can be while still answering in full: the answer first, then only what they need to act on it or trust it\. Leave out background, general advice and options they did not ask for, and say each thing once\. If it still runs past a phone screen, split it with \[\[next\]\] as RESPONSE PRESENTATION says\.\]";/);
   assert.match(guide, /A page is its own piece of work, made whenever one serves the person better than a chat reply can/);
   assert.match(guide, /not as a copy of the chat reply/);
   assert.match(guide, /Call it a page, never a report or a document: documents are the files the person keeps in Context Brain\./);

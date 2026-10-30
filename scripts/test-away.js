@@ -44,7 +44,7 @@ test("its answer adds one short message saying so, and the first time ever where
   assert.match(engine, /const alwaysOn = !settings\.away_always_on_said && !process\.env\.RAILWAY_ENVIRONMENT_ID && require\("\.\/move-marker"\)\.available\(\);/, "once, and only where it can be had");
   assert.match(engine, /Always on, in My Account on the dashboard, keeps you reachable even when the computer is off\./);
   assert.match(engine, /buildQuickTail\(userMessage \|\| ""\) \+ \(opts\.awayNote \? "\\n\\n" \+ opts\.awayNote : ""\)/, "a quick reply says it too");
-  assert.match(engine, /\(opts\.awayNote \? "\\n\\n" \+ opts\.awayNote : ""\) \+ \(opts\.spoken/);
+  assert.match(engine, /\(opts\.awayNote \? "\\n\\n" \+ opts\.awayNote : ""\) \+ "\\n\\n" \+ \(opts\.spoken/);
   assert.match(fs.readFileSync(path.join(root, "index.js"), "utf8"), /const away = require\("\.\/lib\/away"\);[\s\S]*away\.start\(\);/, "loaded early, ticking once running");
 });
 

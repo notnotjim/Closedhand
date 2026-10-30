@@ -236,7 +236,7 @@ test("a spoken turn is marked, and its reply is written to be heard", () => {
   assert.match(ws, /await handleChatMessage\(userId, text, ws, fileData, project, msg\.spoken === true\);/);
   assert.match(ws, /const opts = \{\n\s+project,\n\s+spoken,/);
   const engine = read("lib/engine.js");
-  assert.match(engine, /\(opts\.spoken \? "\\n\\n" \+ SPOKEN_TURN : ""\)/);
+  assert.match(engine, /"\\n\\n" \+ \(opts\.spoken \? SPOKEN_TURN : ANSWER_SIZE_TURN\)/, "a spoken reply's length note in place of the written one");
   assert.match(engine, /effort: deepThink \? "strong" : \(isQuick \|\| isLight \|\| opts\.spoken\) \? "fast" : "default",/, "answered without the long think first");
   assert.match(read("webapp/views/index.html"), /if \(window\.talkFirst\(\) && !document\.body\.classList\.contains\('chat-active'\)\) fetch\('\/api\/dictation\/warm\?voice=1'/, "speech to text and the voice load as a phone's home opens");
   assert.match(engine, /Answer the way you would say it: the answer first, in a few short sentences, with no lists, headings, tables, links or emoji\./);
