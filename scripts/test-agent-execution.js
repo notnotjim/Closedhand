@@ -310,3 +310,35 @@ test("a background job gets a short name, and until then its first sentence cut 
   vm.runInNewContext(body + "\nthis.out = title;", long);
   assert.equal(long.out, "can you find me a couple of good coworking spaces in District 1 with…");
 });
+
+// A task stopped by its step allowance once ended with nothing: the one call
+// that writes up its findings met a reset connection and, alone among model
+// calls, did not try again.
+test("the write-up of a stopped task tries a dropped connection again", async () => {
+  const { writeUpFromEvidence } = require("../lib/task-outcome");
+  let calls = 0;
+  const client = { messages: { create: async () => { calls++; if (calls === 1) throw new Error("fetch failed"); return { content: [{ type: "text", text: "Two of the five hotels showed a price." }] }; } } };
+  const stub = (rel, exports) => {
+    const key = require.resolve(rel); const before = require.cache[key];
+    require.cache[key] = { id: key, filename: key, loaded: true, exports };
+    return () => { if (before) require.cache[key] = before; else delete require.cache[key]; };
+  };
+  const undo = [stub("../lib/llm", { getInternalClient: () => ({ client, model: "m" }) }), stub("../user-store", { UserStore: { load: async () => ({}) } })];
+  const sw = require("../lib/sleep-watch"); const original = sw.retryNetwork;
+  sw.retryNetwork = (e, fn) => original(e, fn, { pauses: [1] });
+  try {
+    const text = await writeUpFromEvidence({ id: "t", user_id: "owner", goal: "Compare hotels near the harbour", runtime: {} },
+      [{ tool: "web_search", result: "Harbour Inn from 9,000 a night" }], new Error("This task reached its step allowance."));
+    assert.equal(text, "Two of the five hotels showed a price.");
+    assert.equal(calls, 2);
+  } finally { sw.retryNetwork = original; undo.forEach((f) => f()); }
+});
+
+// The steps are a limit too: a task once used all 50 in nine minutes, warned
+// only of the clock.
+test("an agent is warned of whichever limit runs out first, steps included", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "agents.js"), "utf8");
+  assert.match(src, /const steps = iteration \/ MAX_ITERATIONS;\n\s+const share = Math\.max\(usedShare, work, steps\);/);
+  assert.match(src, /: share === steps \? `\$\{stepsLeft\} step\$\{stepsLeft === 1 \? "" : "s"\} of your step allowance remain`/);
+  assert.match(src, /if \(share >= 0\.85 && allowanceNotes < 2\)/);
+});
