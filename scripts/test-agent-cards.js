@@ -50,7 +50,7 @@ test("chat work stays while it runs or waits, and a finished run only when its a
   assert.match(dashboard, /a\.delivery_status !== 'sent' &&\n\s*a\.completed_at && Date\.now\(\) - new Date\(a\.completed_at\)\.getTime\(\) > 2 \* 60000\) \{\n\s*detail = 'This may not have reached the chat you asked in, so it stays here\. ' \+ detail;/, "a late delivery says why the card is still there");
   assert.match(dashboard, /function archiveRow\(toggle, count, open\) \{\n\s*if \(!count\) return '';/, "Pages keeps its Archived row");
   assert.doesNotMatch(dashboard, /'Running now'|'This week'/, "the cards say running or waiting themselves");
-  assert.match(dashboard, />Everything Closedhand is doing for you, from what it's working on now to what's coming up\.</, "the tab says what it holds");
+  assert.match(dashboard, />Everything Closedhand is doing for you, from what it's working on now to the routines it runs\.</, "the tab says what it holds");
 });
 
 test("the Tasks tab holds what Closedhand is doing and will do; what it made is on Pages", () => {
@@ -71,7 +71,7 @@ test("Upcoming says what, what kind and when; what already happened folds under 
   assert.equal(fns.reminderTitle("plumber-visit-14mar"), "Plumber visit 14mar", "an old slug reads as words");
   assert.equal(fns.reminderTitle("Renew the car insurance"), "Renew the car insurance");
   assert.equal(fns.reminderTitle(""), "Reminder");
-  assert.match(dashboard, /upcomingRow\(\{ icon: '\\u23F0', title: reminderTitle\(r\.name\), kind: r\.repeats \? 'Reminder, ' \+ r\.repeats : 'Reminder', when: r\.next_at \? FlightTime\.time\(r\.next_at, where\) : '' \}\)/, "the note Closedhand left itself is not shown");
+  assert.match(dashboard, /upcomingRow\(\{ icon: UPCOMING_ICON\.reminder, title: reminderTitle\(r\.name\), kind: r\.repeats \? 'Reminder, ' \+ r\.repeats : 'Reminder', when: r\.next_at \? FlightTime\.time\(r\.next_at, where\) : '' \}\)/, "the note Closedhand left itself is not shown");
   assert.doesNotMatch(dashboard, /esc\(r\.task/, "no reminder prompt on the dashboard");
   assert.doesNotMatch(dashboard, /_showPastReminders|Show \d+ that already ran|that already ran<\/a>/);
   assert.match(dashboard, /<button type="button" class="mc-section-label archive-row" id="past-toggle" aria-expanded="false" aria-controls="past-body" onclick="togglePast\(\)">Past <span class="count" id="past-count"><\/span><span class="chevron-down"><\/span><\/button>/, "Past is a heading row like Archived");
@@ -116,6 +116,66 @@ test("Upcoming is one timeline: every kind under the same date headings, soonest
   assert.doesNotMatch(dashboard, /id="reminders-list"|id="flights-list"|id="bookings-list"|id="goal-checkins-list"/, "one list, not four");
 });
 
+test("a hotel stay holds what happens while you are there: check-in on top, each night said, check-out below", () => {
+  const FlightTime = require("../webapp/public/flight-time.js");
+  const timeline = dashboard.slice(dashboard.indexOf("    var _upcoming = {"), dashboard.indexOf("    function updateUpcomingEmpty() {"));
+  const stays = dashboard.slice(dashboard.indexOf("    function localDay("), dashboard.indexOf("    // Flights and bookings Closedhand found are removed"));
+  const el = { innerHTML: "" };
+  const ctx = { FlightTime, esc: (t) => String(t), escHtml: (t) => String(t), updateUpcomingEmpty() {}, UPCOMING_ICON: { checkout: "" },
+    fmtBookingTime: (iso, tz) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz }),
+    document: { getElementById: (id) => (id === "upcoming-list" ? el : null) } };
+  vm.runInNewContext(timeline + stays + "\nthis.setUpcoming = setUpcoming; this.upcomingItem = upcomingItem; this.stayOf = stayOf; this.renderCheckoutCard = renderCheckoutCard;", ctx);
+  const seoul = { tz: "Asia/Seoul" };
+  const hotel = { id: "h1", kind: "hotel", title: "Hotel Aurora Seoul, 3 nights", status: "confirmed", timezone: "Asia/Seoul", starts_at: "2027-11-08T06:00:00Z", ends_at: "2027-11-11T02:00:00Z" };
+  const checkIn = Object.assign(ctx.upcomingItem(hotel.starts_at, seoul, "[check in]"), { stay: ctx.stayOf(hotel) });
+  const checkOut = Object.assign(ctx.upcomingItem(hotel.ends_at, seoul, ctx.renderCheckoutCard(hotel)), { stayEnd: "h1" });
+  ctx.setUpcoming("flights", [ctx.upcomingItem("2027-11-08T00:10:00Z", { tz: "Asia/Tokyo" }, "[flight out]"), ctx.upcomingItem("2027-11-11T06:05:00Z", seoul, "[flight back]")]);
+  ctx.setUpcoming("reminders", [ctx.upcomingItem("2027-11-11T02:00:00Z", seoul, "[same minute]")]);
+  ctx.setUpcoming("bookings", [checkIn, checkOut, ctx.upcomingItem("2027-11-09T02:00:00Z", seoul, "[implant]"),
+    ctx.upcomingItem("2027-11-10T10:30:00Z", seoul, "[dinner]"), ctx.upcomingItem("2027-11-11T01:30:00Z", seoul, "[follow-up]")]);
+  const html = el.innerHTML;
+  const at = (s) => html.indexOf(s);
+  assert.ok(at("[flight out]") < at('<div class="stay">[check in]<div class="stay-inside">'), "the flight there comes before the stay");
+  const inside = html.slice(at('<div class="stay-inside">'), at("Check out"));
+  for (const s of ["[implant]", "[dinner]", "[follow-up]"]) assert.ok(inside.includes(s), s + " is inside the stay");
+  assert.match(inside, /night 2 of 3[\s\S]*\[implant\][\s\S]*last night[\s\S]*\[dinner\][\s\S]*check-out day[\s\S]*\[follow-up\]/, "each day says which night it is");
+  assert.match(html, /<\/div><div class="flight-card">[\s\S]*Check out<\/span><div[^>]*>Hotel Aurora Seoul, 3 nights \u00b7 by 11:00<\/div>[\s\S]*?<\/div><\/div>\[same minute\]/, "the check-out closes the stay, before anything at the same minute");
+  assert.ok(at("[same minute]") < at("[flight back]"), "and what follows it is after the stay");
+  assert.equal(ctx.stayOf({ ...hotel, status: "cancelled" }), null, "a cancelled stay is a plain card");
+  assert.equal(ctx.stayOf({ ...hotel, ends_at: null }), null, "so is one with no check-out");
+  assert.equal(ctx.stayOf({ ...hotel, kind: "restaurant" }), null, "only a stay holds things");
+  assert.match(dashboard, /\.stay::before \{ content: ''; position: absolute; left: 1\.3125rem;/, "a line down from the check-in card's icon");
+});
+
+test("flights and bookings found for you are removed the same way, from the same x, and both ask first", () => {
+  assert.match(dashboard, /onclick="confirmBookingRemove\(this, \\'' \+ b\.id \+ '\\'\)"/);
+  assert.match(dashboard, /onclick="confirmFlightRemove\(this, '\$\{escHtml\(f\._key\)\}'\)"/);
+  assert.match(dashboard, /askFirst\(btn, \{ text: 'Remove this booking from Upcoming for good\?', yes: 'Remove' \}\)/);
+  assert.match(dashboard, /askFirst\(btn, \{ text: 'Remove this flight\? Closedhand stops tracking it\.', yes: 'Remove' \}\)/);
+  assert.doesNotMatch(dashboard, /onclick="removeBooking\(/, "nothing removes without asking");
+  const server = read("webapp/server.js");
+  assert.match(server, /app\.delete\("\/api\/flights\/:key"/);
+  assert.match(server, /const marked = \{ \.\.\.flight, supersededBy: "removed", supersededAt: new Date\(\)\.toISOString\(\) \};/, "kept and marked, so the scan that found it does not add it again");
+  assert.match(server, /if \(!\/\^flight-\[A-Za-z0-9-\]\+\$\/\.test\(key\)\) return res\.status\(400\)/, "only a flight's own key");
+});
+
+test("Upcoming is its own tab, second, and every link to what is coming up opens it", () => {
+  assert.match(dashboard, /data-tab="connections"[^\n]*>Connections<\/button>\n\s*<button class="tab" data-tab="upcoming" onclick="switchTab\('upcoming'\)">Upcoming<\/button>\n\s*<button class="tab" data-tab="tasks"/);
+  const upcoming = dashboard.slice(dashboard.indexOf('id="tab-upcoming"'), dashboard.indexOf("<!-- Settings Tab Content -->"));
+  assert.match(upcoming, /<p class="goals-intro">Your bookings, flights and reminders from everything you've connected, soonest first\.<\/p>/);
+  assert.match(upcoming, /<div id="upcoming-list"><\/div>[\s\S]*<div id="past-section" hidden>/);
+  const tasks = dashboard.slice(dashboard.indexOf('id="tab-tasks"'), dashboard.indexOf('id="tab-upcoming"'));
+  assert.doesNotMatch(tasks, /upcoming-list|past-section/, "not on Tasks any more");
+  assert.match(dashboard, /if \(tabName === 'upcoming'\) loadUpcoming\(\);/);
+  assert.match(dashboard, /\{ tab: 'upcoming', text: 'Upcoming is what is coming up:/, "the tour shows it");
+  assert.match(dashboard, /\.flights-away \{ color: var\(--muted\);/, "how far away a day is, in a neutral colour: the accent is Closedhand's");
+  assert.doesNotMatch(dashboard.slice(dashboard.indexOf("var UPCOMING_ICON"), dashboard.indexOf("function updateUpcomingEmpty")), /&#\d{4,6};&#65039;|\\u\{1F|'\\u23F0'/, "line icons, no emoji");
+  assert.match(read("lib/flights-scheduler.js"), /dashboardUrl\(link\.platform, "upcoming"\)/);
+  assert.match(read("lib/flights.js"), /dashboardUrl\(link\.platform, "upcoming"\)/);
+  assert.equal((read("lib/tools/handlers.js").match(/dashboardUrl\(toolInput\._platform \|\| ctx\.activePlatform, "upcoming"\)/g) || []).length, 2);
+  assert.match(read("webapp/views/index.html"), /hash === '#upcoming' \? 'Upcoming'/);
+});
+
 test("a reminder about an appointment shows the appointment's time, and when it will remind beside it", async () => {
   const FlightTime = require("../webapp/public/flight-time.js");
   const timeline = dashboard.slice(dashboard.indexOf("    var _upcoming = {"), dashboard.indexOf("    function updateUpcomingEmpty() {"));
@@ -125,7 +185,7 @@ test("a reminder about an appointment shows the appointment's time, and when it 
     { name: "Plumber visit", next_at: "2027-03-12T07:30:00Z", event_at: "2027-03-12T09:00:00Z", timezone: "Europe/Lisbon", repeats: null },
     { name: "Water the plants", next_at: "2027-03-13T18:00:00Z", timezone: "Europe/Lisbon", repeats: "every Sat" },
   ];
-  const ctx = { FlightTime, console, esc: (t) => String(t), updateUpcomingEmpty() {},
+  const ctx = { FlightTime, console, esc: (t) => String(t), updateUpcomingEmpty() {}, UPCOMING_ICON: { reminder: "", done: "" },
     document: { getElementById: (id) => els[id] || null },
     fetch: async () => ({ ok: true, json: async () => rows }) };
   vm.runInNewContext(timeline + reminders + "\nthis.loadReminders = loadReminders;", ctx);

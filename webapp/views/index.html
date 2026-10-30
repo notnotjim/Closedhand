@@ -3894,7 +3894,7 @@
     };
     var bare = function (t) {
       return t.replace(/(https?:\/\/[^\s<]+)|\/dashboard(#[\w-]+)?/g, function (m, url, hash) {
-        return url ? link(url, url) : link(m, hash === '#tasks' ? 'Tasks' : 'Dashboard');
+        return url ? link(url, url) : link(m, hash === '#tasks' ? 'Tasks' : hash === '#upcoming' ? 'Upcoming' : 'Dashboard');
       });
     };
     var inline = function (t) {

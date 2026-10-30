@@ -83,7 +83,7 @@ test("a flight is labelled a flight: never a train or other, and never kept twic
   assert.match(src, /A flight is kind "flight", never train, bus or other\./);
   assert.doesNotMatch(src, /Skip flights entirely/);
   assert.match(src, /const kind = drop \? r\.kind : kindOf\(r\);/, "stored flights filed as trains are re-labelled on the next scan");
-  assert.match(read("webapp/views/dashboard.html"), /var BOOKING_ICON = \{ flight: '&#9992;&#65039;',/);
+  assert.match(read("webapp/views/dashboard.html"), /var UPCOMING_ICON = \{\n\s*flight: lineIcon\(/);
 });
 
 // A table in memory, enough of the query builder for lib/bookings.js.

@@ -6821,6 +6821,34 @@ app.delete("/api/bookings/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+// A flight that is not theirs, removed from Upcoming. It stays saved, marked,
+// so the scan that found it does not add it again: a marked flight is passed
+// over everywhere, and only a change email moving the booking onto it brings
+// it back (lib/flight-bookings.js).
+app.delete("/api/flights/:key", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not logged in" });
+  const key = String(req.params.key || "");
+  if (!/^flight-[A-Za-z0-9-]+$/.test(key)) return res.status(400).json({ error: "Not a flight" });
+  try {
+    const { data: row, error: readError } = await supabase.from("facts").select("value").eq("user_id", userId).eq("key", key).maybeSingle();
+    if (readError) throw readError;
+    if (!row) return res.status(404).json({ error: "Not found" });
+    // Saved wrapped, {"value": "<flight json>", created, ...}, as /api/flights reads it.
+    const outer = JSON.parse(row.value);
+    const wrapped = outer && typeof outer.value === "string";
+    const flight = wrapped ? JSON.parse(outer.value) : outer;
+    const marked = { ...flight, supersededBy: "removed", supersededAt: new Date().toISOString() };
+    const value = JSON.stringify(wrapped ? { ...outer, value: JSON.stringify(marked) } : marked);
+    const { error } = await supabase.from("facts").update({ value, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("key", key);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[flights] remove error:", e.message);
+    res.status(500).json({ error: "Could not remove it" });
+  }
+});
+
 app.get("/api/flights", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });

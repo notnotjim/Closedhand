@@ -108,7 +108,7 @@ test("Upcoming reads everything connected, and a booking from a chat says where 
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, />Nothing coming up\. Reminders and bookings from everything you've connected show here\.</);
   assert.doesNotMatch(dash, /from your mail show here/);
-  assert.match(dash, /appointment: '&#128467;&#65039;'/);
+  assert.match(dash, /appointment: lineIcon\('M4 5h16v15H4zM4 10h16M8 3v4M16 3v4'\),/, "an appointment drawn as a calendar, in the app's line style");
   assert.match(dash, /sourceDocsHtml\(b\.source_mail\) \+ chatSourceHtml\(det\.from_chat\)/);
   assert.match(dash, /title="' \+ escHtml\('From your ' \+ c\.app \+ ' chat' \+ \(c\.name \? ' with ' \+ c\.name : ''\)\) \+ '"/);
   const defs = read("lib/tools/definitions.js");

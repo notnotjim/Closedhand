@@ -1303,12 +1303,20 @@
       margin: 1rem 0 0.5rem; padding: 0 0.25rem;
     }
     .flights-date-header:first-child { margin-top: 0.5rem; }
-    .flights-away { color: var(--accent); text-transform: none; letter-spacing: 0; }
+    .flights-away { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+    /* A hotel stay holds what happens while you are there: its check-in card
+       on top, a line down from its icon, its check-out card below. */
+    .stay { position: relative; margin-bottom: 0.625rem; }
+    .stay::before { content: ''; position: absolute; left: 1.3125rem; top: 1.5rem; bottom: 1.5rem; width: 2px; border-radius: 1px; background: rgba(var(--fg-rgb),0.22); }
+    .stay > .flight-card { position: relative; z-index: 1; background: var(--raised); }
+    .stay > .flight-card:last-child { margin-bottom: 0; }
+    .stay-inside { margin-left: 2.5rem; padding: 0.125rem 0; }
     /* One line each under Upcoming: what it is, what kind, and when. */
-    #tab-tasks .upcoming-row { display: flex; align-items: center; gap: 0.625rem; width: 100%; padding: 0.5rem 0.75rem; margin: 0 0 0.375rem; border: 1px solid rgba(var(--fg-rgb),0.1); border-radius: 0.5rem; background: none; color: inherit; font: inherit; text-align: left; }
-    #tab-tasks button.upcoming-row { cursor: pointer; }
-    #tab-tasks button.upcoming-row:hover { border-color: rgba(var(--fg-rgb),0.22); }
-    .upcoming-row .upcoming-icon { flex: none; font-size: 0.875rem; }
+    #tab-upcoming .upcoming-row { display: flex; align-items: center; gap: 0.625rem; width: 100%; padding: 0.5rem 0.75rem; margin: 0 0 0.375rem; border: 1px solid rgba(var(--fg-rgb),0.1); border-radius: 0.5rem; background: none; color: inherit; font: inherit; text-align: left; }
+    #tab-upcoming button.upcoming-row { cursor: pointer; }
+    #tab-upcoming button.upcoming-row:hover { border-color: rgba(var(--fg-rgb),0.22); }
+    .upcoming-row .upcoming-icon { flex: none; display: inline-flex; color: var(--muted); }
+    .upcoming-card-icon { display: inline-flex; vertical-align: -0.125rem; margin-right: 0.375rem; color: var(--muted); }
     .upcoming-row .upcoming-what { flex: 1; min-width: 0; }
     .upcoming-row .upcoming-title { display: block; font-size: 0.875rem; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .upcoming-row .upcoming-kind { display: block; margin-top: 1px; font-size: 0.75rem; color: rgba(var(--fg-rgb),0.6); }
@@ -2073,6 +2081,7 @@
       <div class="dashboard-toolbar">
       <div class="tab-bar">
         <button class="tab active" data-tab="connections" onclick="switchTab('connections')">Connections</button>
+        <button class="tab" data-tab="upcoming" onclick="switchTab('upcoming')">Upcoming</button>
         <button class="tab" data-tab="tasks" onclick="switchTab('tasks')">Tasks</button>
         <button class="tab" data-tab="projects" onclick="switchTab('projects')">Projects</button>
         <button class="tab" data-tab="pages" onclick="switchTab('pages')">Pages</button>
@@ -2285,7 +2294,7 @@
       <!-- Workers Tab Content -->
       <div class="tab-content" id="tab-tasks">
         <div style="padding-top:1rem;">
-          <p class="goals-intro">Everything Closedhand is doing for you, from what it's working on now to what's coming up.</p>
+          <p class="goals-intro">Everything Closedhand is doing for you, from what it's working on now to the routines it runs.</p>
           <!-- How much ran lately, in one line, only when something has: what
                runs now and the routines are listed below, never counted twice. -->
           <p class="auto-card-meta" id="auto-summary" hidden></p>
@@ -2345,8 +2354,15 @@
           <div class="mc-section-label" id="auto-history-label" style="display:none;">Recent runs</div>
           <div id="auto-history-list"></div>
 
-          <!-- Upcoming: reminders + tracked flights + bookings picked out of everything connected -->
-          <div class="mc-section-label" style="margin-top:1.5rem;">Upcoming</div>
+        </div>
+      </div>
+
+      <!-- Upcoming: reminders, tracked flights, goal check-ins and bookings
+           picked out of everything connected, soonest first; a hotel stay
+           holds what happens during it (renderUpcoming). -->
+      <div class="tab-content" id="tab-upcoming">
+        <div style="padding-top:1rem;">
+          <p class="goals-intro">Your bookings, flights and reminders from everything you've connected, soonest first.</p>
           <div class="flights-loading" id="flights-loading" style="display:none;">Checking flights…</div>
           <div id="upcoming-list"></div>
           <div id="flights-empty" style="display:none;font-size:0.8125rem;color:rgba(var(--fg-rgb),0.6);padding:0.5rem 0;">Nothing coming up. Reminders and bookings from everything you've connected show here.</div>
@@ -3011,6 +3027,7 @@
     let welcomeStep = 0, welcomeInitialized = false;
     const welcomeSteps = [
       { tab: 'connections', text: 'Your connected apps and skills live here. Add one when you need more, or disconnect one any time.' },
+      { tab: 'upcoming', text: 'Upcoming is what is coming up: bookings, flights and reminders from everything you have connected, with a hotel stay holding what happens while you are there.' },
       { tab: 'tasks', text: 'Your tasks and routines live here, like a morning briefing. Check how they are doing, then get back to your day.' },
       { tab: 'projects', text: 'Projects are the bigger things you are working towards. Each shows its goal, how far along you are and what Closedhand has done for the project.' },
       { tab: 'pages', text: 'Pages are what Closedhand makes beyond a chat answer, like a trip plan or a comparison. Each opens as PDF, Word or Excel too.' },
@@ -5327,10 +5344,10 @@
         loadSkills();
         startAutomationPolling();
         loadPulse();
-        loadUpcoming();
       } else {
         stopAutomationPolling();
       }
+      if (tabName === 'upcoming') loadUpcoming();
       if (tabName === 'settings') {
         if (window._platformsCache) renderPlatformPills(window._platformsCache);
         loadUserRules();
@@ -6462,7 +6479,24 @@
     }
 
     // ---- Bookings picked out of everything connected: same card shape as a flight ----
-    var BOOKING_ICON = { flight: '&#9992;&#65039;', train: '&#128646;', hotel: '&#127976;', event: '&#127915;', restaurant: '&#127869;&#65039;', car: '&#128663;', ferry: '&#9973;', bus: '&#128652;', appointment: '&#128467;&#65039;', other: '&#128203;' };
+    // Everything under Upcoming in the app's one line style.
+    var lineIcon = function (d) { return '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>'; };
+    var UPCOMING_ICON = {
+      flight: lineIcon('M2 16l20-6-2-3-7 2-6-6-2 1 4 7-5 1-2-2-2 1z'),
+      train: lineIcon('M7 3h10a2 2 0 0 1 2 2v9a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2zM5 10h14M9 21l1.5-4M15 21l-1.5-4'),
+      hotel: lineIcon('M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3M7 12.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z'),
+      event: lineIcon('M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM14 6v12'),
+      restaurant: lineIcon('M7 3v8a2 2 0 0 0 4 0V3M9 11v10M17 3c-2 0-3 3-3 6s1 4 3 4v8'),
+      car: lineIcon('M4 16l1.5-5a2 2 0 0 1 2-1.5h9a2 2 0 0 1 2 1.5L20 16v3h-3M4 16v3h3M4 16h16M7.5 13.5h.01M16.5 13.5h.01'),
+      ferry: lineIcon('M3 18c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0M5 15l1-5h12l1 5M12 4v6'),
+      bus: lineIcon('M6 3h12a2 2 0 0 1 2 2v12H4V5a2 2 0 0 1 2-2zM4 11h16M7 20v-3M17 20v-3M7.5 14h.01M16.5 14h.01'),
+      appointment: lineIcon('M4 5h16v15H4zM4 10h16M8 3v4M16 3v4'),
+      other: lineIcon('M9 4h6v3H9zM7 5.5H5.5V21h13V5.5H17M9 12h6M9 16h4'),
+      reminder: lineIcon('M20 13a8 8 0 1 1-16 0 8 8 0 0 1 16 0zM12 9v4l2.5 2M5 4L3 6M19 4l2 2'),
+      goal: lineIcon('M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM12 12h.01'),
+      done: lineIcon('M5 12.5l4.5 4.5L19 7.5'),
+      checkout: lineIcon('M14 4H6v16h8M10 12h10M17 9l3 3-3 3'),
+    };
     function fmtBookingTime(iso, tz) {
       if (!iso) return '';
       var d = new Date(iso); if (isNaN(d)) return '';
@@ -6476,7 +6510,7 @@
     }
     function renderBookingCard(b) {
       var det = b.details || {};
-      var icon = BOOKING_ICON[b.kind] || BOOKING_ICON.other;
+      var icon = UPCOMING_ICON[b.kind] || UPCOMING_ICON.other;
       var when = fmtBookingTime(b.starts_at, b.timezone);
       var until = b.ends_at ? fmtBookingTime(b.ends_at, b.timezone) : '';
       var sameDay = b.ends_at && fmtBookingDate(b.ends_at, b.timezone) === fmtBookingDate(b.starts_at, b.timezone);
@@ -6502,11 +6536,11 @@
       return '<div class="flight-card" style="' + (cancelled ? 'opacity:0.55;' : '') + '">' +
         '<div class="flight-status-bar ' + (cancelled ? 'cancelled' : 'scheduled') + '"></div>' +
         '<div style="padding:0.625rem 0.875rem;display:flex;align-items:center;gap:0.875rem;flex-wrap:wrap;">' +
-          '<div style="min-width:6.875rem;"><span style="font-size:0.8125rem;margin-right:0.375rem;" title="' + escHtml(b.kind) + '">' + icon + '</span><span class="flight-number">' + escHtml(b.title) + '</span>' +
+          '<div style="min-width:6.875rem;"><span class="upcoming-card-icon" title="' + escHtml(b.kind) + '">' + icon + '</span><span class="flight-number">' + escHtml(b.title) + '</span>' +
             (showProvider ? '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(b.provider) + '</div>' : '') + '</div>' +
-          '<div style="flex:1;min-width:12.5rem;font-size:0.8125rem;color:var(--fg);">' + route + (when ? '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(when) + (sameDay && until ? ' to ' + escHtml(until) : '') + moved + '</div>' : '') + '</div>' +
+          '<div style="flex:1;min-width:12.5rem;font-size:0.8125rem;color:var(--fg);">' + route + (when ? '<div style="font-size:0.6875rem;color:var(--muted);">' + (b.kind === 'hotel' ? 'Check in from ' : '') + escHtml(when) + (sameDay && until ? ' to ' + escHtml(until) : '') + moved + '</div>' : '') + '</div>' +
           '<span class="flight-status-badge ' + (cancelled ? 'cancelled' : 'scheduled') + '">' + (cancelled ? 'Cancelled' : 'Booked') + '</span>' +
-          '<button class="conn-btn conn-btn-disconnect" title="Not a booking? Remove it" onclick="removeBooking(\'' + b.id + '\')" style="padding:2px 0.5rem;font-size:0.6875rem;">&times;</button>' +
+          '<button class="conn-btn conn-btn-disconnect" title="Not a booking? Remove it" aria-label="Remove this booking" onclick="confirmBookingRemove(this, \'' + b.id + '\')" style="padding:2px 0.5rem;font-size:0.6875rem;">&times;</button>' +
         '</div>' +
         (details.length ? '<div class="flight-details" style="padding:0 0.875rem 0.625rem;">' + details.join('') + '</div>' : '') +
         sourceDocsHtml(b.source_mail) + chatSourceHtml(det.from_chat) +
@@ -6552,16 +6586,62 @@
         document.getElementById('recent-bookings').innerHTML = over.map(renderBookingCard).join('');
         _pastBookings = over.length;
         updatePast();
-        setUpcoming('bookings', rows.filter(function(b) { return !b.over; }).map(function(b) {
+        setUpcoming('bookings', [].concat.apply([], rows.filter(function(b) { return !b.over; }).map(function(b) {
           var item = upcomingItem(b.starts_at, { tz: b.timezone || undefined }, renderBookingCard(b));
           if (item.date === 'Date to be confirmed') item.date = fmtBookingDate(b.starts_at, b.timezone) || item.date;
-          return item;
-        }));
+          // A stay brings its check-out, and holds what comes between.
+          var stay = stayOf(b);
+          if (!stay) return [item];
+          item.stay = stay;
+          var out = upcomingItem(b.ends_at, { tz: b.timezone || undefined }, renderCheckoutCard(b));
+          out.stayEnd = b.id;
+          return [item, out];
+        })));
       } catch (e) { console.error('bookings', e); updateUpcomingEmpty(); }
     }
-    async function removeBooking(id) {
+    // A hotel stay, as nights counted where the hotel is: what is booked
+    // during it shows inside it, each day saying which night it is.
+    function localDay(iso, tz) {
+      try { return new Date(iso).toLocaleDateString('en-CA', { timeZone: tz || undefined }); }
+      catch (e) { return new Date(iso).toLocaleDateString('en-CA'); }
+    }
+    var daysBetween = function (a, b) { return Math.round((Date.parse(b) - Date.parse(a)) / 86400000); };
+    function stayOf(b) {
+      var start = Date.parse(b.starts_at), end = Date.parse(b.ends_at);
+      if (b.kind !== 'hotel' || b.status === 'cancelled' || !(end > start)) return null;
+      var tz = b.timezone || undefined, startDay = localDay(b.starts_at, tz), endDay = localDay(b.ends_at, tz);
+      return { id: b.id, tz: tz, end: end, startDay: startDay, endDay: endDay, nights: Math.max(1, daysBetween(startDay, endDay)) };
+    }
+    function nightNote(stay, at) {
+      var day = localDay(new Date(at).toISOString(), stay.tz);
+      if (day === stay.endDay) return 'check-out day';
+      var n = daysBetween(stay.startDay, day) + 1;
+      return n <= 1 ? '' : n >= stay.nights ? 'last night' : 'night ' + n + ' of ' + stay.nights;
+    }
+    // Its other end: when to leave, joined to the check-in card above by the
+    // line down the side (renderUpcoming).
+    function renderCheckoutCard(b) {
+      var by = fmtBookingTime(b.ends_at, b.timezone);
+      return '<div class="flight-card">' +
+        '<div class="flight-status-bar scheduled"></div>' +
+        '<div style="padding:0.625rem 0.875rem;">' +
+          '<span class="upcoming-card-icon" title="Check out">' + UPCOMING_ICON.checkout + '</span><span class="flight-number">Check out</span>' +
+          '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(b.title) + (by ? ' \u00b7 by ' + escHtml(by) : '') + '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    // Flights and bookings Closedhand found are removed the same way, from
+    // the same x, and both ask first.
+    async function confirmBookingRemove(btn, id) {
+      if (!(await askFirst(btn, { text: 'Remove this booking from Upcoming for good?', yes: 'Remove' }))) return;
       var res = await fetch('/api/bookings/' + id, { method: 'DELETE' });
       if (res.ok) loadBookings(); else showToast('Could not remove it', true);
+    }
+    async function confirmFlightRemove(btn, key) {
+      if (!(await askFirst(btn, { text: 'Remove this flight? Closedhand stops tracking it.', yes: 'Remove' }))) return;
+      var res = await fetch('/api/flights/' + encodeURIComponent(key), { method: 'DELETE' });
+      if (res.ok) loadFlights(); else showToast('Could not remove it', true);
     }
 
     function renderFlightCard(f) {
@@ -6602,7 +6682,7 @@
         <div class="flight-status-bar ${status.cls}"></div>
         <div style="padding:0.625rem 0.875rem;display:flex;align-items:center;gap:0.875rem;flex-wrap:wrap;">
           <div style="min-width:6.875rem;">
-            <span style="font-size:0.8125rem;margin-right:0.375rem;" title="Tracked flight">&#9992;&#65039;</span><span class="flight-number">${escHtml(f.flightNumber)}</span>
+            <span class="upcoming-card-icon" title="Tracked flight">${UPCOMING_ICON.flight}</span><span class="flight-number">${escHtml(f.flightNumber)}</span>
             ${f.airline ? '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(f.airline) + '</div>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:13.75rem;">
@@ -6620,6 +6700,7 @@
             </div>
           </div>
           <span class="flight-status-badge ${status.cls}">${escHtml(status.label)}</span>
+          ${f._key ? `<button class="conn-btn conn-btn-disconnect" title="Not your flight? Remove it" aria-label="Remove this flight" onclick="confirmFlightRemove(this, '${escHtml(f._key)}')" style="padding:2px 0.5rem;font-size:0.6875rem;">&times;</button>` : ''}
         </div>
         ${details.length ? `<div class="flight-details" style="padding:0 0.875rem 0.625rem;">${details.join('')}</div>` : ''}
         ${sourceDocsHtml(f.source_mail)}
@@ -6683,13 +6764,13 @@
           if (r.event_at && !r.repeats) {
             var sameDay = r.next_at && FlightTime.dateLabel(r.next_at, where) === FlightTime.dateLabel(r.event_at, where);
             var remind = !r.next_at ? 'Reminder' : 'Reminder ' + (sameDay ? 'at ' : new Date(r.next_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: r.timezone || undefined }) + ', ') + FlightTime.time(r.next_at, where);
-            return upcomingItem(r.event_at, where, upcomingRow({ icon: '\u23F0', title: reminderTitle(r.name), kind: remind, when: FlightTime.time(r.event_at, where) }));
+            return upcomingItem(r.event_at, where, upcomingRow({ icon: UPCOMING_ICON.reminder, title: reminderTitle(r.name), kind: remind, when: FlightTime.time(r.event_at, where) }));
           }
-          return upcomingItem(r.next_at, where, upcomingRow({ icon: '\u23F0', title: reminderTitle(r.name), kind: r.repeats ? 'Reminder, ' + r.repeats : 'Reminder', when: r.next_at ? FlightTime.time(r.next_at, where) : '' }));
+          return upcomingItem(r.next_at, where, upcomingRow({ icon: UPCOMING_ICON.reminder, title: reminderTitle(r.name), kind: r.repeats ? 'Reminder, ' + r.repeats : 'Reminder', when: r.next_at ? FlightTime.time(r.next_at, where) : '' }));
         }));
         document.getElementById('reminders-past').innerHTML = past.map(function(r) {
           var ran = r.archived_at ? new Date(r.archived_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-          return upcomingRow({ icon: '\u2713', title: reminderTitle(r.name), kind: 'Reminder', when: ran ? 'Ran ' + ran : 'Ran', past: true });
+          return upcomingRow({ icon: UPCOMING_ICON.done, title: reminderTitle(r.name), kind: 'Reminder', when: ran ? 'Ran ' + ran : 'Ran', past: true });
         }).join('');
         _pastReminders = past.length;
         updatePast();
@@ -6743,7 +6824,7 @@
           .sort(function(a, b) { return new Date(a.check_in.next_at) - new Date(b.check_in.next_at); });
         setUpcoming('checkins', due.map(function(g) {
           var where = { tz: g.check_in.timezone || data.timezone || undefined };
-          return upcomingItem(g.check_in.next_at, where, upcomingRow({ icon: '\u{1F3AF}', title: g.title, kind: 'Goal check-in' + (g.check_in_text ? ', every ' + g.check_in_text : ''), when: FlightTime.time(g.check_in.next_at, where), onclick: "openGoal('" + g.id + "')" }));
+          return upcomingItem(g.check_in.next_at, where, upcomingRow({ icon: UPCOMING_ICON.goal, title: g.title, kind: 'Goal check-in' + (g.check_in_text ? ', every ' + g.check_in_text : ''), when: FlightTime.time(g.check_in.next_at, where), onclick: "openGoal('" + g.id + "')" }));
         }));
       } catch (e) {}
     }
@@ -6766,19 +6847,27 @@
       return { at: isNaN(at) ? Infinity : at, date: FlightTime.dateLabel(iso, point || {}), away: FlightTime.daysAway(iso, point || {}), html: html };
     }
     function setUpcoming(kind, items) { _upcoming[kind] = items; renderUpcoming(); }
+    // A hotel stay is drawn as a bracket: its check-in card, then what is on
+    // while you are there, set in beside a line, then its check-out card.
     function renderUpcoming() {
       var el = document.getElementById('upcoming-list');
       if (!el) return;
+      // A check-out goes before anything else at the same minute, so what
+      // follows it is after the stay.
       var all = [].concat(_upcoming.reminders, _upcoming.checkins, _upcoming.flights, _upcoming.bookings)
-        .sort(function (a, b) { return a.at - b.at; });
-      var html = '', last = null;
+        .sort(function (a, b) { return a.at - b.at || (b.stayEnd ? 1 : 0) - (a.stayEnd ? 1 : 0); });
+      var html = '', last = null, stay = null;
       all.forEach(function (item) {
         if (item.date !== last) {
-          html += '<div class="flights-date-header">' + esc(item.date) + (item.away ? '<span class="flights-away"> \u00b7 ' + esc(item.away) + '</span>' : '') + '</div>';
+          var note = stay ? nightNote(stay, item.at) : item.away;
+          html += '<div class="flights-date-header">' + esc(item.date) + (note ? '<span class="flights-away"> \u00b7 ' + esc(note) + '</span>' : '') + '</div>';
           last = item.date;
         }
+        if (stay && item.stayEnd === stay.id) { html += '</div>' + item.html + '</div>'; stay = null; return; }
+        if (!stay && item.stay) { html += '<div class="stay">' + item.html + '<div class="stay-inside">'; stay = item.stay; return; }
         html += item.html;
       });
+      if (stay) html += '</div></div>';
       // Redrawn only when something changed, so a refresh never flickers.
       if (html !== _upcomingHtml) { el.innerHTML = html; _upcomingHtml = html; }
       updateUpcomingEmpty();
@@ -9167,13 +9256,13 @@
       document.addEventListener('touchcancel', function() { if (active && horiz) window.parent.postMessage({ type: 'dash-drag-end', dx: 0, vx: 0 }, '*'); active = false; }, { passive: true });
     })();
 
-    // Deep-link: switch to tab from URL hash (e.g. #tasks, #settings)
+    // Deep-link: switch to tab from URL hash (e.g. #upcoming, #settings)
     function resolveAndSwitchFromHash() {
       const resolved = window.location.hash.replace('#', '');
       if (resolved === 'dashboard-link') {
         switchTab('settings');
         setTimeout(function() { document.getElementById('phone-block').scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200);
-      } else if (['connections', 'tasks', 'projects', 'pages', 'settings', 'brain'].includes(resolved)) {
+      } else if (['connections', 'upcoming', 'tasks', 'projects', 'pages', 'settings', 'brain'].includes(resolved)) {
         switchTab(resolved);
       } else if (/^account(\/(welcome|extended))?$/.test(resolved)) {
         if (inAccountPopup()) setAccountMode(true); else switchTab('account');

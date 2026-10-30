@@ -51,7 +51,7 @@ const overview = (db, opts = {}) => getDashboardOverview({ db, userId: USER, pla
 test("an idle dashboard still has a phone link, flights and hotels despite no reminder tasks", async () => {
   const r = await overview(fixture());
   assert.equal(r.dashboard_url, "https://phone.example.com/dashboard#tasks");
-  assert.equal(r.schedules_url, "https://phone.example.com/dashboard#tasks");
+  assert.equal(r.schedules_url, "https://phone.example.com/dashboard#upcoming", "what is coming up is on its own tab");
   assert.equal(r.sections.agents.running_count, 0);
   assert.equal(r.sections.schedules.count, 0);
   assert.equal(r.sections.flights.count, 1);
