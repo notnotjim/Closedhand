@@ -1348,8 +1348,8 @@
        name, and the route or time takes the line under them; wrapping left
        them on a line of their own at the bottom left. */
     @media (max-width: 600px) {
-      .upcoming-main { order: 1; flex-basis: 100%; }
-      .upcoming-row .flight-status-badge { margin-left: auto; }
+      .upcoming-card-main { order: 1; flex-basis: 100%; }
+      .upcoming-card-row .flight-status-badge { margin-left: auto; }
     }
     .flight-header {
       display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.625rem;
@@ -6503,10 +6503,10 @@
       var showProvider = b.provider && String(b.provider).trim().toLowerCase() !== String(b.title).trim().toLowerCase();
       return '<div class="flight-card" style="' + (cancelled ? 'opacity:0.55;' : '') + '">' +
         '<div class="flight-status-bar ' + (cancelled ? 'cancelled' : 'scheduled') + '"></div>' +
-        '<div class="upcoming-row" style="padding:0.625rem 0.875rem;display:flex;align-items:center;gap:0.875rem;flex-wrap:wrap;">' +
+        '<div class="upcoming-card-row" style="padding:0.625rem 0.875rem;display:flex;align-items:center;gap:0.875rem;flex-wrap:wrap;">' +
           '<div style="min-width:6.875rem;"><span class="upcoming-card-icon" title="' + escHtml(b.kind) + '">' + icon + '</span><span class="flight-number">' + escHtml(b.title) + '</span>' +
             (showProvider ? '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(b.provider) + '</div>' : '') + '</div>' +
-          '<div class="upcoming-main" style="flex:1;min-width:12.5rem;font-size:0.8125rem;color:var(--fg);">' + route + (when ? '<div style="font-size:0.6875rem;color:var(--muted);">' + (b.kind === 'hotel' ? 'Check in from ' : '') + escHtml(when) + (sameDay && until ? ' to ' + escHtml(until) : '') + moved + '</div>' : '') + '</div>' +
+          '<div class="upcoming-card-main" style="flex:1;min-width:12.5rem;font-size:0.8125rem;color:var(--fg);">' + route + (when ? '<div style="font-size:0.6875rem;color:var(--muted);">' + (b.kind === 'hotel' ? 'Check in from ' : '') + escHtml(when) + (sameDay && until ? ' to ' + escHtml(until) : '') + moved + '</div>' : '') + '</div>' +
           '<span class="flight-status-badge ' + (cancelled ? 'cancelled' : 'scheduled') + '">' + (cancelled ? 'Cancelled' : 'Booked') + '</span>' +
           '<button class="conn-btn conn-btn-disconnect" title="Not a booking? Remove it" aria-label="Remove this booking" onclick="confirmBookingRemove(this, \'' + b.id + '\')" style="padding:2px 0.5rem;font-size:0.6875rem;">&times;</button>' +
         '</div>' +
@@ -6648,12 +6648,12 @@
       const duration = flightDuration(live.departureTime || f.departure?.dateTime, live.arrivalTime || f.arrival?.dateTime);
       return `<div class="flight-card">
         <div class="flight-status-bar ${status.cls}"></div>
-        <div class="upcoming-row" style="padding:0.625rem 0.875rem;display:flex;align-items:center;gap:0.875rem;flex-wrap:wrap;">
+        <div class="upcoming-card-row" style="padding:0.625rem 0.875rem;display:flex;align-items:center;gap:0.875rem;flex-wrap:wrap;">
           <div style="min-width:6.875rem;">
             <span class="upcoming-card-icon" title="Tracked flight">${UPCOMING_ICON.flight}</span><span class="flight-number">${escHtml(f.flightNumber)}</span>
             ${f.airline ? '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(f.airline) + '</div>' : ''}
           </div>
-          <div class="upcoming-main" style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:13.75rem;">
+          <div class="upcoming-card-main" style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:13.75rem;">
             <div style="text-align:center;">
               <div style="font-size:0.9375rem;font-weight:600;color:var(--fg);">${depCode}</div>
               <div style="font-size:0.6875rem;color:var(--muted);">${depTime}</div>

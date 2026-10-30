@@ -316,7 +316,10 @@ test("a task waiting for an answer stops like any working task, never deletes", 
 // On a phone a booking's or flight's status and its x wrapped onto a line of
 // their own at the bottom left; they stay top right, the route beneath.
 test("on a phone an Upcoming card keeps its status and x at the top right", () => {
-  assert.match(dashboard, /@media \(max-width: 600px\) \{\n\s+\.upcoming-main \{ order: 1; flex-basis: 100%; \}\n\s+\.upcoming-row \.flight-status-badge \{ margin-left: auto; \}/);
-  assert.equal((dashboard.match(/class="upcoming-row"/g) || []).length, 2, "bookings and flights both");
-  assert.equal((dashboard.match(/class="upcoming-main"/g) || []).length, 2);
+  assert.match(dashboard, /@media \(max-width: 600px\) \{\n\s+\.upcoming-card-main \{ order: 1; flex-basis: 100%; \}\n\s+\.upcoming-card-row \.flight-status-badge \{ margin-left: auto; \}/);
+  assert.equal((dashboard.match(/class="upcoming-card-row"/g) || []).length, 2, "bookings and flights both");
+  assert.equal((dashboard.match(/class="upcoming-card-main"/g) || []).length, 2);
+  // Its own names: .upcoming-row is a reminder's row, and lent the card's
+  // inner row a reminder's border and margin.
+  assert.equal((dashboard.match(/class="upcoming-row"/g) || []).length, 0);
 });
