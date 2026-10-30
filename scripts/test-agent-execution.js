@@ -5,7 +5,7 @@ const vm = require("node:vm");
 const path = require("node:path");
 const evidence = require("../lib/task-evidence");
 const { createToolScope, prefetchReads } = require("../lib/task-tools");
-const { makeBudget, withTaskRun, modelCall } = require("../lib/task-model");
+const { makeBudget, withTaskRun, modelCall, workShare, countToolCall } = require("../lib/task-model");
 const lease = require("../lib/task-lease");
 function fakeDb(tables = {}) {
   return { tables, from(name) {
@@ -111,6 +111,27 @@ test("a timeout aborts the underlying request and preserves failure accounting",
   });
   assert.equal(signal.aborted, true); assert.equal(budget.calls, 1);
   assert.equal(metrics.tables.task_model_calls.at(-1).status, "failed_usage_unknown");
+});
+// A task on DeepSeek once spent its allowance on 2M input tokens, 1.6M of them
+// cached, where Claude counts cache reads apart: every provider now counts
+// only what was read afresh.
+test("the work allowance counts input the same for every provider", async () => {
+  const replies = [
+    { input_tokens: 100, output_tokens: 1, cache_read_input_tokens: 80, input_includes_cache: true },
+    { prompt_tokens: 100, completion_tokens: 1, prompt_tokens_details: { cached_tokens: 80 } },
+    { input_tokens: 20, output_tokens: 1, cache_read_input_tokens: 80 },
+  ];
+  for (const usage of replies) {
+    const budget = makeBudget({}, { input_tokens: 1000 });
+    await withTaskRun({ budget }, () => modelCall({ messages: { create: async () => ({ usage }) } }, { messages: [], max_tokens: 8 }));
+    assert.equal(budget.input, 20, JSON.stringify(usage));
+  }
+  const spent = makeBudget({}, { input_tokens: 1000, tool_calls: 10 });
+  spent.input = 700; spent.toolCalls = 2;
+  assert.equal(withTaskRun({ budget: spent }, () => workShare()), 0.7);
+  const late = makeBudget({ startedAt: Date.now() - 20 * 60 * 1000 });
+  await withTaskRun({ budget: late }, () => assert.rejects(modelCall({ messages: { create: async () => ({}) } }, { messages: [] }), /time allowance/));
+  assert.throws(() => withTaskRun({ budget: late }, () => countToolCall()), /time allowance/);
 });
 test("usage separates cached reads and writes with task identity", async () => {
   await withTaskRun({ userId: "owner", taskId: "task", kind: "agent" }, () => modelCall({ messages: { create: async () => ({ usage: { input_tokens: 20, output_tokens: 5, cache_read_input_tokens: 12, cache_creation_input_tokens: 4 } }) } }, { messages: [], model: "fixture" }));
