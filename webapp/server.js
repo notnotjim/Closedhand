@@ -5257,10 +5257,6 @@ app.get("/api/agents/stats", async (req, res) => {
   }
 });
 
-// DELETE /api/agents/:id — clear a finished run from the list
-// POST /api/agents/:id/stop — mark a running agent cancelled. The bot's run
-// loop checks status between iterations, halts, and confirms in the chat the
-// agent belongs to, so the user hears "stopped" where they were talking.
 // Something to tell a task while it works, taken at its next step, as the
 // chat's agent_note gives one (the same append_agent_note).
 app.post("/api/agents/:id/note", async (req, res) => {
@@ -5280,6 +5276,11 @@ app.post("/api/agents/:id/note", async (req, res) => {
   }
 });
 
+// POST /api/agents/:id/stop — mark a running or waiting agent cancelled. The
+// bot's run loop checks status between iterations, halts, and confirms in the
+// chat the agent belongs to, so the user hears "stopped" where they were
+// talking. One waiting for an answer has no run to confirm it: the dashboard
+// says so, and an answer given later in chat hears it no longer waits.
 app.post("/api/agents/:id/stop", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not authenticated" });
@@ -5287,7 +5288,7 @@ app.post("/api/agents/:id/stop", async (req, res) => {
     const { data } = await supabase.from("agent_tasks")
       .update({ status: "cancelled", completed_at: new Date().toISOString() })
       .eq("id", req.params.id).eq("user_id", userId)
-      .in("status", ["running", "pending"])
+      .in("status", ["running", "pending", "awaiting_confirmation"])
       .select("id");
     if (!data || data.length === 0) return res.status(404).json({ error: "No running agent with that id" });
     res.json({ success: true });
@@ -5296,6 +5297,7 @@ app.post("/api/agents/:id/stop", async (req, res) => {
   }
 });
 
+// DELETE /api/agents/:id — clear a finished run from the list
 app.delete("/api/agents/:id", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
@@ -5586,35 +5588,6 @@ app.get("/api/agents/:id/pdf", async (req, res) => {
   } catch (err) {
     console.error("Agent PDF error:", err.message);
     res.status(500).json({ error: "Could not build the PDF" });
-  }
-});
-
-// POST /api/agents/:id/cancel — cancel a running agent
-app.post("/api/agents/:id/cancel", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-
-  try {
-    const { data: task, error: fetchErr } = await supabase
-      .from("agent_tasks")
-      .select("user_id, status")
-      .eq("id", req.params.id).eq("user_id", userId)
-      .single();
-
-    if (fetchErr || !task) return res.status(404).json({ error: "Agent not found" });
-    if (task.user_id !== userId) return res.status(403).json({ error: "Not authorized" });
-    if (!["running", "pending", "awaiting_confirmation"].includes(task.status)) return res.status(400).json({ error: "Agent is not running" });
-
-    const { error } = await supabase
-      .from("agent_tasks")
-      .update({ status: "cancelled", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq("id", req.params.id).eq("user_id", userId);
-
-    if (error) throw error;
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Agent cancel error:", err.message);
-    res.status(500).json({ error: "Failed to cancel agent" });
   }
 });
 

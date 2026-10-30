@@ -300,3 +300,23 @@ test("a routine's scope travels in its instructions and reads back apart; a work
   assert.match(dashboard, /else if \(res && res\.status === 409\) \{ box\.remove\(\); showToast\('It finished before that reached it\. Its answer is under Done lately\.', true\); loadAgents\(\); \}/, "a note too late says the task finished and shows it");
   assert.match(dashboard, /if \(tab === 'agents' && !document\.querySelector\('\.agent-tell'\)\) loadAgents\(\);/, "the list waits while something is being typed");
 });
+
+// A task waiting for an answer sits under Working now; it showed a bin that
+// could not delete it (only finished runs delete) where every other working
+// card has Stop.
+test("a task waiting for an answer stops like any working task, never deletes", () => {
+  assert.match(dashboard, /: a\.status === 'awaiting_confirmation'\n\s+\? '<button class="agent-del" title="Stop this task"[^\n]*stopAgentRun\(\\'' \+ a\.id \+ '\\', this, true\)">Stop<\/button>'/);
+  assert.match(dashboard, /showToast\(waiting \? 'Stopped\. Its question in the chat no longer needs an answer\.' :/);
+  const server = read("webapp/server.js");
+  const stop = server.slice(server.indexOf('app.post("/api/agents/:id/stop"'), server.indexOf('app.delete("/api/agents/:id"'));
+  assert.match(stop, /\.in\("status", \["running", "pending", "awaiting_confirmation"\]\)/);
+  assert.doesNotMatch(server, /\/api\/agents\/:id\/cancel/, "one way to stop a task");
+});
+
+// On a phone a booking's or flight's status and its x wrapped onto a line of
+// their own at the bottom left; they stay top right, the route beneath.
+test("on a phone an Upcoming card keeps its status and x at the top right", () => {
+  assert.match(dashboard, /@media \(max-width: 600px\) \{\n\s+\.upcoming-main \{ order: 1; flex-basis: 100%; \}\n\s+\.upcoming-row \.flight-status-badge \{ margin-left: auto; \}/);
+  assert.equal((dashboard.match(/class="upcoming-row"/g) || []).length, 2, "bookings and flights both");
+  assert.equal((dashboard.match(/class="upcoming-main"/g) || []).length, 2);
+});
