@@ -22,6 +22,17 @@ test('the person\'s LLM gets the whole picture, in sections, in one call', async
   assert.match(calls[0].content, /^Current time where the user is \(Asia\/Tokyo\)[\s\S]*ALREADY KNOWN \(an item these cover adds nothing unless it changes them\):\nReminder already set: dentist-fixture\n\nNEW since the last look:\n\[1\] EMAIL[\s\S]*COMING in the next seven days:\n\[2\] Calendar event[\s\S]*OPEN \(projects under way\):\n\[3\] 🏡 Flat move/);
 });
 
+test('noticing knows who they are, the people in their life and where they live, as the chat does', async () => {
+  let content = '';
+  await notice({ items, level: 'medium', about: '- Pete is Sam\'s dad; he lives in Edinburgh.\nUser\'s current location: Lisbon (38.72, -9.14).', ask: async (s, c) => { content = c; return '{"pulse":false,"flagged":[]}'; } });
+  assert.match(content, /ABOUT THEM \(who they are, the people in their life and where they live, as far as Closedhand knows; anything not here is unknown, not assumed\):\n- Pete is Sam's dad; he lives in Edinburgh\.\nUser's current location: Lisbon/);
+  assert.ok(content.indexOf('ABOUT THEM') < content.indexOf('NEW since the last look'), 'before what is new');
+  await notice({ items, level: 'medium', ask: async (s, c) => { content = c; return '{"pulse":false,"flagged":[]}'; } });
+  assert.doesNotMatch(content, /ABOUT THEM/, 'nothing known, no section');
+  const prose = require('../lib/facts-prose').factsProse({ 'family-dad': { value: 'Pete is Sam\'s dad', category: 'person', subject: 'Pete' } }, { handles: false });
+  assert.equal(prose, 'People in their life:\n- Pete is Sam\'s dad.', 'the sentences without the chat\'s handles');
+});
+
 test('what the person sent is shown as theirs, never as news', async () => {
   let content = '';
   await notice({ items, sent: ['[4] Message in Harbour group from me, Saturday 24 October at 10:02: will send the deck tonight'], level: 'medium', ask: async (s, c) => { content = c; return '{"pulse":false,"flagged":[]}'; } });
@@ -83,7 +94,7 @@ test('a point names the items it rests on, and all of them are recorded as told'
 test('Pulse: the person\'s main LLM notices, over new, coming and open, looking again as time passes', () => {
   assert.match(pulse, /const ask = async \(system, content, purpose = "pulse_notice"\) => \{\n\s*const \{ client, model \} = require\("\.\/llm"\)\.getUserLLMClient\(userId, store\);/);
   assert.doesNotMatch(pulse, /cheapChat/, 'no small model for the judgement');
-  assert.match(pulse, /items: triageItems, waiting: waitingItems, sent: sentItems, coming: comingItems, open: openItems, world: worldItems, level, goals, known: knownLines,\n\s*now: timeContext\.timeBlock\(store\), ask,/);
+  assert.match(pulse, /items: triageItems, waiting: waitingItems, sent: sentItems, coming: comingItems, open: openItems, world: worldItems, level, goals, known: knownLines,\n\s*about: \[require\("\.\/facts-prose"\)\.factsProse\(store\.facts, \{ handles: false \}\), require\("\.\/location"\)\.locationLine\(store\.location\)\]\.filter\(Boolean\)\.join\("\\n"\),\n\s*now: timeContext\.timeBlock\(store\), ask,/);
   assert.match(pulse, /\.gte\("received_at", new Date\(\)\.toISOString\(\)\)\.lte\("received_at", new Date\(Date\.now\(\) \+ 7 \* 86400000\)\.toISOString\(\)\)/, 'the next seven days, from any connection');
   assert.match(pulse, /const LOOK_EVERY_H = \{ low: 12, medium: 4, high: 2 \};/);
   assert.match(pulse, /if \(realEmails\.length === 0 && otherItems\.length === 0 && !world\.length && !enteringSoon && !lookDue\) \{/);
@@ -110,5 +121,5 @@ test('mail sent to a list is marked, and noticing knows what that means', async 
   assert.match(pulse, /select\("source, type, external_id, data, data->>from, data->>subject, data->labels, data->>body"\)/);
   assert.match(pulse, /EMAIL\$\{fromMailingList\(e\) \? " \[mailing list\]" : ""\}/);
   assert.match(pulse, /its "call me" is not a request waiting on \$\{userName\}/, 'the writer holds the same line');
-  assert.match(pulse, /filter\(e => !JUNK_SENDER\.test\(e\.from \|\| ""\) && !sortedAsBulk\(e\.labels\) && unclaimed\(e\) && !facts\.seenAsItCame\(e, wrote\)\)/, 'what Gmail filed as bulk never reaches noticing');
+  assert.match(pulse, /filter\(e => !JUNK_SENDER\.test\(e\.from \|\| ""\) && !sortedAsBulk\(e\.labels\) && unclaimed\(e\) && !facts\.seenAsItCame\(e, wrote\) && !facts\.partOfBooking\(e, bookingMail\)\)/, 'what Gmail filed as bulk never reaches noticing');
 });

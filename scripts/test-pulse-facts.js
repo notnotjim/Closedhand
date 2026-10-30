@@ -41,7 +41,7 @@ test("what came minutes after their own message was seen as it came, and says so
   assert.equal(f.replyNote(mail("t3", "2026-10-24T11:40:20Z"), justWrote, now), "came 1 min after you wrote; no reply from you in this thread, under an hour");
   assert.equal(f.replyNote(msg("aurora", "Clinica Aurora", "2026-10-24T11:45:00Z"), justWrote, now), "nothing from you in this chat since, under an hour");
   // Like what they sent, never news: it does not wake a look or count as new.
-  assert.match(pulse, /const realEmails = \(newEmails \|\| \[\]\)\.filter\(e => [^\n]*&& !facts\.seenAsItCame\(e, wrote\)\);/);
+  assert.match(pulse, /const realEmails = \(newEmails \|\| \[\]\)\.filter\(e => [^\n]*&& !facts\.seenAsItCame\(e, wrote\)[^\n]*\);/);
   assert.match(pulse, /const otherItems = \(newOther \|\| \[\]\)\.filter\(\(r\) => !watches\.ignored\(r\) && unclaimed\(r\) && !facts\.seenAsItCame\(r, wrote\)\)/);
   assert.match(pulse, /if \(realEmails\.length === 0 && otherItems\.length === 0 && !world\.length && !enteringSoon && !lookDue\)/);
   // The other side owes the next word for half a day; after that it can
@@ -49,6 +49,24 @@ test("what came minutes after their own message was seen as it came, and says so
   assert.deepEqual(f.waiting([away], justWrote, now), [], "now, 40 minutes on");
   assert.deepEqual(f.waiting([away], justWrote, Date.parse("2026-10-24T23:30:00Z")).map((r) => r.external_id), [away.external_id], "twelve hours on");
   assert.deepEqual(f.waiting([msg("aurora", "Clinica Aurora", "2026-10-24T11:45:00Z")], justWrote, now).length, 1, "what came later waits on them");
+});
+
+test("what a booking's provider sends around its confirmation is part of the booking they just made", () => {
+  const from = (who, iso, subject = "") => ({ source: "gmail", type: "email", external_id: `${who}-${iso}`, received_at: iso, data: { from: who, date: iso, subject } });
+  const booked = [{ domain: f.domainOf('"Stays" <noreply-payments@stays.example>'), at: Date.parse("2026-10-24T10:08:57Z") }];
+  assert.equal(booked[0].domain, "stays.example");
+  assert.equal(f.domainOf("Front desk <desk@mail.harbourinn.co.uk>"), "harbourinn.co.uk", "a country's second level stays with the name");
+  assert.equal(f.domainOf("no address"), "");
+  assert.equal(f.partOfBooking(from("customer.service@stays.example", "2026-10-24T10:09:07Z", "Request sent to Hotel Aurora Seoul"), booked), true, "a check-in request passed on, ten seconds later");
+  assert.equal(f.partOfBooking(from("Stays <welcome@stays.example>", "2026-10-24T10:06:52Z", "Verify your identity"), booked), true, "and just before");
+  assert.equal(f.partOfBooking(from("customer.service@stays.example", "2026-10-24T14:00:00Z", "Your host sent a message"), booked), false, "hours later it is its own news");
+  assert.equal(f.partOfBooking(from("ravi@lantern.test", "2026-10-24T10:09:00Z"), booked), false, "another sender");
+  assert.equal(f.partOfBooking(msg("stays", "Stays", "2026-10-24T10:09:00Z"), booked), false, "mail only");
+  assert.equal(f.partOfBooking(from("customer.service@stays.example", "2026-10-24T10:09:07Z"), []), false, "no booking made");
+  // Neither new nor waiting on them, whatever its sender.
+  assert.match(pulse, /const realEmails = [^\n]*&& !facts\.partOfBooking\(e, bookingMail\)\);/);
+  assert.match(pulse, /const inboundMail = [^\n]*\n[^\n]*&& !facts\.partOfBooking\(e, bookingMail\)\);/);
+  assert.match(pulse, /from\("bookings"\)\.select\("source_email_id"\)/);
 });
 
 test("waiting on them: the latest message in each conversation they have not written in since", () => {

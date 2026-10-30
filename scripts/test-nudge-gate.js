@@ -29,6 +29,9 @@ test("a message goes only when the person's LLM clearly says so, and never when 
   assert.match(asked.now, /\(Asia\/Tokyo\)/, "judged against the time where they are");
   assert.equal(asked.recent_conversation[0].text, "Is the dentist still on Thursday?", "and what they already know");
   assert.match(seen[0].system, /a fact in the message[^\n]*is not in the evidence, or differs from it[\s\S]*a time or day is not right for where the user is now[\s\S]*When unsure, say no\./);
+  // "You won't be back by then?" from a dad abroad, answered "no", was read as
+  // back where the flight lands, and they were told to correct themselves.
+  assert.match(seen[0].system, /- it tells them something they said, wrote or decided is wrong, or that they should change it, and the evidence does not state outright that it is wrong: they know their own plans and people, and a reading of the evidence is not enough\./);
 
   const no = await gate.check({ userId: "u1", store: tokyo, message: "Your dentist is on Friday.", evidence: "Dentist Thursday 09:00", modelFor: judge('{"send": false, "problems": ["The evidence says Thursday"]}') });
   assert.deepEqual(no, { send: false, problems: ["The evidence says Thursday"] });

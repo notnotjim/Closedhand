@@ -89,3 +89,12 @@ test('with no end time, a booking is over an hour in, an all-day one at the end 
   assert.equal(noEndOver({ kind: 'event', starts_at: start, timezone: 'Europe/London', details: { all_day: true } }), Date.parse('2026-11-03T00:00:00+00:00'), 'midnight where it is');
   assert.equal(noEndOver({ kind: 'event', starts_at: new Date(ms), details: {} }), ms + hour, 'a stored date works too');
 });
+
+// A clinic's booking-page link was saved as a "Check in" link on every visit,
+// and the token inside it as one visit's "Ref".
+test('a reference is one the text gives, never the code inside a link, and a check-in link is only for checking in', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'lib', 'bookings.js'), 'utf8');
+  assert.match(src, /const srcWords = `\$\{src \? src\.subject : ""\} \$\{src \? src\.body : ""\}`\.replace\(\/https\?:\\\/\\\/\\S\+\/gi, " "\)/);
+  assert.match(src, /if \(reference && !srcWords\.includes\(/);
+  assert.match(src, /"check_in_url": "the link to check in online \(a flight's or hotel's online check-in\), or null; never a link that only shows or changes the booking"/);
+});
