@@ -150,7 +150,7 @@ test("Pulse: new mail by when it arrived, local times, the chat lately, the chec
 test("Pulse reads what is new from every connection, not only mail and calendar, with times where the person is", () => {
   const pulse = read("lib/pulse.js");
   assert.match(pulse, /\.eq\("user_id", userId\)\.neq\("type", "email"\)\n\s*\.gt\("created_at", lookback\)/, "chats, bookings, pages, bank and the rest");
-  assert.match(pulse, /const otherItems = \(newOther \|\| \[\]\)\.filter\(\(r\) => !watches\.ignored\(r\) && unclaimed\(r\)\)/, "never their own messages, nor what was told or is watched");
+  assert.match(pulse, /const otherItems = \(newOther \|\| \[\]\)\.filter\(\(r\) => !watches\.ignored\(r\) && unclaimed\(r\) && !facts\.seenAsItCame\(r, wrote\)\)/, "never their own messages, nor what was told or is watched");
   assert.match(pulse, /\.\.\.otherItems\.map\(\(r\) => noted\(line\(r\), facts\.replyNote\(r, wrote\)\)\),/, "each with whether they wrote since");
   assert.match(pulse, /const numbered = \[\.\.\.realEmails, \.\.\.otherItems, \.\.\.waitingRows, \.\.\.sentLines\.map\(\(\) => null\), \.\.\.coming, \.\.\.projectLines\.map\(\(\) => null\), \.\.\.worldLines\.map\(\(\) => null\)\];/, "and whatever it tells is recorded as told, never what they sent");
   assert.match(pulse, /\.eq\("type", "message"\)\.eq\("data->>sender", "me"\)/, "what they sent is in the picture, so an answered question is not called unanswered");

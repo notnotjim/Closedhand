@@ -28,6 +28,29 @@ test("whether they wrote since, by chat and by mail thread", () => {
   assert.equal(f.replyNote(mail("t2", "2026-10-22T10:00:00Z"), wrote, now), "no reply from you in this thread, 2 days");
 });
 
+test("what came minutes after their own message was seen as it came, and says so", () => {
+  const justWrote = f.lastWritten({ mine: [msg("aurora", "me", "2026-10-24T11:17:00Z")], sentMail: [mail("t3", "2026-10-24T11:40:00Z", ["SENT"])] });
+  const away = msg("aurora", "Clinica Aurora", "2026-10-24T11:20:00Z", "Thanks for your message. The team is out until Monday and will reply then.");
+  assert.equal(f.seenAsItCame(away, justWrote), true, "an away message three minutes after they wrote");
+  assert.equal(f.seenAsItCame(mail("t3", "2026-10-24T11:40:20Z"), justWrote), true, "an out-of-office reply to mail they just sent");
+  assert.equal(f.seenAsItCame(msg("aurora", "Clinica Aurora", "2026-10-24T11:45:00Z"), justWrote), false, "half an hour later they may have gone");
+  assert.equal(f.seenAsItCame(msg("aurora", "Clinica Aurora", "2026-10-24T11:10:00Z"), justWrote), false, "before they wrote");
+  assert.equal(f.seenAsItCame(msg("lantern", "Ravi", "2026-10-24T11:20:00Z"), justWrote), false, "a chat they did not write in");
+  assert.equal(f.seenAsItCame({ type: "message", data: { chat: "aurora" } }, justWrote), false, "no time, not seen");
+  assert.equal(f.replyNote(away, justWrote, now), "came 3 min after you wrote; nothing from you in this chat since, under an hour");
+  assert.equal(f.replyNote(mail("t3", "2026-10-24T11:40:20Z"), justWrote, now), "came 1 min after you wrote; no reply from you in this thread, under an hour");
+  assert.equal(f.replyNote(msg("aurora", "Clinica Aurora", "2026-10-24T11:45:00Z"), justWrote, now), "nothing from you in this chat since, under an hour");
+  // Like what they sent, never news: it does not wake a look or count as new.
+  assert.match(pulse, /const realEmails = \(newEmails \|\| \[\]\)\.filter\(e => [^\n]*&& !facts\.seenAsItCame\(e, wrote\)\);/);
+  assert.match(pulse, /const otherItems = \(newOther \|\| \[\]\)\.filter\(\(r\) => !watches\.ignored\(r\) && unclaimed\(r\) && !facts\.seenAsItCame\(r, wrote\)\)/);
+  assert.match(pulse, /if \(realEmails\.length === 0 && otherItems\.length === 0 && !world\.length && !enteringSoon && !lookDue\)/);
+  // The other side owes the next word for half a day; after that it can
+  // look forgotten.
+  assert.deepEqual(f.waiting([away], justWrote, now), [], "now, 40 minutes on");
+  assert.deepEqual(f.waiting([away], justWrote, Date.parse("2026-10-24T23:30:00Z")).map((r) => r.external_id), [away.external_id], "twelve hours on");
+  assert.deepEqual(f.waiting([msg("aurora", "Clinica Aurora", "2026-10-24T11:45:00Z")], justWrote, now).length, 1, "what came later waits on them");
+});
+
 test("waiting on them: the latest message in each conversation they have not written in since", () => {
   const wrote = f.lastWritten({ mine: [msg("harbour", "me", "2026-10-24T09:00:00Z")] });
   const rows = [
@@ -62,7 +85,7 @@ test("the writer: one call from the cited items, tools only when it asks", () =>
   assert.match(pulse, /if \(written\?\.lookup\) messages\[0\]\.content \+= `\\n\\nLook this up first: /);
   assert.match(pulse, /Write it again with exactly those parts removed or corrected to what the items say, and nothing else changed or added\./, "one more go, fixing only what was held");
   assert.match(pulse, /Every fact comes from the items\. Add no guesses or advice that rest on what they do not say/);
-  assert.match(pulse, /One point: 2-4 sentences\. Several: one short, plain line each/);
+  assert.match(pulse, /One point: the fewest short sentences that carry it, four at most, one thing in each\. Several: one short, plain line each/);
   assert.match(pulse, /THE CITED EMAILS IN FULL/);
   assert.match(pulse, /const result = await sendChecked\(String\(\(block\.input && block\.input\.text\) \|\| ""\)\.trim\(\), lookedUp, null, block\.input && block\.input\.project\);/, "both ways go through the same check");
   assert.match(pulse, /ctx\.store\.facts\._pulse_last = \{ value: /, "what it told them is kept in code");

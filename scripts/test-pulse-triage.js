@@ -110,5 +110,5 @@ test('mail sent to a list is marked, and noticing knows what that means', async 
   assert.match(pulse, /select\("source, type, external_id, data, data->>from, data->>subject, data->labels, data->>body"\)/);
   assert.match(pulse, /EMAIL\$\{fromMailingList\(e\) \? " \[mailing list\]" : ""\}/);
   assert.match(pulse, /its "call me" is not a request waiting on \$\{userName\}/, 'the writer holds the same line');
-  assert.match(pulse, /filter\(e => !JUNK_SENDER\.test\(e\.from \|\| ""\) && !sortedAsBulk\(e\.labels\) && unclaimed\(e\)\)/, 'what Gmail filed as bulk never reaches noticing');
+  assert.match(pulse, /filter\(e => !JUNK_SENDER\.test\(e\.from \|\| ""\) && !sortedAsBulk\(e\.labels\) && unclaimed\(e\) && !facts\.seenAsItCame\(e, wrote\)\)/, 'what Gmail filed as bulk never reaches noticing');
 });
