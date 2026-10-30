@@ -5261,6 +5261,25 @@ app.get("/api/agents/stats", async (req, res) => {
 // POST /api/agents/:id/stop — mark a running agent cancelled. The bot's run
 // loop checks status between iterations, halts, and confirms in the chat the
 // agent belongs to, so the user hears "stopped" where they were talking.
+// Something to tell a task while it works, taken at its next step, as the
+// chat's agent_note gives one (the same append_agent_note).
+app.post("/api/agents/:id/note", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not logged in" });
+  const note = String(req.body?.note || "").trim();
+  if (!note) return res.status(400).json({ error: "Say what to tell it." });
+  try {
+    const { data, error } = await supabase.rpc("append_agent_note", { p_task_id: req.params.id, p_user_id: userId,
+      p_note: { id: crypto.randomUUID(), note: note.slice(0, 2000), at: new Date().toISOString() } });
+    if (error) throw error;
+    if (!data?.length) return res.status(409).json({ error: "It has stopped, so it cannot take that now." });
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Agent note error:", e.message);
+    res.status(500).json({ error: "Could not pass that on" });
+  }
+});
+
 app.post("/api/agents/:id/stop", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not authenticated" });
@@ -5298,6 +5317,26 @@ app.delete("/api/agents/:id", async (req, res) => {
 });
 
 // GET /api/agents/:id — get full agent result
+// Where a task started on the Agents tab can answer: the person's chat apps
+// (chat_links), the web chat, or only here. The page names one; the chat it
+// goes to is looked up here, never taken from the page.
+const PLACE_NAMES = { whatsapp_linked: "WhatsApp", whatsapp: "WhatsApp", telegram: "Telegram", slack: "Slack", discord: "Discord", line: "LINE" };
+async function answerPlaces(userId) {
+  const { data: links, error } = await supabase.from("chat_links").select("platform,platform_user_id").eq("user_id", userId);
+  if (error) throw error;
+  const order = Object.keys(PLACE_NAMES);
+  const chats = (links || []).filter((l) => PLACE_NAMES[l.platform] && l.platform_user_id)
+    .sort((a, b) => order.indexOf(a.platform) - order.indexOf(b.platform))
+    .map((l) => ({ id: l.platform, name: PLACE_NAMES[l.platform], chat_id: String(l.platform_user_id) }));
+  return [...chats, { id: "web", name: "The web chat", chat_id: userId }, { id: "dashboard", name: "Only here", chat_id: "dashboard" }];
+}
+app.get("/api/agents/places", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not logged in" });
+  try { res.json((await answerPlaces(userId)).map(({ id, name }) => ({ id, name }))); }
+  catch (e) { console.error("Answer places error:", e.message); res.status(500).json({ error: "Could not load your chats" }); }
+});
+
 app.get("/api/agents/:id", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
@@ -5580,15 +5619,21 @@ app.post("/api/agents/:id/cancel", async (req, res) => {
 });
 
 // POST /api/agents — create a new agent task from the dashboard
+// A task started from the Agents tab: what to do, its scope, an optional
+// name, and the chat it answers in. The bot picks it up (lib/agents.js
+// processPendingTasks), decides its effort and answers there.
 app.post("/api/agents", async (req, res) => {
   try {
     const userId = getUserIdFromRequest(req);
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
 
-    const { goal } = req.body;
+    const { goal, scope, title, answer_in } = req.body;
     if (!goal || typeof goal !== "string" || goal.trim().length < 3) {
       return res.status(400).json({ error: "Please provide a task description" });
     }
+    const place = (await answerPlaces(userId)).find((p) => p.id === (answer_in || "dashboard"));
+    if (!place) return res.status(400).json({ error: "That chat is not connected." });
+    const bounds = typeof scope === "string" ? scope.trim() : "";
 
     // Check concurrency limit
     const { data: running } = await supabase
@@ -5606,10 +5651,12 @@ app.post("/api/agents", async (req, res) => {
       .from("agent_tasks")
       .insert({
         user_id: userId,
-        goal: goal.trim(),
+        goal: goal.trim() + (bounds ? "\n\nScope: " + bounds.slice(0, 2000) : ""),
+        title: typeof title === "string" && title.trim() ? title.trim().slice(0, 120) : null,
+        ...(typeof title === "string" && title.trim() ? { runtime: { named: true } } : {}),
         model: "pending",
-        platform: "dashboard",
-        chat_id: "dashboard",
+        platform: place.id,
+        chat_id: place.chat_id,
         status: "pending",
         progress: [],
         messages: [],

@@ -1690,6 +1690,19 @@
     .routine-card .auto-card-meta { padding: 0; margin-top: 0.25rem; }
     .routine-card .auto-card-actions { align-items: center; flex-wrap: wrap; }
     .routine-card.off .auto-card-name, .routine-card.off .routine-about { color: var(--muted); }
+    .agents-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+    .agents-head .goals-new { flex: none; }
+    /* The New agent form shows what a task needs or what a routine needs. */
+    #auto-create-modal.task-mode .routine-only, #auto-create-modal:not(.task-mode) .task-only { display: none !important; }
+    .team-agent { border-top: 1px solid rgba(var(--fg-rgb),0.1); padding-top: 0.625rem; margin-bottom: 0.625rem; }
+    .team-agent-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.375rem; }
+    .team-agent textarea { width: 100%; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.5rem; padding: 0.5rem 0.625rem; color: var(--fg); font-size: 0.8125rem; font-family: inherit; resize: vertical; margin-bottom: 0.375rem; box-sizing: border-box; }
+    .team-remove { background: none; border: 0; padding: 0; color: var(--muted); font: inherit; font-weight: 400; text-decoration: underline; cursor: pointer; }
+    .team-add { display: inline-block; font-size: 0.8125rem; color: var(--muted); margin: 0 0 0.875rem; }
+    .agent-tell { padding: 0 1.25rem 1.125rem; }
+    .agent-tell textarea { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.5rem; padding: 0.5rem 0.625rem; color: var(--fg); font: inherit; font-size: 0.8125rem; resize: vertical; }
+    .agent-tell-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .agent-tell-actions .agent-del { margin-left: 0; }
     .routine-on { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: var(--muted); cursor: pointer; margin-left: 0.25rem; }
     .routine-on input { width: 0.875rem; height: 0.875rem; margin: 0; accent-color: var(--accent-strong); }
     .auto-dest-btn {
@@ -2279,17 +2292,18 @@
            what finished this week (loadAgents). -->
       <div class="tab-content" id="tab-agents">
         <div style="padding-top:1rem;">
-          <p class="goals-intro">Closedhand working for you: tasks you hand it in chat, and routines that run on their own.</p>
+          <!-- One way to start one, a task now or a routine (openNewAgent), at
+               the top right of everything it makes. -->
+          <div class="agents-head">
+            <p class="goals-intro">Closedhand working for you: tasks you hand it here or in chat, and routines that run on their own.</p>
+            <button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button>
+          </div>
           <div class="mc-section-label">Working now</div>
-          <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from.</p>
-          <p class="section-desc" id="auto-active-empty">Nothing right now. Ask in chat for anything that takes a while, like comparing hotels or looking into a purchase, and Closedhand works on it here while you carry on.</p>
+          <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from, or the one you picked.</p>
+          <p class="section-desc" id="auto-active-empty">Nothing right now. Start one with + New agent, or ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on.</p>
           <div id="auto-active-list"></div>
           <p id="auto-active-error" class="auto-card-meta" role="status" hidden>Could not refresh what is working now. Please try again shortly.</p>
-          <!-- A list of records: its + New routine at the top right (AGENTS.md). -->
-          <div style="display:flex;align-items:center;justify-content:space-between;margin:1.5rem 0 0.5rem;">
-            <div class="mc-section-label" style="margin:0;">Routines</div>
-            <button type="button" class="goals-new" onclick="openCreateAutomationModal()">+ New routine</button>
-          </div>
+          <div class="mc-section-label" style="margin-top:1.5rem;">Routines</div>
           <p class="section-desc">What Closedhand does on its own, on a timetable or when something happens.</p>
           <div id="auto-saved-list"></div>
           <p id="auto-saved-error" class="auto-card-meta" role="status" hidden>Could not load your routines. Please try again shortly.</p>
@@ -7357,6 +7371,31 @@
       try { var r = await fetch(url); return r.ok ? ((await r.json()).count || 0) : 0; } catch (e) { return 0; }
     }
 
+    // Something to tell a running task, taken at its next step: the box sits
+    // under the card, and the list waits while it is open (refreshTab).
+    function openTell(btn, id) {
+      var card = btn.closest('.auto-card');
+      if (card.querySelector('.agent-tell')) { card.querySelector('.agent-tell textarea').focus(); return; }
+      var box = document.createElement('div');
+      box.className = 'agent-tell';
+      box.onclick = function (e) { e.stopPropagation(); };
+      box.innerHTML = '<textarea rows="2" aria-label="What to tell it" placeholder="e.g. Only hotels with a gym"></textarea>' +
+        '<div class="agent-tell-actions"><button type="button" class="agent-del">Send</button><button type="button" class="agent-del">Cancel</button></div>';
+      card.appendChild(box);
+      var area = box.querySelector('textarea'), send = box.querySelectorAll('button')[0];
+      box.querySelectorAll('button')[1].onclick = function () { box.remove(); };
+      send.onclick = async function () {
+        var note = area.value.trim();
+        if (!note) { area.focus(); return; }
+        send.disabled = true;
+        var res = await fetch('/api/agents/' + id + '/note', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: note }) }).catch(function () { return null; });
+        var d = res ? await res.json().catch(function () { return {}; }) : {};
+        if (res && res.ok) { box.remove(); showToast('Passed on. It takes it from its next step.'); loadAgents(); }
+        else { send.disabled = false; showToast(d.error || 'Could not pass that on', true); }
+      };
+      area.focus();
+    }
+
     async function stopAgentRun(id, btn) {
       if (btn) { btn.disabled = true; btn.textContent = 'Stopping…'; }
       try {
@@ -7639,7 +7678,8 @@
       var reportHtml = a.result ? '<div class="agent-report">' + renderReport(String(a.result)) + '</div>' : '';
 
       var binHtml = running
-        ? '<button class="agent-del" title="Stop this task" style="color:var(--accent-strong);border-color:rgba(var(--fg-rgb),0.1);" onclick="event.stopPropagation();stopAgentRun(\'' + a.id + '\', this)">Stop</button>'
+        ? '<button class="agent-del" title="Add to what it is doing, taken at its next step" onclick="event.stopPropagation();openTell(this, \'' + a.id + '\')">Tell it something</button>' +
+          '<button class="agent-del" title="Stop this task" style="color:var(--accent-strong);border-color:rgba(var(--fg-rgb),0.1);" onclick="event.stopPropagation();stopAgentRun(\'' + a.id + '\', this)">Stop</button>'
         : '<button class="agent-del" title="Delete this run" aria-label="Delete this run" onclick="event.stopPropagation();confirmAgentDelete(this, \'' + a.id + '\', ' + !!a.report_id + ')">' + TRASH_ICON + '</button>';
 
       // The finished work, as a file. Same content as the expanded card,
@@ -7775,9 +7815,13 @@
         var a = autos.find(function(x) { return x.id === id; });
         if (!a) return;
         openCreateAutomationModal();
+        document.getElementById('auto-modal-title').textContent = 'Routine';
+        document.querySelector('.auto-trigger-btn[data-trigger="now"]').hidden = true;
         document.getElementById('auto-name-input').value = a.name || '';
         var parts = splitRules(a.task_prompt || a.description || '');
-        document.getElementById('auto-prompt-input').value = parts.prompt;
+        var scoped = splitScope(parts.prompt);
+        document.getElementById('auto-prompt-input').value = scoped.prompt;
+        document.getElementById('auto-scope-input').value = scoped.scope;
         document.getElementById('auto-quality-input').value = parts.rules;
         if (a.task_model) selectModel(a.task_model);
         if (a.output_destinations && a.output_destinations[0]) selectDest(a.output_destinations[0]);
@@ -7894,6 +7938,10 @@
       if (type === 'event') loadWatchKinds();
       var manualHint = document.getElementById('auto-manual-hint');
       if (manualHint) manualHint.style.display = type === 'manual' ? 'block' : 'none';
+      // Now is a task, started at once; any other choice makes a routine.
+      document.getElementById('auto-create-modal').classList.toggle('task-mode', type === 'now');
+      document.getElementById('auto-save-btn').textContent = type === 'now' ? 'Start' : 'Save';
+      if (type === 'now') loadAnswerPlaces();
     }
 
     function handleScheduleSelect() {
@@ -7902,9 +7950,9 @@
     }
 
     var _modelDescs = {
-      haiku: 'Quick lookups, simple checks, basic summaries.',
-      sonnet: 'Good for most tasks. Email summaries, monitoring, write-ups.',
-      opus: 'Deep research, complex analysis, strategy. Slower but more thorough.',
+      fast: 'Quick lookups, simple checks, basic summaries.',
+      default: 'Good for most tasks. Email summaries, monitoring, write-ups.',
+      strong: 'Deep research, complex analysis, strategy. Slower but more thorough.',
     };
     function selectModel(model) {
       _selectedModel = model;
@@ -7927,8 +7975,80 @@
       }
     }
 
+    // + New agent: the same form, starting on Now, a task. Choosing another
+    // When makes it a routine.
+    function openNewAgent() {
+      openCreateAutomationModal();
+      selectTrigger('now');
+    }
+
+    // The chats a task can answer in, the person's own first (/api/agents/places).
+    async function loadAnswerPlaces() {
+      var sel = document.getElementById('auto-answer-select');
+      if (sel.options.length) return;
+      try {
+        var r = await fetch('/api/agents/places');
+        var places = r.ok ? await r.json() : [];
+        sel.innerHTML = places.map(function (p) { return '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>'; }).join('');
+      } catch (e) {}
+      if (!sel.options.length) sel.innerHTML = '<option value="dashboard">Only here</option>';
+    }
+
+    // A small team: more agents in the same task form, each with its own job
+    // and scope, started together. Five at most, under the running limit.
+    function addTeamAgent() {
+      var box = document.getElementById('auto-team');
+      if (box.children.length >= 4) return;
+      var el = document.createElement('div');
+      el.className = 'team-agent';
+      el.innerHTML = '<div class="team-agent-head"><span></span><button type="button" class="team-remove" onclick="this.closest(\'.team-agent\').remove();renumberTeam()">Remove</button></div>' +
+        '<textarea class="team-goal" rows="2" aria-label="What this agent does" placeholder="What this one does, e.g. find flights from Osaka to Seoul on 8 Nov"></textarea>' +
+        '<textarea class="team-scope" rows="1" aria-label="Its scope" placeholder="Its scope (optional)"></textarea>';
+      box.appendChild(el);
+      renumberTeam();
+      el.querySelector('.team-goal').focus();
+    }
+    function renumberTeam() {
+      var heads = document.querySelectorAll('#auto-team .team-agent-head span');
+      heads.forEach(function (h, i) { h.textContent = 'Agent ' + (i + 2); });
+      document.getElementById('auto-add-agent').hidden = heads.length >= 4;
+    }
+
+    // A task started now: each agent in the form is its own task, answering
+    // in the chat chosen.
+    async function startTasks() {
+      var errEl = document.getElementById('auto-create-error'), btn = document.getElementById('auto-save-btn');
+      var sel = document.getElementById('auto-answer-select');
+      errEl.style.display = 'none';
+      var answerIn = sel.value || 'dashboard';
+      var agents = [{ goal: document.getElementById('auto-prompt-input').value.trim(), scope: document.getElementById('auto-scope-input').value.trim(), title: document.getElementById('auto-name-input').value.trim() }]
+        .concat([].map.call(document.querySelectorAll('#auto-team .team-agent'), function (el) { return { goal: el.querySelector('.team-goal').value.trim(), scope: el.querySelector('.team-scope').value.trim() }; }))
+        .filter(function (a, i) { return i === 0 || a.goal || a.scope; });
+      if (agents.some(function (a) { return a.goal.length < 3; })) { errEl.textContent = 'Say what each agent should do.'; errEl.style.display = 'block'; return; }
+      btn.disabled = true; btn.textContent = 'Starting…';
+      var started = 0, failed = '';
+      for (var i = 0; i < agents.length; i++) {
+        try {
+          var res = await fetch('/api/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ answer_in: answerIn }, agents[i])) });
+          if (res.ok) started++;
+          else failed = (await res.json().catch(function () { return {}; })).error || 'One could not start.';
+        } catch (e) { failed = 'Could not reach Closedhand.'; }
+      }
+      btn.disabled = false; btn.textContent = 'Start';
+      if (!started) { errEl.textContent = failed; errEl.style.display = 'block'; return; }
+      closeCreateAutomationModal();
+      var where = answerIn === 'dashboard' ? 'here' : answerIn === 'web' ? 'in the web chat' : 'in ' + sel.options[sel.selectedIndex].text;
+      showToast((started === 1 ? 'Started. It answers ' : started + ' started. They answer ') + where + '.' + (failed ? ' ' + failed : ''), !!failed);
+      loadAgents();
+    }
+
     function openCreateAutomationModal() {
       loadAssistantEmailState();
+      document.getElementById('auto-modal-title').textContent = 'New agent';
+      document.querySelector('.auto-trigger-btn[data-trigger="now"]').hidden = false;
+      document.getElementById('auto-scope-input').value = '';
+      document.getElementById('auto-team').innerHTML = '';
+      document.getElementById('auto-add-agent').hidden = false;
       var emailHint = document.getElementById('auto-email-hint');
       if (emailHint) emailHint.hidden = true;
       document.getElementById('auto-template-select').value = '';
@@ -7986,6 +8106,12 @@
       var rules = String(rulesText || '').split('\n').map(function (r) { return r.replace(/^\s*[-*]\s*/, '').trim(); }).filter(Boolean);
       return rules.length ? prompt + RULES_HEAD + rules.map(function (r) { return '- ' + r; }).join('\n') : prompt;
     }
+    // A routine's scope travels in its instructions too, and reads back apart.
+    var SCOPE_HEAD = '\n\nScope: ';
+    function splitScope(prompt) {
+      var at = String(prompt || '').indexOf(SCOPE_HEAD);
+      return at === -1 ? { prompt: String(prompt || ''), scope: '' } : { prompt: prompt.slice(0, at), scope: prompt.slice(at + SCOPE_HEAD.length).trim() };
+    }
     function splitRules(full) {
       full = String(full || '');
       var at = full.indexOf('\n\nRULES (');
@@ -7996,8 +8122,10 @@
     }
 
     async function saveAutomation() {
+      if (_selectedTrigger === 'now') return startTasks();
       var name = document.getElementById('auto-name-input').value.trim();
       var prompt = document.getElementById('auto-prompt-input').value.trim();
+      var scope = document.getElementById('auto-scope-input').value.trim();
       var errEl = document.getElementById('auto-create-error');
       var btn = document.getElementById('auto-save-btn');
       errEl.style.display = 'none';
@@ -8045,7 +8173,7 @@
           method: method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: name.toLowerCase().replace(/\s+/g, '-'),
+            name: name,
             description: prompt.substring(0, 200),
             trigger_type: _selectedTrigger,
             trigger_cron: triggerCron,
@@ -8056,7 +8184,7 @@
             trigger_offset_minutes: eventOffset,
             watch_words: eventWords,
             run_once: eventOnce,
-            task_prompt: withRules(prompt, document.getElementById('auto-quality-input').value),
+            task_prompt: withRules(prompt + (scope ? SCOPE_HEAD + scope : ''), document.getElementById('auto-quality-input').value),
             task_model: _selectedModel,
             task_tools: taskTools.length > 0 ? taskTools : [],
             task_use_cloud: true,
@@ -8082,7 +8210,10 @@
     // mail a minute after the tab opened stayed missing until a reload. And
     // again on coming back to the page.
     var _tabPoll = null, _polledTab = null;
-    function refreshTab(tab) { if (tab === 'agents') loadAgents(); else if (tab === 'upcoming') loadUpcoming(); }
+    function refreshTab(tab) {
+      if (tab === 'agents' && !document.querySelector('.agent-tell')) loadAgents();
+      else if (tab === 'upcoming') loadUpcoming();
+    }
     function startTabPolling(tab) {
       if (_tabPoll) { clearInterval(_tabPoll); _tabPoll = null; }
       _polledTab = tab === 'agents' || tab === 'upcoming' ? tab : null;
@@ -9169,13 +9300,13 @@
   <!-- Worker Creation Modal -->
   <div class="modal-overlay" id="auto-create-modal" onclick="if(event.target===this)closeCreateAutomationModal()">
     <div class="modal agent-modal" style="max-width:47.5rem;max-height:calc(100vh - 1rem);">
-      <h3>New routine</h3>
-      <p class="modal-desc">A task you set up once to do one job for you.</p>
+      <h3 id="auto-modal-title">New agent</h3>
+      <p class="modal-desc" id="auto-modal-desc">Closedhand working on something for you: once now, or again and again as a routine.</p>
 
       <!-- Template and name share a row: two short fields stacked was most of
            why this box needed scrolling. -->
       <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
-      <div style="flex:1;min-width:13.75rem;">
+      <div class="routine-only" style="flex:1;min-width:13.75rem;">
       <label for="auto-template-select">Start from template</label>
       <select id="auto-template-select" onchange="applyAgentTemplate(this.value)" style="width:100%;padding:0.5rem 0.625rem;border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;color:var(--fg);font-size:0.8125rem;font-family:inherit;margin-bottom:0.625rem;">
         <option value="">Blank routine</option>
@@ -9183,24 +9314,36 @@
 
       </div>
       <div style="flex:1;min-width:13.75rem;">
-      <label for="auto-name-input">Name</label>
-      <input type="text" id="auto-name-input" placeholder="e.g. oil-monitor" autocomplete="off" style="margin-bottom:0.625rem;">
+      <label for="auto-name-input">Name <span class="project-optional task-only">Optional</span></label>
+      <input type="text" id="auto-name-input" placeholder="e.g. Morning briefing" autocomplete="off" style="margin-bottom:0.625rem;">
       </div>
       </div>
 
       <!-- A routine in a project runs inside it (lib/automations.js). -->
-      <label for="auto-project-select">Project <span class="project-optional">Optional</span></label>
-      <select id="auto-project-select" style="width:100%;margin-bottom:0.25rem;"><option value="">None</option></select>
-      <p class="auto-project-hint" style="margin:0 0 0.75rem;font-size:0.7812rem;color:var(--muted);line-height:1.45;">In a project, it runs with the project's instructions and files, and its results come in the project's conversation.</p>
+      <label for="auto-project-select" class="routine-only">Project <span class="project-optional">Optional</span></label>
+      <select id="auto-project-select" class="routine-only" style="width:100%;margin-bottom:0.25rem;"><option value="">None</option></select>
+      <p class="auto-project-hint routine-only" style="margin:0 0 0.75rem;font-size:0.7812rem;color:var(--muted);line-height:1.45;">In a project, it runs with the project's instructions and files, and its results come in the project's conversation.</p>
 
       <label for="auto-prompt-input">What should it do?</label>
       <textarea id="auto-prompt-input" rows="2" style="width:100%;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;padding:0.625rem;color:var(--fg);font-size:0.8125rem;font-family:inherit;resize:vertical;box-sizing:border-box;margin-bottom:0.625rem;" placeholder="Describe what the agent should do…"></textarea>
+      <!-- Its bounds, said apart from the job: what is in and out, where to look, what not to do. -->
+      <label for="auto-scope-input">Scope <span class="project-optional">Optional</span></label>
+      <textarea id="auto-scope-input" rows="2" placeholder="e.g. Only hotels within 15 minutes of the clinic, under ¥20,000 a night. Don't book anything." style="width:100%;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;padding:0.625rem;color:var(--fg);font-size:0.8125rem;font-family:inherit;resize:vertical;margin-bottom:0.625rem;"></textarea>
+      <!-- A small team for a task: each its own job and scope, side by side. -->
+      <div id="auto-team" class="task-only"></div>
+      <a href="#" class="task-only team-add" id="auto-add-agent" onclick="event.preventDefault();addTeamAgent()">+ Add another agent</a>
 
       <label>When should it run?</label>
       <div style="display:flex;gap:0.375rem;margin-bottom:0.625rem;flex-wrap:wrap;" id="auto-trigger-options">
+        <button type="button" class="auto-trigger-btn" data-trigger="now" onclick="selectTrigger('now')">Now</button>
         <button type="button" class="auto-trigger-btn active" data-trigger="manual" onclick="selectTrigger('manual')">When I ask</button>
         <button type="button" class="auto-trigger-btn" data-trigger="scheduled" onclick="selectTrigger('scheduled')">On a schedule</button>
         <button type="button" class="auto-trigger-btn" data-trigger="event" onclick="selectTrigger('event')">When something happens</button>
+      </div>
+
+      <div id="auto-answer-row" class="task-only" style="margin-bottom:0.875rem;">
+        <label for="auto-answer-select">Answers in</label>
+        <select id="auto-answer-select" style="width:100%;padding:0.5rem 0.625rem;border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;color:var(--fg);font-size:0.8125rem;font-family:inherit;"></select>
       </div>
 
       <div id="auto-manual-hint" style="font-size: 0.8125rem;color:rgba(var(--fg-rgb),0.6);margin-bottom:0.875rem;margin-top:-0.25rem;">Runs when you ask in any chat or press Run on its card under Routines.</div>
@@ -9255,14 +9398,14 @@
       </div>
 
       <!-- Skills preference -->
-      <div id="auto-skills-section" style="margin-bottom:0.625rem;">
+      <div id="auto-skills-section" class="routine-only" style="margin-bottom:0.625rem;">
         <label>Preferred skills <span style="color:rgba(var(--fg-rgb),0.6);font-weight:400;font-size:0.8125rem;">(optional; add one on Connections)</span></label>
         <div id="auto-skills-picker" style="display:flex;flex-wrap:wrap;gap:0.375rem;margin-top:0.25rem;min-height:1.75rem;">
           <span style="font-size: 0.8125rem;color:rgba(var(--fg-rgb),0.6);">Loading skills…</span>
         </div>
       </div>
 
-      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-start;">
+      <div class="routine-only" style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-start;">
       <div style="flex:1;min-width:15rem;">
       <label for="auto-quality-input" style="margin-top:0.625rem;">Rules <span style="color:rgba(var(--fg-rgb),0.6);font-weight:400;">(optional, one per line)</span></label>
       <textarea id="auto-quality-input" rows="2" placeholder="e.g. Always include specific numbers" style="width:100%;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;padding:0.5rem 0.625rem;color:var(--fg);font-size:0.8125rem;font-family:inherit;resize:vertical;box-sizing:border-box;margin-bottom:0.625rem;"></textarea>
@@ -9279,7 +9422,7 @@
       <a href="#" onclick="event.preventDefault();toggleAdvanced()" id="auto-advanced-toggle" style="font-size: 0.875rem;color:var(--muted);text-decoration:none;">Advanced settings <span class="chevron-down" style="margin-left:0.25rem;"></span></a>
       </div>
       </div>
-      <div id="auto-advanced" style="display:none;margin-bottom:0.625rem;padding:0.625rem 0.75rem;background:var(--bg);border:1px solid rgba(var(--fg-rgb),0.1);border-radius:0.5rem;">
+      <div id="auto-advanced" class="routine-only" style="display:none;margin-bottom:0.625rem;padding:0.625rem 0.75rem;background:var(--bg);border:1px solid rgba(var(--fg-rgb),0.1);border-radius:0.5rem;">
         <!-- One row, so opening these still fits the box without scrolling. -->
         <div style="display:flex;align-items:center;gap:0.375rem;flex-wrap:wrap;">
           <span style="font-size:0.875rem;font-weight:600;color:var(--muted);margin-right:0.25rem;">Speed vs quality</span>

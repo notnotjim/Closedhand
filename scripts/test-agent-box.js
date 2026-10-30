@@ -20,7 +20,7 @@ test("several rules go into the instructions as a list, and come back out when e
   assert.equal(box.withRules("Check oil prices.", "  "), "Check oil prices.");
   const old = "Brief me.\n\nQUALITY CHECK: Before delivering results, verify against these criteria: Must cite 5 sources. If any criteria fail, iterate and improve before reporting.";
   assert.deepEqual({ ...box.splitRules(old) }, { prompt: "Brief me.", rules: "Must cite 5 sources" }, "an older agent's check reads back as one rule");
-  assert.match(dashboard, /task_prompt: withRules\(prompt, document\.getElementById\('auto-quality-input'\)\.value\),/);
+  assert.match(dashboard, /task_prompt: withRules\(prompt \+ \(scope \? SCOPE_HEAD \+ scope : ''\), document\.getElementById\('auto-quality-input'\)\.value\),/);
   assert.match(dashboard, /var parts = splitRules\(a\.task_prompt \|\| a\.description \|\| ''\);/);
   assert.match(dashboard, /<label for="auto-quality-input" style="margin-top:0.625rem;">Rules <span[^>]*>\(optional, one per line\)<\/span><\/label>\s*<textarea id="auto-quality-input" rows="2"/);
   assert.match(read("webapp/server.js"), /fullPrompt \+= "\\n\\nRULES \(check the result follows every one of these before sending it, and fix it if not\):\\n"/);

@@ -273,7 +273,7 @@ test("a background job gets a short name, and until then its first sentence cut 
   // A job's name must not read as done while it runs, or after it fails.
   assert.match(verification, /For doing something, name the job, never its outcome/);
   const agents = fs.readFileSync(path.join(__dirname, "..", "lib", "agents.js"), "utf8");
-  assert.match(agents, /\.\.\.\(prepared\.title \? \{ title: prepared\.title \} : \{\}\)/);
+  assert.match(agents, /\.\.\.\(prepared\.title && !task\.runtime\?\.named \? \{ title: prepared\.title \} : \{\}\)/, 'a name given on the Agents tab stays');
   const start = agents.indexOf("  // Until preparation names it");
   const body = agents.slice(start, agents.indexOf("\n  const task = await createTask", start));
   const box = { goal: "I need somewhere to stay in Saigon from the 7th for a week. Can you find me a few good options?" };

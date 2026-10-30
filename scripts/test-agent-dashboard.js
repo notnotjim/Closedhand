@@ -9,7 +9,7 @@ const server = fs.readFileSync(path.join(root, 'webapp/server.js'), 'utf8');
 // The Agents tab's loading (loadAgents): what is working now, the routines
 // and what finished this week, from three reads drawn together.
 function dashboard({ tasks = [], routines = [], runs = [], fail = '' } = {}) {
-  const elements = new Map(), requests = [], timers = [], drawn = {};
+  const elements = new Map(), requests = [], timers = [], drawn = {}, telling = { on: false };
   const get = id => {
     if (!elements.has(id)) {
       const el = { textContent: '', style: {}, hidden: true, _html: '' };
@@ -20,7 +20,7 @@ function dashboard({ tasks = [], routines = [], runs = [], fail = '' } = {}) {
   };
   const body = { '/api/agents': tasks, '/api/automations': routines, '/api/automations/recent': runs };
   const context = vm.createContext({ console, Date, window: {},
-    document: { hidden: false, getElementById: get, addEventListener() {} },
+    document: { hidden: false, getElementById: get, addEventListener() {}, querySelector: (sel) => (sel === '.agent-tell' && telling.on ? {} : null) },
     fetch: async url => { requests.push(url); return { ok: url !== fail, json: async () => body[url] }; },
     renderAgentCard: a => '[task ' + a.id + ']',
     renderAutomationCard: a => '[routine ' + a.id + ']',
@@ -30,7 +30,7 @@ function dashboard({ tasks = [], routines = [], runs = [], fail = '' } = {}) {
   });
   vm.runInContext(html.slice(html.indexOf('    var _agentsHtml = {};'), html.indexOf('    // Permission drift is invisible')), context);
   vm.runInContext(html.slice(html.indexOf('    var _tabPoll = null'), html.indexOf('    function fileSize(n) {')), context);
-  return { context, get, requests, timers, drawn };
+  return { context, get, requests, timers, drawn, telling };
 }
 const at = (mins) => new Date(Date.now() - mins * 60000).toISOString();
 test('Working now holds tasks going or waiting and routines mid-run; Done lately what finished this week', async () => {
@@ -55,7 +55,7 @@ test('with nothing working, it says so and how to hand something over; with no r
   assert.equal(h.get('auto-active-desc').hidden, true);
   assert.equal(h.get('agents-done').hidden, true, 'no Done lately with nothing done');
   assert.equal(h.get('auto-empty').style.display, 'block');
-  assert.match(html, /<p class="section-desc" id="auto-active-empty">Nothing right now\. Ask in chat for anything that takes a while, like comparing hotels or looking into a purchase, and Closedhand works on it here while you carry on\.<\/p>/);
+  assert.match(html, /<p class="section-desc" id="auto-active-empty">Nothing right now\. Start one with \+ New agent, or ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on\.<\/p>/);
 });
 test('a failed read shows its own error and leaves the rest', async () => {
   const h = dashboard({ fail: '/api/agents', routines: [{ id: 'r1' }] });
@@ -78,6 +78,10 @@ test('a list is drawn again only when it changed, and the tab on screen is asked
   assert.equal(h.timers.at(-1).ms, 15000);
   h.timers.at(-1).fn();
   assert.equal(h.requests.filter((u) => u === '/api/agents').length, 3);
+  h.telling.on = true;
+  h.timers.at(-1).fn();
+  assert.equal(h.requests.filter((u) => u === '/api/agents').length, 3, 'not while something is being typed to a task');
+  h.telling.on = false;
   h.context.startTabPolling('upcoming');
   assert.equal(h.timers.at(-1).ms, 30000);
   h.timers.at(-1).fn();
@@ -111,3 +115,71 @@ test('the routine counts and per-routine run lists are gone: their runs are unde
   assert.doesNotMatch(html, /auto-summary|loadAutomationStats|loadAutoRuns|auto-history-list/);
 });
 
+
+// Starting tasks from the Agents tab: where one can answer, what is saved, a note while it works.
+function agentRoutes(records, rpc = async () => ({ data: [{ id: 'x' }], error: null })) {
+  const inserted = [], rpcs = [];
+  const db = {
+    from(table) {
+      const filters = [];
+      const q = {
+        select() { return q; }, eq(k, v) { filters.push([k, v]); return q; },
+        insert(row) { inserted.push({ table, row }); return { select: () => ({ single: async () => ({ data: { id: 'new-' + inserted.length, ...row }, error: null }) }) }; },
+        then(resolve) { return Promise.resolve({ data: (records[table] || []).filter((r) => filters.every(([k, v]) => r[k] === v)), error: null }).then(resolve); },
+      };
+      return q;
+    },
+    rpc: async (name, args) => { rpcs.push({ name, args }); return rpc(name, args); },
+  };
+  const handlers = {};
+  const app = { get(p, fn) { handlers['GET ' + p] = fn; }, post(p, fn) { handlers['POST ' + p] = fn; } };
+  const block = (from, to) => server.slice(server.indexOf(from), server.indexOf(to, server.indexOf(from)));
+  const code = block('// Where a task started on the Agents tab can answer:', 'app.get("/api/agents/:id", async')
+    + block('// A task started from the Agents tab: what to do, its scope', '\n// ============================================================\n// AUTOMATIONS')
+    + block('// Something to tell a task while it works', 'app.post("/api/agents/:id/stop"');
+  vm.runInNewContext(code, { app, supabase: db, getUserIdFromRequest: () => 'owner', crypto: require('node:crypto'), console: { error() {} } });
+  const call = async (key, req) => { const res = { code: 200, status(c) { this.code = c; return this; }, json(v) { this.body = v; } }; await handlers[key]({ params: {}, body: {}, ...req }, res); return res; };
+  return { call, inserted, rpcs };
+}
+const links = { chat_links: [{ user_id: 'owner', platform: 'telegram', platform_user_id: 'tg-1' }, { user_id: 'owner', platform: 'whatsapp_linked', platform_user_id: 'wa-1' }, { user_id: 'other', platform: 'slack', platform_user_id: 'sl-9' }], agent_tasks: [] };
+test('a task can answer in the person\'s own chats, the web chat or only here, theirs first', async () => {
+  const h = agentRoutes(links);
+  const res = await h.call('GET /api/agents/places');
+  assert.equal(res.body.map((p) => p.name).join(', '), 'WhatsApp, Telegram, The web chat, Only here');
+  assert.ok(res.body.every((p) => !('chat_id' in p)), 'the page gets names, never chat ids');
+});
+test('a task started on the tab carries its scope and name, and answers in the chat chosen, looked up here', async () => {
+  const h = agentRoutes(links);
+  const ok = await h.call('POST /api/agents', { body: { goal: 'Compare hotels in Fukuoka for 14 to 17 Nov', scope: 'Under ¥20,000 a night. Do not book.', title: 'Fukuoka hotels', answer_in: 'whatsapp_linked' } });
+  assert.equal(ok.code, 200);
+  const row = h.inserted[0].row;
+  assert.equal(row.goal, 'Compare hotels in Fukuoka for 14 to 17 Nov\n\nScope: Under ¥20,000 a night. Do not book.');
+  assert.equal(row.title, 'Fukuoka hotels');
+  assert.equal(JSON.stringify(row.runtime), '{"named":true}', 'the bot keeps the name it was given');
+  assert.equal(row.platform, 'whatsapp_linked');
+  assert.equal(row.chat_id, 'wa-1');
+  await h.call('POST /api/agents', { body: { goal: 'Find flights to Seoul', answer_in: 'web' } });
+  assert.equal(h.inserted[1].row.chat_id, 'owner', 'the web chat is the person\'s own');
+  assert.equal(h.inserted[1].row.title, null);
+  assert.equal(h.inserted[1].row.runtime, undefined);
+  const nope = await h.call('POST /api/agents', { body: { goal: 'Post to the team', answer_in: 'slack' } });
+  assert.equal(nope.code, 400, 'another account\'s chat is not theirs');
+  assert.equal(h.inserted.length, 2);
+});
+test('something told to a working task goes in as the chat\'s note does; a stopped one says so', async () => {
+  const h = agentRoutes(links);
+  const ok = await h.call('POST /api/agents/:id/note', { params: { id: 't1' }, body: { note: 'Only hotels with a gym' } });
+  assert.equal(ok.code, 200);
+  assert.equal(h.rpcs[0].name, 'append_agent_note');
+  assert.equal(h.rpcs[0].args.p_task_id, 't1');
+  assert.equal(h.rpcs[0].args.p_user_id, 'owner');
+  assert.equal(h.rpcs[0].args.p_note.note, 'Only hotels with a gym');
+  assert.equal((await h.call('POST /api/agents/:id/note', { params: { id: 't1' }, body: { note: ' ' } })).code, 400);
+  const stopped = agentRoutes(links, async () => ({ data: [], error: null }));
+  const res = await stopped.call('POST /api/agents/:id/note', { params: { id: 't9' }, body: { note: 'Faster please' } });
+  assert.equal(res.code, 409);
+  assert.match(res.body.error, /It has stopped/);
+});
+test('the bot keeps a name given on the tab, and names the rest itself', () => {
+  assert.match(fs.readFileSync(path.join(root, 'lib/agents.js'), 'utf8'), /\.\.\.\(prepared\.title && !task\.runtime\?\.named \? \{ title: prepared\.title \} : \{\}\)/);
+});
