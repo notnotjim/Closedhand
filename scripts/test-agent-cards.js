@@ -29,6 +29,7 @@ test("a run that could not finish says why in plain words, never the check's not
   assert.equal(box.runOutcome({ status: "partial", error: "No answer was produced." }), "Something went wrong partway through.");
   assert.equal(box.runOutcome({ status: "failed", error: "fetch failed" }), "The connection to the LLM provider kept dropping.");
   assert.equal(box.runOutcome({ status: "failed", error: "This task reached its work allowance." }), "It reached the work allowance for one task.");
+  assert.equal(box.runOutcome({ status: "failed", error: "This task reached its time allowance." }), "It ran out of time.");
   assert.equal(box.runWord({ status: "cancelled" }), "Stopped");
   assert.equal(box.runOutcome({ status: "cancelled" }), "Stopped before it finished.");
   assert.equal(box.stepText("Quality check sent it back for another pass: No answer was produced."), "Improving the answer before sending it");
@@ -296,5 +297,6 @@ test("a routine's scope travels in its instructions and reads back apart; a work
   assert.match(dashboard, /task_prompt: withRules\(prompt \+ \(scope \? SCOPE_HEAD \+ scope : ''\), /);
   assert.match(dashboard, /onclick="event\.stopPropagation\(\);openTell\(this, \\'' \+ a\.id \+ '\\'\)">Tell it something<\/button>'/);
   assert.match(dashboard, /fetch\('\/api\/agents\/' \+ id \+ '\/note', \{ method: 'POST'/);
+  assert.match(dashboard, /else if \(res && res\.status === 409\) \{ box\.remove\(\); showToast\('It finished before that reached it\. Its answer is under Done lately\.', true\); loadAgents\(\); \}/, "a note too late says the task finished and shows it");
   assert.match(dashboard, /if \(tab === 'agents' && !document\.querySelector\('\.agent-tell'\)\) loadAgents\(\);/, "the list waits while something is being typed");
 });

@@ -264,6 +264,12 @@ test("a background job that failed with nothing to show says what and why, and h
   assert.equal(failedNote({ goal: "can you find me a couple of good coworking spaces in District 1 with day passes, for next week?", error: "fetch failed" }),
     'I couldn\'t finish "can you find me a couple of good coworking spaces in District 1 with day passes, for next…": the connection to the LLM provider kept dropping. Say "try again" and I\'ll start it fresh.');
   assert.match(failedNote({ goal: "x", error: "This task reached its work allowance." }), /work allowance/);
+  // The clock and the work allowance are separate limits; a stopped task's
+  // answer names the one that stopped it.
+  const { stopReason } = require("../lib/task-delivery");
+  assert.equal(stopReason(new Error("This task reached its time allowance.")), "it ran out of time");
+  assert.equal(stopReason(new Error("This task reached its work allowance. Keep the findings gathered so far.")), "it reached the work allowance for one task");
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "lib", "task-outcome.js"), "utf8"), /`This stopped before it finished: \$\{stopReason\(error\)\}\. What it found:/);
   assert.doesNotMatch(failedNote({ goal: "x" }), /dashboard/);
 });
 

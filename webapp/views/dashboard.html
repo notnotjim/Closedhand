@@ -7391,6 +7391,9 @@
         var res = await fetch('/api/agents/' + id + '/note', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: note }) }).catch(function () { return null; });
         var d = res ? await res.json().catch(function () { return {}; }) : {};
         if (res && res.ok) { box.remove(); showToast('Passed on. It takes it from its next step.'); loadAgents(); }
+        // It finished while the box was open (the list waits while one is):
+        // show it finished, and where its answer is.
+        else if (res && res.status === 409) { box.remove(); showToast('It finished before that reached it. Its answer is under Done lately.', true); loadAgents(); }
         else { send.disabled = false; showToast(d.error || 'Could not pass that on', true); }
       };
       area.focus();
@@ -7568,8 +7571,8 @@
     function couldNotFinish(error) {
       var e = String(error || '');
       return /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|network/i.test(e) ? 'the connection to the LLM provider kept dropping'
+        : /time allowance|timed out|timeout/i.test(e) ? 'it ran out of time'
         : /allowance|budget/i.test(e) ? 'it reached the work allowance for one task'
-        : /timed out|timeout/i.test(e) ? 'it took too long and was stopped'
         : 'something went wrong partway through';
     }
     // Runs from before the check's notes were kept out of sight still carry
