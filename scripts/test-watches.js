@@ -170,7 +170,7 @@ test("Pulse leaves alone what a watch with words is waiting for, and what anyone
 test("the chat tool makes a watch only for what one can see, with its words, end date and plain message", () => {
   const h = read("lib/tools/handlers.js");
   assert.match(h, /if \(isWatch && !watchSource\) return \{ error: "A watch can look at " \+ kinds\.choices\(\)/);
-  assert.match(h, /const modelMap = \{ fast: "haiku", balanced: "sonnet", thorough: "opus"/, "the effort the tool offers reaches the routine");
+  assert.match(h, /const modelMap = \{ fast: "fast", balanced: "default", thorough: "strong" \};/, "the effort the tool offers reaches the routine, in the engine's own words");
   assert.match(h, /run_once: runOnce,\n\s+watch_words: watchWords,\n\s+expires_at: expiresAt,/);
   assert.match(h, /"Watch '" \+ auto\.name \+ "' is on: " \+ looks/);
   const defs = read("lib/tools/definitions.js");

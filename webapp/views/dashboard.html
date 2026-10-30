@@ -1635,7 +1635,6 @@
       .agent-card .auto-card-header { flex-wrap: wrap; }
       .agent-card .auto-card-name { flex: 1 0 100%; white-space: normal; overflow-wrap: anywhere; }
       .agent-card .agent-del { margin-left: 0; white-space: nowrap; }
-      .agent-card .auto-status-pill { max-width: 100%; white-space: normal; }
     }
     .agent-step { font-size: 0.75rem; color: var(--muted); padding: 2px 0; font-variant-numeric: tabular-nums; }
     .agent-step.agent-err { color: var(--accent); }
@@ -1646,16 +1645,6 @@
     .agent-report-table table { border-collapse: collapse; width: 100%; }
     .agent-report-table th, .agent-report-table td { border: 1px solid rgba(var(--fg-rgb),0.1); padding: 0.25rem 0.5rem; text-align: left; vertical-align: top; }
     .agent-report-table th { color: var(--fg); font-weight: 600; }
-    .auto-status-pill {
-      font-size: 0.8125rem;
-      font-weight: 600;
-      padding: 2px 0.5rem;
-      border-radius: 0.625rem;
-      flex-shrink: 0;
-    }
-    .auto-status-pill.active { background: rgba(var(--ok-rgb),0.12); color: var(--ok); }
-    .auto-status-pill.paused { background: rgba(var(--fg-rgb),0.06); color: var(--muted); }
-    .auto-status-pill.idle { background: rgba(var(--raised-rgb),0.12); color: var(--muted); }
     /* Archived: a heading row like the list's own, closed until wanted. */
     /* Specific enough to beat the dashboard's general button padding and size,
        so it lines up with the headings above it exactly. */
@@ -1689,29 +1678,20 @@
       border-color: rgba(var(--fg-rgb),0.4);
       color: var(--fg);
     }
-    .auto-card-detail {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s ease;
-      border-top: 1px solid transparent;
-    }
-    .auto-card.expanded .auto-card-detail {
-      max-height: 50rem;
-      border-top-color: var(--raised);
-    }
-    .auto-card-detail-inner {
-      padding: 0.75rem 0.875rem;
-    }
-    .auto-chevron {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .auto-card.expanded .auto-chevron .chevron-down {
-      transform: rotate(-135deg);
-      border-color: rgba(var(--fg-rgb),0.64);
-    }
+    .auto-card-actions .ui-icon { width: 0.875rem; height: 0.875rem; }
+    /* A routine: what it does and when on the left, its actions and On box on
+       the right, wrapping under on a phone. One that is off reads quieter. */
+    .routine-card { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1rem; padding: 0.75rem 0.875rem; }
+    /* In the dashboard, in line with the task cards' headers (interface.css). */
+    .dashboard-container .routine-card { padding: 1.25rem; gap: 0.75rem 1rem; }
+    .routine-card .routine-main { flex: 1 1 18rem; min-width: 0; }
+    .routine-card .auto-card-name { white-space: normal; }
+    .routine-card .routine-about { font-size: 0.8125rem; color: var(--fg); margin-top: 0.125rem; }
+    .routine-card .auto-card-meta { padding: 0; margin-top: 0.25rem; }
+    .routine-card .auto-card-actions { align-items: center; flex-wrap: wrap; }
+    .routine-card.off .auto-card-name, .routine-card.off .routine-about { color: var(--muted); }
+    .routine-on { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: var(--muted); cursor: pointer; margin-left: 0.25rem; }
+    .routine-on input { width: 0.875rem; height: 0.875rem; margin: 0; accent-color: var(--accent-strong); }
     .auto-dest-btn {
       padding: 0.375rem 0.875rem;
       background: rgba(var(--fg-rgb),0.1);
@@ -1969,6 +1949,8 @@
       .tab { font-size: 0.8125rem; padding: 0.625rem 0.75rem; }
       .settings-group { margin-bottom: 0.75rem; }
       .conn-card, .auto-card { padding: 0.75rem; }
+      /* The card's padding and its header's, as on a task card beside it. */
+      .dashboard-container .routine-card { padding: 2rem; }
     }
 
     /* === Usage tab (BYOK spend) === */
@@ -2082,7 +2064,7 @@
       <div class="tab-bar">
         <button class="tab active" data-tab="connections" onclick="switchTab('connections')">Connections</button>
         <button class="tab" data-tab="upcoming" onclick="switchTab('upcoming')">Upcoming</button>
-        <button class="tab" data-tab="tasks" onclick="switchTab('tasks')">Tasks</button>
+        <button class="tab" data-tab="agents" onclick="switchTab('agents')">Agents</button>
         <button class="tab" data-tab="projects" onclick="switchTab('projects')">Projects</button>
         <button class="tab" data-tab="pages" onclick="switchTab('pages')">Pages</button>
         <button class="tab" data-tab="brain" onclick="switchTab('brain')">Context Brain</button>
@@ -2292,68 +2274,35 @@
       </div>
 
       <!-- Workers Tab Content -->
-      <div class="tab-content" id="tab-tasks">
+      <!-- Agents: Closedhand working for you. Tasks handed over in chat and
+           routines mid-run under Working now, the routines themselves, and
+           what finished this week (loadAgents). -->
+      <div class="tab-content" id="tab-agents">
         <div style="padding-top:1rem;">
-          <p class="goals-intro">Everything Closedhand is doing for you, from what it's working on now to the routines it runs.</p>
-          <!-- How much ran lately, in one line, only when something has: what
-               runs now and the routines are listed below, never counted twice. -->
-          <p class="auto-card-meta" id="auto-summary" hidden></p>
-
-          <!-- Active Runs -->
-          <div class="mc-section-label" id="auto-active-label" style="display:none;">Running now</div>
+          <p class="goals-intro">Closedhand working for you: tasks you hand it in chat, and routines that run on their own.</p>
+          <div class="mc-section-label">Working now</div>
+          <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from.</p>
+          <p class="section-desc" id="auto-active-empty">Nothing right now. Ask in chat for anything that takes a while, like comparing hotels or looking into a purchase, and Closedhand works on it here while you carry on.</p>
           <div id="auto-active-list"></div>
-          <p id="auto-active-error" class="auto-card-meta" role="status" hidden>Could not refresh your tasks. Please try again shortly.</p>
-
-          <!-- Workers header with + New Worker button -->
-          <div style="display:flex;align-items:center;justify-content:space-between;margin:1rem 0 0.5rem;">
+          <p id="auto-active-error" class="auto-card-meta" role="status" hidden>Could not refresh what is working now. Please try again shortly.</p>
+          <!-- A list of records: its + New routine at the top right (AGENTS.md). -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin:1.5rem 0 0.5rem;">
             <div class="mc-section-label" style="margin:0;">Routines</div>
             <button type="button" class="goals-new" onclick="openCreateAutomationModal()">+ New routine</button>
           </div>
-          <p class="section-desc">Tasks you set up once that run on a timetable, when something happens or when you press Run.</p>
+          <p class="section-desc">What Closedhand does on its own, on a timetable or when something happens.</p>
           <div id="auto-saved-list"></div>
           <p id="auto-saved-error" class="auto-card-meta" role="status" hidden>Could not load your routines. Please try again shortly.</p>
-
-          <!-- Empty state (only when no saved workers) -->
+          <!-- With no routines yet: real routines to start from, only for what is connected -->
           <div id="auto-empty" style="display:none;">
-            <div style="padding:1rem;text-align:center;">
-              <div style="margin-bottom:1rem;">
-                <svg width="5rem" height="5rem" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" style="opacity:0.5;">
-                  <!-- One stroke, no fills: a head, closed eyes, a small smile, and
-                       rounded shoulders starting clear of the chin. -->
-                  <g stroke="rgba(var(--fg-rgb),0.38)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
-                    <circle cx="40" cy="30" r="12"/>
-                    <path d="M34.5 29.5q2 2.5 4 0"/>
-                    <path d="M41.5 29.5q2 2.5 4 0"/>
-                    <path d="M37.5 35.5q2.5 1.6 5 0"/>
-                    <path d="M22 66v-7a18 15 0 0136 0v7"/>
-                  </g>
-                  <!-- Floating Zs -->
-                  <text x="56" y="24" fill="rgba(var(--fg-rgb),0.4)" font-size="10" font-weight="bold">
-                    <animate attributeName="y" values="24;18;24" dur="2s" repeatCount="indefinite"/>
-                    <animate attributeName="opacity" values="0.3;0.8;0.3" dur="2s" repeatCount="indefinite"/>
-                    z
-                  </text>
-                  <text x="62" y="16" fill="rgba(var(--fg-rgb),0.4)" font-size="8" font-weight="bold">
-                    <animate attributeName="y" values="16;10;16" dur="2.3s" repeatCount="indefinite"/>
-                    <animate attributeName="opacity" values="0.2;0.6;0.2" dur="2.3s" repeatCount="indefinite"/>
-                    z
-                  </text>
-                  <text x="66" y="10" fill="rgba(var(--fg-rgb),0.4)" font-size="6" font-weight="bold">
-                    <animate attributeName="y" values="10;5;10" dur="2.6s" repeatCount="indefinite"/>
-                    <animate attributeName="opacity" values="0.1;0.5;0.1" dur="2.6s" repeatCount="indefinite"/>
-                    z
-                  </text>
-                </svg>
-              </div>
-              <p style="font-size:0.8125rem;color:var(--muted);line-height:1.6;margin-bottom:0.875rem;">No routines yet. Start from one of these or make your own:</p>
-              <div class="agent-tpl-grid" id="agent-tpl-grid"></div>
-            </div>
+            <p class="section-desc">Start from one of these, or make your own.</p>
+            <div class="agent-tpl-grid" id="agent-tpl-grid"></div>
           </div>
-
-          <!-- Recent Runs -->
-          <div class="mc-section-label" id="auto-history-label" style="display:none;">Recent runs</div>
-          <div id="auto-history-list"></div>
-
+          <div id="agents-done" hidden>
+            <div class="mc-section-label" style="margin-top:1.5rem;">Done lately</div>
+            <p class="section-desc">The last week, newest first.</p>
+            <div id="agents-done-list"></div>
+          </div>
         </div>
       </div>
 
@@ -3028,7 +2977,7 @@
     const welcomeSteps = [
       { tab: 'connections', text: 'Your connected apps and skills live here. Add one when you need more, or disconnect one any time.' },
       { tab: 'upcoming', text: 'Upcoming is what is coming up: bookings, flights and reminders from everything you have connected, with a hotel stay holding what happens while you are there.' },
-      { tab: 'tasks', text: 'Your tasks and routines live here, like a morning briefing. Check how they are doing, then get back to your day.' },
+      { tab: 'agents', text: 'Agents is Closedhand working for you: tasks you hand it in chat while they run, and routines like a morning briefing that run on their own.' },
       { tab: 'projects', text: 'Projects are the bigger things you are working towards. Each shows its goal, how far along you are and what Closedhand has done for the project.' },
       { tab: 'pages', text: 'Pages are what Closedhand makes beyond a chat answer, like a trip plan or a comparison. Each opens as PDF, Word or Excel too.' },
       { tab: 'brain', text: 'Context Brain is what Closedhand remembers: your Pinned Facts and Context Notes. Read, correct or delete any of them.' },
@@ -5338,16 +5287,14 @@
       document.querySelectorAll('.tab-content').forEach(tc => {
         tc.classList.toggle('active', tc.id === `tab-${tabName}`);
       });
-      if (tabName === 'tasks') {
-        loadAutomations();
-        loadAutomationStats();
+      if (tabName === 'agents') {
+        loadAgents();
+        drawAgentTemplates();
         loadSkills();
-        startAutomationPolling();
         loadPulse();
-      } else {
-        stopAutomationPolling();
       }
       if (tabName === 'upcoming') loadUpcoming();
+      startTabPolling(tabName);
       if (tabName === 'settings') {
         if (window._platformsCache) renderPlatformPills(window._platformsCache);
         loadUserRules();
@@ -6942,7 +6889,7 @@
     let _autoPollTimer = null;
     let _autoRunsCache = [];
     var _selectedTrigger = 'manual';
-    var _selectedModel = 'sonnet';
+    var _selectedModel = 'default';
     var _selectedDest = 'chat_platforms';
 
     // Email results come from the assistant's own address, so the option
@@ -6990,28 +6937,8 @@
         trigger: 'scheduled',
         cron: '0 8 * * *',
         humanSchedule: 'Every morning at 8am',
-        model: 'sonnet',
+        model: 'default',
         quality_check: "Must include today's calendar events, weather, and at least 3 email summaries"
-      },
-      'research-analyst': {
-        name: 'Research a topic',
-        about: 'Looks into a topic and comes back with a sourced answer.',
-        prompt: "Research [REPLACE WITH: your topic]. Check relevant sources and answer directly with the key findings, sources and important caveats. Keep the answer concise unless I ask for a page. Do not save research as personal Context Brain information unless I ask.",
-        trigger: 'manual',
-        cron: null,
-        humanSchedule: null,
-        model: 'opus',
-        quality_check: 'Must cite at least 5 sources with specific data points'
-      },
-      'data-cruncher': {
-        name: 'Work through data',
-        about: 'Runs code on the sandbox computer to work through data and draw charts.',
-        prompt: "Use run_code to [REPLACE WITH: e.g. chart my spending from this CSV, calculate compound interest on 50k at 5% over 10 years, scrape headlines from BBC News]. Show the results and explain what they mean in plain English.",
-        trigger: 'manual',
-        cron: null,
-        humanSchedule: null,
-        model: 'sonnet',
-        quality_check: 'Must include output from run_code and a summary'
       },
       'smart-morning': {
         name: 'Weekday heads-up',
@@ -7020,7 +6947,7 @@
         trigger: 'scheduled',
         cron: '0 7 * * 1-5',
         humanSchedule: 'Weekday mornings at 7am',
-        model: 'haiku',
+        model: 'fast',
         quality_check: 'Must check both calendar and weather'
       },
       'weekly-review': {
@@ -7030,7 +6957,7 @@
         trigger: 'scheduled',
         cron: '0 17 * * 5',
         humanSchedule: 'Every Friday at 5pm',
-        model: 'sonnet',
+        model: 'default',
         quality_check: 'Must cover both calendar and email from the past week'
       },
       'competitor-monitor': {
@@ -7040,7 +6967,7 @@
         trigger: 'scheduled',
         cron: '0 9 * * 1',
         humanSchedule: 'Every Monday at 9am',
-        model: 'sonnet',
+        model: 'default',
         quality_check: 'Must check at least 3 competitor sources and note any changes'
       },
       'inbox-triage': {
@@ -7050,7 +6977,7 @@
         trigger: 'scheduled',
         cron: '0 */3 * * *',
         humanSchedule: 'Every 3 hours',
-        model: 'haiku',
+        model: 'fast',
         quality_check: 'Must categorise every email and draft replies for urgent ones'
       },
       'shopify-sales': {
@@ -7060,24 +6987,31 @@
         trigger: 'scheduled',
         cron: '0 18 * * *',
         humanSchedule: 'Every day at 6pm',
-        model: 'sonnet',
+        needs: 'shopify',
+        model: 'default',
         quality_check: 'Must include total revenue, order count, and top products'
       }
     };
 
     // The templates as cards in the empty Routines list and as choices in the
-    // new-routine form, both drawn from WORKER_TEMPLATES: one name each.
-    var TEMPLATE_ORDER = ['morning-briefing', 'smart-morning', 'weekly-review', 'inbox-triage', 'research-analyst', 'data-cruncher', 'competitor-monitor', 'shopify-sales'];
+    // new-routine form, both drawn from WORKER_TEMPLATES: one name each. Only
+    // routines that repeat (a one-off job is asked for in chat), and one that
+    // needs a connection only once it is connected.
+    var TEMPLATE_ORDER = ['morning-briefing', 'smart-morning', 'weekly-review', 'inbox-triage', 'competitor-monitor', 'shopify-sales'];
+    function shownTemplates() {
+      var connected = (window._connectionsCache || []).map(function (c) { return String(c.service || '').replace(/_extra_.*$/, ''); });
+      return TEMPLATE_ORDER.filter(function (id) { var need = WORKER_TEMPLATES[id].needs; return !need || connected.indexOf(need) !== -1; });
+    }
     function drawAgentTemplates() {
       var grid = document.getElementById('agent-tpl-grid'), select = document.getElementById('auto-template-select');
-      if (grid && !grid.childElementCount) grid.innerHTML = TEMPLATE_ORDER.map(function (id) {
+      if (grid) grid.innerHTML = shownTemplates().map(function (id) {
         var t = WORKER_TEMPLATES[id];
         return '<button type="button" class="auto-template" onclick="loadAgentTemplate(\'' + id + '\')">'
           + '<span class="auto-template-name">' + escHtml(t.name) + '</span>'
           + '<span class="auto-template-about">' + escHtml(t.about) + '</span>'
           + '<span class="auto-template-when">' + escHtml(t.humanSchedule || 'When you press Run') + '</span></button>';
       }).join('');
-      if (select && select.options.length < 2) TEMPLATE_ORDER.forEach(function (id) { select.add(new Option(WORKER_TEMPLATES[id].name, id)); });
+      if (select) { while (select.options.length > 1) select.remove(1); shownTemplates().forEach(function (id) { select.add(new Option(WORKER_TEMPLATES[id].name, id)); }); }
     }
     document.addEventListener('DOMContentLoaded', drawAgentTemplates);
 
@@ -7329,41 +7263,44 @@
       renderSkillsPicker();
     }
 
-    async function loadAutomations() {
-      // Chat tasks are independent of saved recurring agents. Start their
-      // refresh even when the saved list is empty or cannot be loaded.
-      var tasksLoaded = loadRunningAgents();
-      startAgentPolling();
-      try {
-        var autosRes = await fetch('/api/automations');
-        if (!autosRes.ok) throw new Error('Saved agents unavailable');
-        var autos = await autosRes.json();
+    // Agents: three reads drawn together. Working now holds the tasks handed
+    // over in chat that are going or waiting on the person, and the routines
+    // mid-run; Done lately what finished this week, newest first. A list is
+    // drawn again only when it changed, so a refresh never flickers.
+    var _agentsHtml = {};
+    function drawInto(id, html) {
+      var el = document.getElementById(id);
+      if (el && _agentsHtml[id] !== html) { el.innerHTML = html; _agentsHtml[id] = html; }
+    }
+    async function getJson(url) {
+      try { var r = await fetch(url); return r.ok ? await r.json() : null; } catch (e) { return null; }
+    }
+    async function loadAgents() {
+      var got = await Promise.all([getJson('/api/agents'), getJson('/api/automations'), getJson('/api/automations/recent')]);
+      var tasks = got[0], routines = got[1], runs = got[2] || [];
+      if (routines) {
         document.getElementById('auto-saved-error').hidden = true;
-        document.getElementById('auto-empty').style.display = autos.length ? 'none' : 'block';
-        document.getElementById('auto-saved-list').innerHTML = autos.map(renderAutomationCard).join('');
-      } catch (e) {
+        document.getElementById('auto-empty').style.display = routines.length ? 'none' : 'block';
+        drawInto('auto-saved-list', routines.map(renderAutomationCard).join(''));
+      } else {
         document.getElementById('auto-empty').style.display = 'none';
         document.getElementById('auto-saved-error').hidden = false;
-        console.error('Load saved agents error:', e);
       }
-      await tasksLoaded;
-    }
-
-    // A "Running Now" panel that fetches once is a snapshot, not a status: this
-    // page sat open for 48 minutes still showing a cancelled agent as running
-    // and "started 0m ago", because nothing ever asked again. Poll while the
-    // tab is on screen, stop when it is not, so a backgrounded tab costs
-    // nothing.
-    var _agentPoll = null;
-    function startAgentPolling() {
-      if (_agentPoll) return;
-      _agentPoll = setInterval(function() {
-        if (document.hidden) return;
-        loadRunningAgents();
-      }, 15000);
-      document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) loadRunningAgents();
-      });
+      var going = function (a) { return a.status === 'running' || a.status === 'pending' || a.status === 'awaiting_confirmation'; };
+      var newest = function (x, y) { return y.at - x.at; };
+      var now = (tasks || []).filter(going).map(function (a) { return { at: Date.parse(a.created_at), html: renderAgentCard(a) }; })
+        .concat(runs.filter(function (r) { return r.live; }).map(function (r) { return { at: Date.parse(r.started_at), html: renderRoutineRun(r) }; }))
+        .sort(newest);
+      var done = (tasks || []).filter(function (a) { return !going(a); }).map(function (a) { return { at: Date.parse(a.completed_at || a.created_at), html: renderAgentCard(a) }; })
+        .concat(runs.filter(function (r) { return !r.live; }).map(function (r) { return { at: Date.parse(r.completed_at || r.started_at), html: renderRoutineRun(r) }; }))
+        .sort(newest).slice(0, 30);
+      var html = function (list) { return list.map(function (x) { return x.html; }).join(''); };
+      document.getElementById('auto-active-error').hidden = !!tasks;
+      drawInto('auto-active-list', html(now));
+      document.getElementById('auto-active-desc').hidden = !now.length;
+      document.getElementById('auto-active-empty').hidden = !!now.length || !tasks;
+      drawInto('agents-done-list', html(done));
+      document.getElementById('agents-done').hidden = !done.length;
     }
 
     // Permission drift is invisible: a scope change does not touch grants already
@@ -7409,34 +7346,6 @@
       } catch (e) { console.error('Scope check error:', e); }
     }
 
-    async function loadRunningAgents() {
-      var activeList = document.getElementById('auto-active-list');
-      var activeLabel = document.getElementById('auto-active-label');
-      if (!activeList) return;
-      try {
-        var res = await fetch('/api/agents');
-        if (!res.ok) throw new Error('Tasks unavailable');
-        var agents = await res.json();
-        document.getElementById('auto-active-error').hidden = true;
-        // The runs Closedhand started from a chat that still need a look:
-        // running, waiting on the person, or finished without a sure delivery
-        // (the server leaves out the rest, whose answers are in the chat).
-        // Running and waiting first, each card saying which it is.
-        var live = agents.filter(function(a) { return a.status === 'running' || a.status === 'pending'; });
-        var waiting = agents.filter(function(a) { return a.status === 'awaiting_confirmation'; });
-        var finished = agents.filter(function(a) { return live.indexOf(a) === -1 && waiting.indexOf(a) === -1; });
-        var recent = live.concat(waiting, finished);
-        activeLabel.style.display = 'none';
-        var html = (recent.length ? '<div class="mc-section-label">From your chats</div>' : '') +
-          recent.map(renderAgentCard).join('');
-        if (activeList.innerHTML !== html) activeList.innerHTML = html;
-
-      } catch (e) {
-        document.getElementById('auto-active-error').hidden = false;
-        console.error('Load agents error:', e);
-      }
-    }
-
     // Archived: a heading row like the list's own ("ARCHIVED · 3"), shown only
     // when something is archived, opening the older entries beneath it.
     function archiveRow(toggle, count, open) {
@@ -7454,15 +7363,15 @@
         var res = await fetch('/api/agents/' + id + '/stop', { method: 'POST' });
         if (res.ok) {
           showToast('Stopping. Closedhand will say so in the chat you asked in once it stops.');
-          loadRunningAgents();
+          loadAgents();
         } else {
           var d = await res.json().catch(function() { return {}; });
           showToast(d.error || 'Could not stop it', true);
-          if (btn) { btn.disabled = false; btn.innerHTML = '&#9632; Stop'; }
+          if (btn) { btn.disabled = false; btn.textContent = 'Stop'; }
         }
       } catch (e) {
         showToast('Could not stop it', true);
-        if (btn) { btn.disabled = false; btn.innerHTML = '&#9632; Stop'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Stop'; }
       }
     }
 
@@ -7534,7 +7443,7 @@
     async function deleteAgentRun(id) {
       try {
         await fetch('/api/agents/' + id, { method: 'DELETE' });
-        loadRunningAgents();
+        loadAgents();
       } catch (e) { console.error('Delete agent error:', e); }
     }
 
@@ -7632,7 +7541,6 @@
 
     function renderAgentCard(a) {
       var running = a.status === 'running' || a.status === 'pending';
-      var statusClass = running ? 'active' : runWord(a) === "Couldn't finish" ? 'paused' : 'idle';
 
       // The goal starts with the user's own words and then carries the handover
       // note the engine appends, so neither the raw first line nor the whole
@@ -7731,7 +7639,7 @@
       var reportHtml = a.result ? '<div class="agent-report">' + renderReport(String(a.result)) + '</div>' : '';
 
       var binHtml = running
-        ? '<button class="agent-del" title="Stop this task" style="color:var(--accent-strong);border-color:rgba(var(--fg-rgb),0.1);" onclick="event.stopPropagation();stopAgentRun(\'' + a.id + '\', this)">&#9632; Stop</button>'
+        ? '<button class="agent-del" title="Stop this task" style="color:var(--accent-strong);border-color:rgba(var(--fg-rgb),0.1);" onclick="event.stopPropagation();stopAgentRun(\'' + a.id + '\', this)">Stop</button>'
         : '<button class="agent-del" title="Delete this run" aria-label="Delete this run" onclick="event.stopPropagation();confirmAgentDelete(this, \'' + a.id + '\', ' + !!a.report_id + ')">' + TRASH_ICON + '</button>';
 
       // The finished work, as a file. Same content as the expanded card,
@@ -7742,64 +7650,72 @@
       // chat answer) offers one; an ordinary answer stays in the card above.
       var pdfHtml = (!running && a.report_id)
         ? '<button class="agent-del" title="Open the page, with PDF, Word and Excel downloads" onclick="event.stopPropagation();window.open(\'/page/' + a.report_id + '\', \'_blank\')">Open page</button>' +
-          '<button class="agent-del" title="Download the page as a PDF" onclick="event.stopPropagation();location.href=\'/api/pages/' + a.report_id + '/pdf\'">&#8595; PDF</button>'
+          '<button class="agent-del" title="Download the page as a PDF" onclick="event.stopPropagation();location.href=\'/api/pages/' + a.report_id + '/pdf\'">PDF</button>'
         : '';
 
       return '<div class="auto-card agent-card' + (_openAgents[a.id] ? ' open' : '') + '" onclick="toggleAgentCard(this, \'' + a.id + '\')" title="Click for detail">' +
         '<div class="auto-card-header">' +
           '<div class="auto-card-name">' + escapeHtml(goal) + '</div>' +
-          '<div class="auto-status-pill ' + statusClass + '">' + sentenceCase(runWord(a)) + '</div>' +
           pdfHtml +
           binHtml +
         '</div>' +
-        '<div class="auto-card-meta">' + escapeHtml(String(detail)) + '</div>' +
+        '<div class="auto-card-meta">' + escapeHtml('Task \u00b7 ' + (running || asked ? '' : sentenceCase(runWord(a)) + ' \u00b7 ') + String(detail)) + '</div>' +
         '<div class="agent-detail">' + (steps || '<div class="agent-step">No steps recorded.</div>') + toolsHtml + errHtml + reportHtml + '</div>' +
       '</div>';
     }
 
+    // A routine says what it does, when it runs, how its last run went and
+    // whether it is on, with Run now, Edit and delete beside it. Its runs are
+    // under Working now and Done lately.
     function renderAutomationCard(a) {
-      var hasActiveRun = a.latest_run && (a.latest_run.status === 'running' || a.latest_run.status === 'pending');
-      var displayStatus = hasActiveRun ? 'running' : a.status;
-      var statusClass = displayStatus === 'active' ? 'active' : displayStatus === 'paused' ? 'paused' : displayStatus === 'running' ? 'active' : 'idle';
-      var triggerText = a.trigger_human_schedule || (a.trigger_type === 'event' ? watchLine(a) : 'Run manually');
-      if (a.trigger_type === 'event' && displayStatus === 'active') displayStatus = 'watching';
-      if (displayStatus === 'expired') displayStatus = 'ended';
-      var triggerTitle = a.trigger_type === 'manual' ? 'Ask Closedhand to run it or tap Run' : '';
-
-      var actionsHtml = '<div class="auto-card-actions">';
-      if (a.trigger_type === 'manual' || a.status === 'idle') {
-        actionsHtml += '<button onclick="event.stopPropagation();runAutomation(\'' + a.id + '\')">&#9654; Run</button>';
-      }
-      if (a.status === 'active') {
-        actionsHtml += '<button onclick="event.stopPropagation();pauseAutomation(\'' + a.id + '\')">&#9208; Pause</button>';
-      } else if (a.status === 'paused') {
-        actionsHtml += '<button onclick="event.stopPropagation();resumeAutomation(\'' + a.id + '\')">&#9654; Resume</button>';
-      }
-      actionsHtml += '<button onclick="event.stopPropagation();deleteAutomation(\'' + a.id + '\', this)" title="Delete this routine" aria-label="Delete this routine">' + TRASH_ICON + '</button>';
-      actionsHtml += '</div>';
-
-      return '<div class="auto-card" id="auto-' + a.id + '" onclick="toggleAutoCard(this)">' +
-        '<div class="auto-card-header">' +
+      var going = a.latest_run && (a.latest_run.status === 'running' || a.latest_run.status === 'pending');
+      var ended = a.status === 'expired';
+      var when = a.trigger_type === 'event' ? watchLine(a) : a.trigger_type === 'manual' ? 'When you ask, or press Run now' : (a.trigger_human_schedule || 'On a timetable');
+      var state = going ? 'working now' : ended ? 'ended' : a.status === 'paused' ? 'off'
+        : a.next_at ? 'next ' + dayAndTime(a.next_at) : a.trigger_type === 'event' ? 'watching' : '';
+      var last = a.last_run ? (a.last_run.status === 'failed' ? 'last run could not finish, ' : 'last ran ') + dayAndTime(a.last_run.at) : '';
+      var about = String(a.description || '').trim();
+      var canSwitch = a.trigger_type !== 'manual' && !ended;
+      return '<div class="auto-card routine-card' + (a.status === 'paused' || ended ? ' off' : '') + '" id="auto-' + a.id + '">' +
+        '<div class="routine-main">' +
           '<div class="auto-card-name">' + (a.project ? '<span class="auto-project" title="' + esc(a.project.name) + '">' + esc(a.project.emoji) + '</span> ' : '') + esc(a.name) + '</div>' +
-          '<span class="auto-status-pill ' + statusClass + '">' + sentenceCase(displayStatus) + '</span>' +
-          actionsHtml +
-          '<span class="auto-chevron"><span class="chevron-down"></span></span>' +
+          (about ? '<div class="routine-about">' + truncatePrompt(about, 140) + '</div>' : '') +
+          '<div class="auto-card-meta">' + esc([when, state, last].filter(Boolean).join(' \u00b7 ')) + '</div>' +
         '</div>' +
-        '<div class="auto-card-meta"' + (triggerTitle ? ' title="' + triggerTitle + '" style="cursor:help;"' : '') + '>' + esc(triggerText) + '</div>' +
-        '<div class="auto-card-detail"><div class="auto-card-detail-inner">' +
-          '<div style="font-size:0.8125rem;color:var(--muted);line-height:1.5;margin-bottom:0.5rem;">' + truncatePrompt(a.description || a.task_prompt || '', 120) + '</div>' +
-          (a.task_model ? '<div style="font-size: 0.8125rem;color:rgba(var(--fg-rgb),0.6);">Effort: ' + ({haiku:'fast',sonnet:'balanced',opus:'thorough'}[a.task_model] || a.task_model) + '</div>' : '') +
-          (function(){ var sk=(a.task_tools||[]).filter(function(t){return String(t).indexOf('skill:')===0;}).map(function(t){return '<span style="display:inline-block;padding:2px 0.5rem;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;font-size:0.6875rem;color:var(--muted);margin-right:0.25rem;">'+esc(String(t).slice(6))+'</span>';}).join(''); return sk?'<div style="margin-top:0.375rem;">'+sk+'</div>':''; })() +
-          '<div style="margin-top:0.5rem;display:flex;gap:0.375rem;">' +
-            '<button onclick="event.stopPropagation();editAgent(\'' + a.id + '\')" style="background:none;border:1px solid rgba(var(--fg-rgb),0.16);color:var(--muted);padding:0.25rem 0.75rem;border-radius:0.375rem;font-size: 0.8125rem;cursor:pointer;">Edit</button>' +
-            '<button onclick="event.stopPropagation();loadAutoRuns(\'' + a.id + '\')" style="background:none;border:1px solid rgba(var(--fg-rgb),0.16);color:var(--muted);padding:0.25rem 0.75rem;border-radius:0.375rem;font-size: 0.8125rem;cursor:pointer;">Run history</button>' +
-          '</div>' +
-          '<div id="auto-runs-' + a.id + '" style="margin-top:0.625rem;"></div>' +
-        '</div></div>' +
+        '<div class="auto-card-actions">' +
+          (ended ? '' : '<button type="button" onclick="runAutomation(\'' + a.id + '\')">Run now</button>') +
+          '<button type="button" onclick="editAgent(\'' + a.id + '\')">Edit</button>' +
+          '<button type="button" title="Delete this routine" aria-label="Delete this routine" onclick="deleteAutomation(\'' + a.id + '\', this)">' + TRASH_ICON + '</button>' +
+          (canSwitch ? '<label class="routine-on"><input type="checkbox"' + (a.status === 'active' ? ' checked' : '') + ' onchange="setRoutineOn(\'' + a.id + '\', this)" aria-label="' + esc(a.name) + ' on"> On</label>' : '') +
+        '</div>' +
       '</div>';
     }
 
-    // What a watch looks at and for, and where it stands (lib/watches.js).
+    // A routine run, going or finished: its name, when, and how it went; a
+    // finished one opens its result.
+    function renderRoutineRun(r) {
+      var cut = function (t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026' : t; };
+      var step = (r.progress || []).map(function (e) { if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { e = { text: e }; } } return e && e.text; }).filter(Boolean).pop();
+      var how = r.live ? (step || 'Working on it') + ' \u00b7 started ' + dayAndTime(r.started_at)
+        : (r.status === 'failed' ? 'Could not finish' : 'Done') + ' \u00b7 ' + dayAndTime(r.completed_at || r.started_at) + (r.output_summary && r.status !== 'failed' ? ' \u00b7 ' + cut(r.output_summary, 110) : '');
+      return '<div class="auto-card">' +
+        '<div class="auto-card-header"><div class="auto-card-name">' + esc(r.name) + '</div>' +
+          (!r.live && r.status !== 'failed' ? '<button class="agent-del" onclick="viewAutoRun(\'' + r.id + '\')">Open</button>' : '') +
+        '</div>' +
+        '<div class="auto-card-meta">' + esc('Routine \u00b7 ' + how) + '</div>' +
+      '</div>';
+    }
+
+    // When something runs or ran, as a person says it, in their own time.
+    function dayAndTime(iso) {
+      var d = new Date(iso);
+      if (isNaN(d)) return '';
+      var day = Math.round((new Date(d).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+      var name = day === 0 ? 'today' : day === 1 ? 'tomorrow' : day === -1 ? 'yesterday'
+        : Math.abs(day) < 7 ? d.toLocaleDateString('en-GB', { weekday: 'short' }) : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      return name + ' at ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+
     function watchLine(a) {
       var looks = a.watch_text || 'each new email';
       var timed = a.trigger_when === 'before' || a.trigger_when === 'after';
@@ -7895,59 +7811,30 @@
       });
     }
 
-    function toggleAutoCard(card) {
-      var was = card.classList.contains('expanded');
-      document.querySelectorAll('.auto-card.expanded').forEach(function(c) { c.classList.remove('expanded'); });
-      if (!was) card.classList.add('expanded');
-    }
-
     async function runAutomation(id) {
       try {
         var res = await fetch('/api/automations/' + id + '/run', { method: 'POST' });
         if (!res.ok) { var d = await res.json(); showToast(d.error || 'Failed', true); return; }
         showToast('Routine started');
-        loadAutomations(); loadAutomationStats();
+        loadAgents();
       } catch (e) { showToast('Could not start', true); }
     }
 
-    async function pauseAutomation(id) {
-      var res = await fetch('/api/automations/' + id + '/pause', { method: 'POST' });
-      if (res.ok) { showToast('Paused'); loadAutomations(); }
-      else showToast('Could not pause', true);
-    }
-
-    async function resumeAutomation(id) {
-      var res = await fetch('/api/automations/' + id + '/resume', { method: 'POST' });
-      if (res.ok) { showToast('Resumed'); loadAutomations(); }
-      else showToast('Could not resume', true);
+    // A routine's On box: off stops it running until it is turned on again.
+    async function setRoutineOn(id, box) {
+      box.disabled = true;
+      var res = await fetch('/api/automations/' + id + '/' + (box.checked ? 'resume' : 'pause'), { method: 'POST' }).catch(function () { return { ok: false }; });
+      box.disabled = false;
+      if (res.ok) { loadAgents(); return; }
+      box.checked = !box.checked;
+      showToast(box.checked ? 'Could not turn it off' : 'Could not turn it on', true);
     }
 
     async function deleteAutomation(id, btn) {
       if (!(await askFirst(btn.closest('.auto-card-actions') || btn, { text: 'Delete this routine for good?', yes: 'Delete' }))) return;
       var res = await fetch('/api/automations/' + id, { method: 'DELETE' });
-      if (res.ok) { showToast('Routine deleted'); loadAutomations(); loadAutomationStats(); }
+      if (res.ok) { showToast('Routine deleted'); loadAgents(); }
       else showToast('Could not delete', true);
-    }
-
-    async function loadAutoRuns(automationId) {
-      var container = document.getElementById('auto-runs-' + automationId);
-      if (!container) return;
-      try {
-        var res = await fetch('/api/automations/' + automationId + '/runs');
-        if (!res.ok) return;
-        var runs = await res.json();
-        if (!runs.length) { container.innerHTML = '<div style="font-size: 0.875rem;color:rgba(var(--fg-rgb),0.6);">No runs yet.</div>'; return; }
-        container.innerHTML = runs.map(function(r) {
-          var statusColor = r.status === 'success' ? 'var(--ok)' : r.status === 'failed' ? 'var(--accent)' : r.status === 'running' ? 'var(--accent)' : 'rgba(var(--fg-rgb),0.64)';
-          var time = r.completed_at ? timeAgo(r.completed_at) : 'running';
-          return '<div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0;font-size: 0.875rem;">' +
-            '<span style="width:0.375rem;height:0.375rem;border-radius:50%;background:' + statusColor + ';flex-shrink:0;"></span>' +
-            '<span style="color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(r.output_summary || r.status) + '</span>' +
-            '<span style="color:rgba(var(--fg-rgb),0.6);">' + time + '</span>' +
-            ((r.status === 'success' || r.status === 'partial') ? '<button onclick="event.stopPropagation();viewAutoRun(\'' + r.id + '\')" style="background:none;border:1px solid var(--accent);color:var(--accent);padding:2px 0.5rem;border-radius:0.25rem;font-size: 0.8125rem;cursor:pointer;">View</button>' : '') +
-          '</div>';
-        }).join('');
-      } catch (e) { console.error('Load runs error:', e); }
     }
 
     async function viewAutoRun(runId) {
@@ -8057,7 +7944,7 @@
       document.getElementById('auto-event-words').value = '';
       document.getElementById('auto-event-once').checked = true;
       selectTrigger('manual');
-      selectModel('sonnet');
+      selectModel('default');
       selectDest('chat_platforms');
       loadRoutineProjects('');
       renderSkillsPicker();
@@ -8182,8 +8069,7 @@
         if (!res.ok) { errEl.textContent = data.error || 'Could not save'; errEl.style.display = 'block'; return; }
         closeCreateAutomationModal();
         showToast('Routine saved');
-        loadAutomations();
-        loadAutomationStats();
+        loadAgents();
       } catch (e) {
         errEl.textContent = 'Network error'; errEl.style.display = 'block';
       } finally {
@@ -8191,44 +8077,19 @@
       }
     }
 
-    // Upcoming is asked again too: a flight found in mail a minute after the
-    // tab opened stayed missing until a reload, because the list was fetched
-    // once. Every 30 seconds while on screen, and on coming back to it.
-    var _upcomingPolledAt = 0;
-    function startAutomationPolling() {
-      stopAutomationPolling();
-      _upcomingPolledAt = Date.now();
-      _autoPollTimer = setInterval(function() {
-        if (document.hidden) return;
-        loadAutomationStats();
-        if (Date.now() - _upcomingPolledAt >= 30000) { _upcomingPolledAt = Date.now(); loadUpcoming(); }
-      }, 10000);
+    // What is on screen is asked again while it is: Agents every 15 seconds,
+    // as what is working moves on, and Upcoming every 30, as a flight found in
+    // mail a minute after the tab opened stayed missing until a reload. And
+    // again on coming back to the page.
+    var _tabPoll = null, _polledTab = null;
+    function refreshTab(tab) { if (tab === 'agents') loadAgents(); else if (tab === 'upcoming') loadUpcoming(); }
+    function startTabPolling(tab) {
+      if (_tabPoll) { clearInterval(_tabPoll); _tabPoll = null; }
+      _polledTab = tab === 'agents' || tab === 'upcoming' ? tab : null;
+      if (!_polledTab) return;
+      _tabPoll = setInterval(function () { if (!document.hidden) refreshTab(_polledTab); }, _polledTab === 'agents' ? 15000 : 30000);
     }
-    document.addEventListener('visibilitychange', function() {
-      if (!document.hidden && _autoPollTimer) { _upcomingPolledAt = Date.now(); loadAutomationStats(); loadUpcoming(); }
-    });
-
-    function stopAutomationPolling() {
-      if (_autoPollTimer) { clearInterval(_autoPollTimer); _autoPollTimer = null; }
-    }
-
-    async function loadAutomationStats() {
-      var line = document.getElementById('auto-summary');
-      try {
-        var res = await fetch('/api/automations/stats');
-        if (!res.ok) throw new Error('Task counts unavailable');
-        var s = await res.json();
-        var today = s.runsToday || 0;
-        var parts = [];
-        if (today) parts.push(today + (today === 1 ? ' run' : ' runs') + ' today');
-        else if (s.lastActivity) parts.push('Last ran ' + timeAgo(s.lastActivity));
-        line.textContent = parts.join('');
-        line.hidden = !parts.length;
-      } catch (e) {
-        line.hidden = true;
-        console.error('Auto stats error:', e);
-      }
-    }
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && _polledTab) refreshTab(_polledTab); });
 
     function fileSize(n) {
       if (!n) return '';
@@ -9262,7 +9123,7 @@
       if (resolved === 'dashboard-link') {
         switchTab('settings');
         setTimeout(function() { document.getElementById('phone-block').scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200);
-      } else if (['connections', 'upcoming', 'tasks', 'projects', 'pages', 'settings', 'brain'].includes(resolved)) {
+      } else if (['connections', 'upcoming', 'agents', 'projects', 'pages', 'settings', 'brain'].includes(resolved)) {
         switchTab(resolved);
       } else if (/^account(\/(welcome|extended))?$/.test(resolved)) {
         if (inAccountPopup()) setAccountMode(true); else switchTab('account');
@@ -9422,9 +9283,9 @@
         <!-- One row, so opening these still fits the box without scrolling. -->
         <div style="display:flex;align-items:center;gap:0.375rem;flex-wrap:wrap;">
           <span style="font-size:0.875rem;font-weight:600;color:var(--muted);margin-right:0.25rem;">Speed vs quality</span>
-          <button type="button" class="auto-model-btn" data-model="haiku" onclick="selectModel('haiku')" title="Quick lookups, simple checks, basic summaries.">Fast</button>
-          <button type="button" class="auto-model-btn active" data-model="sonnet" onclick="selectModel('sonnet')" title="Good for most tasks: email summaries, monitoring, write-ups.">Balanced</button>
-          <button type="button" class="auto-model-btn" data-model="opus" onclick="selectModel('opus')" title="Deep research, complex analysis, strategy. Slower but more thorough.">Thorough</button>
+          <button type="button" class="auto-model-btn" data-model="fast" onclick="selectModel('fast')" title="Quick lookups, simple checks, basic summaries.">Fast</button>
+          <button type="button" class="auto-model-btn active" data-model="default" onclick="selectModel('default')" title="Good for most tasks: email summaries, monitoring, write-ups.">Balanced</button>
+          <button type="button" class="auto-model-btn" data-model="strong" onclick="selectModel('strong')" title="Deep research, complex analysis, strategy. Slower but more thorough.">Thorough</button>
           <span style="display:inline-flex;align-items:center;gap:0.5rem;margin-left:auto;">
             <input type="checkbox" id="auto-urgent-check" style="width:1rem;height:1rem;margin:0;accent-color:var(--accent-strong);">
             <span><label for="auto-urgent-check" style="display:inline;font-size: 0.875rem;color:var(--muted);margin:0;cursor:pointer;">Urgent</label><span data-info="Notifications from this routine will be delivered even during your quiet hours." data-info-label="About Urgent"></span></span>

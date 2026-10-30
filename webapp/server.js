@@ -5178,9 +5178,9 @@ app.get("/api/connections/scopes", async (req, res) => {
   }
 });
 
-// GET /api/agents — the chat work the Tasks tab shows (see the route).
-// A finished run whose answer may not have arrived is listed for a week.
-// Pages use the same week before folding into their Archived section.
+// GET /api/agents — the tasks handed over in chat that the Agents tab shows:
+// what is working or waiting on the person, and what finished in the last
+// week (Done lately). Pages use the same week before folding into Archived.
 const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const LIVE_RUN_STATUSES = ["running", "pending", "awaiting_confirmation"];
 const DONE_RUN_STATUSES = ["completed", "failed", "cancelled", "partial", "blocked"];
@@ -5189,17 +5189,12 @@ app.get("/api/agents", async (req, res) => {
   if (!userId) return res.status(401).json({ error: "Not logged in" });
 
   try {
-    // The work started from chats that still needs the dashboard: what is
-    // running or waiting on the person, and a finished run whose answer may
-    // not have reached the chat, since this is then the only place to find
-    // it. A delivered answer is in the chat, and any page it made is under
-    // Pages, so it is not repeated here.
     const cutoff = new Date(Date.now() - ARCHIVE_AFTER_MS).toISOString();
     const runs = () => supabase
       .from("agent_tasks")
       .select("id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status")
       .eq("user_id", userId);
-    const lists = [runs().in("status", LIVE_RUN_STATUSES), runs().in("status", DONE_RUN_STATUSES).gte("created_at", cutoff).neq("delivery_status", "sent")];
+    const lists = [runs().in("status", LIVE_RUN_STATUSES), runs().in("status", DONE_RUN_STATUSES).gte("created_at", cutoff)];
     const results = await Promise.all(lists.map((q) => q.order("created_at", { ascending: false }).limit(50)));
     const error = results.find((r) => r.error)?.error;
     if (error) throw error;
@@ -5643,24 +5638,30 @@ app.get("/api/automations", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
     const { data, error } = await supabase
       .from("automations")
-      .select("id, name, description, status, trigger_type, trigger_cron, trigger_human_schedule, trigger_event_source, trigger_event_condition, trigger_when, trigger_offset_minutes, run_once, watch_words, expires_at, fired_at, task_model, task_use_cloud, output_urgent, output_destinations, chain_target_id, project_id, created_at, updated_at")
+      .select("id, name, description, status, trigger_type, trigger_cron, trigger_timezone, trigger_human_schedule, trigger_event_source, trigger_event_condition, trigger_when, trigger_offset_minutes, run_once, watch_words, expires_at, fired_at, task_model, task_use_cloud, output_urgent, output_destinations, chain_target_id, project_id, created_at, updated_at")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false });
     if (error) throw error;
 
-    // Attach latest run status to each automation
+    // Each routine's run going now, its last finished one, and when a
+    // timetabled one runs next, where it was set up to run.
     const autos = data || [];
     if (autos.length > 0) {
       const { data: runs } = await supabase
         .from("automation_runs")
-        .select("automation_id, status")
+        .select("automation_id, status, started_at, completed_at")
         .eq("user_id", userId)
-        .in("status", ["running", "pending"])
-        .order("started_at", { ascending: false });
-      if (runs) {
-        for (const auto of autos) {
-          const activeRun = runs.find(r => r.automation_id === auto.id);
-          if (activeRun) auto.latest_run = { status: activeRun.status };
+        .gte("started_at", new Date(Date.now() - 90 * 86400000).toISOString())
+        .order("started_at", { ascending: false })
+        .limit(500);
+      for (const auto of autos) {
+        const mine = (runs || []).filter((r) => r.automation_id === auto.id);
+        const live = mine.find((r) => isLiveRun(r));
+        if (live) auto.latest_run = { status: live.status };
+        const done = mine.find((r) => !isLiveRun(r));
+        if (done) auto.last_run = { status: runOutcome(done), at: done.completed_at || done.started_at };
+        if (auto.status === "active" && auto.trigger_type === "scheduled" && auto.trigger_cron) {
+          try { auto.next_at = require("cron-parser").parseExpression(auto.trigger_cron, { tz: auto.trigger_timezone || "UTC" }).next().toDate().toISOString(); } catch (_) { /* not a timetable cron-parser reads */ }
         }
       }
     }
@@ -5677,78 +5678,48 @@ app.get("/api/automations", async (req, res) => {
   }
 });
 
-// Stats
+// A routine run marked running for hours was left so by a crash or a
+// redeploy (the bot restarts on every deploy): it is not going at all.
+const STALE_RUN_MS = 6 * 3600 * 1000;
+const isLiveRun = (r) => (r.status === "running" || r.status === "pending") && Date.now() - new Date(r.started_at).getTime() < STALE_RUN_MS;
+const runOutcome = (r) => (r.status === "running" || r.status === "pending" ? "failed" : r.status);
+
+// GET /api/automations/recent — every routine's runs from the last week, for
+// Working now (those going) and Done lately (those finished), by name.
+app.get("/api/automations/recent", async (req, res) => {
+  try {
+    const userId = getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    const { data: runs, error } = await supabase
+      .from("automation_runs")
+      .select("id, automation_id, status, progress, output_summary, error, started_at, completed_at")
+      .eq("user_id", userId)
+      .not("automation_id", "is", null)
+      .gte("started_at", new Date(Date.now() - ARCHIVE_AFTER_MS).toISOString())
+      .order("started_at", { ascending: false })
+      .limit(40);
+    if (error) throw error;
+    const ids = [...new Set((runs || []).map((r) => r.automation_id))];
+    const { data: autos, error: nameError } = ids.length
+      ? await supabase.from("automations").select("id, name").eq("user_id", userId).in("id", ids)
+      : { data: [], error: null };
+    if (nameError) throw nameError;
+    const nameOf = new Map((autos || []).map((a) => [a.id, a.name]));
+    res.json((runs || []).filter((r) => nameOf.has(r.automation_id)).map((r) => ({
+      ...r, name: nameOf.get(r.automation_id), live: isLiveRun(r), status: isLiveRun(r) ? r.status : runOutcome(r),
+      progress: Array.isArray(r.progress) ? r.progress.slice(-1) : [],
+    })));
+  } catch (e) {
+    console.error("Recent routine runs error:", e.message);
+    res.status(500).json({ error: "Failed to load runs" });
+  }
+});
+
 // --- Team Projects API ---
 
 
 
 
-// The instant the day began where the person is (midnight in their zone).
-function startOfTodayIn(tz) {
-  try {
-    if (!tz) throw new Error("no zone");
-    const now = new Date();
-    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
-      .formatToParts(now).map((p) => [p.type, p.value]));
-    const sinceMidnight = (((Number(parts.hour) % 24) * 60 + Number(parts.minute)) * 60 + Number(parts.second)) * 1000 + now.getMilliseconds();
-    return now.getTime() - sinceMidnight;
-  } catch (_) {
-    return new Date().setHours(0, 0, 0, 0);
-  }
-}
-
-app.get("/api/automations/stats", async (req, res) => {
-  try {
-    const userId = getUserIdFromRequest(req);
-    if (!userId) return res.status(401).json({ error: "Not authenticated" });
-
-    // Agents run from two places: a saved one on its trigger, and a one-off
-    // started from chat. Counting only the first said "last activity 130 days
-    // ago" on a day something had run overnight, because the saved agent had
-    // not run since March while chat had been busy throughout.
-    const [runsRes, autosRes, tasksRes] = await Promise.all([
-      supabase.from("automation_runs").select("status, started_at, completed_at").eq("user_id", userId),
-      supabase.from("automations").select("id, status").eq("user_id", userId),
-      supabase.from("agent_tasks").select("status, created_at, completed_at").eq("user_id", userId),
-    ]);
-
-    for (const result of [runsRes, autosRes, tasksRes]) {
-      if (result.error) throw result.error;
-    }
-    const runs = runsRes.data || [];
-    const autos = autosRes.data || [];
-    const tasks = tasksRes.data || [];
-    // "Today" is the person's day, not the server's: the server runs on UTC,
-    // seven hours behind someone in Vietnam.
-    const { data: prof } = await supabase.from("profiles").select("settings").eq("id", userId).maybeSingle();
-    const todayStart = startOfTodayIn(phoneZone.zoneOf(prof?.settings?.location) || prof?.settings?.timezone);
-
-    // Running means running, not enabled. The old count was of saved agents
-    // with status active, which is whether a trigger is armed.
-    // A run left marked running by a crash or a redeploy stays that way for
-    // ever, and one from March was keeping this card on 1 with nothing
-    // running. The bot restarts on every deploy, so anything that claims to
-    // have been going for hours is not going at all.
-    const staleBefore = Date.now() - 6 * 3600 * 1000;
-    const liveish = (t) => t && new Date(t).getTime() > staleBefore;
-    const running = tasks.filter(t => (t.status === "running" || t.status === "pending") && liveish(t.created_at)).length
-      + runs.filter(r => (r.status === "running" || r.status === "pending") && liveish(r.started_at)).length;
-    const savedCount = autos.length;
-    const runsToday = runs.filter(r => r.started_at && new Date(r.started_at).getTime() >= todayStart).length
-      + tasks.filter(t => t.created_at && new Date(t.created_at).getTime() >= todayStart).length;
-
-    let lastActivity = null;
-    for (const t of [...runs.map(r => r.completed_at || r.started_at),
-                     ...tasks.map(t => t.completed_at || t.created_at)]) {
-      if (t && (!lastActivity || new Date(t).getTime() > new Date(lastActivity).getTime())) lastActivity = t;
-    }
-
-    res.json({ running, savedCount, runsToday, lastActivity });
-  } catch (e) {
-    console.error("Automation stats error:", e);
-    res.status(500).json({ error: "Failed to load stats" });
-  }
-});
 
 // A routine that waits for something (a watch, run by lib/watches.js in the
 // bot): it looks at any kind of item the sync stores, or bookings, as each
@@ -5820,7 +5791,7 @@ app.post("/api/automations", async (req, res) => {
         trigger_human_schedule: trigger_human_schedule || null,
         trigger_event_source: trigger_event_source || null,
         trigger_event_condition: trigger_event_condition || null,
-        task_prompt: fullPrompt, task_model: task_model || "sonnet",
+        task_prompt: fullPrompt, task_model: ["fast", "default", "strong"].includes(task_model) ? task_model : "default",
         task_tools: task_tools || [], task_use_cloud: task_use_cloud || false,
         task_max_duration: 900,
         output_destinations: output_destinations || ["chat_platforms", "dashboard"],
@@ -5986,24 +5957,6 @@ app.post("/api/automations/:id/resume", async (req, res) => {
 });
 
 // Run history for an automation
-app.get("/api/automations/:id/runs", async (req, res) => {
-  try {
-    const userId = getUserIdFromRequest(req);
-    if (!userId) return res.status(401).json({ error: "Not authenticated" });
-    const { data, error } = await supabase
-      .from("automation_runs")
-      .select("id, status, model, tools_used, output_summary, error, started_at, completed_at, duration_secs, triggered_by")
-      .eq("automation_id", req.params.id)
-      .eq("user_id", userId)
-      .order("started_at", { ascending: false })
-      .limit(20);
-    if (error) throw error;
-    res.json(data || []);
-  } catch (e) {
-    res.status(500).json({ error: "Failed to load history" });
-  }
-});
-
 // Single run detail
 app.get("/api/automations/runs/:runId", async (req, res) => {
   try {

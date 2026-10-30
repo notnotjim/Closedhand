@@ -44,12 +44,12 @@ test("nothing in a reply becomes markup of its own", () => {
 
 test("links go on their words; dashboard links open the dashboard panel", () => {
   const style = 'style="color:var(--accent);text-decoration:underline;text-underline-offset:0.1875rem"';
-  assert.equal(formatReply("It's under [Tasks](/dashboard#tasks)."),
-    `It's under <a href="#" onclick="event.preventDefault();openDashSlide('#tasks')" ${style}>Tasks</a>.`);
+  assert.equal(formatReply("It's under [Agents](/dashboard#agents)."),
+    `It's under <a href="#" onclick="event.preventDefault();openDashSlide('#agents')" ${style}>Agents</a>.`);
   assert.equal(formatReply("See [the **listing**](https://example.com/a?b=1&c=2)"),
     `See <a href="https://example.com/a?b=1&amp;c=2" target="_blank" rel="noopener" ${style}>the <strong>listing</strong></a>`);
-  assert.equal(formatReply("Open https://example.com/x or /dashboard#tasks"),
-    `Open <a href="https://example.com/x" target="_blank" rel="noopener" ${style}>https://example.com/x</a> or <a href="#" onclick="event.preventDefault();openDashSlide('#tasks')" ${style}>Tasks</a>`);
+  assert.equal(formatReply("Open https://example.com/x or /dashboard#agents"),
+    `Open <a href="https://example.com/x" target="_blank" rel="noopener" ${style}>https://example.com/x</a> or <a href="#" onclick="event.preventDefault();openDashSlide('#agents')" ${style}>Agents</a>`);
   assert.match(formatReply("[the plan](/page/4f0c9a2e-7b1d-4e8a-9c3f-6a5b2d1e8f07)"), /<a href="\/page\/4f0c9a2e-7b1d-4e8a-9c3f-6a5b2d1e8f07" data-page onclick="event\.preventDefault\(\);openPage\('\/page\/4f0c9a2e-7b1d-4e8a-9c3f-6a5b2d1e8f07'\)"/, "a page opens beside the chat");
   assert.match(formatReply("[the plan](https://amber-fox-42.closedhand.com/page/4f0c9a2e-7b1d-4e8a-9c3f-6a5b2d1e8f07)"), /data-page onclick="event\.preventDefault\(\);openPage\('\/page\/4f0c9a2e/, "from its full address too");
   assert.equal(formatReply("[chart](/canvas/abc)"), "[chart](/canvas/abc)", "there is no canvas");

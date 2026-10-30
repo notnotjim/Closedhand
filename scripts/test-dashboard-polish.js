@@ -76,7 +76,6 @@ test('goals, file search, progress lines, today and the Google card', () => {
   assert.equal(tool('web_fetch').activityDescription({ url: 'https://nominatim.openstreetmap.org/search' }), 'Looking at the map');
   assert.equal(tool('api_request').activityDescription({ url: 'https://router.project-osrm.org/route', method: 'GET' }), 'Working out the route');
   assert.equal(tool('web_fetch').activityDescription({ url: 'https://www.example.org/a' }), 'Reading www.example.org');
-  assert.match(server, /const todayStart = startOfTodayIn\(/);
   assert.match(dash, /const listsAccounts = c\.service === "google" \|\| c\.service === "microsoft";/);
 });
 

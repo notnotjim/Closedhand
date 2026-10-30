@@ -130,7 +130,7 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   with the person's account, like a sign-in to do again.
 - Where people use Closedhand has three names, used exactly: the chat in a browser is the
   "web chat" (its own tab can say "Chat"); WhatsApp, Telegram and the like are "chat apps";
-  the control panel (connections, upcoming, tasks, projects, pages, settings, Context Brain, usage) is the "dashboard".
+  the control panel (connections, upcoming, agents, projects, pages, settings, Context Brain, usage) is the "dashboard".
   The personal URL opens the web chat and the dashboard. Never bare "chat" where it could
   mean either kind. The sandbox is "Closedhand's sandbox computer", as on the Computers tab,
   or "the sandbox computer"; never "cloud computer", since on self-host it runs on the
@@ -259,9 +259,9 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
 - Questions mid-task go to the chat the task came from. The dashboard only shows
   that Closedhand is waiting, where it asked and when, and repeats the question.
   It never expects the answer there.
-- What Closedhand does for the person is "tasks" (the dashboard's Tasks tab); a task that repeats
-  on a timetable or when something happens is a "routine". Never "agent" in what people read:
-  the code and its tables still say agent.
+- Closedhand's agents are it working for the person, on the dashboard's Agents tab: a one-off job
+  handed over in chat is a "task", and one that repeats on a timetable or when something happens is
+  a "routine". What is coming up (bookings, flights, reminders) is the Upcoming tab.
 
 ## The fist
 - Every file the Closedhand fist appears in (site, app, favicons, Mac and Bridge icons, the 3D
