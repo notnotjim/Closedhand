@@ -18,6 +18,15 @@ test('the arithmetic is done in code', () => {
   assert.equal(fc.judge({ left: [37.55], relation: '>', right: [99] }, 'Food beats rent (£22.00).', 'Food 37.55'), null, 'a number nobody stated is ignored');
   assert.match(fc.judge({ part: 37.55, whole: 89.54, percent: 50 }, '37.55 is 50% of 89.54', ''), /41\.94%/);
   assert.equal(fc.judge({ part: 37.55, whole: 89.54, percent: 41.9 }, '37.55 is 41.9% of 89.54', ''), null);
+  // A change by a percentage, and one amount in two currencies, were once
+  // "corrected" and a right answer's ranges mangled.
+  assert.equal(fc.judge({ part: 2120, whole: 2355, percent: 10, change: 'off' }, '£2,120 with 10% off £2,355', ''), null, '10% off');
+  assert.match(fc.judge({ part: 2120, whole: 2355, percent: 20, change: 'off' }, '£2,120 with 20% off £2,355', ''), /9\.98% off 2355, not 20%/);
+  assert.equal(fc.judge({ part: 120, whole: 100, percent: 20, change: 'more' }, '120 is 20% more than 100', ''), null, '20% more');
+  assert.equal(fc.judge({ left: [4180000], relation: '=', right: [2355] }, 'KRW 4,180,000 = £2,355', ''), null, 'a conversion is not a sum');
+  assert.equal(fc.judge({ left: [1775], relation: '=', right: [1] }, 'about 1,775 KRW to the pound', ''), null, 'nor is a rate');
+  assert.match(fc.judge({ left: [22, 18.99, 11], relation: '=', right: [60] }, '22 + 18.99 + 11 = 60', ''), /51\.99, which is less than 60/, 'a sum gone wrong still is');
+  assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'lib', 'figures-check.js'), 'utf8'), /a conversion, an exchange rate or a price per unit \(KRW 4,180,000 = £2,355; 1,775 KRW to the pound\) is not a claim, so leave it out/);
 });
 
 test('only the sentence proved wrong is replaced', async () => {
