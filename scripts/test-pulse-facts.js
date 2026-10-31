@@ -122,9 +122,9 @@ test("the writer: one call from the cited items, tools only when it asks", () =>
 // the 20th?" from a dad abroad was answered with the flight home.
 test("who of the people a message is from no Pinned Fact names, asked about once", () => {
   const m = (chat, chat_name) => ({ type: "message", data: { chat, chat_name } });
-  const known = { "family-partner": { value: "Saya is Sam's partner; she is from Osaka", subject: "Saya" }, "family-dad": { value: "Pete is Sam's dad", subject: "Pete" }, _pulse_last: { value: "Mike's moved the weekend" } };
+  const known = { "family-partner": { value: "Mina is Sam's partner; she is from Lyon", subject: "Mina" }, "family-dad": { value: "Pete is Sam's dad", subject: "Pete" }, _pulse_last: { value: "Mike's moved the weekend" } };
   assert.equal(f.unknownPerson([m("447700900002@s.whatsapp.net", "Mike")], known), "Mike", "Closedhand's own note of what it said does not make him known");
-  assert.equal(f.unknownPerson([m("447700900003@s.whatsapp.net", "Sayako")], known), null, "a fact's short form covers the chat's name");
+  assert.equal(f.unknownPerson([m("447700900003@s.whatsapp.net", "Minako")], known), null, "a fact's short form covers the chat's name");
   assert.equal(f.unknownPerson([m("447700900004@s.whatsapp.net", "Peter")], known), null);
   assert.equal(f.unknownPerson([m("447700900002@s.whatsapp.net", "Mike")], known, ["mike"]), null, "asked once");
   assert.equal(f.unknownPerson([m("120363000000000001@g.us", "Flat 4 group")], known), null, "not a group");
