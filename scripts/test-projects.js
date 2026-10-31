@@ -39,6 +39,7 @@ function fakeDb(tables) {
         insert: (p) => { op = "insert"; patch = p; return q; },
         delete: () => { op = "delete"; return q; },
         single: () => { single = true; return q; },
+        maybeSingle: () => { single = true; return q; },
         then: (ok, bad) => {
           let out;
           if (op === "insert") {
@@ -60,9 +61,9 @@ function fakeDb(tables) {
   return { db, log };
 }
 
-function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {}, goals = [], verdict = null } = {}) {
-  const { db, log } = fakeDb({ projects: rows, conversation_threads: threads });
-  const asked = [], judged = [];
+function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {}, goals = [], verdict = null, tables = {} } = {}) {
+  const { db, log } = fakeDb({ projects: rows, conversation_threads: threads, ...tables });
+  const asked = [], judged = [], saved = [];
   const fakes = {
     "./attachments": { loadAttachment: async (id) => (files[id] ? { _type: "text", textContent: files[id] } : { error: "gone" }) },
     "./goals": { activeGoals: async () => goals, promptLines: (gs) => gs.map((g) => `- [goal ${g.id.slice(0, 8)}] ${g.title}`) },
@@ -74,6 +75,9 @@ function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {
     "./verification": { parseObject: (t) => { try { return JSON.parse(t); } catch { return null; } } },
     "./model-wire": { responseText: (r) => r.answer },
     "./services/usi": { embedText: async () => null, embedBatch: async () => [] },
+    "./profile-settings": { updateSettings: async (userId, change) => { const s = {}; change(s); saved.push(s); } },
+    "../user-store": { UserStore: { load: async () => ({ userId: "u1", profile: { timezone: "Europe/London" } }) } },
+    "./platforms/whatsapp-linked": { isOwnChat: () => false },
   };
   const load = Module._load;
   Module._load = function (request, parent, ...rest) {
@@ -82,7 +86,7 @@ function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {
   };
   delete require.cache[require.resolve("../lib/projects")];
   const projects = require("../lib/projects");
-  return { projects, log, asked, judged, rows, threads };
+  return { projects, log, asked, judged, rows, threads, saved };
 }
 
 const move = (extra = {}) => ({ id: "aaaa1111-move", name: "House move", emoji: "📦", about: "Moving from our flat in Leeds to a house in York.", instructions: "Always use the Leeds address on forms until the move.\nKeep the van and movers under 900 together.", summary: "Van booked for Saturday.",
@@ -651,4 +655,53 @@ test("a project's card opens its page, its form has the way back, and closing th
   assert.match(read("webapp/views/index.html"), /overlay\.classList\.remove\('active'\);\n[\s\S]{0,400}if \(inside\.closeProjectForms\) inside\.closeProjectForms\(\);/, "closing the dashboard closes it");
   assert.match(ui, /const contextLabel = el\("span", "project-label", "Files and notes"\);/, "named as the page names it");
   assert.match(ui, /if \(c\.kind === "note" && c\.text\) \{/, "a note shows the start of what it says");
+});
+
+// A project's picture follows what comes in from the people in it, not only
+// the person's chat with Closedhand: the movers answering in their own chat
+// settles what the picture still had open.
+test("a project follows what comes in: whole conversations with someone its record names, elsewhere only what names it", async () => {
+  const at = (h) => iso(Date.parse("2026-11-04T09:00:00Z") + h * 3600000);
+  const msg = (chat, sender, h, text) => ({ source: "whatsapp", type: "message", external_id: `${chat}-${h}`, received_at: at(h), created_at: at(h), chat, chat_name: chat.split("@")[0], sender, text, date: at(h) });
+  const cache = [ // newest first, as the read orders them
+    { source: "gmail", type: "email", external_id: "promo", received_at: at(6), created_at: at(6), from: "Big Movers <deals@bigmovers.example>", subject: "House move? 20% off", labels: ["CATEGORY_PROMOTIONS", "INBOX"], body: "Book your house move" },
+    msg("447700900001@s.whatsapp.net", "me", 5, "📦 paid the deposit"),
+    msg("Mum", "Mum", 4, "Is Dana Fixture still helping with the van?"),
+    msg("Mum", "Mum", 3, "How is the baby sleeping?"),
+    { source: "gmail", type: "email", external_id: "dana1", received_at: at(2.5), created_at: at(2.5), from: "Dana Fixture <dana@example.com>", subject: "Van", threadId: "t-dana", labels: ["INBOX"], body: "Van is fuelled for Saturday." },
+    msg("York Removals", "me", 2, "Great, thanks"),
+    msg("York Removals", "York Removals", 1, "Deposit received, thanks. The parking permit is sorted on our side."),
+  ];
+  const answer = JSON.stringify({ changed: true, summary: "Deposit paid and the permit is sorted.", settled: [1, 2], new_open: ["Return the old keys", "return the old keys "], decisions: ["Movers at 9", "Removals sort the permit"] });
+  const tables = () => ({ data_cache: cache.map((r) => ({ ...r })), profiles: [{ id: "u1", settings: {}, timezone: "Europe/London" }], chat_links: [{ platform: "whatsapp_linked", platform_user_id: "447700900001@s.whatsapp.net" }] });
+  const one = loadProjects([move(), wedding()], answer, { tables: tables() });
+  await one.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
+  assert.equal(one.asked.length, 1, "one look, for the one project it is about");
+  const asked = one.asked[0];
+  assert.match(asked, /OPEN NOW:\n1\. Pay the deposit\n2\. Book the parking permit/);
+  assert.match(asked, /from York Removals[^\n]*Deposit received[\s\S]*from me[^\n]*Great, thanks/, "the movers' whole chat, the person's side too, oldest first");
+  assert.match(asked, /Email from Dana Fixture[^\n]*Van is fuelled/, "mail from someone in it");
+  assert.match(asked, /Is Dana Fixture still helping/, "from elsewhere, what names someone in it");
+  assert.doesNotMatch(asked, /baby/, "but not the rest of that chat");
+  assert.doesNotMatch(asked, /paid the deposit|20% off/, "never their own chat with Closedhand, nor mail sent to a list");
+  assert.match(asked, /Go through OPEN NOW one by one\. Drop an open item once what was said shows it answered, done or no longer needed/);
+  assert.match(asked, /Only what is about this project changes it: leave out anything else these messages say, however personal\./);
+  const p = one.rows[0];
+  assert.deepEqual(p.state.open, ["Return the old keys"], "what it settled goes, what is new comes once");
+  assert.deepEqual(p.state.people.map((x) => x.name), ["Dana Fixture"], "a list it did not give is kept, not emptied");
+  assert.deepEqual(p.state.decisions, ["Movers at 9", "Removals sort the permit"]);
+  assert.equal(p.summary, "Deposit paid and the permit is sorted.");
+  assert.equal(one.rows[1].summary, "Venue held.", "a project nothing was about is left alone");
+  assert.equal(one.saved.length, 1, "and the look is noted, so the next starts from here");
+
+  const unreadable = loadProjects([move()], "no json", { tables: tables() });
+  await unreadable.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
+  assert.deepEqual(unreadable.rows[0].state.open, ["Pay the deposit", "Book the parking permit"], "no answer changes nothing");
+  assert.equal(unreadable.saved.length, 0, "and is looked at again next time");
+
+  // Pulse reads the projects after they caught up; a timer keeps them going while Pulse is off.
+  const pulse = read("lib/pulse.js");
+  assert.ok(pulse.indexOf('await require("./projects").followIncoming(userId);') > 0 && pulse.indexOf('await require("./projects").followIncoming(userId);') < pulse.indexOf('require("./projects").live(userId)'));
+  assert.match(read("index.js"), /require\("\.\/lib\/projects"\)\.startFollowing\(\);/);
+  assert.match(read("lib/projects.js"), /- Return the FULL updated state for a touched project[^\n]*\n- \$\{SETTLED\}/, "a chat turn closes what it settled too");
 });

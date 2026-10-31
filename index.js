@@ -267,6 +267,8 @@ async function main() {
   try { await require("./lib/config").getConf("EMBED_MODEL"); } catch (_) {}
   startDataSync();
   require("./lib/services/wa-digest").startWhatsAppDigest();
+  // Projects follow what comes in from the people in them (lib/projects.js).
+  require("./lib/projects").startFollowing();
   require("./lib/sandbox").startSandboxJanitor();
   require("./lib/local-models").preloadIfConfigured();
   // Gives any row of the index without a vector its vector.
