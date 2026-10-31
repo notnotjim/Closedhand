@@ -585,3 +585,12 @@ input[type=search]::-webkit-search-cancel-button {
 }
 input[type=search]::-webkit-search-cancel-button:hover { background-color: var(--fg); }
 
+
+/* A card's row that opens its page (a project's, a page's): one link with a
+   chevron saying so; whatever else the card holds sits outside it, so no
+   button is ever inside a link (projects.js, the Pages list). */
+.card-open { color: inherit; text-decoration: none; border-radius: 0.375rem; }
+.card-open::after { content: "\203A"; flex: none; color: var(--muted); font-size: 1.125rem; line-height: 1; }
+.card-open:hover .card-open-name, .card-open:focus-visible .card-open-name { text-decoration: underline; text-underline-offset: 0.1875rem; }
+.card-open:hover::after, .card-open:focus-visible::after { color: var(--fg); }
+.card-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.25rem; }

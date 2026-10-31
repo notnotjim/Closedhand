@@ -48,7 +48,9 @@ test("the page shows the report safely, with downloads that say so and a delete 
     assert.match(html, new RegExp(`href="/api/pages/a1b2c3/${kind}" download aria-label="Download as ${label}" title="Download as ${label}"><svg[^>]*aria-hidden="true"`));
   }
   assert.doesNotMatch(page.pageHtml({ ...report, content: "No tables here." }), /xlsx/, "a spreadsheet only when there are tables");
-  assert.match(html, /<details class="end"><summary>Delete page<\/summary><form method="post" action="\/api\/pages\/a1b2c3\/delete">/);
+  assert.match(html, /<div class="bar"><a class="back" href="\/dashboard#pages"><span aria-hidden="true">&larr;<\/span> All pages<\/a><div class="files">[\s\S]*?<a class="manage" href="#delete">Delete<\/a><\/div><\/div>/, "back to Pages, and Delete in the bar as on a project's page");
+  assert.match(html, /<div class="confirm" id="delete"><span>[^<]*<\/span><form method="post" action="\/api\/pages\/a1b2c3\/delete"><button type="submit">Delete<\/button><\/form><a class="keep" href="#">Keep it<\/a><\/div>/, "asked first, just under the bar");
+  assert.match(html, /\.confirm:not\(:target\) \{ display: none; \}/, "with no script");
   assert.match(html, /Delete this page for good\? The answer stays in the chat you asked in\./);
   assert.match(page.deletedHtml(report), /is gone, with its PDF, Word and Excel versions\. The answer is still in the chat you asked in\./);
 });
@@ -111,7 +113,7 @@ test("save_report records the reason and the run, and answers with the link", ()
 test("the page and its files sit behind the login gate and are the report's own", () => {
   const server = read("webapp/server.js");
   const gate = server.indexOf("// --- The gate: everything registered below needs the session");
-  for (const route of ['app.get("/page/:id"', 'app.post("/api/pages/:id/delete"', "app.get(`/api/pages/:id/${kind}`", 'app.get("/api/pages"', 'app.delete("/api/pages/:id"']) {
+  for (const route of ['app.get("/page/:id"', 'app.post("/api/pages/:id/delete"', "app.get(`/api/pages/:id/${kind}`", 'app.get("/api/pages"']) {
     assert.ok(server.indexOf(route) > gate, `${route} registered after the gate`);
   }
   assert.match(server, /\.from\("reports"\)\n\s*\.select\("id, user_id, task_id, dataset_id, title, content, reason, created_at, updated_at"\)/);
@@ -155,7 +157,11 @@ test("dividers render, the title is not repeated, empty headers and unedited rep
 
 test("every page is under Pages, a week on the list then Archived, whichever chat or agent made it", () => {
   const server = read("webapp/server.js");
-  const list = server.slice(server.indexOf('app.get("/api/pages"'), server.indexOf('app.delete("/api/pages/:id"'));
+  const list = server.slice(server.indexOf('app.get("/api/pages"'), server.indexOf("\napp.", server.indexOf('app.get("/api/pages"') + 1));
+  assert.doesNotMatch(server, /app\.delete\("\/api\/pages\/:id"/, "a page is deleted from the page itself");
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /'<a class="auto-card-header card-open" href="\/page\/' \+ encodeURIComponent\(p\.id\) \+ '">'/, "its card's title row opens it, as a project's does");
+  assert.doesNotMatch(dash, /confirmPageDelete|>Open page<\/button>' \+\n\s*'<button class="agent-del" title="Delete this page"/);
   assert.match(list, /\.is\("dataset_id", null\)\.lt\("last_opened_at", cutoff\)\.order\("last_opened_at", \{ ascending: false \}\)/, "Archived: not used for a week");
   assert.match(list, /\.is\("dataset_id", null\)\.gte\("last_opened_at", cutoff\)\.order\("last_opened_at", \{ ascending: false \}\)/, "the list: used this week, most recent first");
   assert.match(server, /pageOpened\(report\);\n\s*res\.send\(assets\.withAppearance\(require\("\.\/report-page"\)\.pageHtml\(report\)\)\);/, "opening a page is using it");
@@ -167,7 +173,6 @@ test("every page is under Pages, a week on the list then Archived, whichever cha
   const dashboard = read("webapp/views/dashboard.html");
   assert.match(dashboard, /<button class="tab" data-tab="pages" onclick="switchTab\('pages'\)">Pages<\/button>/);
   assert.match(dashboard, /fetch\('\/api\/pages\?archived=1'\)/);
-  assert.match(dashboard, /Delete this page for good\? The answer stays in the chat you asked in\./);
   assert.match(dashboard, />When an answer needs more room or visuals than a chat message allows, Closedhand lays it out as a page that only you can open or download\.<br>Each project has its own page too, kept up to date as it goes, opened from its card under Projects\.</, "says what a page is, plainly");
 });
 

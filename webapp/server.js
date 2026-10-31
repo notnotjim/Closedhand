@@ -5545,18 +5545,6 @@ app.get("/api/pages", async (req, res) => {
   }
 });
 
-// DELETE /api/pages/:id: from the Pages list, after its confirmation.
-app.delete("/api/pages/:id", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-  try {
-    if (!(await deletePage(userId, req.params.id))) return res.status(404).json({ error: "This page was not found. It may have been deleted." });
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Page delete error:", err.message);
-    res.status(500).json({ error: "Could not delete this page. Try again." });
-  }
-});
 
 // GET /api/agents/:id/pdf — a finished run's output, typeset for download.
 // The web view renders the same markdown dialect; this is the take-away copy.

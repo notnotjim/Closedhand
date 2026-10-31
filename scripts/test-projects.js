@@ -436,7 +436,7 @@ test("the dashboard has a Projects tab, Context Brain has no Ongoing, and each p
   assert.match(html, /<details class="ctx note" data-ctx-id="[^"]+"><summary>[\s\S]*?Boxes<\/span>[\s\S]*?<div class="note-text">Kitchen 12, books 8\.<\/div><\/details>/);
   assert.match(html, /<div class="ctx" data-ctx-id="[^"]+">[\s\S]*?Van booking<\/span><span class="ctx-meta">Email · Dana Fixture · 3 November<\/span>/);
   assert.match(html, /<header class="bar" data-project="[^"]+"><a class="back" href="\/dashboard#projects\/[^"]+"><span aria-hidden="true">&larr;<\/span> All projects<\/a><span class="manage-row"><a class="manage" href="\/dashboard#projects\/[^"]+\/edit">Edit<\/a><button type="button" class="manage" data-archive="1">Archive<\/button><button type="button" class="manage delete" data-delete>Delete<\/button><\/span><\/header>/, "back to the project on the Projects tab, its form, Archive and Delete");
-  assert.match(html, /<div class="confirm" data-confirm hidden><span>Delete 📦 House &lt;move&gt;, its conversation and its Context Notes\? Any files, Pinned Facts or routines created in it stay\.<\/span><button type="button" class="goal-small" data-delete-yes>Delete<\/button><button type="button" class="goal-small goal-quiet" data-delete-no>Keep it<\/button><\/div>/, "Delete asks first, the name escaped");
+  assert.match(html, /<div class="confirm" data-confirm hidden><span>Delete 📦 House &lt;move&gt;, its conversation and its Context Notes\? Any files, Pinned Facts or routines created in it stay\.<\/span><button type="button" class="yes" data-delete-yes>Delete<\/button><button type="button" class="keep" data-delete-no>Keep it<\/button><\/div>/, "Delete asks first, the name escaped");
   assert.match(projectHtml(move({ status: "archived", archived_at: "2026-10-30T09:00:00Z" }), now), /<button type="button" class="manage" data-archive="0">Bring back<\/button>/);
   // Context ends with the dashed tile, the same choices as the form, saved at once.
   assert.match(html, /<div class="ctx-add" data-add-context="[^"]+"><button type="button" class="add-tile">\+ Add files, notes or links<\/button><\/div><\/section>/);
@@ -657,9 +657,9 @@ test("after a restart, a follow-up still finds the project conversation of the l
 test("a project's card links to its page, its form has the way back, and closing the dashboard closes the form", () => {
   const ui = read("webapp/public/projects.js");
   assert.doesNotMatch(ui, /"Open page"/, "the card's top row opens the page");
-  assert.match(ui, /const head = el\("a", "project-head"\);\n\s*head\.href = `\/page\/project\/\$\{p\.id\}`;/, "a real link");
+  assert.match(ui, /const head = el\("a", "project-head card-open"\);\n\s*head\.href = `\/page\/project\/\$\{p\.id\}`;/, "a real link");
   assert.doesNotMatch(ui, /c\.onclick|role", "link"/, "the card itself is not a link with buttons inside");
-  assert.match(read("webapp/public/projects.css"), /\.project-head::after \{ content: "\\203A";/, "with a chevron saying it opens");
+  assert.match(read("webapp/public/interface.css"), /\.card-open::after \{ content: "\\203A";/, "with the chevron every such row has");
   assert.match(ui, /if \(p\) f\.append\(btn\("project-back", "\\u2190 All projects", \(\) => \{ state\.editing = null; render\(\); \}\)\);/);
   assert.match(ui, /window\.closeProjectForms = \(\) => \{/);
   assert.match(read("webapp/views/index.html"), /overlay\.classList\.remove\('active'\);\n[\s\S]{0,400}if \(inside\.closeProjectForms\) inside\.closeProjectForms\(\);/, "closing the dashboard closes it");

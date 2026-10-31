@@ -440,7 +440,7 @@ function projectHtml(p, now = Date.now(), messages = [], goal = null, routines =
   // and Delete, asked about first: it is final (project-page.js).
   const at = `/dashboard#projects/${encodeURIComponent(p.id)}`;
   return shell(`${p.emoji} ${p.name}`, `<header class="bar" data-project="${esc(p.id)}"><a class="back" href="${at}"><span aria-hidden="true">&larr;</span> All projects</a><span class="manage-row"><a class="manage" href="${at}/edit">Edit</a><button type="button" class="manage" data-archive="${archived ? "0" : "1"}">${archived ? "Bring back" : "Archive"}</button><button type="button" class="manage delete" data-delete>Delete</button></span></header>
-<div class="confirm" data-confirm hidden><span>Delete ${esc(p.emoji)} ${esc(p.name)}, its conversation and its Context Notes? Any files, Pinned Facts or routines created in it stay.</span><button type="button" class="goal-small" data-delete-yes>Delete</button><button type="button" class="goal-small goal-quiet" data-delete-no>Keep it</button></div>
+<div class="confirm" data-confirm hidden><span>Delete ${esc(p.emoji)} ${esc(p.name)}, its conversation and its Context Notes? Any files, Pinned Facts or routines created in it stay.</span><button type="button" class="yes" data-delete-yes>Delete</button><button type="button" class="keep" data-delete-no>Keep it</button></div>
 <div class="hero">
   <div class="mark" aria-hidden="true">${esc(p.emoji)}</div>
   <div class="titles">
@@ -487,6 +487,9 @@ button.manage { background: none; border: 0; padding: 0; font: inherit; font-siz
 .confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.875rem 0 0; padding: 0.75rem 1rem; border-radius: 0.75rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.12); font-size: 0.875rem; }
 .confirm[hidden] { display: none; }
 .confirm span { flex: 1 1 16rem; }
+/* As a page's own Delete asks (report-page.js): red, and Keep it a quiet link. */
+.confirm .yes { font: inherit; font-weight: 500; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
+.confirm .keep { font: inherit; font-size: 0.8125rem; color: var(--muted); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 .back:hover, .back:focus-visible { color: var(--accent); }
 .manage:hover, .manage:focus-visible { color: var(--accent); }
 .hero { display: flex; align-items: center; gap: 1.375rem; margin: 2.5rem 0 1.625rem; animation: rise .5s cubic-bezier(.2,.7,.2,1) both; }

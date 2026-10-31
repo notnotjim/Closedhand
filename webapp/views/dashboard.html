@@ -7436,17 +7436,16 @@
     // three months later (lib/page-expiry.js).
     var _archivedPages = null;
     // Any page can change after it is made (revised, or a table brought up to
-    // date); its card then says when it last did.
+    // date); its card then says when it last did. Its title row opens it, as a
+    // project's card opens its page (.card-open); its downloads and Delete are
+    // on the page.
     function renderPageCard(p) {
-      var table = !!p.dataset_id;
       var changed = !!p.updated_at && p.updated_at !== p.created_at;
       var made = new Date(changed ? p.updated_at : p.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
       return '<div class="auto-card">' +
-        '<div class="auto-card-header">' +
-          '<div class="auto-card-name">' + escapeHtml(p.title || 'Untitled page') + '</div>' +
-          '<button class="agent-del" title="Open the page, with PDF, Word and Excel downloads" onclick="window.open(\'/page/' + p.id + '\', \'_blank\')">Open page</button>' +
-          '<button class="agent-del" title="Delete this page" aria-label="Delete this page" onclick="confirmPageDelete(this, \'' + p.id + '\', ' + table + ')">' + TRASH_ICON + '</button>' +
-        '</div>' +
+        '<a class="auto-card-header card-open" href="/page/' + encodeURIComponent(p.id) + '">' +
+          '<span class="auto-card-name card-open-name">' + escapeHtml(p.title || 'Untitled page') + '</span>' +
+        '</a>' +
         '<div class="auto-card-meta">' + escapeHtml((changed ? 'Updated ' : 'Made ') + made) + '</div>' +
       '</div>';
     }
@@ -7479,16 +7478,6 @@
       }
       loadPages();
     }
-    async function confirmPageDelete(btn, id, table) {
-      if (!(await askFirst(btn, { text: table ? 'Delete this table for good?' : 'Delete this page for good? The answer stays in the chat you asked in.', yes: 'Delete' }))) return;
-      try {
-        var res = await fetch('/api/pages/' + id, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Delete failed');
-        if (_archivedPages) _archivedPages = _archivedPages.filter(function (p) { return p.id !== id; });
-        loadPages();
-      } catch (e) { showToast('Could not delete this page. Try again.', true); }
-    }
-
     async function deleteAgentRun(id) {
       try {
         await fetch('/api/agents/' + id, { method: 'DELETE' });

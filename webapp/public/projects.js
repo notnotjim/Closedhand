@@ -226,9 +226,9 @@
     // Its top row is the link to the project's page, with a chevron saying
     // so; nothing else on the card opens it, so no button sits inside a link.
     // Edit, Archive and Delete are on the page, the project's one home.
-    const head = el("a", "project-head");
+    const head = el("a", "project-head card-open");
     head.href = `/page/project/${p.id}`;
-    head.append(el("span", "project-mark", p.emoji), el("span", "project-name", p.name));
+    head.append(el("span", "project-mark", p.emoji), el("span", "project-name card-open-name", p.name));
     const when = p.status === "archived" && p.archived_at ? `archived ${shortDate(p.archived_at)}` : `updated ${shortDate(p.last_touched)}`;
     head.append(el("span", "project-when", when + (p.expected_end ? ` · until ${shortDate(p.expected_end)}` : "")));
     c.append(head);

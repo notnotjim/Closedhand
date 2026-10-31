@@ -196,12 +196,15 @@ figure img, figure video { display: block; max-width: 100%; height: auto; border
 figure audio { width: 100%; }
 .live iframe { display: block; width: 100%; height: min(75vh, 40rem); border: 1px solid var(--line); border-radius: 0.625rem; background: #fff; }
 figcaption { color: var(--muted); font-size: 0.875rem; margin-top: 0.5rem; }
-.end { margin-top: 2.5rem; padding-top: 1.125rem; border-top: 1px solid var(--line); font-size: 0.8125rem; color: var(--muted); }
-.end summary { cursor: pointer; display: inline-block; list-style: none; border: 1px solid var(--line); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; color: var(--muted); }
-.end summary::-webkit-details-marker { display: none; }
-.end summary:hover, .end summary:focus-visible { color: var(--accent); border-color: var(--accent); }
-.end form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; margin-top: 0.75rem; }
-.end button { font: inherit; font-weight: 500; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
+.back, .manage { font-size: 0.8125rem; color: var(--muted); text-decoration: none; }
+.back:hover, .back:focus-visible, .manage:hover, .manage:focus-visible { color: var(--accent); }
+.files .manage { align-self: center; margin-left: 0.5rem; }
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; margin: -0.625rem 0 1.625rem; padding: 0.75rem 1rem; border-radius: 0.75rem; border: 1px solid var(--line); font-size: 0.875rem; }
+.confirm:not(:target) { display: none; }
+.confirm span { flex: 1 1 16rem; }
+.confirm form { margin: 0; }
+.confirm button { font: inherit; font-weight: 500; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
+.confirm .keep { color: var(--muted); font-size: 0.8125rem; }
 </style></head>
 <body><main>
 ${inner}
@@ -225,13 +228,14 @@ function pageHtml(report) {
     suits.docx ? file("docx", "Word") : "",
     suits.xlsx ? file("xlsx", "Excel") : "",
   ].join("");
-  // Deleting asks first, in place, with no script: the page has none.
-  const remove = `<details class="end"><summary>Delete page</summary><form method="post" action="/api/pages/${id}/delete"><span>Delete this page for good? The answer stays in the chat you asked in.</span><button type="submit">Delete</button></form></details>`;
-  return shell(report.title, `<div class="bar">${brand}<div class="files">${files}</div></div>
+  // Back to Pages, its downloads, and Delete, as a project's page has them.
+  // Delete asks first just under the bar, with no script (the page has none):
+  // its link targets the question, and Keep it clears the target.
+  return shell(report.title, `<div class="bar"><a class="back" href="/dashboard#pages"><span aria-hidden="true">&larr;</span> All pages</a><div class="files">${files}<a class="manage" href="#delete">Delete</a></div></div>
+<div class="confirm" id="delete"><span>${report.dataset_id ? "Delete this table for good?" : "Delete this page for good? The answer stays in the chat you asked in."}</span><form method="post" action="/api/pages/${id}/delete"><button type="submit">Delete</button></form><a class="keep" href="#">Keep it</a></div>
 <h1>${esc(report.title)}</h1>
 <p class="when">${esc(dated(report.created_at) + edited)}</p>
-${bodyHtml(report.content, report.title, (name) => `/page/${id}/part/${encodeURIComponent(name)}`)}
-${remove}`);
+${bodyHtml(report.content, report.title, (name) => `/page/${id}/part/${encodeURIComponent(name)}`)}`);
 }
 
 function deletedHtml(report) {
