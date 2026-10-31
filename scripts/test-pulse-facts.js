@@ -105,6 +105,12 @@ test("the writer: one call from the cited items, tools only when it asks", () =>
   assert.match(pulse, /Every fact comes from the items\. Add no guesses or advice that rest on what they do not say/);
   assert.match(pulse, /One point: the fewest short sentences that carry it, four at most, one thing in each\. Several: one short, plain line each/);
   assert.match(pulse, /THE CITED EMAILS IN FULL/);
+  // A cited chat message comes with its conversation, the person's side too:
+  // alone, "will you be back before the 20th?" from a dad abroad read as back
+  // where their flight home lands.
+  assert.match(pulse, /\.eq\("type", "message"\)\.eq\("data->>chat", chat\)\.order\("received_at", \{ ascending: false \}\)\.limit\(12\)/);
+  assert.match(pulse, /THE CITED CHATS, LAST MESSAGES \(oldest first\):/);
+  assert.match(pulse, /const brief = `\$\{about \? `ABOUT THEM \(who they are, the people in their life and where they live/, "the writer knows who the people are, as the noticing does");
   assert.match(pulse, /const result = await sendChecked\(String\(\(block\.input && block\.input\.text\) \|\| ""\)\.trim\(\), lookedUp, null, block\.input && block\.input\.project\);/, "both ways go through the same check");
   assert.match(pulse, /ctx\.store\.facts\._pulse_last = \{ value: /, "what it told them is kept in code");
   assert.match(pulse, /text = require\("\.\/plain-dashes"\)\.noEmDashes\(text\);/);

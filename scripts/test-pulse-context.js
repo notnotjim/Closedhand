@@ -53,7 +53,7 @@ test('the writer reads what the rest of the person\'s world says about the flagg
   const pulse = fs.readFileSync(path.join(__dirname, '..', 'lib', 'pulse.js'), 'utf8');
   // The same recall a chat message gets: mail, chats such as WhatsApp, files.
   assert.match(pulse, /const recalled = await require\("\.\/brain"\)\.fetchRelevantContext\(userId, flaggedText\)\.catch\(\(\) => null\);/);
-  assert.match(pulse, /\$\{citedItems\.join\("\\n"\)\}\$\{mailText\}\$\{recalled \|\| ""\}\$\{recentText\}\$\{theirProjects\.length \? `\\n\\nTHEIR PROJECTS: \$\{theirProjects\.join\("; "\)\}` : ""\}\\n\\nLAST TOLD: \$\{lastTold\}`/, 'it comes with the cited items, the emails in full, the chat lately, their projects and what it last told them');
+  assert.match(pulse, /\$\{citedItems\.join\("\\n"\)\}\$\{mailText\}\$\{chatText\}\$\{recalled \|\| ""\}\$\{recentText\}\$\{theirProjects\.length \? `\\n\\nTHEIR PROJECTS: \$\{theirProjects\.join\("; "\)\}` : ""\}\\n\\nLAST TOLD: \$\{lastTold\}`/, 'it comes with the cited items, the emails in full, the chats they are part of, the chat lately, their projects and what it last told them');
   assert.match(pulse, /RECALLED ITEMS: the noticed points can come with POSSIBLY RELATED items/, 'and the instructions say how to use it');
   assert.match(require('../lib/brain').fetchRelevantContext.toString(), /POSSIBLY RELATED/, 'the block points at those instructions');
 });

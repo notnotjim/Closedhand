@@ -158,7 +158,7 @@ test("Pulse reads what is new from every connection, not only mail and calendar,
   assert.match(pulse, /const numbered = \[\.\.\.realEmails, \.\.\.otherItems, \.\.\.waitingRows, \.\.\.sentLines\.map\(\(\) => null\), \.\.\.coming, \.\.\.projectLines\.map\(\(\) => null\), \.\.\.worldLines\.map\(\(\) => null\)\];/, "and whatever it tells is recorded as told, never what they sent");
   assert.match(pulse, /\.eq\("type", "message"\)\.eq\("data->>sender", "me"\)/, "what they sent is in the picture, so an answered question is not called unanswered");
   assert.match(pulse, /const sentMail = mailRows\.filter\(\(e\) => Array\.isArray\(e\.data\.labels\) && e\.data\.labels\.includes\("SENT"\)\);/);
-  assert.match(pulse, /const evidence = \[citedItems\.join\("\\n"\), flaggedText,/, "the check gets what the message stands on");
+  assert.match(pulse, /const evidence = \[citedItems\.join\("\\n"\), chatText, about, flaggedText,/, "the check gets what the message stands on, the chats it comes from and who the people are");
   assert.match(pulse, /Never hold back something that clears the bar\./);
   assert.doesNotMatch(pulse, /is the RIGHT answer most of the time/, "usefulness is the bar, not rarity");
   const { itemText } = require("../lib/watches");
