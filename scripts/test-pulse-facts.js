@@ -116,3 +116,30 @@ test("the writer: one call from the cited items, tools only when it asks", () =>
   assert.match(pulse, /text = require\("\.\/plain-dashes"\)\.noEmDashes\(text\);/);
   assert.match(require("../lib/pulse-triage").notice.toString(), /say only what they show: no guesses about the person's circumstances/);
 });
+
+// Someone a cited chat is with whom Closedhand knows nothing about is asked
+// about once, never guessed: from the chat alone, "will you be back before
+// the 20th?" from a dad abroad was answered with the flight home.
+test("who of the people a message is from no Pinned Fact names, asked about once", () => {
+  const m = (chat, chat_name) => ({ type: "message", data: { chat, chat_name } });
+  const known = { "family-partner": { value: "Saya is Sam's partner; she is from Osaka", subject: "Saya" }, "family-dad": { value: "Pete is Sam's dad", subject: "Pete" }, _pulse_last: { value: "Mike's moved the weekend" } };
+  assert.equal(f.unknownPerson([m("447700900002@s.whatsapp.net", "Mike")], known), "Mike", "Closedhand's own note of what it said does not make him known");
+  assert.equal(f.unknownPerson([m("447700900003@s.whatsapp.net", "Sayako")], known), null, "a fact's short form covers the chat's name");
+  assert.equal(f.unknownPerson([m("447700900004@s.whatsapp.net", "Peter")], known), null);
+  assert.equal(f.unknownPerson([m("447700900002@s.whatsapp.net", "Mike")], known, ["mike"]), null, "asked once");
+  assert.equal(f.unknownPerson([m("120363000000000001@g.us", "Flat 4 group")], known), null, "not a group");
+  assert.equal(f.unknownPerson([m("447700900005@s.whatsapp.net", "Clinica Sorriso")], known), null, "nor an organisation");
+  assert.equal(f.unknownPerson([m("447700900006@s.whatsapp.net", "+44 7700 900006")], known), null, "nor a number");
+  assert.equal(f.unknownPerson([{ type: "email", data: { from: "Ana <ana@example.test>" } }], known), null, "chats only");
+  // The writer is told, and when what it would say rests on who they are or
+  // where they live (one narrow question to their LLM), it asks first.
+  assert.match(pulse, /const askWho = facts\.unknownPerson\(numbered\.filter\(\(r, i\) => r && r\.type === "message" && cited\.has\(i \+ 1\)\), store\.facts, settings\.asked_who\);/);
+  assert.match(pulse, /if \(askWho\) chatText \+= `\\n\\nNOT KNOWN TO CLOSEDHAND: who \$\{askWho\} is to \$\{userName\}, and where they live\. Never assume either/);
+  assert.match(pulse, /Would anything you would tell \$\{userName\} here depend on who \$\{askWho\} is to \$\{userName\} or where \$\{askWho\} lives/);
+  assert.match(pulse, /await deliver\(`\$\{said \? `\$\{askWho\} wrote: "\$\{said\}"\\n\\n` : ""\}Before I say anything about it: who's \$\{askWho\} to you, and where do they live\? Tell me once and I'll remember, so I get things like this right\.`\);/);
+  const first = pulse.indexOf("if (askWho) {"), writer = pulse.indexOf("let written = await writeOnce();");
+  assert.ok(first > 0 && first < writer, "before the writer");
+  assert.doesNotMatch(pulse.slice(first, writer), /recordTold/, "and nothing is recorded as told");
+  assert.match(pulse, /if \(askWho\) text \+= `\\n\\nWho's \$\{askWho\} to you, and where do they live\? Tell me once and I'll remember\.`;/, "otherwise the message goes with the question");
+  assert.equal((pulse.match(/s\.asked_who = \[\.\.\.\(s\.asked_who \|\| \[\]\), askWho\.toLowerCase\(\)\]\.slice\(-500\)/g) || []).length, 2, "asked once, either way");
+});
