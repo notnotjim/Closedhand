@@ -7539,6 +7539,8 @@ app.get("/api/notes", async (req, res) => {
 // subject too, unless new ones are given. Mirrored into Context Brain so
 // recall finds it. Returns whether recall is up to date.
 async function saveFact(userId, key, value, { category = null, subject = null } = {}) {
+  // Who it is about, by name alone (own-name.js).
+  subject = require("./own-name").subjectName(subject);
   const { data: existing } = await supabase.from("facts").select("value").eq("user_id", userId).eq("key", key).maybeSingle();
   const now = new Date().toISOString();
   let created = now, accessCount = 0, source = "you";

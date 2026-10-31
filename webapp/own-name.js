@@ -16,4 +16,12 @@ function isOwnName(subject, names) {
   });
 }
 
-module.exports = { isOwnName };
+// A fact's subject is who or what it is about, by name alone: "Jo", never
+// "Jo (Sam's mother)". Who they are to the person belongs in the fact,
+// and a label with it beside labels without it reads as meaning something.
+function subjectName(subject) {
+  const s = String(subject || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return s || (subject ? String(subject).trim() : null);
+}
+
+module.exports = { isOwnName, subjectName };

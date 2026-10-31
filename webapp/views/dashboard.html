@@ -8554,7 +8554,9 @@
       }
       // About them, by what it is about: "Health knee surgery", not their own name.
       if (isAboutSelf(n)) { var words = key.replace(/[-_]+/g, ' ').trim(); return words.charAt(0).toUpperCase() + words.slice(1); }
-      return n.subject || key.replace(/[-_]/g, ' ');
+      // By name alone, as own-name.js keeps a subject: "Jo", not
+      // "Jo (Sam's mother)", which a fact pinned earlier may still carry.
+      return String(n.subject || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || key.replace(/[-_]/g, ' ');
     }
 
     function renderBrainList(nodes) {
