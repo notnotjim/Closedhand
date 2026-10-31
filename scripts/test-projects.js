@@ -428,18 +428,22 @@ test("the dashboard has a Projects tab, Context Brain has no Ongoing, and each p
   assert.doesNotMatch(open, /class="until"/);
   assert.match(projectHtml(move({ expected_end: "2026-10-31T09:00:00Z" }), now), /<span class="until">Ended 31 October<\/span>/);
   assert.match(projectHtml(move({ expected_end: "2026-11-02T09:00:00Z" }), now), /<span class="until">Tomorrow<\/span>/);
-  assert.match(html, /<h2>Still open<span class="count">2<\/span><\/h2><ul class="checks"><li><span class="box" aria-hidden="true"><\/span>Pay the deposit<\/li>/);
+  assert.match(html, /<h2>Still open<span class="count">2<\/span><\/h2><ul class="checks"><li><button type="button" class="box" data-close-open="Pay the deposit" aria-label="Done: Pay the deposit"><\/button>Pay the deposit<\/li>/, "each open item's circle closes it");
+  assert.match(projectHtml(move({ status: "archived", archived_at: "2026-10-30T09:00:00Z" }), now), /<li><span class="box" aria-hidden="true"><\/span>Pay the deposit<\/li>/, "not on an archived one");
   assert.match(html, /<span class="name">Dana Fixture <span class="stance role">helping<\/span><\/span><span class="said">brings the van<\/span>/);
   assert.match(html, /<a class="ctx" data-ctx-id="att_1" href="\/api\/files\/att_1\/download">[\s\S]*?floor plan\.pdf<\/span><span class="ctx-meta">PDF<\/span>/);
   assert.match(html, /<a class="ctx" data-ctx-id="[^"]+" href="https:\/\/movers\.example\.com\/quote" target="_blank" rel="noopener">[\s\S]*?Quote<\/span><span class="ctx-meta">movers\.example\.com<\/span>/);
   assert.match(html, /<details class="ctx note" data-ctx-id="[^"]+"><summary>[\s\S]*?Boxes<\/span>[\s\S]*?<div class="note-text">Kitchen 12, books 8\.<\/div><\/details>/);
   assert.match(html, /<div class="ctx" data-ctx-id="[^"]+">[\s\S]*?Van booking<\/span><span class="ctx-meta">Email · Dana Fixture · 3 November<\/span>/);
-  assert.match(html, /<header class="bar"><a class="back" href="\/dashboard#projects\/[^"]+"><span aria-hidden="true">&larr;<\/span> All projects<\/a><a class="manage" href="\/dashboard#projects\/[^"]+\/edit">Edit<\/a><\/header>/, "back to the project on the Projects tab, and its form");
+  assert.match(html, /<header class="bar" data-project="[^"]+"><a class="back" href="\/dashboard#projects\/[^"]+"><span aria-hidden="true">&larr;<\/span> All projects<\/a><span class="manage-row"><a class="manage" href="\/dashboard#projects\/[^"]+\/edit">Edit<\/a><button type="button" class="manage" data-archive="1">Archive<\/button><button type="button" class="manage delete" data-delete>Delete<\/button><\/span><\/header>/, "back to the project on the Projects tab, its form, Archive and Delete");
+  assert.match(html, /<div class="confirm" data-confirm hidden><span>Delete 📦 House &lt;move&gt;, its conversation and its Context Notes\? Any files, Pinned Facts or routines created in it stay\.<\/span><button type="button" class="goal-small" data-delete-yes>Delete<\/button><button type="button" class="goal-small goal-quiet" data-delete-no>Keep it<\/button><\/div>/, "Delete asks first, the name escaped");
+  assert.match(projectHtml(move({ status: "archived", archived_at: "2026-10-30T09:00:00Z" }), now), /<button type="button" class="manage" data-archive="0">Bring back<\/button>/);
   // Context ends with the dashed tile, the same choices as the form, saved at once.
   assert.match(html, /<div class="ctx-add" data-add-context="[^"]+"><button type="button" class="add-tile">\+ Add files, notes or links<\/button><\/div><\/section>/);
   assert.match(html, /<script src="\/project-context\.js" defer><\/script><script src="\/project-page\.js" defer><\/script>/);
   assert.match(projectHtml(move({ context: [] }), now), /<aside class="col"><section><h2>Files and notes<\/h2><div class="ctx-list"><\/div><div class="ctx-add"/, "first in the side column, even before anything is in it");
-  assert.doesNotMatch(projectHtml(move({ status: "archived", archived_at: "2026-10-30T09:00:00Z" }), now), /class="add-tile"|src="\/project-page\.js"/, "not on an archived one");
+  assert.doesNotMatch(projectHtml(move({ status: "archived", archived_at: "2026-10-30T09:00:00Z" }), now), /class="add-tile"|src="\/project-context\.js"/, "not on an archived one");
+  assert.match(projectHtml(move({ status: "archived", archived_at: "2026-10-30T09:00:00Z" }), now), /<script src="\/project-page\.js" defer><\/script>/, "which can still be brought back or deleted");
   const shared = read("webapp/public/project-context.js");
   assert.match(shared, /btn\("goal-small", "Write a note"[\s\S]*btn\("goal-small", "Add a link"[\s\S]*btn\("goal-small", "Add an email, event or message"/);
   assert.match(read("webapp/public/projects.js"), /const adder = window\.ProjectContext\.adder\(\(x\) => \{/, "the dashboard form uses the same choices");
@@ -466,7 +470,7 @@ test("the dashboard has a Projects tab, Context Brain has no Ongoing, and each p
   assert.match(projectHtml(wedding({ summary: "" })), /Nothing here yet\. Start a message with 💍 in any chat to begin its conversation\./);
   assert.match(projectHtml(wedding({ status: "archived", archived_at: "2026-10-20T00:00:00Z" })), /This project is archived\. Start a message with 💍 in any chat to bring it back\./);
   const tab = read("webapp/public/projects.js");
-  assert.match(tab, /`Delete \$\{p\.emoji\} \$\{p\.name\}, its conversation and its Context Notes\? Any files, Pinned Facts or routines created in it stay\.`/);
+  assert.match(read("webapp/projects.js"), /Delete \$\{esc\(p\.emoji\)\} \$\{esc\(p\.name\)\}, its conversation and its Context Notes\? Any files, Pinned Facts or routines created in it stay\./, "Delete names what goes and what stays, on the page");
   assert.match(tab, /fetch\("\/emoji-list\.json"\)/);
   assert.match(tab, /field\("What it's about", about, "A sentence or two on what it is\.", true\),\n\s*field\("Instructions", instructions, "How Closedhand should handle anything in this project, one a line\.", true\)/, "only the name and emoji are needed");
 });
@@ -515,13 +519,18 @@ test("a routine can belong to a project: it runs with the project and reports in
   assert.match(html, /<h2>Routines<span class="count">1<\/span><\/h2><ul class="routines"><li><span class="r-name">Van reminder<\/span><span class="r-when">Every Friday at 9am<\/span><\/li><\/ul>/);
 });
 
-// Delete is on every card, archived ones too, as on every page under Pages,
-// and a deleted project goes with what hangs on it, leaving its name a month
-// so Closedhand does not make it again at once.
-test("a project is deleted from its card, and its name alone is kept a month", async () => {
+// Delete is on the project's page, its one home, archived ones too, asked
+// about first; a deleted project goes with what hangs on it, leaving its name
+// a month so Closedhand does not make it again at once.
+test("a project is deleted from its page, and its name alone is kept a month", async () => {
   const ui = read("webapp/public/projects.js");
-  assert.match(ui, /btn\("goal-small goal-quiet", p\.status === "archived" \? "Bring back" : "Archive",[\s\S]{0,300}\}\),\n\s*deleteButton\(p\)\);/);
-  assert.doesNotMatch(ui.slice(ui.indexOf("function moreActions"), ui.indexOf("function deleteButton")), /DELETE/, "not tucked inside Edit any more");
+  assert.doesNotMatch(ui, /"Delete"|"Archive"|"Edit"/, "no actions on the card but its conversation");
+  const pageJs = read("webapp/public/project-page.js");
+  assert.match(pageJs, /bar\.querySelector\("\[data-delete\]"\)\.onclick = \(\) => \{ ask\.hidden = false;/, "Delete asks first");
+  assert.match(pageJs, /try \{ await send\("DELETE"\); location\.href = "\/dashboard#projects"; \}/);
+  assert.match(pageJs, /await send\("PATCH", \{ archived: archive\.dataset\.archive === "1" \}\)/);
+  assert.match(pageJs, /await send\("PATCH", \{ close_open: box\.dataset\.closeOpen \}\);/);
+  assert.match(read("webapp/projects.js"), /if \(b\.close_open !== undefined\) set\.state = \{ \.\.\.\(p\.state \|\| \{\}\), open: \(\(p\.state \|\| \{\}\)\.open \|\| \[\]\)\.filter\(\(x\) => x !== String\(b\.close_open\)\) \};/, "a ticked item leaves the record");
   assert.match(read("webapp/projects.js"), /const \{ error \} = await rules\.deleteProject\(db, userId, req\.params\.id\);/);
   // A link straight to #projects opens the tab before this deferred script
   // runs; it then loads the list itself.
@@ -645,11 +654,12 @@ test("after a restart, a follow-up still finds the project conversation of the l
   assert.equal(await later.projects.fileTurn("u1", "ok"), null, "not after half an hour");
 });
 
-test("a project's card opens its page, its form has the way back, and closing the dashboard closes the form", () => {
+test("a project's card links to its page, its form has the way back, and closing the dashboard closes the form", () => {
   const ui = read("webapp/public/projects.js");
-  assert.doesNotMatch(ui, /"Open page"/, "the card itself opens the page");
-  assert.match(ui, /c\.onclick = \(ev\) => \{ if \(!ev\.target\.closest\("button, a, select, input, \.project-confirm"\)\) openPage\(\); \};/, "its buttons do their own thing");
-  assert.match(ui, /const openPage = \(\) => \{ location\.href = `\/page\/project\/\$\{p\.id\}`; \};/);
+  assert.doesNotMatch(ui, /"Open page"/, "the card's top row opens the page");
+  assert.match(ui, /const head = el\("a", "project-head"\);\n\s*head\.href = `\/page\/project\/\$\{p\.id\}`;/, "a real link");
+  assert.doesNotMatch(ui, /c\.onclick|role", "link"/, "the card itself is not a link with buttons inside");
+  assert.match(read("webapp/public/projects.css"), /\.project-head::after \{ content: "\\203A";/, "with a chevron saying it opens");
   assert.match(ui, /if \(p\) f\.append\(btn\("project-back", "\\u2190 All projects", \(\) => \{ state\.editing = null; render\(\); \}\)\);/);
   assert.match(ui, /window\.closeProjectForms = \(\) => \{/);
   assert.match(read("webapp/views/index.html"), /overlay\.classList\.remove\('active'\);\n[\s\S]{0,400}if \(inside\.closeProjectForms\) inside\.closeProjectForms\(\);/, "closing the dashboard closes it");

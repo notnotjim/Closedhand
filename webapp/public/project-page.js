@@ -2,7 +2,53 @@
 // people can add to ends with, opening the same choices as the project's form
 // on the dashboard (project-context.js). Each is saved at once, and the page
 // shows it: files, a note or a link straight away, things from apps when
-// their search is closed.
+// their search is closed. Its bar archives, brings back and deletes it, and
+// an open item's circle closes that item.
+(() => {
+  const bar = document.querySelector("header.bar[data-project]");
+  if (!bar) return;
+  const id = bar.dataset.project;
+  const send = async (method, body) => {
+    const res = await fetch(`/api/projects/${id}`, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Something went wrong. Try again.");
+    return data;
+  };
+  const failed = (e, near) => {
+    const note = document.createElement("p");
+    note.className = "banner"; note.setAttribute("role", "alert"); note.textContent = e.message;
+    near.after(note);
+  };
+  const archive = bar.querySelector("[data-archive]");
+  archive.onclick = async () => {
+    archive.disabled = true;
+    try { await send("PATCH", { archived: archive.dataset.archive === "1" }); location.reload(); } catch (e) { archive.disabled = false; failed(e, bar); }
+  };
+  const ask = document.querySelector("[data-confirm]");
+  bar.querySelector("[data-delete]").onclick = () => { ask.hidden = false; ask.querySelector("[data-delete-no]").focus(); };
+  ask.querySelector("[data-delete-no]").onclick = () => { ask.hidden = true; };
+  ask.querySelector("[data-delete-yes]").onclick = async (ev) => {
+    ev.target.disabled = true;
+    try { await send("DELETE"); location.href = "/dashboard#projects"; } catch (e) { ev.target.disabled = false; failed(e, ask); }
+  };
+  for (const box of document.querySelectorAll("[data-close-open]")) {
+    box.onclick = async () => {
+      const li = box.closest("li");
+      box.disabled = true;
+      try {
+        await send("PATCH", { close_open: box.dataset.closeOpen });
+        li.classList.add("closing");
+        setTimeout(() => {
+          const list = li.parentElement, count = list.parentElement.querySelector("h2 .count");
+          li.remove();
+          if (!list.children.length) list.parentElement.remove();
+          else if (count) count.textContent = String(list.children.length);
+        }, 300);
+      } catch (e) { box.disabled = false; failed(e, li); }
+    };
+  }
+})();
+
 (() => {
   const host = document.querySelector("[data-add-context]");
   if (!host || !window.ProjectContext) return;

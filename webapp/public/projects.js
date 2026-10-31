@@ -219,25 +219,15 @@
     return box;
   }
 
-  // Delete, on every card as on every page under Pages, archived ones too,
-  // and asked about first: it is final.
-  function deleteButton(p) {
-    const del = btn("goal-small goal-quiet project-delete", "Delete", () => {
-      const ask = el("div", "project-confirm");
-      ask.append(el("span", "", `Delete ${p.emoji} ${p.name}, its conversation and its Context Notes? Any files, Pinned Facts or routines created in it stay.`));
-      ask.append(
-        btn("goal-small", "Delete", async () => { try { await api(`/api/projects/${p.id}`, { method: "DELETE" }); state.editing = null; await load(); } catch (e) { showError(e.message); } }),
-        btn("goal-small goal-quiet", "Keep it", () => ask.replaceWith(del)));
-      del.replaceWith(ask);
-    });
-    return del;
-  }
-
   function card(p) {
     if (state.editing === p.id) { const wrap = el("div", "goal-card project-card editing"); wrap.append(form(p)); return wrap; }
     const c = el("div", "goal-card project-card" + (p.status === "archived" ? " archived" : ""));
     c.dataset.project = p.id;
-    const head = el("div", "project-head");
+    // Its top row is the link to the project's page, with a chevron saying
+    // so; nothing else on the card opens it, so no button sits inside a link.
+    // Edit, Archive and Delete are on the page, the project's one home.
+    const head = el("a", "project-head");
+    head.href = `/page/project/${p.id}`;
     head.append(el("span", "project-mark", p.emoji), el("span", "project-name", p.name));
     const when = p.status === "archived" && p.archived_at ? `archived ${shortDate(p.archived_at)}` : `updated ${shortDate(p.last_touched)}`;
     head.append(el("span", "project-when", when + (p.expected_end ? ` · until ${shortDate(p.expected_end)}` : "")));
@@ -245,27 +235,12 @@
     if (p.summary) c.append(el("p", "project-summary", p.summary));
     const goal = el("div", "project-goal"); goal.dataset.goalFor = p.id; goal.dataset.goalEmoji = p.emoji;
     c.append(goal);
-    // The whole card opens the project's page; its buttons do their own thing.
-    c.classList.add("opens");
-    c.tabIndex = 0;
-    c.setAttribute("role", "link");
-    c.setAttribute("aria-label", `${p.name}: open its page`);
-    const openPage = () => { location.href = `/page/project/${p.id}`; };
-    c.onclick = (ev) => { if (!ev.target.closest("button, a, select, input, .project-confirm")) openPage(); };
-    c.onkeydown = (ev) => { if (ev.key === "Enter" && ev.target === c) openPage(); };
-    const acts = el("div", "project-actions");
     // The dashboard sits over the web chat: its conversation opens there.
-    const talk = window.parent !== window && window.parent.openConversation
-      ? btn("goal-small", "Open conversation", () => { window.parent.openConversation(p.id); if (window.parent.closeDashSlide) window.parent.closeDashSlide(); })
-      : null;
-    if (talk) acts.append(talk);
-    acts.append(
-      btn("goal-small", "Edit", () => { state.editing = p.id; render(); }),
-      btn("goal-small goal-quiet", p.status === "archived" ? "Bring back" : "Archive", async () => {
-        try { await api(`/api/projects/${p.id}`, { method: "PATCH", body: JSON.stringify({ archived: p.status !== "archived" }) }); await load(); } catch (e) { showError(e.message); }
-      }),
-      deleteButton(p));
-    c.append(acts);
+    if (window.parent !== window && window.parent.openConversation) {
+      const acts = el("div", "project-actions");
+      acts.append(btn("goal-small", "Open conversation", () => { window.parent.openConversation(p.id); if (window.parent.closeDashSlide) window.parent.closeDashSlide(); }));
+      c.append(acts);
+    }
     return c;
   }
 

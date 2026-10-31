@@ -190,6 +190,8 @@ function register(app, { db, userId: who, withAppearance }) {
       if (b.instructions !== undefined) set.instructions = lines(b.instructions);
       if (b.add_context || b.add_items) set.context = rules.withContext(p.context, [...rules.typed(b.add_context), ...await syncedItems(userId, b.add_items)]);
       if (b.remove_context) set.context = (set.context || p.context || []).filter((c) => c.id !== b.remove_context);
+      // An open item the person ticked off on the page.
+      if (b.close_open !== undefined) set.state = { ...(p.state || {}), open: ((p.state || {}).open || []).filter((x) => x !== String(b.close_open)) };
       if (b.archived === true) Object.assign(set, { status: "archived", archived_at: new Date().toISOString() });
       if (b.archived === false) Object.assign(set, { status: "active", archived_at: null, expected_end: null });
       const emoji = set.emoji || p.emoji;
@@ -412,7 +414,10 @@ function projectHtml(p, now = Date.now(), messages = [], goal = null, routines =
   const until = p.expected_end && !archived ? `<span class="until">${esc(untilText(p.expected_end, now))}</span>` : "";
 
   const main = [], side = [];
-  if (open.length) main.push(section("Still open", open.length, `<ul class="checks">${open.map((t) => `<li><span class="box" aria-hidden="true"></span>${page.inline(t)}</li>`).join("")}</ul>`));
+  // Each open item's circle closes it, for one the record kept open after it
+  // was settled (project-page.js).
+  const tick = (t) => archived ? `<span class="box" aria-hidden="true"></span>` : `<button type="button" class="box" data-close-open="${esc(t)}" aria-label="${esc(`Done: ${t}`)}"></button>`;
+  if (open.length) main.push(section("Still open", open.length, `<ul class="checks">${open.map((t) => `<li>${tick(t)}${page.inline(t)}</li>`).join("")}</ul>`));
   if (decided.length) main.push(section("Decided", decided.length, `<ul class="checks done">${decided.map((t) => `<li><span class="box" aria-hidden="true"><svg viewBox="0 0 16 16" width="0.75rem" height="0.75rem"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>${page.inline(t)}</li>`).join("")}</ul>`));
   // A project's context ends with the tile to add to it (project-page.js),
   // the same choices as its form on the dashboard.
@@ -430,10 +435,12 @@ function projectHtml(p, now = Date.now(), messages = [], goal = null, routines =
   const empty = !open.length && !decided.length && !context.length && !side.length && !p.summary && !p.about && !goal && !(messages || []).length;
   if (files) side.unshift(files);
 
-  // Back to the Projects tab at this project, and its form for what the page
-  // does not change (name, emoji, about, instructions).
+  // Back to the Projects tab at this project; its form for what the page
+  // does not change (name, emoji, about, instructions); Archive or Bring back;
+  // and Delete, asked about first: it is final (project-page.js).
   const at = `/dashboard#projects/${encodeURIComponent(p.id)}`;
-  return shell(`${p.emoji} ${p.name}`, `<header class="bar"><a class="back" href="${at}"><span aria-hidden="true">&larr;</span> All projects</a><a class="manage" href="${at}/edit">Edit</a></header>
+  return shell(`${p.emoji} ${p.name}`, `<header class="bar" data-project="${esc(p.id)}"><a class="back" href="${at}"><span aria-hidden="true">&larr;</span> All projects</a><span class="manage-row"><a class="manage" href="${at}/edit">Edit</a><button type="button" class="manage" data-archive="${archived ? "0" : "1"}">${archived ? "Bring back" : "Archive"}</button><button type="button" class="manage delete" data-delete>Delete</button></span></header>
+<div class="confirm" data-confirm hidden><span>Delete ${esc(p.emoji)} ${esc(p.name)}, its conversation and its Context Notes? Any files, Pinned Facts or routines created in it stay.</span><button type="button" class="goal-small" data-delete-yes>Delete</button><button type="button" class="goal-small goal-quiet" data-delete-no>Keep it</button></div>
 <div class="hero">
   <div class="mark" aria-hidden="true">${esc(p.emoji)}</div>
   <div class="titles">
@@ -449,7 +456,7 @@ ${empty ? `<p class="empty">Nothing here yet. Start a message with ${esc(p.emoji
 ${main.length && side.length ? `<div class="grid"><div class="col">${main.join("")}</div><aside class="col">${side.join("")}</aside></div>` : main.length || side.length ? `<div class="grid one"><div class="col">${[...main, ...side].join("")}</div></div>` : ""}
 ${conversationHtml(messages)}
 <footer>Start a message with <span class="em">${esc(p.emoji)}</span> in any chat to carry on with ${esc(p.name)}. Closedhand’s replies start with <span class="em">${esc(p.emoji)}</span> while you’re talking about it.</footer>
-${adding ? `<script src="/project-context.js" defer></script><script src="/project-page.js" defer></script>` : ""}`);
+${adding ? `<script src="/project-context.js" defer></script>` : ""}<script src="/project-page.js" defer></script>`);
 }
 
 function shell(title, inner) {
@@ -475,6 +482,11 @@ a { color: inherit; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme-pick="light"]) .brand img { filter: none; } }
 :root[data-theme-pick="dark"] .brand img { filter: none; }
 .manage, .back { font-size: 0.8125rem; color: var(--muted); text-decoration: none; }
+.manage-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.375rem 1rem; }
+button.manage { background: none; border: 0; padding: 0; font: inherit; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.875rem 0 0; padding: 0.75rem 1rem; border-radius: 0.75rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.12); font-size: 0.875rem; }
+.confirm[hidden] { display: none; }
+.confirm span { flex: 1 1 16rem; }
 .back:hover, .back:focus-visible { color: var(--accent); }
 .manage:hover, .manage:focus-visible { color: var(--accent); }
 .hero { display: flex; align-items: center; gap: 1.375rem; margin: 2.5rem 0 1.625rem; animation: rise .5s cubic-bezier(.2,.7,.2,1) both; }
@@ -493,8 +505,8 @@ h1 { font-size: clamp(1.7rem, 4.6vw, 2.5rem); font-weight: 700; line-height: 1.1
 .stands p { margin: 0; font-size: 1.05rem; }
 .rules li { position: relative; padding: 0.5625rem 0.75rem 0.5625rem 2.125rem; margin: 0 0 0.375rem; border-radius: 0.625rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.08); font-size: 0.9375rem; }
 .rules li::before { content: ""; position: absolute; left: 0.8125rem; top: 0.9375rem; width: 0.5625rem; height: 0.5625rem; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
-.label, h2 { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.625rem; }
-.count { margin-left: 0.5rem; color: var(--accent); }
+.label, h2 { display: block; font-size: 1rem; font-weight: 600; color: var(--fg); margin: 0 0 0.625rem; }
+.count { margin-left: 0.375rem; font-weight: 400; color: var(--muted); }
 .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 2.25rem; margin-top: 0.5rem; }
 .grid.one { grid-template-columns: minmax(0, 1fr); }
 section { margin: 0 0 1.875rem; animation: rise .5s .1s cubic-bezier(.2,.7,.2,1) both; }
@@ -502,6 +514,10 @@ ul { list-style: none; margin: 0; padding: 0; }
 .checks li { display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.625rem 0; border-bottom: 1px solid rgba(var(--fg-rgb),0.08); }
 .checks li:last-child { border-bottom: 0; }
 .box { flex: none; width: 1.125rem; height: 1.125rem; margin-top: 0.1875rem; border-radius: 50%; border: 1.6px solid rgba(var(--fg-rgb),0.35); display: grid; place-items: center; }
+button.box { padding: 0; background: none; cursor: pointer; transition: border-color .15s, background .15s; }
+button.box:hover, button.box:focus-visible { border-color: var(--ok); outline: none; box-shadow: 0 0 0 0.25rem rgba(var(--ok-rgb),0.16); }
+.checks li.closing { opacity: 0; transition: opacity .3s; }
+.checks li.closing .box { background: var(--ok); border-color: var(--ok); }
 .done .box { background: var(--ok); border-color: var(--ok); color: var(--bg); }
 .done li { color: var(--muted); }
 .ctx-list { display: grid; gap: 0.5rem; }
