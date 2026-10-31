@@ -677,12 +677,13 @@ test("a project follows what comes in: whole conversations with someone its reco
     { source: "gmail", type: "email", external_id: "promo", received_at: at(6), created_at: at(6), from: "Big Movers <deals@bigmovers.example>", subject: "House move? 20% off", labels: ["CATEGORY_PROMOTIONS", "INBOX"], body: "Book your house move" },
     msg("447700900001@s.whatsapp.net", "me", 5, "📦 paid the deposit"),
     msg("Mum", "Mum", 4, "Is Dana Fixture still helping with the van?"),
+    msg("Mum", "Mum", 3.5, "We should move the sofa before Christmas"),
     msg("Mum", "Mum", 3, "How is the baby sleeping?"),
     { source: "gmail", type: "email", external_id: "dana1", received_at: at(2.5), created_at: at(2.5), from: "Dana Fixture <dana@example.com>", subject: "Van", threadId: "t-dana", labels: ["INBOX"], body: "Van is fuelled for Saturday." },
     msg("York Removals", "me", 2, "Great, thanks"),
     msg("York Removals", "York Removals", 1, "Deposit received, thanks. The parking permit is sorted on our side."),
   ];
-  const answer = JSON.stringify({ changed: true, summary: "Deposit paid and the permit is sorted.", settled: [1, 2], new_open: ["Return the old keys", "return the old keys "], decisions: ["Movers at 9", "Removals sort the permit"] });
+  const answer = JSON.stringify({ changed: true, summary: "Deposit paid and the permit is sorted.", settled: [1, 2], new_open: ["Return the old keys", "return the old keys ", "Return the old keys to the agent"], decisions: ["Movers at 9", "Removals sort the permit"] });
   const tables = () => ({ data_cache: cache.map((r) => ({ ...r })), profiles: [{ id: "u1", settings: {}, timezone: "Europe/London" }], chat_links: [{ platform: "whatsapp_linked", platform_user_id: "447700900001@s.whatsapp.net" }] });
   const one = loadProjects([move(), wedding()], answer, { tables: tables() });
   await one.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
@@ -693,11 +694,12 @@ test("a project follows what comes in: whole conversations with someone its reco
   assert.match(asked, /Email from Dana Fixture[^\n]*Van is fuelled/, "mail from someone in it");
   assert.match(asked, /Is Dana Fixture still helping/, "from elsewhere, what names someone in it");
   assert.doesNotMatch(asked, /baby/, "but not the rest of that chat");
+  assert.doesNotMatch(asked, /sofa/, "nor a short word of its name, which says the same about anything");
   assert.doesNotMatch(asked, /paid the deposit|20% off/, "never their own chat with Closedhand, nor mail sent to a list");
   assert.match(asked, /Go through OPEN NOW one by one\. Drop an open item once what was said shows it answered, done or no longer needed/);
   assert.match(asked, /Only what is about this project changes it: leave out anything else these messages say, however personal\./);
   const p = one.rows[0];
-  assert.deepEqual(p.state.open, ["Return the old keys"], "what it settled goes, what is new comes once");
+  assert.deepEqual(p.state.open, ["Return the old keys"], "what it settled goes, what is new comes once, reworded or not");
   assert.deepEqual(p.state.people.map((x) => x.name), ["Dana Fixture"], "a list it did not give is kept, not emptied");
   assert.deepEqual(p.state.decisions, ["Movers at 9", "Removals sort the permit"]);
   assert.equal(p.summary, "Deposit paid and the permit is sorted.");
