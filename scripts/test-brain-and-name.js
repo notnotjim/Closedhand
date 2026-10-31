@@ -52,7 +52,7 @@ test('Pin a fact and changing one happen in the panel; a Context Note opens with
   assert.match(dash, /: await fetch\('\/api\/notes\/pin', \{ method: 'POST', headers: \{ 'Content-Type': 'application\/json' \}, body: JSON\.stringify\(\{ text: text \}\) \}\);/, 'a new fact is filed by Closedhand, as in chat');
   assert.doesNotMatch(dash, /id="fact-about"/, 'nobody has to say where it goes');
   assert.doesNotMatch(dash, /note-modal|saveNoteFromModal|editCurrentNote/, 'nothing left of the modal');
-  assert.match(dash, /onclick="openBrainNode\(\\'' \+ escapeAttr\(node\._external_id \|\| node\.title\) \+ '\\'\)"/, 'opened by its id, as the server keeps it');
+  assert.match(dash, /onclick="openBrainNode\(\\'' \+ escapeAttr\(node\._external_id \|\| node\.title\) \+ '\\', this\)"/, 'opened by its id, as the server keeps it, just under its row');
   assert.match(dash, /if \(preview && preview !== node\.title\) html \+= '<div class="preview-lines">'/, 'the start of the summary in the list');
   const nt = dash.indexOf('function noteText(content)');
   const notes = {};

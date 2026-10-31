@@ -1128,9 +1128,6 @@
     .choice-cards.alone .choice-head { display: none; }
     /* The person's own plan: set apart from what Managed Models are by a line,
        never a box of its own, which read as boxes in boxes in boxes. */
-    .llm-plan { margin: 1rem 0 0.75rem; padding: 0.875rem 0 0; border-top: 1px solid rgba(var(--fg-rgb),0.08); }
-    .llm-plan .account-action-desc { margin: 0.25rem 0 0; }
-    .llm-plan .plan-status { margin-left: 0.375rem; }
     /* A status in an option's label: the status word's colour, the label's size. */
     .seg-desc .plan-status { font-size: inherit; font-weight: 500; }
     /* Setting up their own LLM provider while Managed Models run: the form alone, open. */
@@ -1189,7 +1186,7 @@
     .included-ai-confirm-ways { display: flex; align-items: center; gap: 1.25rem; margin-top: 0.5rem; }
     .plan-status { font-size: 0.875rem; font-weight: 500; }
     .plan-status.on { color: var(--ok); }
-    .plan-status.cancelled { color: var(--accent); }
+    .plan-status.cancelled { color: var(--muted); }
     .plan-status.over { color: var(--muted); }
     .my-payments { border-top: 1px solid rgba(var(--fg-rgb),0.08); }
     .my-payments ul { list-style: none; margin: 0; padding: 0; font-size: 0.875rem; }
@@ -2490,7 +2487,7 @@
           <div class="settings-group" id="wallet-block" style="display:none;">
             <button type="button" class="settings-group-header furl-handle" id="wallet-handle" aria-expanded="false" aria-controls="wallet-body" onclick="toggleWallet()">
               <h2>Wallet <svg class="furl-chev" width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></h2>
-              <p class="section-desc">Cards and addresses Closedhand may use at checkout. It asks you first unless your rules say otherwise.</p>
+              <p class="section-desc">Cards and addresses Closedhand may use at checkout. You will always be asked to confirm first, unless your rules say otherwise.</p>
             </button>
             <div id="wallet-body" style="padding:0.75rem 1rem;" hidden>
               <p class="section-desc" data-railway="Card numbers are encrypted in your Railway account, and the LLM never sees them.">Card numbers are encrypted on your computer, and the LLM never sees them.</p>
@@ -2642,16 +2639,9 @@
                   <header class="choice-head"><h3 id="llm-managed-name">Closedhand Managed Models</h3><span class="plan-status" id="llm-managed-status"></span></header>
                   <p class="account-action-desc">Closedhand picks the best LLM for each job, from any provider, and switches when a better one is out.</p>
                   <p class="account-action-desc">Managed Models only ever uses LLM providers that do not store or train on your data or conversations.</p>
-                  <!-- The person's own plan, apart from what Managed Models are: a
-                       row as in My Account, with its status word and, once
-                       cancelled, the way to resume. -->
-                  <div class="account-action llm-plan" id="included-ai-plan-row">
-                    <div class="account-action-info">
-                      <div class="account-action-title"><span id="included-ai-plan-name"></span> <span class="plan-status" id="included-ai-plan-status" hidden></span></div>
-                      <div class="account-action-desc" id="included-ai-plan"></div>
-                    </div>
-                    <button type="button" class="account-action-btn" id="included-ai-resume" hidden onclick="setPlusCancel(false, this)">Resume</button>
-                  </div>
+                  <!-- What the person's plan means for them, in one sentence; the
+                       plan itself, Resume included, is in My Account. -->
+                  <p class="account-action-desc" id="included-ai-plan"></p>
                   <button type="button" class="cta" id="included-ai-use" hidden onclick="llmStepTo('managed')">Use Closedhand Managed Models</button>
                   <!-- What switching means, before it happens. -->
                   <div class="included-ai-confirm" id="included-ai-confirm" hidden>
@@ -2694,7 +2684,7 @@
           </div>
           <div id="brain-graph" style="display:none;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.1);border-radius:0.75rem;min-height:26.25rem;max-height:50vh;overflow:hidden;"></div>
           <div id="brain-list" style="max-height:60vh;overflow-y:auto;"></div>
-          <div id="brain-panel" style="display:none;background:var(--raised);border:1px solid var(--raised);border-radius:0.75rem;padding:1rem;margin-top:0.75rem;">
+          <div id="brain-panel" style="display:none;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.12);border-radius:0.75rem;padding:1rem;margin:0.5rem 0 0.75rem;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
               <h3 id="brain-panel-title" style="margin:0;font-size:1rem;color:var(--fg);"></h3>
               <button onclick="closeBrainPanel()" style="background:none;border:none;color:rgba(var(--fg-rgb),0.6);cursor:pointer;font-size:1.125rem;">&times;</button>
@@ -2709,7 +2699,7 @@
               <div class="fact-ways"><button type="submit" class="cta" id="fact-save">Pin it</button><button type="button" class="quiet-link" onclick="closeBrainPanel()">Cancel</button></div>
             </form>
             <div id="brain-panel-ways" style="margin-top:0.75rem;display:flex;gap:0.5rem;">
-              <button id="brain-panel-edit" style="padding:0.375rem 1rem;background:var(--accent-strong);color:var(--on-accent);border:none;border-radius:0.375rem;cursor:pointer;font-size:0.75rem;font-family:inherit;">Edit</button>
+              <button id="brain-panel-edit" style="padding:0.375rem 1rem;background:transparent;border:1px solid rgba(var(--fg-rgb),0.16);color:var(--fg);border-radius:0.375rem;cursor:pointer;font-size:0.75rem;font-family:inherit;">Edit</button>
               <button id="brain-panel-delete" onclick="deleteCurrentNote(this)" style="padding:0.375rem 1rem;background:transparent;border:1px solid rgba(var(--fg-rgb),0.16);color:var(--muted);border-radius:0.375rem;cursor:pointer;font-size:0.75rem;font-family:inherit;">Delete</button>
             </div>
           </div>
@@ -4593,28 +4583,24 @@
       var list = (data && data.own) || [];
       return { name: list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list[0] || '', many: list.length > 1 };
     }
-    // Where the person's own plan stands, as a row apart from what Managed
-    // Models are: its name, a status word as in My Account, what that means
-    // for Closedhand, and Resume once cancelled.
+    // What the person's plan means for Managed Models, in one sentence, and
+    // where the plan itself is: My Account, its one home. A row of its own
+    // here, with a status word and Resume beside "Use Closedhand Managed
+    // Models", read as two things to do about one.
     function renderIncludedPlan(data) {
       var plan = data.plan || {}, inUse = data.state === 'in-use';
-      var name = 'Your Closedhand+ subscription', status = null, said;
-      if (plan.name === 'ended') { status = ['Ended', 'over']; said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or renew Closedhand+ in My Account.'; }
-      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { status = ['Cancelled', 'cancelled']; said = 'Your free month runs until ' + planDay(plan.ends_at) + ', then Closedhand+ ends and nothing is charged.' + (inUse ? ' After that Closedhand needs your own LLM provider to reply.' : ''); }
-      else if (plan.name === 'plus' && plan.trial) { status = ['Free month', 'on']; said = plan.renews_at ? 'Your free month runs until ' + planDay(plan.renews_at) + ', then Closedhand+ renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'Your free month of Closedhand+ is running.'; }
-      else if (plan.name === 'plus' && plan.ends_at) { status = ['Cancelled', 'cancelled']; said = 'Continues until ' + planDay(plan.ends_at) + ', then ends.' + (inUse ? ' After that Closedhand needs your own LLM provider to reply.' : ''); }
-      else if (plan.name === 'plus') { status = ['Active', 'on']; said = 'Closedhand Managed Models come with it' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.'; }
+      var after = inUse ? ' After that Closedhand needs your own LLM provider to reply.' : '';
+      var said, tail = " Your plan and this month's use are in ";
+      if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or renew Closedhand+ in '; tail = ''; }
+      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'They come with your free month of Closedhand+, which ends on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume it in '; }
+      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'They come with your free month of Closedhand+, until ' + planDay(plan.renews_at) + ', then Closedhand+ renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'They come with your free month of Closedhand+.'; }
+      else if (plan.name === 'plus' && plan.ends_at) { said = 'They come with your Closedhand+, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + after; tail = ' Resume it in '; }
+      else if (plan.name === 'plus') { said = 'They come with your Closedhand+' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.'; }
       else {
-        name = 'Your first month';
         var left = Date.parse(plan.ends_at) - Date.now();
-        said = left > 0 && left <= 7 * 86400000 ? 'Closedhand Managed Models come with it, until ' + planDay(plan.ends_at) + '.' : 'Closedhand Managed Models come with it.';
+        said = left > 0 && left <= 7 * 86400000 ? 'They come with your first month, until ' + planDay(plan.ends_at) + '.' : 'They come with your first month.';
       }
-      document.getElementById('included-ai-plan-name').textContent = name;
-      var word = document.getElementById('included-ai-plan-status');
-      word.hidden = !status;
-      if (status) { word.textContent = status[0]; word.className = 'plan-status ' + status[1]; }
-      document.getElementById('included-ai-plan').replaceChildren(said + " Your plan and this month's use are in ", accountLink('My Account'), '.');
-      document.getElementById('included-ai-resume').hidden = !(plan.name === 'plus' && plan.ends_at);
+      document.getElementById('included-ai-plan').replaceChildren(said + tail, accountLink('My Account'), '.');
     }
     var includedState = null, llmStep = null;
     async function loadIncludedAi() {
@@ -8593,7 +8579,7 @@
             return '<span style="font-size: 0.8125rem;color:rgba(var(--fg-rgb),0.6);background:rgba(var(--fg-rgb),0.05);padding:1px 0.375rem;border-radius:0.25rem;margin-left:0.25rem;">' + t.replace(/</g, '&lt;') + '</span>';
           }).join('');
           var timeStr = n.updated_at ? new Date(n.updated_at).toLocaleDateString() : '';
-          html += '<div onclick="openBrainNode(\'' + jsq(n.title) + '\')" style="display:flex;align-items:center;gap:0.5rem;padding:0.4375rem 0.625rem;cursor:pointer;border-radius:0.375rem;transition:background 0.1s;" onmouseover="this.style.background=\'rgba(var(--fg-rgb),0.04)\'" onmouseout="this.style.background=\'transparent\'">';
+          html += '<div onclick="openBrainNode(\'' + jsq(n.title) + '\', this)" style="display:flex;align-items:center;gap:0.5rem;padding:0.4375rem 0.625rem;cursor:pointer;border-radius:0.375rem;transition:background 0.1s;" onmouseover="this.style.background=\'rgba(var(--fg-rgb),0.04)\'" onmouseout="this.style.background=\'transparent\'">';
           html += '<span style="font-size: 0.8125rem;color:rgba(var(--fg-rgb),0.6);">&#128196;</span>';
           html += '<span style="font-size:0.8125rem;color:var(--fg);flex:1;">' + n.title.replace(/</g, '&lt;') + '</span>';
           html += tagHtml;
@@ -8602,6 +8588,7 @@
         });
         html += '</div></div>';
       });
+      placeBrainPanel(null);
       listEl.innerHTML = html;
     }
 
@@ -8901,9 +8888,10 @@
     // A Context Note, from what the list already has: its title, when it was
     // written and the summary itself. Closedhand writes them; Delete is the
     // one thing to do with one.
-    function openBrainNode(id) {
+    function openBrainNode(id, row) {
       var note = (_brainData || []).find(function (n) { return n._external_id === id; }) || (_brainData || []).find(function (n) { return n.title === id; });
       if (!note) return;
+      placeBrainPanel(row);
       _currentNoteTitle = note._external_id || note.title;
       showPanelMode('note');
       document.getElementById('brain-panel-title').textContent = note.title;
@@ -8959,7 +8947,15 @@
       } catch (e) { err.textContent = e.message; err.hidden = false; }
       finally { save.disabled = false; save.textContent = words; }
     }
+    // A fact or note opens just under its row, where it was clicked; from the
+    // graph, or to pin a new fact, the panel stays below the list. The list
+    // is redrawn whole, so the panel goes back below it first.
+    function placeBrainPanel(row) {
+      var panel = document.getElementById('brain-panel'), list = document.getElementById('brain-list');
+      if (row && row.parentNode && list.contains(row)) row.after(panel); else list.after(panel);
+    }
     function closeBrainPanel() {
+      placeBrainPanel(null);
       document.getElementById('brain-panel').style.display = 'none';
       document.getElementById('fact-form').hidden = true;
       _currentNoteTitle = null;
@@ -9027,6 +9023,7 @@
     function renderMemoryList() {
       var el = document.getElementById('brain-list');
       if (!el) return;
+      placeBrainPanel(null);
       var html = '';
 
       // Pinned Facts, grouped. One flat list put a personal note next to a
@@ -9065,7 +9062,7 @@
             // A fact about the person is labelled by what it is (Name, Email):
             // labelled by its subject, a name and an email both showed the same name.
             var displayKey = factLabel(n);
-            html += '<div class="pinned-note-row" onclick="openPinnedNoteEdit(\'' + escapeAttr(n.key) + '\')">';
+            html += '<div class="pinned-note-row" onclick="openPinnedNoteEdit(\'' + escapeAttr(n.key) + '\', this)">';
             html += '<div style="width:11.25rem;flex-shrink:0;">';
             html += '<span style="font-size:0.75rem;color:var(--muted);font-weight:600;">' + escapeHtml(displayKey) + '</span>';
             html += '</div>';
@@ -9119,7 +9116,7 @@
         var tags = '';
         var links = node.links ? node.links.length : 0;
         var updated2 = node.updated_at ? new Date(node.updated_at).toLocaleDateString('en-GB', {day:'numeric',month:'short'}) : '';
-        html += '<div style="display:flex;align-items:center;gap:0.625rem;padding:0.5rem 0.75rem;cursor:pointer;border-radius:0.25rem;transition:background 0.15s;" onmouseover="this.style.background=\'rgba(var(--fg-rgb),0.04)\'" onmouseout="this.style.background=\'transparent\'" onclick="openBrainNode(\'' + escapeAttr(node._external_id || node.title) + '\')">';
+        html += '<div style="display:flex;align-items:center;gap:0.625rem;padding:0.5rem 0.75rem;cursor:pointer;border-radius:0.25rem;transition:background 0.15s;" onmouseover="this.style.background=\'rgba(var(--fg-rgb),0.04)\'" onmouseout="this.style.background=\'transparent\'" onclick="openBrainNode(\'' + escapeAttr(node._external_id || node.title) + '\', this)">';
         html += '<div style="flex:1;min-width:0;">';
         html += '<div style="font-size:0.8125rem;color:var(--fg);">' + escapeHtml(node.title) + '</div>';
         // A Context Note is a summary: the start of it shows, not only its title.
@@ -9155,9 +9152,10 @@
       }
     }
 
-    function openPinnedNoteEdit(key) {
+    function openPinnedNoteEdit(key, row) {
       var note = _pinnedFacts.find(function(n) { return n.key === key; });
       if (!note) return;
+      placeBrainPanel(row);
       var panel = document.getElementById('brain-panel');
       panel.style.display = 'block';
       // The panel says what the fact is about, what kind it is, and where it
@@ -9170,8 +9168,7 @@
       showPanelMode('fact');
       document.getElementById('brain-panel-edit').hidden = false;
       document.getElementById('brain-panel-title').textContent = title;
-      document.getElementById('brain-panel-tags').innerHTML = '<span style="font-size:0.6875rem;color:var(--warn);">' + escapeHtml(CAT[note.category] || CAT.topic) + '</span>' +
-        '<span style="font-size:0.6875rem;color:var(--muted);margin-left:0.625rem;">' + escapeHtml(who + (when ? ', ' + when : '')) + '. Always in front of Closedhand.</span>';
+      document.getElementById('brain-panel-tags').innerHTML = '<span style="font-size:0.6875rem;color:var(--muted);">' + escapeHtml(CAT[note.category] || CAT.topic) + ' \u00b7 ' + escapeHtml(who + (when ? ', ' + when : '')) + '</span>';
       document.getElementById('brain-panel-content').textContent = note.value || '';
       // Set handlers as properties, never by rewriting onclick attributes: an
       // attribute selector for the original onclick stops matching after the

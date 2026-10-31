@@ -76,6 +76,13 @@ test("Context Brain: which is which in All, each fact its own row, no machinery 
   assert.match(dash, /\.pinned-note-row \{[^}]*border-radius:0.375rem; background:rgba\(var\(--fg-rgb\),0\.035\);/);
   assert.doesNotMatch(dash, /access-badge|accessCount === 1 \? ' time'/, "how often a fact was used is bookkeeping, not something to act on");
   assert.match(dash, /var tags = '';/, "thread_summary and the like are never shown");
+  // A fact or note opens under its own row, in neutral words and buttons.
+  assert.match(dash, /onclick="openPinnedNoteEdit\(\\'' \+ escapeAttr\(n\.key\) \+ '\\', this\)">'/);
+  assert.match(dash, /function placeBrainPanel\(row\) \{\n\s*var panel = document\.getElementById\('brain-panel'\), list = document\.getElementById\('brain-list'\);\n\s*if \(row && row\.parentNode && list\.contains\(row\)\) row\.after\(panel\); else list\.after\(panel\);/);
+  assert.ok(dash.indexOf("placeBrainPanel(null);\n      listEl.innerHTML = html;") > 0, "back below the list before the list is drawn again");
+  assert.match(dash, /getElementById\('brain-panel-tags'\)\.innerHTML = '<span style="font-size:0\.6875rem;color:var\(--muted\);">' \+ escapeHtml\(CAT\[/, "no yellow, which is for the account");
+  assert.doesNotMatch(dash, /Always in front of Closedhand/, "nor machinery words");
+  assert.match(dash, /<button id="brain-panel-edit" style="padding:0\.375rem 1rem;background:transparent;border:1px solid/, "Edit is outlined: no filled buttons");
 });
 
 test("skills: a name says what it does and wraps rather than running off, never an app's logo; Intelligence Loop is gone", () => {

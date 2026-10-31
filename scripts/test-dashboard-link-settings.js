@@ -647,7 +647,7 @@ test("Usage costs: what the provider reported, else its listed price, with token
   assert.match(html, /const dayCost = usageManaged \? null : usageCost\(rows\.filter\(r => r\.day === day\)\);/, "each day's cost on the chart");
 });
 
-test("Models: a card for each way Closedhand can run, their own LLM provider first; one says In use, the other Not in use with the way to switch, and the plan is a row apart", () => {
+test("Models: a card for each way Closedhand can run, their own LLM provider first; one says In use, the other Not in use with the way to switch, and what the plan means in one sentence", () => {
   const els = {};
   const classes = () => { const on = new Set(); return { toggle: (c, yes) => { if (yes) on.add(c); else on.delete(c); }, contains: (c) => on.has(c) }; };
   const el = (id) => (els[id] ||= { id, hidden: false, textContent: "", className: "", style: {}, classList: classes(), querySelector: () => null,
@@ -657,11 +657,11 @@ test("Models: a card for each way Closedhand can run, their own LLM provider fir
   const word = (id) => els[id].hidden ? "" : `${els[id].textContent} (${els[id].className.trim()})`;
   const look = () => ({ own: word("llm-own-status"), managed: word("llm-managed-status"), ownCard: els["llm-own"].classList.contains("in-use"), managedCard: els["llm-managed"].classList.contains("in-use") });
 
-  // Their own in use, Closedhand+ cancelled: Managed Models not in use, their plan a row apart.
+  // Their own in use, Closedhand+ cancelled: Managed Models not in use, and what that means for them.
   box.state({ state: "available", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" }, own: ["DeepSeek"] });
   assert.deepEqual(look(), { own: "In use (plan-status on)", managed: "Not in use (plan-status over)", ownCard: true, managedCard: false }, "which runs, said plainly on each card");
   assert.deepEqual([els["byok-panel"].style.display, els["own-ai-switch"].hidden, els["included-ai-use"].hidden, els["included-ai-confirm"].hidden], ["", true, false, true]);
-  assert.equal(els["included-ai-plan-status"].textContent, "Cancelled", "the subscription's state is in its own row, not the models'");
+  assert.equal(els["included-ai-plan"].textContent, "They come with your Closedhand+, which you cancelled: it ends on 27 November. Resume it in My Account.", "the plan in one sentence; the plan itself is in My Account");
   box.llmStepTo("managed");
   assert.deepEqual([els["included-ai-use"].hidden, els["included-ai-confirm"].hidden, look().own], [true, false, "In use (plan-status on)"], "looking is not switching");
   assert.equal(els["included-ai-confirm-text"].textContent, "Closedhand will run on Closedhand Managed Models from now on. Switch back before 27 November to keep Closedhand replying. DeepSeek stays saved here, so you can switch back in one click.");

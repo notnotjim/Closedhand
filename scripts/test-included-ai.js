@@ -392,31 +392,30 @@ function settingsPlan() {
   const el = (id) => (els[id] ||= { id, hidden: false, textContent: "", className: "", replaceChildren(...parts) { this.textContent = parts.map((p) => typeof p === "string" ? p : `[${p.textContent}](${p.href})`).join(""); } });
   const box = { document: { createElement: () => ({ style: {} }), getElementById: el }, Date, out: null };
   vm.runInNewContext(page.slice(start, end) + "\nout = renderIncludedPlan;", box);
-  return (data) => {
-    box.out(data);
-    const word = els["included-ai-plan-status"];
-    return { name: els["included-ai-plan-name"].textContent, status: word.hidden ? null : `${word.textContent} (${word.className})`, said: els["included-ai-plan"].textContent, resume: !els["included-ai-resume"].hidden };
-  };
+  return (data) => { box.out(data); return els["included-ai-plan"].textContent; };
 }
 
-test("Settings shows the person's own plan as a row apart from what Managed Models are: its status word, what it means, and Resume once cancelled", () => {
+test("Settings says in one sentence what the person's plan means for Managed Models, and leaves the plan itself to My Account", () => {
   const plan = settingsPlan();
   const day = (days) => new Date(Date.now() + days * 86400000).toISOString();
   const link = " Your plan and this month's use are in [My Account](#account).";
-  assert.deepEqual(plan({ state: "in-use", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" } }), { name: "Your Closedhand+ subscription", status: "Cancelled (plan-status cancelled)",
-    said: "Continues until 27 November, then ends. After that Closedhand needs your own LLM provider to reply." + link, resume: true }, "cancelled but running: red, what it means, and the way back");
-  assert.deepEqual(plan({ state: "available", plan: { name: "plus" } }), { name: "Your Closedhand+ subscription", status: "Active (plan-status on)", said: "Closedhand Managed Models come with it." + link, resume: false });
-  assert.equal(plan({ plan: { name: "first-month", ends_at: day(20) } }).said, "Closedhand Managed Models come with it." + link, "the first month's end only in its last week");
-  assert.match(plan({ plan: { name: "first-month", ends_at: day(5) } }).said, /^Closedhand Managed Models come with it, until \d+ \w+\./);
-  assert.equal(plan({ plan: { name: "first-month" } }).status, null);
-  assert.equal(plan({ state: "in-use", plan: { name: "ended", was: "plus" } }).status, "Ended (plan-status over)", "an ended plan is said here too: Closedhand stops answering with it");
+  assert.equal(plan({ state: "in-use", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" } }),
+    "They come with your Closedhand+, which you cancelled: it ends on 27 November. After that Closedhand needs your own LLM provider to reply. Resume it in [My Account](#account).", "cancelled but running: what it means, and where to resume");
+  assert.equal(plan({ state: "available", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" } }), "They come with your Closedhand+, which you cancelled: it ends on 27 November. Resume it in [My Account](#account).");
+  assert.equal(plan({ state: "available", plan: { name: "plus" } }), "They come with your Closedhand+." + link);
+  assert.equal(plan({ plan: { name: "first-month", ends_at: day(20) } }), "They come with your first month." + link, "the first month's end only in its last week");
+  assert.match(plan({ plan: { name: "first-month", ends_at: day(5) } }), /^They come with your first month, until \d+ \w+\./);
+  assert.equal(plan({ state: "in-use", plan: { name: "ended", was: "plus" } }), "Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or renew Closedhand+ in [My Account](#account).", "an ended plan is said here too: Closedhand stops answering with it");
   const page = fs.readFileSync(path.join(root, "webapp/views/dashboard.html"), "utf8");
+  const card = page.slice(page.indexOf('<section class="choice-card" id="llm-managed"'), page.indexOf("</section>", page.indexOf('<section class="choice-card" id="llm-managed"')));
+  assert.doesNotMatch(card, />Resume<\/button>|id="included-ai-plan-status"|Your Closedhand\+ subscription/, "no subscription row beside the way to use them: that is My Account's");
+  assert.equal((card.match(/class="cta"/g) || []).length, 2, "one main action, Use Closedhand Managed Models, and Let's go once it is chosen");
   assert.doesNotMatch(page, /shareText|usage-included|of your free use left|free until/i);
   const server = fs.readFileSync(path.join(root, "webapp/server.js"), "utf8");
   const route = server.slice(server.indexOf('app.get("/api/included-ai"'), server.indexOf('app.post("/api/included-ai/use"'));
   assert.doesNotMatch(route, /credit|nearly/, "nothing about use: it is in My Account");
   assert.match(server, /await require\("\.\/included-ai-setup"\)\.refresh\(\)/, "cancelling or resuming shows at once");
-  assert.match(page, /onclick="setPlusCancel\(false, this\)">Resume<\/button>/, "Resume as in My Account");
+  assert.match(page, /<button type="button" class="account-action-btn" onclick="setPlusCancel\(false\)">Resume<\/button>/, "Resume is in My Account");
 });
 
 test("Usage never names the LLMs of Managed Models, and shows their use without prices, tokens or costs", () => {
@@ -610,9 +609,9 @@ test("Closedhand+'s free first month: offered in chat to an account that never h
   assert.match(usedUpText({ name: "ended", was: "first-month", plus_trial: true }, null, false, "UTC"), /or keep Managed Models with Closedhand\+, first month free, at closedhand\.com\/plus\.$/);
 
   const plan = settingsPlan();
-  assert.deepEqual(plan({ state: "in-use", price: "$10", plan: { name: "plus", trial: true, renews_at: "2026-12-01T12:00:00Z" } }),
-    { name: "Your Closedhand+ subscription", status: "Free month (plan-status on)", said: "Your free month runs until 1 December, then Closedhand+ renews at $10 a month unless you cancel. Your plan and this month's use are in [My Account](#account).", resume: false });
-  assert.equal(plan({ state: "in-use", plan: { name: "plus", trial: true, ends_at: "2026-12-01T12:00:00Z" } }).said.split(". ")[0], "Your free month runs until 1 December, then Closedhand+ ends and nothing is charged", "cancelled in its free month: nothing is charged");
+  assert.equal(plan({ state: "in-use", price: "$10", plan: { name: "plus", trial: true, renews_at: "2026-12-01T12:00:00Z" } }),
+    "They come with your free month of Closedhand+, until 1 December, then Closedhand+ renews at $10 a month unless you cancel. Your plan and this month's use are in [My Account](#account).");
+  assert.equal(plan({ state: "in-use", plan: { name: "plus", trial: true, ends_at: "2026-12-01T12:00:00Z" } }).split(". ")[0], "They come with your free month of Closedhand+, which ends on 1 December with nothing charged", "cancelled in its free month: nothing is charged");
 
   const setup = fs.readFileSync(path.join(root, "webapp/included-ai-setup.js"), "utf8");
   assert.match(setup, /if \(plan\.name === "plus" && plan\.trial === true\) out\.trial = true;\n\s*if \(plan\.name !== "plus" && plan\.plus_trial === true\) out\.plus_trial = true;/, "the computer keeps both, each only where it fits");
