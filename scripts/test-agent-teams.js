@@ -193,9 +193,11 @@ test("Closedhand plans which agent waits for which, runs the team as fast as the
   const src = read("lib/agents.js");
   assert.match(src, /if \(!resumeState && Array\.isArray\(task\.team\) && task\.team\.length && runtime\.teamSource === "dashboard" && !runtime\.teamDone\) \{/);
   assert.match(src, /atOnce: \(size\) => capacity\.atOnce\(k, size\),\n\s+partLimits: team\.TEAM_PART_LIMITS,/, "no cap of three for a team made by hand");
-  assert.match(src, /const TEAM_BRIEF = "You lead a team the person set up on their dashboard\./);
-  assert.match(src, /show both where two disagree and you cannot settle it, say plainly which part did not finish/);
-  assert.match(src, /Reply ONLY with JSON: \{\\"after\\": \{\\"<agent name>\\": \[\\"<agent name>\\", \.\.\.\]\}\}/);
+  const shared = read("lib/agent-team.js");
+  assert.match(shared, /const TEAM_BRIEF = "You lead a team the person set up on their dashboard\./);
+  assert.match(shared, /show both where two disagree and you cannot settle it, say plainly which part did not finish/);
+  assert.match(shared, /Reply ONLY with JSON: \{\\"after\\": \{\\"<agent name>\\": \[\\"<agent name>\\", \.\.\.\]\}\}/);
+  assert.match(src, /const after = await team\.planTeam\(goal, members, userId, userStore, model\);/);
   assert.match(read("lib/agent-team.js"), /m\.key = itemKey;/, "each agent's saved findings can be found again for Redo");
 });
 
@@ -240,4 +242,54 @@ test("a team's card: a line per agent, Working in green, waiting for whom, what 
   assert.match(done, />Redo</);
   assert.doesNotMatch(ctx.teamLines({ id: "t2", runtime: {} }, team.slice(0, 1), false), />Redo</, "a team from chat is redone by asking in chat");
   assert.match(dash, /\(team \? 'Team of ' \+ team\.length : 'Task'\)/);
+});
+
+// A routine can be a team, and a job set to start once (on a date, or the
+// first time something happens) waits under Waiting to start, not Routines.
+test("a routine keeps its agents and runs them first, keeping their state on the run", () => {
+  assert.match(read("migrations/081_team_routines.sql"), /ALTER TABLE automations ADD COLUMN IF NOT EXISTS members jsonb;\nALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS team jsonb;/);
+  const runner = read("lib/automations.js");
+  assert.match(runner, /if \(!resumeRow\?\.messages\?\.length && Array\.isArray\(config\.members\) && config\.members\.length\) \{/);
+  assert.match(runner, /store: \{ save: \(updates\) => updateRun\(runId, updates\), read: \(\) => getRun\(runId\) \},/, "kept on the routine's run");
+  assert.match(runner, /if \(Date\.now\(\) - startTime > timeoutMs \+ teamMs\) \{/, "the team's time is not the run's");
+  assert.match(read("lib/agents.js"), /dropConfirmation, runMapSub \};/);
+  const server = read("webapp/server.js");
+  const create = server.slice(server.indexOf('app.post("/api/automations"'), server.indexOf('app.put("/api/automations/:id"'));
+  assert.match(create, /const members = teamMembers\(req\.body\.members\);/);
+  assert.match(create, /\.\.\.\(members\.length \? \{ members \} : \{\}\),/);
+  assert.match(server, /if \(changes\.members !== undefined\) \{\n\s+const members = teamMembers\(changes\.members\);/);
+  assert.match(server, /select\(withMembers \? routineFields \+ ", members" : routineFields\)/, "routines carry their agents, and still load before the column exists");
+  assert.match(server, /\(withTeam \? ", team" : ""\)/, "a routine's runs carry their team's state");
+  assert.match(read("lib/agent-team.js"), /const store = opts\.store \|\| \{ save: \(updates\) => updateTask\(parentTaskId, updates\), read: \(\) => getTask\(parentTaskId\) \};/);
+});
+
+test("set for a date it runs once and is done; it waits under Waiting to start until then", async () => {
+  const server = read("webapp/server.js");
+  const fn = server.slice(server.indexOf("function watchFields(body, now = Date.now()) {"), server.indexOf("\n}\n", server.indexOf("function watchFields(body, now = Date.now()) {")) + 2);
+  const ctx = { watchKinds: { kindOf: () => null, choices: () => [], WHEN: ["arrives"] } };
+  require("node:vm").runInNewContext(fn + "; this.watchFields = watchFields;", ctx);
+  assert.equal(ctx.watchFields({ trigger_type: "scheduled", trigger_cron: "0 9 15 3 *", run_once: true }).fields.run_once, true);
+  assert.equal(ctx.watchFields({ trigger_type: "scheduled", trigger_cron: "0 8 * * 1" }).fields.run_once, false, "a repeating one repeats");
+  assert.equal(ctx.watchFields({ trigger_type: "manual", run_once: true }).fields.run_once, false);
+  const runner = read("lib/automations.js");
+  assert.match(runner, /if \(automation\.run_once\) \{\n\s+unregisterCron\(automation\.id\);\n\s+const \{ error \} = await require\("\.\/db"\)\.supabase\.from\("automations"\)\.update\(\{ status: "done", fired_at: new Date\(\)\.toISOString\(\)/);
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /<div class="mc-section-label">Waiting to start<\/div>\n\s+<p class="section-desc">Set for a date, or for the first time something happens\. Each moves to Working now when it starts\.<\/p>/);
+  assert.match(dash, /var waiting = routines\.filter\(function \(a\) \{ return a\.run_once && a\.status === 'active' && !a\.fired_at; \}\);\n\s+var repeating = routines\.filter\(function \(a\) \{ return !a\.run_once; \}\);/);
+  assert.ok(dash.indexOf('id="agents-waiting"') < dash.indexOf('<div class="mc-section-label">Working now</div>'), "first, before Working now");
+  assert.match(dash, /<option value="once">Once, on a date…<\/option>/);
+  assert.match(dash, /triggerCron = when\.getMinutes\(\) \+ ' ' \+ when\.getHours\(\) \+ ' ' \+ when\.getDate\(\) \+ ' ' \+ \(when\.getMonth\(\) \+ 1\) \+ ' \*';/);
+  assert.match(dash, /trigger_timezone: onceOnDate \? Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone : undefined,/, "in the time the person typed it");
+  assert.match(dash, /if \(when\.getTime\(\) <= Date\.now\(\) \+ 60000\) \{ errEl\.textContent = 'Choose a time that is still to come\.';/);
+});
+
+test("the form makes a team for any kind, and a routine that is a team says so", () => {
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /<div id="auto-team"><\/div>\n\s+<div class="team-links">/, "not only for Now");
+  assert.match(dash, /<p class="team-note" id="auto-team-note" hidden><\/p>/);
+  assert.match(dash, /members: members,\n/, "a routine saves its agents");
+  assert.match(dash, /\(Array\.isArray\(a\.members\) \? a\.members : \[\]\)\.forEach\(function \(m\) \{ addTeamAgent\(m\.name, m\.part\); \}\);/, "and opens with them");
+  assert.match(dash, /'Team of ' \+ a\.members\.length \+ ': ' \+ a\.members\.map\(function \(m\) \{ return m\.name; \}\)\.join\(', '\)/);
+  assert.match(dash, /\(Array\.isArray\(r\.team\) && r\.team\.length \? teamLines\(r, r\.team, r\.live\) : ''\)/, "a routine's run has a line per agent");
+  assert.match(read("lib/agent-team.js"), /Do not describe the team or how the work went \(who found what, that the parts agree\) unless a part did not finish or two disagree\./);
 });

@@ -254,8 +254,10 @@ test("New agent: a task now, or a routine; a team led by Closedhand is one task;
   assert.match(form, /<label for="auto-scope-input">Scope <span class="project-optional">Optional<\/span><\/label>/);
   for (const part of ['class="routine-only" style="flex:1;min-width:13.75rem;">\n      <label for="auto-template-select">', 'id="auto-skills-section" class="routine-only"', 'id="auto-advanced" class="routine-only"', 'class="auto-project-hint routine-only"'])
     assert.ok(form.includes(part), "a routine's own: " + part.slice(0, 40));
-  for (const part of ['id="auto-team" class="task-only"', 'id="auto-answer-row" class="task-only"', 'class="task-only team-links"'])
+  for (const part of ['id="auto-answer-row" class="task-only"'])
     assert.ok(form.includes(part), "a task's own: " + part.slice(0, 40));
+  for (const part of ['<div id="auto-team"></div>', '<div class="team-links">'])
+    assert.ok(form.includes(part), "a task's or a routine's: " + part.slice(0, 40));
   assert.match(dashboard, /#auto-create-modal\.task-mode \.routine-only, #auto-create-modal:not\(\.task-mode\) \.task-only \{ display: none !important; \}/);
   assert.match(dashboard, /document\.getElementById\('auto-create-modal'\)\.classList\.toggle\('task-mode', type === 'now'\);/);
   assert.doesNotMatch(dashboard, /if \(box\.children\.length >= 4\) return;/, "no cap of five");

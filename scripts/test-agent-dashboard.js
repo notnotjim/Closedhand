@@ -24,6 +24,7 @@ function dashboard({ tasks = [], routines = [], runs = [], fail = '' } = {}) {
     fetch: async url => { requests.push(url); return { ok: url !== fail, json: async () => body[url] }; },
     renderAgentCard: a => '[task ' + a.id + ']',
     renderAutomationCard: a => '[routine ' + a.id + ']',
+    renderWaitingCard: a => '[waiting ' + a.id + ']',
     renderRoutineRun: r => '[run ' + r.id + ']',
     loadUpcoming() { requests.push('upcoming'); },
     setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearInterval() {},
@@ -33,6 +34,13 @@ function dashboard({ tasks = [], routines = [], runs = [], fail = '' } = {}) {
   return { context, get, requests, timers, drawn, telling };
 }
 const at = (mins) => new Date(Date.now() - mins * 60000).toISOString();
+test('a job set to start once waits under Waiting to start, not Routines, and is gone from both once it has started', async () => {
+  const h = dashboard({ routines: [{ id: 'r1' }, { id: 'w1', run_once: true, status: 'active' }, { id: 'w2', run_once: true, status: 'done', fired_at: at(5) }] });
+  await h.context.loadAgents();
+  assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1]');
+  assert.equal(h.get('agents-waiting-list').innerHTML, '[waiting w1]');
+  assert.equal(h.get('agents-waiting').hidden, false);
+});
 test('Working now holds tasks going or waiting and routines mid-run; Done lately what finished this week', async () => {
   const h = dashboard({
     tasks: [{ id: 't1', status: 'running', created_at: at(4) }, { id: 't2', status: 'awaiting_confirmation', created_at: at(25) }, { id: 't3', status: 'completed', created_at: at(900), completed_at: at(880) }],

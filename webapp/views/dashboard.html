@@ -2328,6 +2328,14 @@
             <p class="goals-intro">Closedhand working for you: tasks you hand it here or in chat, and routines that run on their own.</p>
             <button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button>
           </div>
+          <!-- One-off jobs set for a date or the first time something happens:
+               not routines, since they never repeat. Each moves to Working now
+               when it starts. -->
+          <div id="agents-waiting" hidden style="margin-bottom:1.5rem;">
+            <div class="mc-section-label">Waiting to start</div>
+            <p class="section-desc">Set for a date, or for the first time something happens. Each moves to Working now when it starts.</p>
+            <div id="agents-waiting-list"></div>
+          </div>
           <div class="mc-section-label">Working now</div>
           <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from, or the one you picked.</p>
           <p class="section-desc" id="auto-active-empty">Nothing right now. Start one with + New agent, or ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on.</p>
@@ -7395,8 +7403,14 @@
       var tasks = got[0], routines = got[1], runs = got[2] || [];
       if (routines) {
         document.getElementById('auto-saved-error').hidden = true;
-        document.getElementById('auto-empty').style.display = routines.length ? 'none' : 'block';
-        drawInto('auto-saved-list', routines.map(renderAutomationCard).join(''));
+        // Set to run once and not yet started: Waiting to start. What has run
+        // its once shows only as its run.
+        var waiting = routines.filter(function (a) { return a.run_once && a.status === 'active' && !a.fired_at; });
+        var repeating = routines.filter(function (a) { return !a.run_once; });
+        document.getElementById('auto-empty').style.display = repeating.length ? 'none' : 'block';
+        drawInto('auto-saved-list', repeating.map(renderAutomationCard).join(''));
+        drawInto('agents-waiting-list', waiting.map(renderWaitingCard).join(''));
+        document.getElementById('agents-waiting').hidden = !waiting.length;
       } else {
         document.getElementById('auto-empty').style.display = 'none';
         document.getElementById('auto-saved-error').hidden = false;
@@ -7875,7 +7889,7 @@
         '<div class="routine-main">' +
           '<div class="auto-card-name">' + (a.project ? '<span class="auto-project" title="' + esc(a.project.name) + '">' + esc(a.project.emoji) + '</span> ' : '') + esc(a.name) + '</div>' +
           (about ? '<div class="routine-about">' + truncatePrompt(about, 140) + '</div>' : '') +
-          '<div class="auto-card-meta">' + esc([when, state, last].filter(Boolean).join(' \u00b7 ')) + '</div>' +
+          '<div class="auto-card-meta">' + esc([Array.isArray(a.members) && a.members.length ? 'Team of ' + a.members.length + ': ' + a.members.map(function (m) { return m.name; }).join(', ') : '', when, state, last].filter(Boolean).join(' \u00b7 ')) + '</div>' +
         '</div>' +
         '<div class="auto-card-actions">' +
           (ended ? '' : '<button type="button" onclick="runAutomation(\'' + a.id + '\')">Run now</button>') +
@@ -7891,13 +7905,31 @@
     function renderRoutineRun(r) {
       var cut = function (t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026' : t; };
       var step = (r.progress || []).map(function (e) { if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { e = { text: e }; } } return e && e.text; }).filter(Boolean).pop();
-      var how = r.live ? (step || 'Working on it') + ' \u00b7 started ' + dayAndTime(r.started_at)
+      var how = r.live ? (Array.isArray(r.team) && r.team.length ? 'started ' : (step || 'Working on it') + ' \u00b7 started ') + dayAndTime(r.started_at)
         : (r.status === 'failed' ? 'Could not finish' : 'Done') + ' \u00b7 ' + dayAndTime(r.completed_at || r.started_at) + (r.output_summary && r.status !== 'failed' ? ' \u00b7 ' + cut(r.output_summary, 110) : '');
       return '<div class="auto-card">' +
         '<div class="auto-card-header"><div class="auto-card-name">' + esc(r.name) + '</div>' +
           (!r.live && r.status !== 'failed' ? '<button class="agent-del" onclick="viewAutoRun(\'' + r.id + '\')">Open</button>' : '') +
         '</div>' +
-        '<div class="auto-card-meta">' + esc('Routine \u00b7 ' + how) + '</div>' +
+        '<div class="auto-card-meta">' + esc((Array.isArray(r.team) && r.team.length ? 'Routine, a team of ' + r.team.length : 'Routine') + ' \u00b7 ' + how) + '</div>' +
+        (Array.isArray(r.team) && r.team.length ? teamLines(r, r.team, r.live) : '') +
+      '</div>';
+    }
+
+    // A job set to start once, on a date or the first time something
+    // happens, before it starts: what it is, when it starts, Edit or delete.
+    function renderWaitingCard(a) {
+      var team = Array.isArray(a.members) && a.members.length ? a.members : null;
+      var when = a.trigger_type === 'event' ? watchLine(a) : 'starts ' + (a.next_at ? dayAndTime(a.next_at) : (a.trigger_human_schedule || 'on its date'));
+      return '<div class="auto-card routine-card" id="auto-' + a.id + '">' +
+        '<div class="routine-main">' +
+          '<div class="auto-card-name">' + esc(a.name) + '</div>' +
+          '<div class="auto-card-meta">' + esc((team ? 'Team of ' + team.length + ': ' + team.map(function (m) { return m.name; }).join(', ') : 'Task') + ' \u00b7 ' + when) + '</div>' +
+        '</div>' +
+        '<div class="auto-card-actions">' +
+          '<button type="button" onclick="editAgent(\'' + a.id + '\')">Edit</button>' +
+          '<button type="button" title="Delete this" aria-label="Delete this" onclick="deleteAutomation(\'' + a.id + '\', this)">' + TRASH_ICON + '</button>' +
+        '</div>' +
       '</div>';
     }
 
@@ -7971,6 +8003,7 @@
         if (!a) return;
         openCreateAutomationModal();
         document.getElementById('auto-modal-title').textContent = 'Routine';
+        (Array.isArray(a.members) ? a.members : []).forEach(function (m) { addTeamAgent(m.name, m.part); });
         document.querySelector('.auto-trigger-btn[data-trigger="now"]').hidden = true;
         document.getElementById('auto-name-input').value = a.name || '';
         var parts = splitRules(a.task_prompt || a.description || '');
@@ -7987,7 +8020,16 @@
           for (var i = 0; i < sel.options.length; i++) {
             if (sel.options[i].value === a.trigger_cron) { sel.selectedIndex = i; matched = true; break; }
           }
-          if (!matched && a.trigger_cron) {
+          if (a.run_once && a.trigger_cron) {
+            // Back from its cron to the day and time it was set for.
+            var c = a.trigger_cron.split(' '), now = new Date();
+            var at = new Date(now.getFullYear(), Number(c[3]) - 1, Number(c[2]), Number(c[1]), Number(c[0]));
+            if (at < now) at.setFullYear(at.getFullYear() + 1);
+            var pad = function (n) { return String(n).padStart(2, '0'); };
+            sel.value = 'once';
+            document.getElementById('auto-once-at').style.display = 'block';
+            document.getElementById('auto-once-at').value = at.getFullYear() + '-' + pad(at.getMonth() + 1) + '-' + pad(at.getDate()) + 'T' + pad(at.getHours()) + ':' + pad(at.getMinutes());
+          } else if (!matched && a.trigger_cron) {
             sel.value = 'custom';
             document.getElementById('auto-cron-input').style.display = 'block';
             document.getElementById('auto-cron-input').value = a.trigger_cron;
@@ -8102,6 +8144,7 @@
     function handleScheduleSelect() {
       var sel = document.getElementById('auto-schedule-select');
       document.getElementById('auto-cron-input').style.display = sel.value === 'custom' ? 'block' : 'none';
+      document.getElementById('auto-once-at').style.display = sel.value === 'once' ? 'block' : 'none';
     }
 
     var _modelDescs = {
@@ -8325,12 +8368,24 @@
       // Build schedule
       var triggerCron = null;
       var humanSchedule = null;
+      var onceOnDate = false;
+      var members = teamFromForm();
+      if (members.some(function (m) { return m.part.length < 3; })) { errEl.textContent = 'Say what each agent should do.'; errEl.style.display = 'block'; return; }
       if (_selectedTrigger === 'scheduled') {
         var sel = document.getElementById('auto-schedule-select');
         if (sel.value === 'custom') {
           triggerCron = document.getElementById('auto-cron-input').value.trim();
           if (!triggerCron) { errEl.textContent = 'Enter a cron expression.'; errEl.style.display = 'block'; return; }
           humanSchedule = triggerCron;
+        } else if (sel.value === 'once') {
+          // Once, on a date: that minute of that day, in this browser's time,
+          // and done once it has started (lib/automations.js).
+          var at = document.getElementById('auto-once-at').value, when = new Date(at);
+          if (!at || isNaN(when)) { errEl.textContent = 'Choose the day and time it starts.'; errEl.style.display = 'block'; return; }
+          if (when.getTime() <= Date.now() + 60000) { errEl.textContent = 'Choose a time that is still to come.'; errEl.style.display = 'block'; return; }
+          triggerCron = when.getMinutes() + ' ' + when.getHours() + ' ' + when.getDate() + ' ' + (when.getMonth() + 1) + ' *';
+          humanSchedule = 'Once, ' + when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' at ' + when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          onceOnDate = true;
         } else {
           triggerCron = sel.value;
           humanSchedule = sel.options[sel.selectedIndex].text;
@@ -8371,7 +8426,9 @@
             trigger_when: eventWhen,
             trigger_offset_minutes: eventOffset,
             watch_words: eventWords,
-            run_once: eventOnce,
+            run_once: _selectedTrigger === 'scheduled' ? onceOnDate : eventOnce,
+            trigger_timezone: onceOnDate ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined,
+            members: members,
             task_prompt: withRules(prompt + (scope ? SCOPE_HEAD + scope : ''), document.getElementById('auto-quality-input').value),
             task_model: _selectedModel,
             task_tools: taskTools.length > 0 ? taskTools : [],
@@ -8384,7 +8441,7 @@
         var data = await res.json();
         if (!res.ok) { errEl.textContent = data.error || 'Could not save'; errEl.style.display = 'block'; return; }
         closeCreateAutomationModal();
-        showToast('Routine saved');
+        showToast(onceOnDate || (_selectedTrigger === 'event' && eventOnce) ? 'Saved. It waits to start under Waiting to start.' : 'Routine saved');
         loadAgents();
       } catch (e) {
         errEl.textContent = 'Network error'; errEl.style.display = 'block';
@@ -9531,9 +9588,9 @@
       <label for="auto-scope-input">Scope <span class="project-optional">Optional</span></label>
       <textarea id="auto-scope-input" rows="2" placeholder="e.g. Only hotels within 15 minutes of the clinic, under ¥20,000 a night. Don't book anything." style="width:100%;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;padding:0.625rem;color:var(--fg);font-size:0.8125rem;font-family:inherit;resize:vertical;margin-bottom:0.625rem;"></textarea>
       <!-- A small team for a task: each its own job and scope, side by side. -->
-      <div id="auto-team" class="task-only"></div>
-      <div class="task-only team-links"><a href="#" class="team-add" id="auto-add-agent" onclick="event.preventDefault();addTeamAgent()">+ Add another agent</a><a href="#" class="team-add" id="auto-suggest-agents" onclick="event.preventDefault();suggestAgents()">Suggest agents</a></div>
-      <p class="task-only team-note" id="auto-team-note" hidden></p>
+      <div id="auto-team"></div>
+      <div class="team-links"><a href="#" class="team-add" id="auto-add-agent" onclick="event.preventDefault();addTeamAgent()">+ Add another agent</a><a href="#" class="team-add" id="auto-suggest-agents" onclick="event.preventDefault();suggestAgents()">Suggest agents</a></div>
+      <p class="team-note" id="auto-team-note" hidden></p>
 
       <label>When should it run?</label>
       <div style="display:flex;gap:0.375rem;margin-bottom:0.625rem;flex-wrap:wrap;" id="auto-trigger-options">
@@ -9560,8 +9617,10 @@
           <option value="0 17 * * 5">Every Friday at 5pm</option>
           <option value="0 9 * * 1-5">Every weekday at 9am</option>
           <option value="0 * * * *">Every hour</option>
+          <option value="once">Once, on a date…</option>
           <option value="custom">Custom schedule…</option>
         </select>
+        <input type="datetime-local" id="auto-once-at" aria-label="The day and time it starts" style="display:none;margin-top:0.375rem;width:100%;padding:0.5rem 0.625rem;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;color:var(--fg);font-size:0.8125rem;font-family:inherit;box-sizing:border-box;">
         <input type="text" id="auto-cron-input" placeholder="Cron expression (e.g. 0 8 * * *)" style="display:none;margin-top:0.375rem;width:100%;padding:0.5rem 0.625rem;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;color:var(--fg);font-size:0.8125rem;box-sizing:border-box;">
       </div>
 

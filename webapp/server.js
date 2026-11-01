@@ -5752,11 +5752,12 @@ app.get("/api/automations", async (req, res) => {
   try {
     const userId = getUserIdFromRequest(req);
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
-    const { data, error } = await supabase
-      .from("automations")
-      .select("id, name, description, status, trigger_type, trigger_cron, trigger_timezone, trigger_human_schedule, trigger_event_source, trigger_event_condition, trigger_when, trigger_offset_minutes, run_once, watch_words, expires_at, fired_at, task_model, task_use_cloud, output_urgent, output_destinations, chain_target_id, project_id, created_at, updated_at")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false });
+    // A routine's agents (automations.members) come from a migration the bot
+    // applies as it starts; until it has, routines are read without them.
+    const routineFields = "id, name, description, status, trigger_type, trigger_cron, trigger_timezone, trigger_human_schedule, trigger_event_source, trigger_event_condition, trigger_when, trigger_offset_minutes, run_once, watch_words, expires_at, fired_at, task_model, task_use_cloud, output_urgent, output_destinations, chain_target_id, project_id, created_at, updated_at";
+    const routines = (withMembers) => supabase.from("automations").select(withMembers ? routineFields + ", members" : routineFields).eq("user_id", userId).order("updated_at", { ascending: false });
+    let { data, error } = await routines(true);
+    if (error && /\bmembers\b/.test(String(error.message || ""))) ({ data, error } = await routines(false));
     if (error) throw error;
 
     // Each routine's run going now, its last finished one, and when a
@@ -5806,14 +5807,16 @@ app.get("/api/automations/recent", async (req, res) => {
   try {
     const userId = getUserIdFromRequest(req);
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
-    const { data: runs, error } = await supabase
+    const recent = (withTeam) => supabase
       .from("automation_runs")
-      .select("id, automation_id, status, progress, output_summary, error, started_at, completed_at")
+      .select("id, automation_id, status, progress, output_summary, error, started_at, completed_at" + (withTeam ? ", team" : ""))
       .eq("user_id", userId)
       .not("automation_id", "is", null)
       .gte("started_at", new Date(Date.now() - ARCHIVE_AFTER_MS).toISOString())
       .order("started_at", { ascending: false })
       .limit(40);
+    let { data: runs, error } = await recent(true);
+    if (error && /\bteam\b/.test(String(error.message || ""))) ({ data: runs, error } = await recent(false));
     if (error) throw error;
     const ids = [...new Set((runs || []).map((r) => r.automation_id))];
     const { data: autos, error: nameError } = ids.length
@@ -5844,7 +5847,9 @@ app.get("/api/automations/recent", async (req, res) => {
 // after it fires, or after 30 days with nothing. Saving one, new or edited,
 // arms it from now: it looks only at what arrives after.
 function watchFields(body, now = Date.now()) {
-  if (body.trigger_type !== "event") return { ok: true, fields: { run_once: false, watch_words: [], expires_at: null, trigger_when: "arrives", trigger_offset_minutes: 0 } };
+  // A routine set for a date runs once and is done (lib/automations.js).
+  const onceOnADate = ["schedule", "scheduled"].includes(body.trigger_type) && body.run_once === true && !!body.trigger_cron;
+  if (body.trigger_type !== "event") return { ok: true, fields: { run_once: onceOnADate, watch_words: [], expires_at: null, trigger_when: "arrives", trigger_offset_minutes: 0 } };
   const source = watchKinds.kindOf(body.trigger_event_source || "email");
   if (!source) return { ok: false, error: "A routine can watch " + watchKinds.choices().map((c) => c.label.toLowerCase()).join(", ") + "." };
   const when = watchKinds.WHEN.includes(body.trigger_when) ? body.trigger_when : "arrives";
@@ -5891,6 +5896,8 @@ app.post("/api/automations", async (req, res) => {
     if (project === false) return res.status(400).json({ error: "That project is not here any more." });
     const watch = watchFields(req.body);
     if (!watch.ok) return res.status(400).json({ error: watch.error });
+    const members = teamMembers(req.body.members);
+    if (members.error) return res.status(400).json({ error: members.error });
 
     // Rules travel in the instructions as a list, as the dashboard writes them.
     let fullPrompt = task_prompt;
@@ -5916,9 +5923,11 @@ app.post("/api/automations", async (req, res) => {
         platform: "dashboard", chat_id: null,
         project_id: project,
         ...watch.fields,
+        ...(members.length ? { members } : {}),
       })
       .select()
       .single();
+    if (error && members.length && /\bmembers\b/.test(String(error.message || ""))) return res.status(503).json({ error: "Closedhand is finishing an update. Try again in a minute." });
     if (error) throw error;
     res.json(data);
   } catch (e) {
@@ -5944,6 +5953,11 @@ app.put("/api/automations/:id", async (req, res) => {
       const watch = watchFields(changes);
       if (!watch.ok) return res.status(400).json({ error: watch.error });
       Object.assign(changes, watch.fields);
+    }
+    if (changes.members !== undefined) {
+      const members = teamMembers(changes.members);
+      if (members.error) return res.status(400).json({ error: members.error });
+      changes.members = members.length ? members : null;
     }
     if (changes.project_id !== undefined) {
       changes.project_id = await routineProject(userId, changes.project_id);
