@@ -5671,12 +5671,25 @@ app.get("/api/team-note", async (req, res) => {
   try {
     const { data } = await supabase.from("profiles").select("settings").eq("id", userId).single();
     const settings = data?.settings || {};
-    if (require("./included-ai").inUse(settings)) return res.json({ kind: "managed" });
+    const managed = require("./included-ai").inUse(settings);
     const conn = require("./model-policy").getRole(settings, "chat");
     let host = "";
     try { host = new URL(conn?.baseUrl || "").hostname; } catch (_) {}
     const local = ["localhost", "127.0.0.1", "[::1]", "host.docker.internal"].includes(host) || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
-    res.json({ kind: local ? "local" : "provider" });
+    // How much is left, where the provider says before anything is sent
+    // (OpenRouter's key check, Managed Models included), so the form can say
+    // a team may pause partway. Other providers don't say; nothing is shown.
+    let low = null, left = null;
+    if (host === "openrouter.ai" && conn?.apiKey) {
+      try {
+        const r = await fetch("https://openrouter.ai/api/v1/key", { headers: { Authorization: "Bearer " + conn.apiKey }, signal: AbortSignal.timeout(5000) });
+        const k = r.ok ? (await r.json())?.data || {} : {};
+        const free = k.free_model_daily_requests;
+        if (/:free$/.test(String(conn.model || "")) && free && Number.isFinite(Number(free.remaining)) && Number(free.remaining) < 50) { low = "free"; left = Number(free.remaining); }
+        else if (Number(k.limit) > 0 && Number.isFinite(Number(k.limit_remaining)) && Number(k.limit_remaining) / Number(k.limit) < 0.1) low = managed ? "fair-use" : "credit";
+      } catch (_) { /* no answer: nothing to say */ }
+    }
+    res.json({ kind: managed ? "managed" : local ? "local" : "provider", low, left });
   } catch (_) { res.json({ kind: "provider" }); }
 });
 
@@ -5707,6 +5720,26 @@ app.post("/api/agents/suggest", async (req, res) => {
   } catch (e) {
     console.error("[agents] suggest:", e.message);
     res.status(503).json({ error: "Closedhand couldn't suggest agents just now. Add them yourself or try again." });
+  }
+});
+
+// Carry on now: a task paused because its LLM's allowance ran out goes back
+// in the queue at once, for when the person knows it is back (topped up).
+// It would carry on by itself anyway (lib/agents.js, retryPaused).
+app.post("/api/agents/:id/carry-on", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not logged in" });
+  try {
+    const { data: task, error } = await supabase.from("agent_tasks").select("id, status, runtime").eq("id", req.params.id).eq("user_id", userId).maybeSingle();
+    if (error) throw error;
+    if (!task || task.status !== "blocked" || !task.runtime?.allowance) return res.status(409).json({ error: "It isn't paused any more." });
+    const { error: saveError } = await supabase.from("agent_tasks").update({ status: "pending", updated_at: new Date().toISOString() })
+      .eq("id", task.id).eq("user_id", userId).eq("status", "blocked");
+    if (saveError) throw saveError;
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[agents] carry on:", e.message);
+    res.status(500).json({ error: "Could not carry on just now." });
   }
 });
 

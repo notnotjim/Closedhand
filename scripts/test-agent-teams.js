@@ -180,7 +180,7 @@ test("the dashboard makes one task for a team, each agent named or numbered from
   assert.match(server, /\.\.\.\(members\.length \? \{ team: members\.map\(\(m\) => \(\{ name: m\.name, job: m\.part, after: \[\], status: "waiting"/);
   assert.match(server, /\.\.\.\(members\.length \? \{ teamSource: "dashboard" \} : \{\}\)/);
   assert.match(server, /app\.get\("\/api\/team-note"/, "not under /api/agents/:id, which would take it");
-  assert.match(server, /if \(require\("\.\/included-ai"\)\.inUse\(settings\)\) return res\.json\(\{ kind: "managed" \}\);/);
+  assert.match(server, /res\.json\(\{ kind: managed \? "managed" : local \? "local" : "provider", low, left \}\);/);
   assert.match(server, /never sending, paying or booking/, "suggested parts only look things up");
   const redo = server.slice(server.indexOf('app.post("/api/agents/:id/redo"'), server.indexOf("// AUTOMATIONS"));
   assert.match(redo, /task_worker_results"\)\.delete\(\)\.eq\("user_id", userId\)\.eq\("task_id", task\.id\)\.eq\("item_key", member\.key\)/, "only that agent's findings go");
@@ -252,7 +252,7 @@ test("a routine keeps its agents and runs them first, keeping their state on the
   assert.match(runner, /if \(!resumeRow\?\.messages\?\.length && Array\.isArray\(config\.members\) && config\.members\.length\) \{/);
   assert.match(runner, /store: \{ save: \(updates\) => updateRun\(runId, updates\), read: \(\) => getRun\(runId\) \},/, "kept on the routine's run");
   assert.match(runner, /if \(Date\.now\(\) - startTime > timeoutMs \+ teamMs\) \{/, "the team's time is not the run's");
-  assert.match(read("lib/agents.js"), /dropConfirmation, runMapSub \};/);
+  assert.match(read("lib/agents.js"), /dropConfirmation, runMapSub, pauseForAllowance, retryPaused \};/);
   const server = read("webapp/server.js");
   const create = server.slice(server.indexOf('app.post("/api/automations"'), server.indexOf('app.put("/api/automations/:id"'));
   assert.match(create, /const members = teamMembers\(req\.body\.members\);/);
@@ -324,4 +324,52 @@ test("starter teams join the routine templates, only for what is connected, and 
   assert.match(dash, /\(t\.members \? 'Team of ' \+ t\.members\.length \+ ' \\u00b7 ' : ''\)/);
   const order = dash.match(/var TEMPLATE_ORDER = \[([^\]]+)\]/)[1];
   for (const id of ["money-check", "meeting-prep", "inbox-sweep"]) assert.ok(order.includes(`'${id}'`), id);
+});
+
+// When the LLM's allowance is used up nothing can run until it is back: the
+// team stops cleanly, the task pauses with its work kept, says so once, and
+// carries on by itself.
+test("a used-up allowance stops the team cleanly: no new parts, the stopped one waits to run again", async () => {
+  capacity.reset();
+  db.tables.agent_tasks.push({ id: "task-dry", user_id: "u-team", progress: [] });
+  const started = [];
+  const runPart = async (userId, goal) => {
+    started.push(goal);
+    if (goal.includes("ryokan")) throw Object.assign(new Error("The LLM said its allowance is used up."), { code: "ALLOWANCE_USED", resetsAt: "2027-03-15T00:00:00Z" });
+    return { findings: "ok" };
+  };
+  const parts = [{ name: "Stays", goal: "A ryokan near Gion" }, { name: "Flights", goal: "Return flights" }, { name: "Trains", goal: "Rail passes" }];
+  let unhandled = 0; const count = () => unhandled++;
+  process.on("unhandledRejection", count);
+  await assert.rejects(withTaskRun({ userId: "u-team", taskId: "task-dry", budget: makeBudget() }, () =>
+    team.runTeam("u-team", "web", "c", "task-dry", parts, "fixture-model", { atOnce: () => 1, runPart })), (e) => e.code === "ALLOWANCE_USED" && e.resetsAt === "2027-03-15T00:00:00Z");
+  await new Promise((r) => setTimeout(r, 20));
+  process.off("unhandledRejection", count);
+  assert.equal(unhandled, 0);
+  assert.equal(started.length, 1, "nothing else starts once it has run out");
+  const row = db.tables.agent_tasks.find((t) => t.id === "task-dry");
+  assert.equal(row.team[0].status, "waiting", "it runs again when the allowance is back");
+});
+
+test("the task pauses, says so once, carries on by itself, and gives up only after two days", () => {
+  const src = read("lib/agents.js");
+  assert.match(src, /if \(error\.code === "ALLOWANCE_USED"\) return pauseForAllowance\(taskId, userId, platform, chatId, error\);/);
+  assert.match(src, /const ALLOWANCE_RETRY_MS = 30 \* 60 \* 1000;\nconst ALLOWANCE_GIVE_UP_MS = 2 \* 24 \* 60 \* 60 \* 1000;/);
+  assert.match(src, /status: "blocked", error: "The LLM said its allowance is used up\.",/);
+  assert.match(src, /allowance: \{ since, nextTry, resetsAt, told: true \}/);
+  assert.match(src, /if \(was\?\.told\) return;/, "said once");
+  assert.match(src, /const why = managed \? "this month's Managed Models use has reached its fair-use limit" : "your LLM provider says its allowance is used up";/);
+  assert.match(src, /I've paused "\$\{name\}": \$\{why\}\. What it has done so far is kept, and it carries on by itself \$\{when\}\./);
+  assert.match(src, /setInterval\(retryPaused, 60000\)\.unref\(\);/);
+  assert.match(src, /if \(!\(next <= Date\.now\(\)\)\) continue;/);
+  const server = read("webapp/server.js");
+  assert.match(server, /app\.post\("\/api\/agents\/:id\/carry-on"/);
+  assert.match(server, /if \(\/:free\$\/\.test\(String\(conn\.model \|\| ""\)\) && free/);
+  const dash = read("webapp/views/dashboard.html");
+  const fn = dash.slice(dash.indexOf("    function runWord(a) {"), dash.indexOf("    // Runs from before the check's notes") > 0 ? dash.indexOf("    function runOutcome(a) {") + 2000 : 0);
+  assert.match(dash, /if \(a\.status === 'blocked' && a\.runtime && a\.runtime\.allowance\) return 'Paused';/);
+  assert.match(dash, /'Your LLM\\'s allowance ran out\. What it has done is kept, and it carries on by itself '/);
+  assert.match(dash, />Carry on<\/button>/);
+  assert.match(dash, /This month\\'s Managed Models use is close to its fair-use limit, so a team may pause partway\. It carries on by itself when there\\'s more\./);
+  assert.ok(fn.length > 0);
 });

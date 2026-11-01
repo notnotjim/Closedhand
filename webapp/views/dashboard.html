@@ -7713,6 +7713,7 @@
       if (a.status === 'awaiting_confirmation') return 'Waiting for your answer';
       if (a.result) return 'Completed';
       if (a.status === 'cancelled') return 'Stopped';
+      if (a.status === 'blocked' && a.runtime && a.runtime.allowance) return 'Paused';
       if (a.status === 'blocked') return 'Needs attention';
       return "Couldn't finish";
     }
@@ -7725,6 +7726,10 @@
         return first || 'The answer went to the chat you asked in.';
       }
       if (a.status === 'cancelled') return 'Stopped before it finished.';
+      if (a.status === 'blocked' && a.runtime && a.runtime.allowance) {
+        var back = a.runtime.allowance.resetsAt;
+        return 'Your LLM\'s allowance ran out. What it has done is kept, and it carries on by itself ' + (back ? 'when it\'s back, ' + dayAndTime(back) : 'once your LLM takes requests again') + '.';
+      }
       if (a.status === 'blocked') return 'It needs something from you to carry on.';
       var why = couldNotFinish(a.error);
       return why.charAt(0).toUpperCase() + why.slice(1) + '.';
@@ -7768,6 +7773,14 @@
       }).join('');
       var unfinished = going && team.some(function (m) { return m.status !== 'done' && m.status !== 'stopped'; });
       return '<div class="team-members">' + rows + '</div>' + (unfinished ? '<div class="team-lead">Then Closedhand puts them together and sends one answer.</div>' : '');
+    }
+    async function carryOn(btn, id) {
+      btn.disabled = true;
+      var res = await fetch('/api/agents/' + encodeURIComponent(id) + '/carry-on', { method: 'POST' }).catch(function () { return null; });
+      var data = res ? await res.json().catch(function () { return {}; }) : {};
+      if (!res || !res.ok) { btn.disabled = false; showToast(data.error || 'Could not carry on just now.', true); return; }
+      showToast('Carrying on.');
+      loadAgents();
     }
     function toggleTeamLine(row) {
       var full = row.querySelector('.tm-full');
@@ -7904,7 +7917,8 @@
         // Waiting for an answer is still working: it stops, never deletes.
         : a.status === 'awaiting_confirmation'
         ? '<button class="agent-del" title="Stop this task" style="color:var(--accent-strong);border-color:rgba(var(--fg-rgb),0.1);" onclick="event.stopPropagation();stopAgentRun(\'' + a.id + '\', this, true)">Stop</button>'
-        : '<button class="agent-del" title="Delete this run" aria-label="Delete this run" onclick="event.stopPropagation();confirmAgentDelete(this, \'' + a.id + '\', ' + !!a.report_id + ')">' + TRASH_ICON + '</button>';
+        : (a.status === 'blocked' && a.runtime && a.runtime.allowance ? '<button class="agent-del" title="Carry on now, once your LLM\'s allowance is back" onclick="event.stopPropagation();carryOn(this, \'' + a.id + '\')">Carry on</button>' : '') +
+          '<button class="agent-del" title="Delete this run" aria-label="Delete this run" onclick="event.stopPropagation();confirmAgentDelete(this, \'' + a.id + '\', ' + !!a.report_id + ')">' + TRASH_ICON + '</button>';
 
       // The finished work, as a file. Same content as the expanded card,
       // typeset server-side, so what leaves the dashboard looks as considered
@@ -8289,7 +8303,16 @@
       names.forEach(function (n, i) { n.placeholder = 'Agent ' + (i + 1); });
       var count = names.length, note = document.getElementById('auto-team-note');
       note.hidden = !count;
-      note.textContent = count ? 'Closedhand leads the team. It gives each agent its part, waits where one part needs another\'s result, and sends you one answer.' + (count >= 6 ? ' ' + bigTeamNote(count) : '') : '';
+      note.textContent = count ? 'Closedhand leads the team. It gives each agent its part, waits where one part needs another\'s result, and sends you one answer.' + (count >= 6 ? ' ' + bigTeamNote(count) : '') + (_teamLow ? ' ' + lowNote() : '') : '';
+    }
+    // Where the LLM says before anything is sent that little is left
+    // (OpenRouter, Managed Models included): a team may pause partway, and
+    // carries on by itself when there is more.
+    var _teamLow = null, _teamLeft = null;
+    function lowNote() {
+      if (_teamLow === 'free') return 'Your LLM\'s free plan has ' + _teamLeft + ' requests left today, and a team can use that many quickly. If they run out, the team pauses and carries on by itself when they\'re back.';
+      if (_teamLow === 'fair-use') return 'This month\'s Managed Models use is close to its fair-use limit, so a team may pause partway. It carries on by itself when there\'s more.';
+      return 'Your LLM provider\'s credit is nearly used up, so a team may pause partway. It carries on by itself once there\'s more.';
     }
     function bigTeamNote(n) {
       if (_teamNoteKind === 'managed') return 'A team of ' + n + ' does the work of ' + n + ' agents at once, so it uses this month\'s fair use about ' + n + ' times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.';
@@ -8354,7 +8377,7 @@
       document.getElementById('auto-team').innerHTML = '';
       document.getElementById('auto-add-agent').hidden = false;
       renumberTeam();
-      if (_teamNoteKind == null) fetch('/api/team-note').then(function (r) { return r.json(); }).then(function (d) { _teamNoteKind = d.kind || 'provider'; renumberTeam(); }).catch(function () {});
+      fetch('/api/team-note').then(function (r) { return r.json(); }).then(function (d) { _teamNoteKind = d.kind || 'provider'; _teamLow = d.low || null; _teamLeft = d.left; renumberTeam(); }).catch(function () {});
       var emailHint = document.getElementById('auto-email-hint');
       if (emailHint) emailHint.hidden = true;
       document.getElementById('auto-template-select').value = '';
