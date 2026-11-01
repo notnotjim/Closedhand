@@ -2200,6 +2200,10 @@
           .wallet-card-row { display:flex; flex-wrap:wrap; align-items:center; gap:0.375rem 0.625rem; padding:0.5rem 0.625rem; background:var(--raised); border:1px solid rgba(var(--fg-rgb),0.16); border-radius:0.625rem; font-size:0.8125rem; color:var(--fg); }
           .wallet-card-row .muted { color:var(--muted); font-size:0.75rem; min-width:0; }
           .wallet-card-row .wallet-row-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:0.375rem 0.625rem; margin-left:auto; }
+          /* The default card and the home address say so in In use's green,
+             where the others offer Make default or Make home. */
+          .wallet-card-row .wallet-status { margin-left:auto; font-size:0.8125rem; }
+          .wallet-card-row .wallet-status + .wallet-row-actions { margin-left:0; }
           .wallet-card-row select { padding:0.1875rem 0.5rem; background:var(--bg); border:1px solid rgba(var(--fg-rgb),0.16); border-radius:0.375rem; color:var(--fg); font:inherit; font-size:0.75rem; }
           #wallet-cards .int-wrap, #wallet-addresses .int-wrap { margin-top:2px; }
           /* Paste anything to connect it: a field like the others, outlined, its
@@ -4406,7 +4410,7 @@
     }
 
     async function deleteMcp(id, btn) {
-      if (!(await askFirst(btn, { text: 'Disconnect this connection? Closedhand stops using it and deletes what it kept from it.', yes: 'Disconnect' }))) return;
+      if (!(await askFirst(btn.closest('.conn-drawer-actions') || btn, { text: 'Disconnect this connection? Closedhand stops using it and deletes what it kept from it.', yes: 'Disconnect' }))) return;
       var res = await fetch('/api/mcps/' + id, { method: 'DELETE' });
       if (res.ok) { showToast('Disconnected'); loadMcps(); }
       else showToast('Could not disconnect', true);
@@ -4476,7 +4480,7 @@
       const msg = isSignin
         ? `This revokes Closedhand's access to your ${name} account (including any extra accounts) and signs you out, since this is how you log in.`
         : BANK_DISCONNECT[service] || `Closedhand will lose access to this service.`;
-      var answer = await askFirst(btn, { text: 'Disconnect ' + name + '? ' + msg, yes: 'Disconnect', check: BANK_DISCONNECT[service] ? BANK_PURGE : KEPT_PURGE });
+      var answer = await askFirst(btn.closest('.conn-drawer-actions') || btn, { text: 'Disconnect ' + name + '? ' + msg, yes: 'Disconnect', check: BANK_DISCONNECT[service] ? BANK_PURGE : KEPT_PURGE });
       if (!answer) return;
       const res = await fetch("/api/disconnect", {
         method: "POST",
@@ -5546,7 +5550,8 @@
           if (c.limits && c.limits.per_month != null) lim.push(money(c.limits.per_month, l.currency) + ' a month');
           return '<div class="wallet-card-row" data-id="' + c.id + '">' +
             '<span style="font-weight:600;">' + escHtml(c.brand || 'Card') + ' •••• ' + escHtml(c.last4) + '</span>' +
-            '<span class="muted">' + String(c.exp_month).padStart(2, '0') + '/' + String(c.exp_year).slice(-2) + (c.label ? ' · ' + escHtml(c.label) : '') + (c.is_default ? ' · default' : '') + ' · ' + (billedTo ? 'billed to ' + escHtml(addressName(billedTo)) : 'no billing address') + (lim.length ? ' · ' + lim.join(', ') : '') + '</span>' +
+            '<span class="muted">' + String(c.exp_month).padStart(2, '0') + '/' + String(c.exp_year).slice(-2) + (c.label ? ' · ' + escHtml(c.label) : '') + ' · ' + (billedTo ? 'billed to ' + escHtml(addressName(billedTo)) : 'no billing address') + (lim.length ? ' · ' + lim.join(', ') : '') + '</span>' +
+            (c.is_default ? '<span class="plan-status on wallet-status">Default</span>' : '') +
             '<span class="wallet-row-actions">' +
             (c.is_default ? '' : '<button class="conn-btn conn-btn-manage" onclick="setDefaultCard(\'' + c.id + '\')">Make default</button>') +
             '<button class="conn-btn conn-btn-manage" onclick="openCardForm(\'' + c.id + '\')">Edit</button>' +
@@ -5560,7 +5565,8 @@
         document.getElementById('wallet-addresses').innerHTML = (addrs.length ? addrs.map(function(a) {
           return '<div class="wallet-card-row" data-id="' + a.id + '">' +
             '<span style="font-weight:600;">' + escHtml(addressName(a)) + '</span>' +
-            '<span class="muted">' + escHtml(a.label ? addressLine(a) : addressLine(Object.assign({}, a, { line1: '' }))) + (a.is_home ? ' · home' : '') + '</span>' +
+            '<span class="muted">' + escHtml(a.label ? addressLine(a) : addressLine(Object.assign({}, a, { line1: '' }))) + '</span>' +
+            (a.is_home ? '<span class="plan-status on wallet-status">Home</span>' : '') +
             '<span class="wallet-row-actions">' +
             (a.is_home ? '' : '<button class="conn-btn conn-btn-manage" onclick="makeHomeAddress(\'' + a.id + '\')">Make home</button>') +
             '<button class="conn-btn conn-btn-manage" onclick="openAddressForm(\'' + a.id + '\')">Edit</button>' +
@@ -5808,7 +5814,7 @@
     async function removeWalletAddress(id, btn) {
       var billed = _walletCards.filter(function (c) { return c.billing && c.billing.address_id === id; });
       var text = 'Remove this address from the Wallet?' + (billed.length ? ' ' + billed.map(function (c) { return (c.brand || 'Card') + ' •••• ' + c.last4; }).join(' and ') + (billed.length > 1 ? ' have' : ' has') + ' no billing address until you choose another.' : '');
-      if (!(await askFirst(btn, { text: text, yes: 'Remove' }))) return;
+      if (!(await askFirst(btn.closest('.wallet-row-actions') || btn, { text: text, yes: 'Remove' }))) return;
       var res = await fetch('/api/wallet/addresses/' + id, { method: 'DELETE' });
       if (res.ok) { showToast('Removed'); loadWallet(); } else showToast('Could not remove it', true);
     }
@@ -5846,7 +5852,7 @@
       loadWallet();
     }
     async function removeWalletCard(id, btn) {
-      if (!(await askFirst(btn, { text: 'Remove this card from the Wallet? Closedhand can no longer pay with it.', yes: 'Remove' }))) return;
+      if (!(await askFirst(btn.closest('.wallet-row-actions') || btn, { text: 'Remove this card from the Wallet? Closedhand can no longer pay with it.', yes: 'Remove' }))) return;
       var res = await fetch('/api/wallet/' + id, { method: 'DELETE' });
       if (res.ok) { showToast('Removed'); loadWallet(); } else showToast('Could not remove it', true);
     }
@@ -9261,7 +9267,7 @@
 
     async function deleteCurrentNote(btn) {
       if (!_currentNoteTitle) return;
-      if (!(await askFirst(btn, { text: 'Delete the Context Note \u201c' + _currentNoteTitle + '\u201d for good?', yes: 'Delete' }))) return;
+      if (!(await askFirst(btn.closest('#brain-panel-ways') || btn, { text: 'Delete the Context Note \u201c' + _currentNoteTitle + '\u201d for good?', yes: 'Delete' }))) return;
       try {
         var res = await fetch('/api/knowledge/' + encodeURIComponent(_currentNoteTitle), { method: 'DELETE' });
         if (!res.ok) { showToast('Could not delete', true); return; }

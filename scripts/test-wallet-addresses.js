@@ -162,6 +162,20 @@ test("Settings adds, changes and removes addresses behind the dashboard's own ch
   assert.doesNotMatch(dash, /wc-postcode|Billing postcode/);
 });
 
+test("the home address and the default card say so where the others offer to be made so, and removing one asks in place of its buttons", () => {
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /\(a\.is_home \? '<span class="plan-status on wallet-status">Home<\/span>' : ''\) \+\n\s*'<span class="wallet-row-actions">' \+\n\s*\(a\.is_home \? '' : '<button class="conn-btn conn-btn-manage" onclick="makeHomeAddress/);
+  assert.match(dash, /\(c\.is_default \? '<span class="plan-status on wallet-status">Default<\/span>' : ''\) \+\n\s*'<span class="wallet-row-actions">' \+\n\s*\(c\.is_default \? '' : '<button class="conn-btn conn-btn-manage" onclick="setDefaultCard/);
+  assert.doesNotMatch(dash, /' · home'|' · default'/, "no longer a faint word at the end of the line");
+  assert.match(dash, /\.wallet-card-row \.wallet-status \{ margin-left:auto; font-size:0\.8125rem; \}/);
+  // The question takes the place of the whole row of buttons, so Edit and the
+  // rest never sit beside it; the same for every list of that shape.
+  assert.equal((dash.match(/askFirst\(btn\.closest\('\.wallet-row-actions'\) \|\| btn, /g) || []).length, 2, "a card and an address");
+  assert.match(dash, /askFirst\(btn\.closest\('#brain-panel-ways'\) \|\| btn, \{ text: 'Delete the Context Note/);
+  assert.equal((dash.match(/askFirst\(btn\.closest\('\.conn-drawer-actions'\) \|\| btn, /g) || []).length, 2, "an MCP server and a connection");
+  assert.match(dash, /askFirst\(btn\.closest\('\.auto-card-actions'\) \|\| btn, \{ text: 'Delete this routine for good\?'/);
+});
+
 test("the folded spending rules say what they are now, in one line", () => {
   const dash = read("webapp/views/dashboard.html");
   const grab = (name) => dash.slice(dash.indexOf("function " + name + "("), dash.indexOf("\n    }\n", dash.indexOf("function " + name + "(")) + 6);
