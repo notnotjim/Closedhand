@@ -5660,8 +5660,9 @@ function teamMembers(list) {
     let name = String(m?.name || "").replace(/\s+/g, " ").trim().slice(0, 40) || `Agent ${i + 1}`;
     for (let n = 2; seen.has(name.toLowerCase()); n++) name = `${String(m?.name || `Agent ${i + 1}`).trim().slice(0, 36)} (${n})`;
     seen.add(name.toLowerCase());
-    // Let act on sites (book, pay, sign in) when the person ticked it; read
-    // only otherwise (lib/agents.js, actGate).
+    // Let take actions (book, pay, send, change things) when the person ticked
+    // it, under the same settings as Closedhand; looks things up only otherwise
+    // (lib/agents.js, actGate).
     members.push({ name, part, ...(m?.acts === true ? { acts: true } : {}) });
   }
   return members;

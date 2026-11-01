@@ -1714,8 +1714,8 @@
     .team-remove { background: none; border: 0; padding: 0; color: var(--muted); font: inherit; font-size: 0.75rem; cursor: pointer; }
     .team-remove:hover { color: var(--fg); }
     #auto-team-add { margin: 0.5rem 0 0.875rem; }
-    /* Read only unless ticked: an agent let to act books and pays within the
-       spending rules, the same checkbox as the Wallet's. */
+    /* Looks things up only, unless ticked: an agent let take actions acts
+       under the same settings as Closedhand, the same checkbox as the Wallet's. */
     .agent-modal .team-acts { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 0; font-size: 0.8125rem; font-weight: 400; color: var(--fg); cursor: pointer; }
     .agent-modal .team-acts input { flex: none; width: 0.875rem; height: 0.875rem; margin: 0; padding: 0; accent-color: var(--accent-strong); }
     .agent-modal .team-acts-note { margin: 0.25rem 0 0 1.375rem; font-size: 0.75rem; line-height: 1.5; color: var(--muted); }
@@ -8314,8 +8314,8 @@
       el.className = 'team-agent';
       el.innerHTML = '<div class="team-agent-head"><input type="text" class="team-name" maxlength="40" autocomplete="off" aria-label="This agent\'s name"><button type="button" class="team-remove" onclick="this.closest(\'.team-agent\').remove();renumberTeam()">Remove</button></div>' +
         '<textarea class="team-goal" rows="2" aria-label="What this agent does" placeholder="What this one does, e.g. find flights from Osaka to Seoul on 8 Nov"></textarea>' +
-        '<label class="team-acts"><input type="checkbox" class="team-acts-box" onchange="this.closest(\'.team-agent\').querySelector(\'.team-acts-note\').hidden = !this.checked"> Can book and pay on sites</label>' +
-        '<p class="team-acts-note" hidden>Within your spending rules: anything they say to ask about, Closedhand asks you first.</p>';
+        '<label class="team-acts"><input type="checkbox" class="team-acts-box" onchange="this.closest(\'.team-agent\').querySelector(\'.team-acts-note\').hidden = !this.checked"> Can take actions</label>' +
+        '<p class="team-acts-note" hidden>It can book, pay, send messages and change things for you, under the same settings as Closedhand: your spending rules, and asking before sending messages. Whatever those say to ask you about, Closedhand asks you first.</p>';
       box.appendChild(el);
       if (name) el.querySelector('.team-name').value = name;
       if (part) el.querySelector('.team-goal').value = part;

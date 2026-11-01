@@ -477,7 +477,7 @@ test("asked in chat, dropped with a reason, a change in the person's own words, 
 test("agents read pages in the browser, each in tabs of its own, but never click, type, sign in or pay", () => {
   const src = read("lib/agents.js");
   assert.match(src, /enum: \["read_pages"\]/, "the only action an agent is offered");
-  assert.match(src, /acts \? \{ name: browse\.name, description: browse\.description, input_schema: browse\.input_schema \} : AGENT_READ_PAGES\]/);
+  assert.match(src, /return browse && usable\(browse\) \? \[\.\.\.tools, AGENT_READ_PAGES\] : tools;/);
   assert.match(src, /r = b\.input\?\.action === "read_pages" \? await readPagesFor\(userId, platform, chatId, b\.input\)\n\s+: \{ error: "Agents only read pages here/, "anything else is refused, whatever it asks");
   assert.match(src, /return handleInternalTool\("sandbox_browse", \{ action: "read_pages", urls, _userId: userId, _chatId: chatId \}\);/, "only the urls go through");
   assert.match(src, /const urls = Array\.isArray\(input\?\.urls\) \? input\.urls : input\?\.url \? \[input\.url\] : \[\];/, "one page as url reads too");
@@ -489,10 +489,14 @@ test("agents read pages in the browser, each in tabs of its own, but never click
 
 // Read only unless the person ticks "Can book and pay on sites" for an agent:
 // then it acts under every check Closedhand runs, taking turns on the page.
-test("an agent let to act gets the whole browser, under Closedhand's own checks", () => {
+test("an agent let take actions gets Closedhand's own tools, under Closedhand's own checks", () => {
   const src = read("lib/agents.js");
-  assert.match(src, /return \[\.\.\.tools, acts \? \{ name: browse\.name, description: browse\.description, input_schema: browse\.input_schema \} : AGENT_READ_PAGES\];/);
+  assert.match(src, /if \(acts\) return getAgentTools\(userStore\)\.filter\(\(tool\) => !LEAD_ONLY\.has\(tool\.name\)\);/);
+  assert.match(src, /const LEAD_ONLY = new Set\(\["agent_map", "save_report", "page_send_file", "agent_report_update"\]\);/, "pages and agents stay the lead's");
   const gate = src.slice(src.indexOf("async function actGate("), src.indexOf("// A page read changes nothing"));
+  assert.match(gate, /sendGate\.rawMailRefusal\(/, "a raw mail send refused");
+  assert.match(gate, /sendGate\.sendsToOthers\(block\.name, block\.input\) && sendConfirmRequired\(userStore\)/, "a message to someone else, when the person asks before sending");
+  assert.match(gate, /userMcp\.needsMcpConfirmation\(userId, block\.name\)/, "a connected app's action that asks");
   assert.match(gate, /sendGate\.browserSend\(/, "pressing Send");
   assert.match(gate, /spendGuard\.assess\(\{ userId, userStore, toolName: block\.name, source: "agent", intent, page \}\)/, "paying, under the spending rules");
   assert.match(gate, /if \(verdict\.action === "refuse"\) return \{ error: verdict\.message \};/, "over a limit: refused");
@@ -501,6 +505,8 @@ test("an agent let to act gets the whole browser, under Closedhand's own checks"
   assert.match(src, /const HAND_BACK = "Not done here: this needs the person's yes\./);
   assert.match(src, /if \(b\._spendLedgerId\) await spendGuard\.ledgerUpdate\(b\._spendLedgerId, \{ status: r && r\.error \? "failed" : "completed" \}\);/);
   assert.match(src, /else if \(b\.name === "sandbox_browse" && \(!acts \|\| b\.input\?\.action === "read_pages"\)\) \{/, "read only unless let act");
+  assert.match(src, /const held = acts && toolScope\.has\(b\.name\) && !reading \? await actGate\(userId, userStore, b\) : null;/, "every action is checked, not only the browser's");
+  assert.match(src, /\} else if \(acts\) \{\n\s+\/\/ A connected app's tool, as the lead runs one\./);
   assert.match(read("lib/agent-team.js"), /runPart\(userId, subGoal, platform, chatId, model, \{ \.\.\.limits, onStep, acts: m\.acts \}\)/);
   assert.match(src, /goal: m\.job, acts: m\.acts === true \}/);
   assert.match(read("lib/automations.js"), /goal: m\.job \|\| m\.part, acts: m\.acts === true \}/, "a team routine's too");
@@ -518,10 +524,11 @@ test("agents let to act take the one page that clicking works on in turns", asyn
   assert.match(src, /finally \{ if \(turn\.release\) turn\.release\(\); \}/, "given back when the agent finishes, however it ends");
 });
 
-test("the form: Can book and pay on sites, per agent, off unless ticked", () => {
+test("the form: Can take actions, per agent, off unless ticked, under the settings Closedhand already has", () => {
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /<label class="team-acts"><input type="checkbox" class="team-acts-box"[^>]*> Can book and pay on sites<\/label>/);
-  assert.match(dash, /<p class="team-acts-note" hidden>Within your spending rules: anything they say to ask about, Closedhand asks you first\.<\/p>/);
+  assert.match(dash, /<label class="team-acts"><input type="checkbox" class="team-acts-box"[^>]*> Can take actions<\/label>/);
+  assert.match(dash, /<p class="team-acts-note" hidden>It can book, pay, send messages and change things for you, under the same settings as Closedhand: your spending rules, and asking before sending messages\. Whatever those say to ask you about, Closedhand asks you first\.<\/p>/);
+  assert.match(dash, /Ask before sending messages to other people/, "the setting the note names is there");
   assert.match(dash, /acts: el\.querySelector\('\.team-acts-box'\)\.checked \|\| undefined/);
   assert.match(dash, /addTeamAgent\(m\.name, m\.part, m\.acts\)/, "a routine opens with it as saved");
   const server = read("webapp/server.js");
