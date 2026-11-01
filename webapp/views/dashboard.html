@@ -7639,6 +7639,8 @@
     function couldNotFinish(error) {
       var e = String(error || '');
       return /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|network/i.test(e) ? 'the connection to the LLM provider kept dropping'
+        : /LLM said its allowance is used up/i.test(e) ? "your LLM's allowance ran out"
+        : /LLM kept asking to slow down/i.test(e) ? 'your LLM kept asking it to slow down'
         : /time allowance|timed out|timeout/i.test(e) ? 'it ran out of time'
         : /allowance|budget/i.test(e) ? 'it reached the work allowance for one task'
         : 'something went wrong partway through';

@@ -268,7 +268,7 @@ test("a background model call survives a dropped connection; a stopped task is n
   let calls = 0;
   const client = { messages: { create: async () => { calls++; if (calls === 1) throw new Error("fetch failed"); return { content: [{ type: "text", text: "ok" }], usage: {} }; } } };
   const src = fs.readFileSync(path.join(__dirname, "..", "lib", "task-model.js"), "utf8");
-  assert.match(src, /retryNetwork\(error, \(\) => client\.messages\.create\(params, \{ signal: controller\.signal \}\), \{ pauses: \[3000, 10000\] \}\)/);
+  assert.match(src, /retryNetwork\(error, \(\) => client\.messages\.create\(params, \{ signal: controller\.signal, onLimits: options\.onLimits \}\), \{ pauses: \[3000, 10000\] \}\)/);
   assert.match(src, /if \(active\?\.signal\?\.aborted \|\| error\.code === "TASK_STOPPED" \|\| error\.code === "MODEL_TIMEOUT"\) \{ failed = true; throw error; \}/);
   const sw = require("../lib/sleep-watch");
   const original = sw.retryNetwork;

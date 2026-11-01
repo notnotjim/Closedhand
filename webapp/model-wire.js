@@ -427,6 +427,8 @@ async function request(conn, params, options = {}) {
   named(conn, headers);
   const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body),
     signal: options.signal || AbortSignal.timeout(90000), redirect: "error" });
+  // What the provider says is left this minute, for whoever is pacing calls.
+  if (options.onLimits) { try { options.onLimits(limitsFrom(response.headers), response.status); } catch (_) {} }
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
     const said = String(detail.error?.message || "");
@@ -448,9 +450,57 @@ async function request(conn, params, options = {}) {
     error.status = response.status;
     // OpenRouter refuses a key past its own spending limit with 403, not 402.
     if (response.status === 403 && (detail.error?.metadata?.limit_source === "openrouter_key_limit" || /key limit/i.test(said))) error.code = "key_limit";
+    Object.assign(error, refusal(response, detail, said));
     throw error;
   }
   return convert(await response.json());
+}
+// How much a provider says is left, from the headers it sends with every
+// reply: Anthropic's anthropic-ratelimit-*, and the x-ratelimit-* that
+// OpenAI, Groq and others use. Null when it sends none.
+function limitsFrom(headers) {
+  const get = (name) => { try { return headers?.get?.(name) ?? null; } catch (_) { return null; } };
+  const num = (name) => { const v = Number(get(name)); return get(name) != null && Number.isFinite(v) ? v : null; };
+  const out = {
+    requestsLimit: num("anthropic-ratelimit-requests-limit") ?? num("x-ratelimit-limit-requests"),
+    requestsLeft: num("anthropic-ratelimit-requests-remaining") ?? num("x-ratelimit-remaining-requests"),
+    tokensLimit: num("anthropic-ratelimit-input-tokens-limit") ?? num("anthropic-ratelimit-tokens-limit") ?? num("x-ratelimit-limit-tokens"),
+    tokensLeft: num("anthropic-ratelimit-input-tokens-remaining") ?? num("anthropic-ratelimit-tokens-remaining") ?? num("x-ratelimit-remaining-tokens"),
+  };
+  return Object.values(out).some((v) => v != null) ? out : null;
+}
+// How long the provider asks to wait: Retry-After in seconds or as a date,
+// else the reset OpenAI-style providers give ("1s", "6m0s"). Null if none.
+function waitAsked(headers) {
+  const get = (name) => { try { return headers?.get?.(name) ?? null; } catch (_) { return null; } };
+  const after = get("retry-after");
+  if (after != null) {
+    const seconds = Number(after);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+    const at = Date.parse(after);
+    if (Number.isFinite(at)) return Math.max(0, at - Date.now());
+  }
+  const reset = String(get("x-ratelimit-reset-requests") || get("x-ratelimit-reset-tokens") || "");
+  const m = reset.match(/^(?:(\d+)h)?(?:(\d+)m(?!s))?(?:([\d.]+)s)?(?:(\d+)ms)?$/);
+  if (reset && m && m[0]) return ((+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0)) * 1000 + (+m[4] || 0);
+  return null;
+}
+// Whether waiting helps. A per-minute limit, a busy provider or OpenRouter's
+// short hold on credit for running requests clears by itself: waitable. A
+// spending cap, a used-up quota or credit, or a budget does not clear today:
+// allowance, with when it comes back where the provider says.
+function refusal(response, detail, said) {
+  const status = response.status, err = detail.error || {}, meta = err.metadata || {};
+  const code = String(err.details?.error_code || err.error_code || err.code || err.type || meta.reason || "");
+  const resetsAt = meta.resets_at || null;
+  const used = code === "enforced_spend_limit_reached" || code === "insufficient_quota" || /reached your specified API usage limits/i.test(said)
+    || (status === 402 && meta.reason !== "in_flight_budget_exhausted")
+    || (status === 403 && /^openrouter_(guardrail_budget|workspace_budget|key_limit)$/.test(String(meta.limit_source || "")));
+  if (used) return { allowance: true, resetsAt, waitable: false };
+  if (status === 429 || status === 503 || status === 529 || (status === 402 && meta.reason === "in_flight_budget_exhausted")) {
+    return { waitable: true, retryAfterMs: waitAsked(response.headers) };
+  }
+  return {};
 }
 // OpenRouter credits the traffic to the app that names itself; nothing about
 // the person goes with it. Every call to an LLM endpoint adds these, so none
@@ -500,4 +550,4 @@ async function describeOllama(conn, models) {
   }));
 }
 function responseText(response) { return (response?.content || []).filter(b => b.type === "text").map(b => b.text || "").join("\n"); }
-module.exports = { responseText, request, listModels, looksLikeKey, appHeaders, hideKeys, KEY_AS_MODEL, convertToolToOpenAI, convertMessagesToOpenAI, convertResponseFromOpenAI, convertToolToGemini, convertMessagesToGemini, convertResponseFromGemini };
+module.exports = { responseText, request, listModels, limitsFrom, waitAsked, looksLikeKey, appHeaders, hideKeys, KEY_AS_MODEL, convertToolToOpenAI, convertMessagesToOpenAI, convertResponseFromOpenAI, convertToolToGemini, convertMessagesToGemini, convertResponseFromGemini };
