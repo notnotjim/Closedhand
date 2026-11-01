@@ -527,7 +527,7 @@ test("agents let to act take the one page that clicking works on in turns", asyn
 test("the form: Can take actions, per agent, off unless ticked, under the settings Closedhand already has", () => {
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, /<label class="team-acts"><input type="checkbox" class="team-acts-box"[^>]*> Can take actions<\/label>/);
-  assert.match(dash, /<p class="team-acts-note" hidden>It can book, pay, send messages and change things for you, under the same settings as Closedhand: your spending rules, and asking before sending messages\. Whatever those say to ask you about, Closedhand asks you first\.<\/p>/);
+  assert.match(dash, /<p class="team-acts-note" hidden>Agent can book, pay, send messages and change things for you, following the same settings as your main Closedhand\.<\/p>/);
   assert.match(dash, /Ask before sending messages to other people/, "the setting the note names is there");
   assert.match(dash, /acts: el\.querySelector\('\.team-acts-box'\)\.checked \|\| undefined/);
   assert.match(dash, /addTeamAgent\(m\.name, m\.part, m\.acts\)/, "a routine opens with it as saved");

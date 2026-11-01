@@ -8315,7 +8315,7 @@
       el.innerHTML = '<div class="team-agent-head"><input type="text" class="team-name" maxlength="40" autocomplete="off" aria-label="This agent\'s name"><button type="button" class="team-remove" onclick="this.closest(\'.team-agent\').remove();renumberTeam()">Remove</button></div>' +
         '<textarea class="team-goal" rows="2" aria-label="What this agent does" placeholder="What this one does, e.g. find flights from Osaka to Seoul on 8 Nov"></textarea>' +
         '<label class="team-acts"><input type="checkbox" class="team-acts-box" onchange="this.closest(\'.team-agent\').querySelector(\'.team-acts-note\').hidden = !this.checked"> Can take actions</label>' +
-        '<p class="team-acts-note" hidden>It can book, pay, send messages and change things for you, under the same settings as Closedhand: your spending rules, and asking before sending messages. Whatever those say to ask you about, Closedhand asks you first.</p>';
+        '<p class="team-acts-note" hidden>Agent can book, pay, send messages and change things for you, following the same settings as your main Closedhand.</p>';
       box.appendChild(el);
       if (name) el.querySelector('.team-name').value = name;
       if (part) el.querySelector('.team-goal').value = part;
