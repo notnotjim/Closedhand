@@ -1,5 +1,5 @@
 // The maintainer's notices (lib/capacity.js, lib/operator-notices.js), where an
-// account stands with Closedhand Managed Models (lib/plan.js), and Closedhand+'s
+// account stands with Closedhand Managed Models (lib/plan.js), and the subscription's
 // email allowances (migration 014), against a real Postgres, in a database of
 // its own so it can run beside e2e.js, which empties its own as it starts.
 // Invented people only.
@@ -97,13 +97,13 @@ test('notices go to the maintainer\'s own Closedhand once, and by email when it 
   assert.equal(await notices.create({ db, env: { ...env, MAIL_FROM: '' }, request }).emailStale(), 0, 'no sender, no email');
 });
 
-test('the plan says where an account stands: first month, Closedhand+, ended or none', async () => {
+test('the plan says where an account stands: first month, subscribed, ended or none', async () => {
   const env = { ASSISTANT_EMAIL_ENABLED: '1', ASSISTANT_EMAIL_RELEASED: '1' };
   const now = new Date('2026-11-10T12:00:00Z');
   const none = await person(), first = await person(), over = await person(), plus = await person(), leaving = await person();
-  assert.deepEqual(await planFor(db, {}, none, now), { name: 'none', email: false, plus_trial: true }, 'never had Closedhand+: its first month would be free');
+  assert.deepEqual(await planFor(db, {}, none, now), { name: 'none', email: false, plus_trial: true }, 'never had Managed Models: a subscription would start with the free month');
   await db.query("INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, ends_at) VALUES ($1, $2, 20, '2026-11-20T00:00:00Z')", [first, crypto.randomBytes(32).toString('hex')]);
-  assert.deepEqual(await planFor(db, env, first, now), { name: 'first-month', ends_at: '2026-11-20T00:00:00.000Z', email: true, plus_trial: true });
+  assert.deepEqual(await planFor(db, env, first, now), { name: 'first-month', ends_at: '2026-11-20T00:00:00.000Z', email: true }, 'in the one free month: none to come');
   await db.query("INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, ends_at) VALUES ($1, $2, 20, '2026-11-01T00:00:00Z')", [over, crypto.randomBytes(32).toString('hex')]);
   assert.equal((await planFor(db, env, over, now)).name, 'ended');
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_start, current_period_end, extended_for, started_at) VALUES ($1, 'sub_a', 'active', '2026-11-01T00:00:00Z', '2026-12-01T00:00:00Z', '2026-11-01T00:00:00Z', now())", [plus]);
@@ -115,7 +115,7 @@ test('the plan says where an account stands: first month, Closedhand+, ended or 
   assert.equal((await planFor(db, env, leaving, now)).name, 'ended', 'an ended subscription without a key');
 });
 
-test('Closedhand+ lifts the monthly email allowances; a daily guard stays, ten times higher', async () => {
+test('a subscription lifts the monthly email allowances; a daily guard stays, ten times higher', async () => {
   const reserve = async (account, direction) => (await db.query(
     "SELECT * FROM reserve_mail_relay_usage($1, $2, $3, 1, 1000)", [crypto.randomUUID(), account, direction])).rows[0];
   const mailbox = async (ownerId, email) => {
@@ -140,7 +140,7 @@ test('Closedhand+ lifts the monthly email allowances; a daily guard stays, ten t
   await sentThisMonth(freeEmail, 1000);
   await sentThisMonth(plusEmail, 1000);
   assert.deepEqual(await reserve(free, 'out'), { allowed: false, reason: 'Your monthly email allowance has been reached. It resets next month.' });
-  assert.deepEqual(await reserve(subscriber, 'out'), { allowed: true, reason: null }, 'no monthly allowance with Closedhand+');
+  assert.deepEqual(await reserve(subscriber, 'out'), { allowed: true, reason: null }, 'no monthly allowance with a subscription');
   await sentToday(plusEmail, 1000);
   assert.deepEqual(await reserve(subscriber, 'out'), { allowed: false, reason: 'Your daily email allowance has been reached. It resets at midnight UTC.' }, 'the daily guard stays');
 });

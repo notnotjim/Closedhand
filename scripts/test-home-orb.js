@@ -115,7 +115,7 @@ test("signing in to find a Closedhand never makes an account: the other provider
   assert.equal(rows.length, 1, 'and nothing was made for it');
   assert.equal(await ownerFor(db, { provider: 'microsoft', subject: 't:o', email: 'mira@example.com' }), 'o2', 'claiming still makes one');
   const signin = read('closedhand-com/lib/signin.js');
-  assert.match(signin, /const finding = \/\^\\\/\(open\|account\|carry-on\|plus\)\(\?=\[\?#\]\|\$\)\/\.test\(back\);\n\s*const owner = finding \? await findOwner\(db, identity\) : await ownerFor\(db, identity\);\n\s*if \(!owner\) return res\.redirect\(navigation\.noAccount\(back, key\)\);/);
+  assert.match(signin, /const finding = \/\^\\\/\(open\|account\|carry-on\|subscribe\)\(\?=\[\?#\]\|\$\)\/\.test\(back\);\n\s*const owner = finding \? await findOwner\(db, identity\) : await ownerFor\(db, identity\);\n\s*if \(!owner\) return res\.redirect\(navigation\.noAccount\(back, key\)\);/);
   const nav = require('../closedhand-com/public/entry-navigation');
   assert.equal(nav.noAccount('/open?next=%2Fdashboard', 'microsoft'), '/open?next=%2Fdashboard&none=microsoft');
   assert.equal(nav.noAccount('/account', 'google'), '/account?none=google');

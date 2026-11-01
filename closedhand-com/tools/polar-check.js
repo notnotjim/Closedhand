@@ -1,4 +1,4 @@
-// Whether the Polar token closedhand.com holds may do each thing Closedhand+
+// Whether the Polar token closedhand.com holds may do each thing the subscription
 // needs, and the prices people are charged. For the maintainer. Each check is
 // a request that changes nothing: a read, or a write Polar refuses for an
 // order, subscription or body that doesn't exist, which it answers only once
@@ -50,7 +50,7 @@ async function check(env = process.env, request = fetch) {
     try { lines.push(`${name}: ${verdict(await run(), ok)}`); }
     catch (e) { lines.push(`${name}: could not reach Polar (${e.message})`); }
   }
-  for (const [name, id] of [['Closedhand+', env.POLAR_PLUS_PRODUCT_ID], ['Carrying on past fair use', env.POLAR_EXTEND_PRODUCT_ID]]) {
+  for (const [name, id] of [['Managed Models subscription', env.POLAR_PLUS_PRODUCT_ID], ['Carrying on past fair use', env.POLAR_EXTEND_PRODUCT_ID]]) {
     if (!id) { lines.push(`${name}: no product set`); continue; }
     try {
       const { status, json } = await call('/v1/products/' + encodeURIComponent(id));

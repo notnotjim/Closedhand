@@ -120,3 +120,10 @@ test("closedhand.com explains when Closedhand is there in one place, as a choice
   assert.match(readme, /Either way this computer then stops running Closedhand and, once the new one runs, clears everything Closedhand kept on it\./, "never both running, and a move leaves nothing behind");
   assert.doesNotMatch(visibleText("webapp/views/setup.html"), /while this computer is on/);
 });
+
+test("Closedhand Managed Models have one name: the paid part is the subscription, never Closedhand+", () => {
+  const files = ["webapp/views/dashboard.html", "webapp/views/privacy.html", "webapp/views/terms.html", "lib/included-ai.js", "lib/engine.js",
+    "closedhand-com/views/account.html", "closedhand-com/public/account.js", "closedhand-com/views/privacy.html", "closedhand-com/views/terms.html",
+    "closedhand-com/views/home.html", "closedhand-com/lib/plus.js", "closedhand-com/lib/addresses.js", "README.md"];
+  for (const f of files) assert.doesNotMatch(readable(f), /Closedhand\+|Closedhand plus\b|closedhand\.com\/plus\b/i, f);
+});

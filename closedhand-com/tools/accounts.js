@@ -1,6 +1,6 @@
 // Recent Closedhand accounts and what each has of Closedhand Managed Models:
 // its first month (allowance, when it began and ends, spend so far) and
-// Closedhand+, with this month's OpenRouter spend across every key. For the
+// its subscription, with this month's OpenRouter spend across every key. For the
 // maintainer. Reads only; never prints an email or a key.
 //
 // Run inside the closedhand-com service:
@@ -28,7 +28,7 @@ async function recent(db, includedAi, days = 7) {
     const first = r.granted_usd == null ? 'no first month'
       : `first month ${usd(r.granted_usd)} from ${day(r.granted_at)} to ${day(r.ends_at)}${r.stopped_at ? `, stopped ${day(r.stopped_at)}` : ''}`
         + (used ? `, used ${usd(used.used)} of ${usd(used.limit)}` : '');
-    const plus = r.plus_status ? `Closedhand+ ${r.plus_status} until ${day(r.current_period_end)}` : 'no Closedhand+';
+    const plus = r.plus_status ? `subscription ${r.plus_status} until ${day(r.current_period_end)}` : 'no subscription';
     lines.push(`  ${day(r.created_at)}  ${r.provider}${r.more_sign_ins ? ` +${r.more_sign_ins} sign-in(s)` : ''}  `
       + `${r.hostname ? r.hostname.replace('.closedhand.ai', '') + ` (${r.state})` : 'no personal URL'}  ${first}  ${plus}`);
   }

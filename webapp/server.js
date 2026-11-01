@@ -1339,7 +1339,7 @@ app.post("/api/phone/rename", async (req, res) => {
   }
 });
 // This computer's Closedhand account (the Google or Microsoft sign-in that
-// owns its personal URL), its plan and Closedhand+, for My Account.
+// owns its personal URL), its plan and subscription, for My Account.
 app.get("/api/phone/account", async (req, res) => {
   if (!(await requireSetupAccess(req, res))) return;
   res.set("Cache-Control", "no-store");
@@ -2196,7 +2196,7 @@ app.get("/api/included-ai", async (req, res) => {
     const { PROVIDERS } = require("./provider-capabilities");
     const ownConnections = Object.values((inUse ? settings.own_model_config : settings.model_config)?.connections || {});
     const own = [...new Set(ownConnections.map((c) => PROVIDERS[c?.provider]?.label).filter(Boolean))];
-    // Closedhand+'s price, as closedhand.com shows it, for what resuming would charge.
+    // The subscription's price, as closedhand.com shows it, for what resuming would charge.
     res.json({ state: inUse ? "in-use" : "available", plan: settings.included_ai?.plan || null, price: settings.included_ai?.prices?.plus || null, ownKept: !!settings.own_model_config?.connections, own });
   } catch (e) {
     res.status(503).json({ error: "Could not read Closedhand Managed Models just now." });
@@ -2219,7 +2219,7 @@ app.post("/api/included-ai/own", async (req, res) => {
     res.status(400).json({ error: e.message || "Could not switch back to your own LLM provider." });
   }
 });
-// Closedhand+ in My Account, through closedhand.com (phone-registration.js
+// The subscription in My Account, through closedhand.com (phone-registration.js
 // plus): Polar's forms to frame, cancelling or keeping it, what was paid and
 // its invoices. Behind the password gate, like Usage.
 const plusAction = (action, args) => async (req, res) => {

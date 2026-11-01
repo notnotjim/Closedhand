@@ -267,7 +267,7 @@ test('a second Google or Microsoft account connected once there is a personal UR
   assert.match(server, /if \(await getRuntimeConf\("PHONE_PERMANENT_URL"\) \|\| registration\.status\(\)\.ownershipConfirmed\) \{\n\s*await registration\.addSignIn\(provider, idToken\)\.catch\(/, 'once the computer has its URL, a connected account is added as a sign-in');
 });
 
-test("Closedhand+ in My Account: Polar's forms only from Polar, and each answer only in its shape", async () => {
+test("the subscription in My Account: Polar's forms only from Polar, and each answer only in its shape", async () => {
   const saved = { PHONE_INSTALL_ID: '11111111-1111-4111-8111-111111111111', PHONE_INSTALL_SECRET: 'enc:v1:' + 'a'.repeat(64) };
   const calls = [];
   const reply = answer => async (url, options) => { calls.push([options.method, url, options.body]); return { ok: !answer.error, json: async () => answer }; };

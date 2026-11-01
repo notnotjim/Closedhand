@@ -81,7 +81,7 @@ function database() {
       if (sql.startsWith('UPDATE included_ai_keys SET stopped_at = now()')) { rows.find(r => r.owner_id === args[0]).stopped_at = new Date(); return result([]); }
       if (sql.includes('FROM included_ai_keys k')) return result(rows.filter(r => !r.stopped_at && r.ends_at && r.ends_at <= new Date()).map(r => ({ owner_id: r.owner_id })));
       if (sql.startsWith('SELECT provider, subject FROM owners')) return result(owners.has(args[0]) ? [owners.get(args[0])] : []);
-      // Closedhand+ is test/plus.js's: nobody here subscribes.
+      // The subscription is test/plus.js's: nobody here subscribes.
       if (sql.includes('FROM plus_subscriptions')) return result([]);
       if (sql.startsWith('UPDATE starter_grants SET network_hash = NULL')) { for (const g of grants) if (Date.now() - g.granted_at > 30 * DAY) g.network_hash = null; return result([]); }
       if (sql.startsWith('SELECT 1 FROM starter_grants WHERE person_hash')) return result(grants.filter(g => g.person_hash === args[0]));

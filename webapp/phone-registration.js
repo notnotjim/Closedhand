@@ -207,7 +207,7 @@ async function challenge(nonce) {
 }
 // This computer's Closedhand account, for My Account in the dashboard: the
 // Google or Microsoft sign-ins that own its personal URL, its plan, this
-// month's fair use as a share and Closedhand+. Null without one. Each field
+// month's fair use as a share and the subscription. Null without one. Each field
 // is taken only in the shape it should have.
 async function account() {
   if (!(await getConf('PHONE_INSTALL_ID'))) return null;
@@ -233,7 +233,7 @@ async function account() {
         expires: /^\d{2}\/\d{2}$/.test(String(plus.card.expires)) ? plus.card.expires : null } : null } : null,
   };
 }
-// Closedhand+ in My Account, through closedhand.com: Polar's forms to frame
+// The subscription in My Account, through closedhand.com: Polar's forms to frame
 // here (only from Polar's own addresses), cancelling or keeping it, what was
 // paid and its invoices. Each answer is taken only in the shape it should have.
 const POLAR = /^https:\/\/([a-z]+\.)?polar\.sh\//;

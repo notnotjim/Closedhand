@@ -38,7 +38,7 @@
     for (const label of ['', 'Sent', 'Received']) { const cell = el('th', label); cell.scope = 'col'; labels.append(cell); }
     const head = el('thead'); head.append(labels); table.append(head);
     const body = el('tbody');
-    // No limit (Closedhand+ has no monthly one) shows just what was used.
+    // No limit (a subscription has no monthly one) shows just what was used.
     const count = (used, limit) => {
       const cell = el('td');
       cell.append(el('strong', Number.isFinite(used) ? used.toLocaleString() : '…'));

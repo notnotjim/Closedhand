@@ -1,7 +1,7 @@
 // A copy of closedhand.com's own database, made once a day and kept for two
 // weeks in the AWS bucket closedhand.com already has, under backups/ (the mail
 // handling only ever touches incoming/). It holds the Closedhand accounts, their
-// personal URLs, Closedhand+ and the bug reports: never anything from anyone's
+// personal URLs, subscriptions and the bug reports: never anything from anyone's
 // Closedhand, which closedhand.com never has. Railway backs volumes up only on
 // its Pro plan; this needs nothing but the bucket.
 //

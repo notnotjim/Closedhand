@@ -1,4 +1,4 @@
-// Closedhand+ (lib/plus.js) against a real Postgres, in a database of its own
+// The Managed Models subscription (lib/plus.js) against a real Postgres, in a database of its own
 // so it can run beside e2e.js (which empties its own as it starts), with a
 // stand-in Polar and a stand-in OpenRouter: nothing leaves this machine.
 // Invented people only.
@@ -149,7 +149,7 @@ test('checkout, carrying on and the portal go to Polar for this account only', a
   assert.equal(await w.plus.checkout({ id: p.id, email: 'person@example.com' }), 'https://polar.sh/checkout/fixture-1111');
   const asked = w.calls.at(-1);
   assert.equal(asked.url, 'https://api.polar.sh/v1/checkouts/');
-  assert.deepEqual(asked.body, { products: [PLUS], trial_interval: 'month', trial_interval_count: 1, external_customer_id: p.id, customer_email: 'person@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: p.id } }, 'never had Closedhand+: its first month is free');
+  assert.deepEqual(asked.body, { products: [PLUS], trial_interval: 'month', trial_interval_count: 1, external_customer_id: p.id, customer_email: 'person@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: p.id } }, 'never had the free month: the subscription starts with it');
   await w.plus.extend({ id: p.id });
   assert.deepEqual(w.calls.at(-1).body.products, [EXTEND]);
   assert.equal(w.calls.at(-1).body.allow_trial, false, 'carrying on is never free');
@@ -179,7 +179,7 @@ test('subscribing sets the key to a paid month of fair use; carrying on doubles 
   await settled(p.id);
   assert.equal((await heldKey(w, p.id)).limit, 43);
   assert.equal((await w.plus.state(p.id)).extended, true);
-  assert.equal(await w.plus.handle(paid(p.id, PLUS)), 'paid', 'a payment for Closedhand+ itself carries nothing on');
+  assert.equal(await w.plus.handle(paid(p.id, PLUS)), 'paid', 'a payment for the subscription itself carries nothing on');
   assert.deepEqual(w.state.refunds, []);
 
   // Cancelled: it runs to the end of the paid month.
@@ -435,7 +435,7 @@ test('a month that ends caps the key at what it used, never at 0', async () => {
   assert.equal(w.keys.get(used.hash).limit, 7.25);
 });
 
-test('Closedhand+ changes wait while Managed Models are switched off, and are made once they are on', async () => {
+test('subscription changes wait while Managed Models are switched off, and are made once they are on', async () => {
   const off = world({ managed: false });
   const p = await person({ freeKey: {} }, off);
   await off.plus.handle(subscription('subscription.active', p.id));
@@ -482,7 +482,7 @@ test('a second subscription for one account is stopped and given back; one after
   assert.equal(w.state.polarSubs.get('sub_c'), undefined, 'not stopped');
 });
 
-test('carrying on bought twice in a month, or without Closedhand+, is given back; the same order sent again is not', async () => {
+test('carrying on bought twice in a month, or without a subscription, is given back; the same order sent again is not', async () => {
   const w = world();
   const p = await person({ freeKey: {} }, w), free = await person({ freeKey: {} }, w);
   await w.plus.handle(subscription('subscription.active', p.id));
@@ -533,13 +533,28 @@ test('the Polar check says which rights the token has and the prices, never the 
   assert.match(out, /subscriptions:write \(stopping one\): allowed/);
   assert.match(out, /checkouts:write \(subscribing\): allowed/);
   assert.match(out, /orders:read \(payments and invoices in My Account\): allowed/);
-  assert.match(out, /Closedhand\+: 10\.00 USD, every month/);
+  assert.match(out, /Managed Models subscription: 10\.00 USD, every month/);
   assert.match(out, /Carrying on past fair use: 10\.00 USD, once/);
   assert.doesNotMatch(out, /polar-token|secret detail/);
   assert.ok(seen.every(h => h === 'Bearer polar-token'));
 });
 
-test("Closedhand+'s first month is free for an account that never had it, shown as such, and never again", async () => {
+test('one free month per person: someone who had the first month subscribes with no second one, also on a new account', async () => {
+  const w = world();
+  const had = await person({ freeKey: {} }, w);
+  assert.equal((await w.plus.state(had.id)).free_month, undefined, 'the first month was the free one');
+  await w.plus.checkout({ id: had.id });
+  assert.equal(w.calls.at(-1).body.allow_trial, false);
+  assert.equal(w.calls.at(-1).body.trial_interval, undefined);
+  // The same sign-in on an account made afresh: starter_grants remembers it.
+  const again = await person({}, w);
+  assert.ok(await w.includedAi.forOwner(again.id), 'its first month given');
+  await db.query('DELETE FROM included_ai_keys WHERE owner_id = $1', [again.id]);
+  assert.equal((await w.plus.state(again.id)).free_month, undefined, 'had on an account before');
+  assert.equal((await planFor(db, {}, again.id, undefined, w.includedAi)).plus_trial, undefined);
+});
+
+test("someone who never had the free month gets it as the subscription's first month, shown as such, and never again", async () => {
   const w = world();
   const p = await person({}, w);
   assert.equal((await w.plus.state(p.id)).free_month, true, 'offered before it is had');

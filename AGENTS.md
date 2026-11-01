@@ -180,34 +180,39 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   know it by. Closedhand Managed Models are shown by that name alone, with "Closedhand picks the
   best LLM for each job, from any provider, and switches when a better one is out": which LLM it
   is right now is said in chat when the person asks, not on the page.
-- Closedhand Managed Models are never money in anything people read: no credit, balances, dollars,
-  tokens or top-ups. People see a plan (a first month set up for them, or Closedhand+ renewing or
-  ending on a day) and, where the account is shown, one plain bar of this month's fair use with no
-  amount; chat tells them about use only near the fair-use ceiling. Credit exists only behind the
-  scenes (closedhand.com's key limits).
+- Closedhand Managed Models are one product with one name: a first month set up for the person,
+  then a monthly subscription that keeps them going and lifts the monthly limits on Closedhand's
+  own email. The paid part is "the subscription" (or "your subscription"), never a name of its
+  own: there is no "Closedhand+". The code and its tables still say plus.
+- Closedhand Managed Models are never money in anything people read but the subscription's
+  price: no credit, balances, dollars of use, tokens or top-ups. People see a plan (a first month
+  set up for them, or a subscription renewing or ending on a day) and, where the account is shown,
+  one plain bar of this month's fair use with no amount; chat tells them about use only near the
+  fair-use ceiling. Credit exists only behind the scenes (closedhand.com's key limits).
 - Each thing has one home, and a way to it never repeats what it shows. My Account opens from
   the dashboard's account menu at its top right (with Sign out) and the foot of Settings as a
   popup over the web chat: the panel slides away first and comes back as it was left. It holds the Closedhand account (its sign-ins and
-  personal URL), the Managed Models plan and this month's use, Closedhand+, Usage, Always on and
+  personal URL), the Managed Models plan, its subscription and this month's use, Usage, Always on and
   clearing or deleting data. Settings holds how Closedhand works (which LLM, connections,
   appearance). Its Models is one choice between the person's own LLM provider and, while they
   are the person's, Managed Models: the one in use is the one picked, and Managed Models say in
   one sentence what the plan means for Closedhand (running, cancelled and ending on a day,
   ended), linking My Account for the rest. The models form there only ever shows and changes
   the person's own LLM provider, never Managed Models' models or key. closedhand.com/account opens My Account when the person's Closedhand answers, and
-  otherwise shows what closedhand.com holds, so Closedhand+ and deleting the account still work
+  otherwise shows what closedhand.com holds, so the subscription and deleting the account still work
   while its computer is off. In My Account, Polar's own forms (paying, changing the card) open
   over the page as a frame of Polar's page, never with Polar's script in the dashboard, and
-  cancelling, keeping and invoices go through closedhand.com; closedhand.com/plus is the one-tap
-  link chat gives. Usage shows what Closedhand has been doing, with costs only for the
+  cancelling, keeping and invoices go through closedhand.com; closedhand.com/subscribe is the
+  one-tap link chat gives. Usage shows what Closedhand has been doing, with costs only for the
   person's own LLM provider, whose bill it is; Managed Models use is shown by that name alone.
 - Closedhand is free software that runs with any LLM the person chooses through their own API key,
-  free ones included; that is the main path. Managed Models and Closedhand+ are conveniences. The
-  first month of Managed Models needs no card. Closedhand+ starts with a free month for an account
-  that never had it (Polar's trial: the card is taken at checkout, nothing is charged until that
-  month ends, and Polar emails three days before): it is said plainly, with the day it ends and the
-  price after, never as urgency or bait. The first month's end is mentioned only in its last week,
-  and an offer of what comes next puts the person's own LLM provider first and Closedhand+ second.
+  free ones included; that is the main path. Managed Models and their subscription are
+  conveniences. Each person has one free month of Managed Models, ever: the first month, which
+  needs no card. Someone who did not get it then has the subscription's first month free instead
+  (Polar's trial: the card is taken at checkout, nothing is charged until that month ends, and
+  Polar emails three days before). It is said plainly, with the day it ends and the price after,
+  never as urgency or bait. The first month's end is mentioned only in its last week, and an offer
+  of what comes next puts the person's own LLM provider first and the subscription second.
 - LLM providers are equal. No provider gets special treatment, fallback priority, or
   hardcoded references. Each provider is fully isolated.
   Closedhand Managed Models (closedhand.com makes each account an OpenRouter API key,

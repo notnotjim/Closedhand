@@ -1,4 +1,4 @@
-// Polar's own form, to pay for Closedhand+ or change its card, over the
+// Polar's own form, to pay for the Managed Models subscription or change its card, over the
 // whole window: a frame of Polar's page and nothing of Polar's code in
 // Closedhand's, so the browser keeps it from seeing anything here. The web
 // chat shows it for the dashboard (whose frame is too small for it), and the

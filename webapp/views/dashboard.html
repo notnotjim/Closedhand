@@ -2661,7 +2661,7 @@
                are the person's too, each is a card of its own, their own LLM
                provider first: one says In use and holds what runs, the other
                says Not in use and offers the way to switch to it. What they
-               have (Closedhand+, cancelled or not) is a row inside the Managed
+               have (a subscription, cancelled or not) is a row inside the Managed
                Models card, never the state of the models. -->
           <div class="settings-group" style="border-color:rgba(var(--fg-rgb),0.1);">
             <div class="settings-group-header">
@@ -2708,7 +2708,7 @@
             </div>
           </div>
 
-          <!-- The Closedhand account, its plan, Closedhand+, usage, Always on
+          <!-- The Closedhand account, its plan and subscription, usage, Always on
                and clearing data have one home, My Account. -->
           <div class="my-account-way"><a class="deep" href="#account" onclick="openMyAccount(); return false;">My Account</a></div>
 
@@ -2773,7 +2773,7 @@
       </div>
 
       <!-- My Account: the Closedhand account and its plan (from closedhand.com,
-           loadMyAccount), Closedhand+, usage, Always on and clearing data. Opened
+           loadMyAccount), the subscription, usage, Always on and clearing data. Opened
            from the foot of Settings, so Settings stays lit while it shows. -->
       <div class="tab-content" id="tab-account">
         <div style="padding-top:1rem;">
@@ -2781,7 +2781,7 @@
           <!-- Just subscribed: what is theirs now, and Closedhand moving onto it. -->
           <div class="settings-group plus-welcome" id="plus-welcome" role="status" hidden>
             <div class="settings-group-header">
-              <h2>Welcome to Closedhand+</h2>
+              <h2>Subscribed to Closedhand Managed Models</h2>
               <p class="section-desc" id="plus-welcome-what"></p>
               <p class="section-desc" id="plus-welcome-state"></p>
             </div>
@@ -2795,12 +2795,12 @@
               <dl class="account-facts" id="my-account-facts"></dl>
             </div>
             <!-- Closedhand Managed Models: the plan, this month's fair use as one
-                 bar and never an amount, and Closedhand+: Polar's own forms to pay
+                 bar and never an amount, and the subscription: Polar's own forms to pay
                  or change the card over this page (openPolar), cancelling or
                  keeping it, and what was paid with its invoices. -->
             <div class="settings-group" id="my-plan" hidden>
               <div class="settings-group-header">
-                <div class="plan-title"><h2>Closedhand+</h2><span class="plan-status" id="my-plan-status" hidden></span></div>
+                <div class="plan-title"><h2>Closedhand Managed Models</h2><span class="plan-status" id="my-plan-status" hidden></span></div>
                 <p class="section-desc" id="my-plan-state"></p>
               </div>
               <div class="settings-group-body">
@@ -2815,7 +2815,7 @@
                 </div>
                 <p class="account-action-desc" id="my-plus-fine"></p>
               </div>
-              <!-- Closedhand+ running: the card it is paid with, and cancelling
+              <!-- A subscription running: the card it is paid with, and cancelling
                    or keeping it, as rows straight in the card like Your data's. -->
                 <hr class="account-divider" id="my-card-divider" hidden>
                 <div class="account-action" id="my-card-row" hidden>
@@ -2828,7 +2828,7 @@
                 <hr class="account-divider" id="my-plus-divider" hidden>
                 <div class="account-action" id="action-plus-cancel" hidden>
                   <div class="account-action-info">
-                    <div class="account-action-title danger">Cancel Closedhand+ subscription</div>
+                    <div class="account-action-title danger">Cancel subscription</div>
                     <div class="account-action-desc" id="my-cancel-desc"></div>
                   </div>
                   <button type="button" class="account-action-btn account-action-btn-danger" onclick="startAccountAction('plus-cancel')">Cancel</button>
@@ -2837,12 +2837,12 @@
                   <div class="account-confirm-text danger" id="plus-cancel-text"></div>
                   <div class="account-confirm-actions">
                     <input class="confirm-type-input" id="input-plus-cancel" placeholder="Type CANCEL" oninput="checkConfirmInput('plus-cancel','CANCEL')">
-                    <button type="button" class="confirm-go confirm-go-danger" id="go-plus-cancel" data-orig-text="Cancel Closedhand+" onclick="setPlusCancel(true)">Cancel Closedhand+</button>
+                    <button type="button" class="confirm-go confirm-go-danger" id="go-plus-cancel" data-orig-text="Cancel subscription" onclick="setPlusCancel(true)">Cancel subscription</button>
                   </div>
                 </div>
                 <div class="account-action" id="action-plus-keep" hidden>
                   <div class="account-action-info">
-                    <div class="account-action-title">Resume Closedhand+ subscription</div>
+                    <div class="account-action-title">Resume subscription</div>
                     <div class="account-action-desc" id="my-keep-desc"></div>
                   </div>
                   <button type="button" class="account-action-btn" onclick="setPlusCancel(false)">Resume</button>
@@ -4612,7 +4612,7 @@
 
     // Closedhand Managed Models beside the person's own LLM provider, as one
     // choice in Models: offered only while they are the person's (their first
-    // month, or Closedhand+ until its last day) or in use. Which LLM they are
+    // month, or a subscription until its last day) or in use. Which LLM they are
     // is said in chat when asked, never here: Closedhand picks the best for
     // each job and changes it. The plan and this month's use are in My
     // Account, the one place they show; an ended or ending plan is said here
@@ -4640,11 +4640,11 @@
       var plan = data.plan || {}, inUse = data.state === 'in-use';
       var after = inUse ? ' After that Closedhand needs your own LLM provider to reply.' : '';
       var said, tail = " Your plan and this month's use are in ";
-      if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or renew Closedhand+ in '; tail = ''; }
-      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'They come with your free month of Closedhand+, which ends on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume it in '; }
-      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'They come with your free month of Closedhand+, until ' + planDay(plan.renews_at) + ', then Closedhand+ renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'They come with your free month of Closedhand+.'; }
-      else if (plan.name === 'plus' && plan.ends_at) { said = 'They come with your Closedhand+, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + after; tail = ' Resume it in '; }
-      else if (plan.name === 'plus') { said = 'They come with your Closedhand+' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.'; }
+      if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or subscribe again in '; tail = ''; }
+      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'They come with your free month, which ends on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
+      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'They come with your free month, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'They come with your free month.'; }
+      else if (plan.name === 'plus' && plan.ends_at) { said = 'They come with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + after; tail = ' Resume it in '; }
+      else if (plan.name === 'plus') { said = 'They come with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.'; }
       else {
         var left = Date.parse(plan.ends_at) - Date.now();
         said = left > 0 && left <= 7 * 86400000 ? 'They come with your first month, until ' + planDay(plan.ends_at) + '.' : 'They come with your first month.';
@@ -4994,7 +4994,7 @@
     }
 
     // My Account: the Closedhand account and its plan as closedhand.com tells
-    // this computer, Closedhand+ with each way going straight to Polar's page
+    // this computer, the subscription with each way going straight to Polar's page
     // through closedhand.com, and what Delete account deletes.
     async function loadMyAccount() {
       const facts = document.getElementById("my-account-facts"), confirmText = document.getElementById("delete-account-text");
@@ -5031,7 +5031,7 @@
 
     // Closedhand Managed Models in My Account: where the plan stands and how
     // much of this month's fair use is used, as one bar and never an amount;
-    // then Closedhand+, what it is and the way in, or when it renews and the
+    // then the subscription, what it gives and the way in, or when it renews and the
     // way to manage it. The first month's end is said in its last week only.
     async function renderMyPlan(account) {
       const $ = id => document.getElementById(id);
@@ -5050,7 +5050,7 @@
         state.push(left > 0 && left <= 7 * 86400000 ? "Your first month of Closedhand Managed Models stays on until " + day(plan.ends_at) + "." : "Your first month of Closedhand Managed Models is running.");
       } else if (wasPlus) {
         status("Ended", "over");
-        state.push(plan.ended_at ? "Closedhand+ ended on " + day(plan.ended_at) + "." : "Closedhand+ has ended.");
+        state.push(plan.ended_at ? "Your subscription ended on " + day(plan.ended_at) + "." : "Your subscription has ended.");
       } else if (plan.name === "ended") state.push("Your first month of Closedhand Managed Models has ended.");
       const running = (plan.name === "first-month" || plan.name === "plus") && typeof account.used === "number";
       $("my-fair-use").hidden = !running;
@@ -5073,14 +5073,14 @@
         const until = p.ends_at || p.renews_at;
         const card = p.card;
         const brand = card && card.brand ? ({ visa: "Visa", mastercard: "Mastercard", amex: "American Express", discover: "Discover", jcb: "JCB", unionpay: "UnionPay", diners: "Diners Club" })[card.brand.toLowerCase()] || card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : "Card";
-        $("my-card-desc").textContent = card ? brand + " ending " + card.last4 + (card.expires ? ", expires " + card.expires : "") : "The card Closedhand+ is paid with.";
+        $("my-card-desc").textContent = card ? brand + " ending " + card.last4 + (card.expires ? ", expires " + card.expires : "") : "The card your subscription is paid with.";
         window._plusFacts = { until: p.ends_at || null, price: prices.plus || null, card: card ? "your " + brand + " ending " + card.last4 : null };
         // In its free month nothing has been charged, and cancelling keeps it so.
-        $("my-cancel-desc").textContent = p.trial ? "Your free month runs until " + day(until) + ", then Closedhand+ ends and nothing is charged."
-          : until ? "Closedhand+ stays on until " + day(until) + ", then ends." : "Closedhand+ stays on to the end of the month you've paid for, then ends.";
-        $("plus-cancel-text").textContent = p.trial ? "Closedhand+ ends on " + day(until) + " and nothing is charged. Until then you can keep Closedhand+ after all."
-          : "Closedhand+ ends on " + (until ? day(until) : "the last day you've paid for") + " and is not charged again. Until then you can keep Closedhand+ after all.";
-        $("my-keep-desc").textContent = "Closedhand+ will carry on past " + (p.ends_at ? day(p.ends_at) : "the month you've paid for") + " and renew every month.";
+        $("my-cancel-desc").textContent = p.trial ? "Your free month runs until " + day(until) + ", then your subscription ends and nothing is charged."
+          : until ? "Your subscription stays on until " + day(until) + ", then ends." : "Your subscription stays on to the end of the month you've paid for, then ends.";
+        $("plus-cancel-text").textContent = p.trial ? "Your subscription ends on " + day(until) + " and nothing is charged. Until then you can resume your subscription."
+          : "Your subscription ends on " + (until ? day(until) : "the last day you've paid for") + " and is not charged again. Until then you can resume your subscription.";
+        $("my-keep-desc").textContent = "Your subscription will carry on past " + (p.ends_at ? day(p.ends_at) : "the month you've paid for") + " and renew every month.";
         $("action-plus-cancel").hidden = !!p.ends_at;
         $("action-plus-keep").hidden = !p.ends_at;
         // Any confirmation left open closes; then hidden decides which row shows.
@@ -5089,15 +5089,15 @@
       }
       $("my-plus-about").hidden = !p.available || p.active;
       if (p.available) {
-        $("my-plus-about").textContent = "Closedhand Managed Models every month, so you need no LLM provider of your own"
-          + (plan.email ? ", and Closedhand's own email with no monthly limit" : "") + ". They run through OpenRouter, only on LLM providers that do not store or train on your data or conversations."
-          // Never had Closedhand+: its first month is free (Polar's trial).
+        $("my-plus-about").textContent = "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own"
+          + (plan.email ? ", and to use Closedhand's own email with no monthly limit" : "") + ". They run through OpenRouter, only on LLM providers that do not store or train on your data or conversations."
+          // Never had the free month: the subscription's first month is it (Polar's trial).
           + (p.free_month ? " The first month is free, then " + (prices.plus || "a monthly price") + " a month." : "");
-        $("my-plus-get").textContent = p.free_month ? "Get Closedhand+ \u00b7 first month free" : (wasPlus ? "Renew Closedhand+" : "Get Closedhand+") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
+        $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 first month free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
         $("my-plus-extend").textContent = "Carry on to the end of the month" + (prices.extend ? " \u00b7 " + prices.extend : "");
-        if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free month runs until " + day(p.ends_at) + ", then Closedhand+ ends and nothing is charged."); }
-        else if (p.active && p.trial) { status("Free month", "on"); if (p.renews_at) state.push("Your free month runs until " + day(p.renews_at) + ", then Closedhand+ renews at " + (prices.plus || "its monthly price") + " a month."); }
-        else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Closedhand+ stays on until " + day(p.ends_at) + ", then ends."); }
+        if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free month runs until " + day(p.ends_at) + ", then your subscription ends and nothing is charged."); }
+        else if (p.active && p.trial) { status("Free month", "on"); if (p.renews_at) state.push("Your free month runs until " + day(p.renews_at) + ", then your subscription renews at " + (prices.plus || "its monthly price") + " a month."); }
+        else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your subscription stays on until " + day(p.ends_at) + ", then ends."); }
         else if (p.active) { status("Active", "on"); if (p.renews_at) state.push("Renews on " + day(p.renews_at) + "."); }
         if (p.active && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
         $("my-plus-fine").textContent = p.active ? "" : "Cancel any time.";
@@ -5108,7 +5108,7 @@
       await loadMyPayments(!!(account && p.available && (p.active || plan.name === "ended")));
     }
 
-    // What was paid for Closedhand+, newest first, each with its invoice.
+    // What was paid for Managed Models, newest first, each with its invoice.
     async function loadMyPayments(any) {
       const box = document.getElementById("my-payments"), list = document.getElementById("my-payments-list");
       let payments = [];
@@ -5118,7 +5118,7 @@
       for (const p of shown) {
         const li = document.createElement("li"), what = document.createElement("span"), get = document.createElement("button");
         what.textContent = [p.at ? new Date(p.at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : null,
-          p.what === "extend" ? "Carry on to the end of the month" : "Closedhand+", p.amount, p.refunded ? "Refunded" : null].filter(Boolean).join(" \u00b7 ");
+          p.what === "extend" ? "Carry on to the end of the month" : "Managed Models", p.amount, p.refunded ? "Refunded" : null].filter(Boolean).join(" \u00b7 ");
         get.type = "button"; get.className = "quiet-link"; get.textContent = "Invoice";
         get.onclick = () => openInvoice(p.id, get);
         li.append(what, get);
@@ -5145,7 +5145,7 @@
       } finally { button.disabled = false; }
     }
 
-    // Cancelling Closedhand+ keeps it to the end of the paid month; keeping
+    // Cancelling the subscription keeps it to the end of the paid month; keeping
     // it, until then, undoes that.
     async function setPlusCancel(cancel, pressed) {
       const button = pressed || (cancel ? document.getElementById("go-plus-cancel") : document.querySelector("#action-plus-keep button"));
@@ -5155,9 +5155,9 @@
       if (!cancel) {
         const facts = window._plusFacts || {}, plan = (includedState && includedState.plan) || {};
         const until = facts.until || (plan.name === "plus" && plan.ends_at), price = facts.price || (includedState && includedState.price);
-        const text = "Closedhand+ renews " + (until ? "on " + new Date(until).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "when the month you've paid for ends")
+        const text = "Your subscription renews " + (until ? "on " + new Date(until).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "when the month you've paid for ends")
           + ", charging " + (price || "its monthly price") + " to " + (facts.card || "the card it's paid with") + ", then every month until you cancel. Nothing is charged now.";
-        if (!(await askFirst(button, { text, yes: "Resume Closedhand+" }))) return;
+        if (!(await askFirst(button, { text, yes: "Resume subscription" }))) return;
       }
       button.disabled = true;
       try {
@@ -5166,7 +5166,7 @@
         if (!r.ok) throw new Error(d.error);
         const until = d.plus && (d.plus.ends_at || d.plus.renews_at);
         const on = until ? new Date(until).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : null;
-        showToast(cancel ? "Closedhand+ is cancelled and stays on until " + (on || "the end of the month you've paid for") + "." : "Closedhand+ is resumed" + (on ? " and renews on " + on : "") + ".");
+        showToast(cancel ? "Your subscription is cancelled and stays on until " + (on || "the end of the month you've paid for") + "." : "Your subscription is resumed" + (on ? " and renews on " + on : "") + ".");
         await loadMyAccount();
         loadIncludedAi();
       } catch (e) {
@@ -5279,7 +5279,7 @@
     // Back from Polar's page, through closedhand.com: what just happened.
     function myAccountSaid(back) {
       const said = document.getElementById("my-account-said");
-      said.textContent = back === "extended" ? "Done: you can carry on to the end of the month." : back === "card" ? "Your card for Closedhand+ is changed." : "";
+      said.textContent = back === "extended" ? "Done: you can carry on to the end of the month." : back === "card" ? "The card for your subscription is changed." : "";
       said.hidden = !said.textContent;
     }
 

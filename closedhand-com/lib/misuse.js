@@ -58,7 +58,7 @@ function create({ db, env = process.env, includedAi, request = fetch }) {
       const since = monthly ? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) : new Date(r.granted_at).getTime();
       const days = Math.max(0.25, (now - since) / DAY);
       if (used / limit / (days / 30) < 3) continue;
-      const which = monthly ? "this month's Closedhand+ fair use" : 'its first month';
+      const which = monthly ? "this month's subscription fair use" : 'its first month';
       found.push(`${name(r)} has used ${Math.round(used / limit * 100)}% of ${which} (${usd(used)}) in ${days < 1 ? 'under a day' : Math.round(days) + (Math.round(days) === 1 ? ' day' : ' days')}.`);
     }
 
@@ -81,7 +81,7 @@ function create({ db, env = process.env, includedAi, request = fetch }) {
     if (stuck) found.push(`${stuck} replaced or deleted ${stuck === 1 ? 'key has' : 'keys have'} not been deleted at OpenRouter after 3 tries.`);
     const unsynced = Number((await db.query(
       "SELECT count(*)::int AS n FROM plus_subscriptions WHERE NOT key_synced AND updated_at < now() - interval '2 hours'")).rows[0].n);
-    if (unsynced) found.push(`${unsynced} Closedhand+ ${unsynced === 1 ? 'change has' : 'changes have'} not reached ${unsynced === 1 ? 'its key' : 'their keys'} for over 2 hours.`);
+    if (unsynced) found.push(`${unsynced} subscription ${unsynced === 1 ? 'change has' : 'changes have'} not reached ${unsynced === 1 ? 'its key' : 'their keys'} for over 2 hours.`);
     return found;
   }
 
@@ -102,7 +102,7 @@ function create({ db, env = process.env, includedAi, request = fetch }) {
         max_tokens: 1500,
         reasoning,
         messages: [
-          { role: 'system', content: `You help the one person who runs closedhand.com keep Closedhand Managed Models from being misused. Each new Closedhand account gets a first month: an OpenRouter key with ${usd(fairUse)} of fair use, once per Google or Microsoft sign-in and at most ${perConnection} per internet connection in 30 days. Closedhand+ is a monthly subscription sold through Polar that renews the fair use each month. You are given signs found in closedhand.com's own records. In at most four short plain sentences, say what is most likely going on and what, if anything, to do. Say plainly when something is probably harmless, like a household sharing one connection or one heavy but honest user. Only suggest these actions: set INCLUDED_AI_PER_CONNECTION=0 on Railway to stop new first months; disable a key in OpenRouter's dashboard (each is named "Closedhand" and the account id); cancel or refund a subscription in Polar; raise ADDRESS_LIMIT or OPENROUTER_MONTHLY_BUDGET_USD on Railway, or top up OpenRouter. Use only what the signs say. Never use dashes as punctuation.` },
+          { role: 'system', content: `You help the one person who runs closedhand.com keep Closedhand Managed Models from being misused. Each new Closedhand account gets a first month: an OpenRouter key with ${usd(fairUse)} of fair use, once per Google or Microsoft sign-in and at most ${perConnection} per internet connection in 30 days. A monthly Managed Models subscription, sold through Polar, renews the fair use each month. You are given signs found in closedhand.com's own records. In at most four short plain sentences, say what is most likely going on and what, if anything, to do. Say plainly when something is probably harmless, like a household sharing one connection or one heavy but honest user. Only suggest these actions: set INCLUDED_AI_PER_CONNECTION=0 on Railway to stop new first months; disable a key in OpenRouter's dashboard (each is named "Closedhand" and the account id); cancel or refund a subscription in Polar; raise ADDRESS_LIMIT or OPENROUTER_MONTHLY_BUDGET_USD on Railway, or top up OpenRouter. Use only what the signs say. Never use dashes as punctuation.` },
           { role: 'user', content: list.map(s => '- ' + s).join('\n') },
         ],
       }),

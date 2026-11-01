@@ -490,17 +490,17 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
 
   // Which models Closedhand Managed Models use now. A computer with its key
   // asks a few times a day and switches itself over when they change. It is
-  // also told its plan (lib/plan.js: its first month, Closedhand+, ended or
+  // also told its plan (lib/plan.js: its first month, a subscription, ended or
   // none), a subscriber whose account holds no key yet gets one here, once,
   // to seal, and the maintainer's own Closedhand collects their notices.
   app.get('/api/phone-enrollment/included-ai', wrap(async (req, res) => {
     if (!installation(req)) return res.status(401).json({ error: 'Closedhand could not be recognised. Update it on your computer and try again.' });
     const found = await owned(req);
     const ownerId = found?.row.owner_id || null;
-    const plan = await planFor(db, env, ownerId);
+    const plan = await planFor(db, env, ownerId, undefined, includedAi);
     const key = plan.name === 'plus' ? await includedAi.collect(ownerId) : null;
     const told = notices ? await notices.collect(ownerId) : [];
-    // What Closedhand+ costs where the computer is, so Closedhand can say when asked.
+    // What the subscription costs where the computer is, so Closedhand can say when asked.
     const prices = plus ? await plus.prices(req.headers['cf-ipcountry']).catch(() => null) : null;
     res.json({ models: includedAi.current(), plan, ...(prices ? { prices } : {}), ...(key ? { key: key.key } : {}), ...(told.length ? { notices: told } : {}) });
   }, { always: true }));
@@ -565,7 +565,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   // computer the URL opens can see which sign-in it is, and can delete the
   // account (Settings in Closedhand); so can the owner here, signed in.
   // My Account in its dashboard shows the account whole: its sign-ins, the
-  // plan, this month's fair use as a share and Closedhand+.
+  // plan, this month's fair use as a share and the subscription.
   app.get('/api/phone-enrollment/account', wrap(async (req, res) => {
     const found = await owned(req);
     const person = found && (await db.query('SELECT provider, email FROM owners WHERE id = $1', [found.row.owner_id])).rows[0];
@@ -573,13 +573,13 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const details = await detailsOf(found.row.owner_id, req.headers['cf-ipcountry'], { card: true });
     res.json({ account: { provider: person.provider, email: person.email, url: 'https://' + found.row.hostname, ...details } });
   }, { always: true }));
-  // Closedhand+ in My Account, for the computer whose personal URL it is:
+  // The subscription in My Account, for the computer whose personal URL it is:
   // Polar's checkout and card form, framed on that personal URL only,
   // cancelling or keeping it, and what was paid with its invoices.
   const forPlus = (method, path, fn) => app[method]('/api/phone-enrollment/plus/' + path, wrap(async (req, res) => {
     const found = await owned(req);
     if (!found) return res.status(401).json({ error: 'Claim your personal URL first.' });
-    if (!plus?.enabled()) return res.status(503).json({ error: 'Closedhand+ is not available yet.' });
+    if (!plus?.enabled()) return res.status(503).json({ error: 'Subscribing is not available yet.' });
     try { await fn(found.row.owner_id, 'https://' + found.row.hostname, req, res); }
     catch (e) {
       console.error('[plus] my account:', e.message);
@@ -590,21 +590,21 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const owner = (await db.query('SELECT id, email FROM owners WHERE id = $1', [ownerId])).rows[0];
     const now = await plus.state(ownerId);
     if (req.body?.kind === 'extend') {
-      if (!now.active) return res.status(409).json({ error: 'Carrying on past fair use is part of Closedhand+.' });
+      if (!now.active) return res.status(409).json({ error: 'Carrying on past fair use is part of the subscription.' });
       if (now.extended) return res.status(409).json({ error: 'You can already carry on to the end of this month.' });
       return res.json({ url: await plus.extend(owner, origin) });
     }
-    if (now.active) return res.status(409).json({ error: 'You already have Closedhand+.' });
+    if (now.active) return res.status(409).json({ error: 'You already subscribe to Managed Models.' });
     res.json({ url: await plus.checkout(owner, origin) });
   });
   forPlus('post', 'card', async (ownerId, origin, req, res) => {
     const session = await plus.cardSession(ownerId);
-    if (!session) return res.status(409).json({ error: 'You have not subscribed to Closedhand+.' });
+    if (!session) return res.status(409).json({ error: 'You have not subscribed to Managed Models.' });
     res.json(session);
   });
   forPlus('post', 'cancel', async (ownerId, origin, req, res) => {
     const now = await plus.setCancel(ownerId, req.body?.cancel === true);
-    if (!now) return res.status(409).json({ error: 'You have not subscribed to Closedhand+.' });
+    if (!now) return res.status(409).json({ error: 'You have not subscribed to Managed Models.' });
     res.json({ plus: now });
   });
   forPlus('get', 'payments', async (ownerId, origin, req, res) => {
@@ -644,14 +644,14 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
 
   // An account's sign-ins, the plan without the base its computer counts
   // from, how much of this month's fair use is used, as a share for one bar
-  // and never an amount, and Closedhand+ with its prices where the person is.
+  // and never an amount, and the subscription with its prices where the person is.
   async function detailsOf(owner, country, { card: withCard = false } = {}) {
     const plusState = plus ? await plus.state(owner) : null;
     const plusPrices = plusState?.available ? await plus.prices(country) : null;
     // The card only for My Account, which shows it: closedhand.com's own pages
     // ask for the account on every view, and each card read opens a Polar session.
     const card = withCard && plusState?.active ? await plus.cardOnFile(owner).catch(() => null) : null;
-    const { base, ...plan } = await planFor(db, env, owner);
+    const { base, ...plan } = await planFor(db, env, owner, undefined, includedAi);
     const running = plan.name === 'first-month' || plan.name === 'plus';
     const usage = running ? await includedAi.usage(owner).catch(() => null) : null;
     const used = usage ? Math.round(Math.min(1, Math.max(0, usage.used / usage.limit)) * 100) / 100 : null;
@@ -701,7 +701,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   // a broken report can never make every address look unused. A sign-in
   // that holds nothing, a day on, is forgotten: an account exists only
   // while it has a personal URL (or a name held for it), or while its
-  // Closedhand+ runs, so a subscription never outlives its account.
+  // a subscription runs, so a subscription never outlives its account.
   const idleDays = Number.parseInt(env.ADDRESS_IDLE_DAYS || '90', 10);
   let seenAt = 0;
   async function releaseStale() {

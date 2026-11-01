@@ -128,10 +128,10 @@ function cleanPlan(plan, previous) {
   if (date(plan.ends_at)) out.ends_at = date(plan.ends_at);
   if (date(plan.renews_at)) out.renews_at = date(plan.renews_at);
   if (plan.extended === true) out.extended = true;
-  // Closedhand+ in its free first month; or, never had, able to start with one.
+  // A subscription in its free first month; or, never had the free month, able to start with one.
   if (plan.name === "plus" && plan.trial === true) out.trial = true;
   if (plan.name !== "plus" && plan.plus_trial === true) out.plus_trial = true;
-  // Closedhand+: the key's use when this paid month began, which this
+  // A subscription: the key's use when this paid month began, which this
   // month's fair use counts from (included-ai.js credit).
   if (plan.name === "plus" && Number.isFinite(Number(plan.base)) && plan.base !== null && plan.base !== "") out.base = Number(plan.base);
   if (plan.name === "ended") {
@@ -171,7 +171,7 @@ async function refresh() {
   const { getAdminUserId } = require("./admin");
   const patch = (set) => require("./settings-patch").patchSettings(supabase, getAdminUserId(), { set });
   const notices = keptNotices(answer.notices, before);
-  // What Closedhand+ and carrying on cost, as closedhand.com shows them ("$10").
+  // What the subscription and carrying on cost, as closedhand.com shows them ("$10").
   const price = (v) => typeof v === "string" && /^[^\s<>]{1,12}$/.test(v) ? v : null;
   const prices = answer.prices && price(answer.prices.plus) ? { plus: price(answer.prices.plus), ...(price(answer.prices.extend) ? { extend: price(answer.prices.extend) } : {}) } : null;
   if (notices.changed) await patch({ included_notices: notices.list });

@@ -86,7 +86,7 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
   async function gather() {
     const one = async sql => (await db.query(sql)).rows[0] || {};
     // Closedhand Managed Models: first months running and ended, what they
-    // allow, and Closedhand+ by state.
+    // allow, and subscriptions by state.
     const firstMonths = await one(`SELECT
         count(*) FILTER (WHERE stopped_at IS NULL AND (ends_at IS NULL OR ends_at > now()))::int AS running,
         coalesce(sum(granted_usd) FILTER (WHERE stopped_at IS NULL AND (ends_at IS NULL OR ends_at > now())), 0)::float AS allowance,

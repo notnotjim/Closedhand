@@ -12,7 +12,7 @@
 //
 // The start is a first month, not an amount: the key has the fair-use ceiling
 // (INCLUDED_AI_FAIR_USE_USD), never reset, and the hourly sweep stops it when
-// the month (INCLUDED_AI_FIRST_MONTH_DAYS) is over, unless Closedhand+ has
+// the month (INCLUDED_AI_FIRST_MONTH_DAYS) is over, unless a subscription has
 // taken over. It is given once per person, ever (starter_grants keeps a
 // one-way fingerprint of the sign-in, also after the account is deleted), and
 // to at most a few people per internet connection a month, so nobody can
@@ -29,7 +29,7 @@
 // without a provisioning key, or with OpenRouter unreachable, the claim goes
 // on without a key and setup asks for an LLM provider instead.
 //
-// Closedhand+ (lib/plus.js) continues it: a subscriber's key gets a fair use
+// The subscription (lib/plus.js) continues it: a subscriber's key gets a fair use
 // for each paid month, from the day of the month they subscribed (as Polar
 // renews it), doubled for a month they paid to carry on past it. A subscriber is never held to
 // the first month's limits; one whose account has no key gets one the next
@@ -148,6 +148,19 @@ function create({ db, env = process.env, request = fetch }) {
     return { key, hash };
   }
 
+  // The one-way fingerprint of the account's sign-in, which starter_grants keeps.
+  async function personOf(ownerId) {
+    const who = (await db.query('SELECT provider, subject FROM owners WHERE id = $1', [ownerId])).rows[0];
+    return fingerprint('person', who && who.subject ? who.provider + ':' + who.subject : 'owner:' + ownerId);
+  }
+
+  // Whether this person has had their one free month of Managed Models: given
+  // to this account, or to their sign-in on an account before.
+  async function hadFreeMonth(ownerId) {
+    if ((await db.query('SELECT 1 FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rowCount) return true;
+    return (await db.query('SELECT 1 FROM starter_grants WHERE person_hash = $1', [await personOf(ownerId)])).rowCount > 0;
+  }
+
   // The key for an account that has just claimed its personal URL, from the
   // address the claim came from, or null when none can be given now. Never
   // throws: the claim must go on.
@@ -179,8 +192,7 @@ function create({ db, env = process.env, request = fetch }) {
         return { key: made.key, models: roles() };
       }
       if (sub) return await keyForSubscriber(ownerId, sub);
-      const who = (await db.query('SELECT provider, subject FROM owners WHERE id = $1', [ownerId])).rows[0];
-      const person = fingerprint('person', who && who.subject ? who.provider + ':' + who.subject : 'owner:' + ownerId);
+      const person = await personOf(ownerId);
       const place = connection(ip) && fingerprint('connection', connection(ip));
       await db.query("UPDATE starter_grants SET network_hash = NULL WHERE network_hash IS NOT NULL AND granted_at < now() - interval '30 days'");
       const refused = (await db.query('SELECT 1 FROM starter_grants WHERE person_hash = $1', [person])).rowCount ? 'this sign-in has had it'
@@ -224,7 +236,7 @@ function create({ db, env = process.env, request = fetch }) {
     try { return !(await full(connection(ip) && fingerprint('connection', connection(ip)))); } catch (_) { return false; }
   }
 
-  // Closedhand+: the account's subscription while it gives access (Polar keeps
+  // The account's subscription while it gives access (Polar keeps
   // access through a failed payment it is still retrying), or null.
   async function subscription(ownerId) {
     return (await db.query(
@@ -306,9 +318,9 @@ function create({ db, env = process.env, request = fetch }) {
     return true;
   }
 
-  // Run hourly: a first month that has run out, with no Closedhand+ to take
+  // Run hourly: a first month that has run out, with no subscription to take
   // over, stops its key, and keys replaced or left by a deleted account are
-  // deleted at OpenRouter. Closedhand+ months follow Polar's own renewals
+  // deleted at OpenRouter. Subscription months follow Polar's own renewals
   // (lib/plus.js).
   async function sweep() {
     if (!enabled()) return 0;
@@ -351,7 +363,7 @@ function create({ db, env = process.env, request = fetch }) {
     return cents((await allKeys()).reduce((total, k) => total + Number(k.usage_monthly || 0), 0));
   }
   // What is left of the OpenRouter account's credit, which every key draws on:
-  // when it runs out, every first month and every Closedhand+ subscriber stops
+  // when it runs out, every first month and every subscriber stops
   // at once. With the days it lasts at the pace of the last 30 days, as
   // OpenRouter reports them a completed UTC day at a time, counted from the
   // first day with any use so a young account's pace isn't spread thin.
@@ -413,7 +425,7 @@ function create({ db, env = process.env, request = fetch }) {
     return enabled() ? roles() : null;
   }
 
-  return { forOwner, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, credit, forOperator, usage, fairUse };
+  return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, credit, forOperator, usage, fairUse };
 }
 
 module.exports = { create };

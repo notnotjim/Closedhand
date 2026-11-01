@@ -1,7 +1,7 @@
 // The Closedhand account page. The account's home is My Account in the
 // person's dashboard, so signed in, with their Closedhand answering, this
 // opens it there. Otherwise it shows what closedhand.com holds: which
-// sign-in it is, the personal URL, Closedhand+ and deleting the account.
+// sign-in it is, the personal URL, the subscription and deleting the account.
 // Deleting here can't reach the computer running Closedhand, so it says
 // plainly what stays there.
 (() => {
@@ -21,10 +21,10 @@
     } catch (_) { show(null); say('Could not look up your account. Please try again.', true); return; }
     say(welcome);
     if (!data.signedIn) {
-      // From a one-tap link (carry-on in Closedhand's chat, Closedhand+ in
-      // My Account): signing in goes on to it.
+      // From a one-tap link in Closedhand's chat (carry-on, subscribe):
+      // signing in goes on to it.
       const then = new URLSearchParams(location.search).get('then');
-      if (then === 'carry-on' || then === 'plus') {
+      if (then === 'carry-on' || then === 'subscribe') {
         for (const a of document.querySelectorAll('#signed-out a[href^="/auth/"]')) a.href = a.getAttribute('href').replace('return_to=%2Faccount', 'return_to=%2F' + then);
       }
       // Signed in with a provider that has no Closedhand account (none=…).
@@ -58,7 +58,7 @@
   }
 
   // Closedhand Managed Models: where the plan stands and how much of this
-  // month's fair use is used, as a bar and never an amount; then Closedhand+,
+  // month's fair use is used, as a bar and never an amount; then the subscription,
   // what it is and the way in, or when it renews and the way to manage it.
   // Prices are in the person's currency, as Polar will charge. The first
   // month's end is said in its last week only.
@@ -69,7 +69,7 @@
     if (plan.name === 'first-month') {
       const left = Date.parse(plan.ends_at) - Date.now();
       state.push(left > 0 && left <= 7 * 86400000 ? 'Your first month of Closedhand Managed Models stays on until ' + day(plan.ends_at) + '.' : 'Your first month of Closedhand Managed Models is running.');
-    } else if (plan.name === 'ended') state.push('Closedhand Managed Models has ended.');
+    } else if (plan.name === 'ended') state.push('Closedhand Managed Models have ended.');
     const running = (plan.name === 'first-month' || plan.name === 'plus') && typeof data.used === 'number';
     $('fair-use').hidden = !running;
     if (running) {
@@ -83,15 +83,15 @@
     if (!p.available) { $('plus-about').hidden = true; $('plus-fine').hidden = true; return showState(); }
     const email = data.plan?.email;
     $('plus-about').hidden = !!p.active;
-    $('plus-about').textContent = 'Closedhand Managed Models every month, so you need no LLM provider of your own'
-      + (email ? ", and Closedhand's own email with no monthly limit" : '') + ". They run through OpenRouter, only on LLM providers that do not store or train on your data or conversations."
-      // Never had Closedhand+: its first month is free (Polar's trial).
+    $('plus-about').textContent = 'Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own'
+      + (email ? ", and to use Closedhand's own email with no monthly limit" : '') + ". They run through OpenRouter, only on LLM providers that do not store or train on your data or conversations."
+      // Never had the free month: the subscription's first month is it (Polar's trial).
       + (p.free_month ? ' The first month is free, then ' + (prices.plus || 'a monthly price') + ' a month.' : '');
     $('plus-get').hidden = p.active;
-    $('plus-get').textContent = p.free_month ? 'Get Closedhand+ · first month free' : 'Get Closedhand+' + (prices.plus ? ' · ' + prices.plus + ' a month' : '');
+    $('plus-get').textContent = p.free_month ? 'Subscribe · first month free' : 'Subscribe' + (prices.plus ? ' · ' + prices.plus + ' a month' : '');
     $('plus-manage').hidden = !p.active;
-    if (p.active && p.trial && p.ends_at) state.push('Your free month runs until ' + day(p.ends_at) + ', then Closedhand+ ends and nothing is charged.');
-    else if (p.active && p.trial && p.renews_at) state.push('Your free month runs until ' + day(p.renews_at) + ', then Closedhand+ renews at ' + (prices.plus || 'its monthly price') + ' a month.');
+    if (p.active && p.trial && p.ends_at) state.push('Your free month runs until ' + day(p.ends_at) + ', then your subscription ends and nothing is charged.');
+    else if (p.active && p.trial && p.renews_at) state.push('Your free month runs until ' + day(p.renews_at) + ', then your subscription renews at ' + (prices.plus || 'its monthly price') + ' a month.');
     else if (p.active && p.ends_at) state.push('Ends on ' + day(p.ends_at) + '.');
     else if (p.active && p.renews_at) state.push('Renews on ' + day(p.renews_at) + '.');
     if (p.active && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
@@ -115,7 +115,7 @@
   $('plus-manage').addEventListener('click', () => goTo('/api/plus/manage', $('plus-manage')));
   // Back from Polar's checkout.
   const back = new URLSearchParams(location.search).get('plus');
-  const welcome = back === 'welcome' ? 'Welcome to Closedhand+. Your Closedhand picks it up within the hour.'
+  const welcome = back === 'welcome' ? 'You subscribe to Closedhand Managed Models now. Your Closedhand picks it up within the hour.'
     : back === 'extended' ? 'Done: you can carry on to the end of the month.' : '';
   $('delete').addEventListener('click', () => {
     const text = $('confirm-text');

@@ -125,7 +125,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
       microsoft: { id: env.MICROSOFT_CLIENT_ID, secret: env.MICROSOFT_CLIENT_SECRET },
     },
   });
-  // Closedhand Managed Models' keys (lib/included-ai.js) and Closedhand+,
+  // Closedhand Managed Models' keys (lib/included-ai.js) and the subscription,
   // which continues them (lib/plus.js), shared by the account routes; the
   // maintainer's notices about them (lib/capacity.js, lib/operator-notices.js)
   // reach the maintainer's own Closedhand through those routes too.

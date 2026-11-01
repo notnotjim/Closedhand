@@ -112,7 +112,7 @@ function register(app, { db, sessions, baseUrl, clients, request = fetch }) {
       // Signing in to find a Closedhand never makes an account: a sign-in
       // with none goes back saying so. Claiming a personal URL or confirming
       // the assistant's email is where an account begins.
-      const finding = /^\/(open|account|carry-on|plus)(?=[?#]|$)/.test(back);
+      const finding = /^\/(open|account|carry-on|subscribe)(?=[?#]|$)/.test(back);
       const owner = finding ? await findOwner(db, identity) : await ownerFor(db, identity);
       if (!owner) return res.redirect(navigation.noAccount(back, key));
       sessions.signIn(res, owner);

@@ -1,14 +1,14 @@
 // Where an account stands with Closedhand Managed Models, as its computer and
-// its account page are told (lib/addresses.js): its first month, Closedhand+,
+// its account page are told (lib/addresses.js): its first month, a subscription,
 // ended (it had one or the other and neither runs now), or none (it never
 // had Managed Models; its own LLM provider is all it uses). Whether
 // Closedhand's own email is offered here rides along, so the computer can say
-// what Closedhand+ includes. For Closedhand+, base is the key's use when this
+// what the subscription includes. For a subscription, base is the key's use when this
 // paid month began, so the computer counts this month's use from it (never
 // shown; included-ai.js).
 const LIVE = ['active', 'trialing', 'past_due'];
 
-async function planFor(db, env, ownerId, now = new Date()) {
+async function planFor(db, env, ownerId, now = new Date(), includedAi = null) {
   const email = env.ASSISTANT_EMAIL_ENABLED === '1' && env.ASSISTANT_EMAIL_RELEASED === '1';
   if (!ownerId) return { name: 'none', email };
   const sub = (await db.query(
@@ -27,16 +27,17 @@ async function planFor(db, env, ownerId, now = new Date()) {
       email,
     };
   }
-  // An account that never had Closedhand+ would start it with a free month.
-  const freeMonth = sub ? {} : { plus_trial: true };
   if (key && key.ends_at && !key.stopped_at && new Date(key.ends_at) > now) {
-    return { name: 'first-month', ends_at: new Date(key.ends_at).toISOString(), email, ...freeMonth };
+    return { name: 'first-month', ends_at: new Date(key.ends_at).toISOString(), email };
   }
-  // What ended and when, so My Account can say "Closedhand+ ended on 27 November".
+  // What ended and when, so My Account can say "Your subscription ended on 27 November".
   const day = (d) => (d ? { ended_at: new Date(d).toISOString() } : {});
   if (sub?.started_at) return { name: 'ended', was: 'plus', ...day(sub.current_period_end), email };
-  if (key) return { name: 'ended', was: 'first-month', ...day(key.ends_at), email, ...freeMonth };
-  return { name: 'none', email, ...freeMonth };
+  if (key) return { name: 'ended', was: 'first-month', ...day(key.ends_at), email };
+  // Never had Managed Models: subscribing starts with the one free month,
+  // unless this sign-in had it on an account before.
+  const freeMonth = !sub && !(includedAi && await includedAi.hadFreeMonth(ownerId));
+  return { name: 'none', email, ...(freeMonth ? { plus_trial: true } : {}) };
 }
 
 module.exports = { planFor, LIVE };

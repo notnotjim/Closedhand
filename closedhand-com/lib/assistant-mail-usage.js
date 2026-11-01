@@ -13,7 +13,7 @@ async function usage(db, account) {
   const owner = crypto.createHash('sha256').update(account.owner_email.toLowerCase()).digest('hex');
   const row = mustWrite(await db.from('mail_relay_usage').select('sent,received,bytes').eq('owner_key', owner).eq('period', month).maybeSingle());
   const daily = mustWrite(await db.from('mail_relay_usage').select('sent,received').eq('owner_key', owner + ':daily').eq('period', new Date().toISOString().slice(0,10)).maybeSingle());
-  // Closedhand+ lifts the monthly allowances; the daily one stays, ten times
+  // A Managed Models subscription lifts the monthly allowances; the daily one stays, ten times
   // higher, as a guard against runaway sending (migration 014).
   const subscriber = !!account.owner_id && !!mustWrite(await db.from('plus_subscriptions').select('status')
     .eq('owner_id', account.owner_id).in('status', ['active', 'trialing', 'past_due']).maybeSingle());

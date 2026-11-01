@@ -63,7 +63,7 @@
   }
 
   // Managed Models by the one balance people depend on: every first month and
-  // every Closedhand+ subscriber draws on OpenRouter's credit, and all of them
+  // every subscriber draws on OpenRouter's credit, and all of them
   // stop when it runs out. This month's spend and who is using it go under it.
   function managedTile(m) {
     const c = m.credit, low = !!c && (c.left <= 0 || (c.days != null && c.days < 14));
@@ -74,7 +74,7 @@
       : `About ${n(c.days)} ${c.days === 1 ? 'day' : 'days'} at the last 30 days' pace.`;
     return tile({ label: 'OpenRouter credit left', value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '',
       sub: `${lasts} ${m.spentThisMonth == null ? '' : `${usd(m.spentThisMonth)} this month, `}` +
-        `${n(m.running)} first ${m.running === 1 ? 'month' : 'months'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} Closedhand+.` });
+        `${n(m.running)} first ${m.running === 1 ? 'month' : 'months'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} ${(m.plus.active || 0) === 1 ? 'subscription' : 'subscriptions'}.` });
   }
 
   function drawTiles(d) {
@@ -221,7 +221,7 @@
     if (p.renames) row('Renamed', `${n(p.renames)} ${p.renames === 1 ? 'time' : 'times'}`);
     row('Closedhand email', p.assistant_email ? `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month` : 'Off');
     row('First month', firstMonth(p));
-    row('Closedhand+', plusLine(p));
+    row('Subscription', plusLine(p));
     if (p.first_month_usd != null || p.plus_status) {
       const used = row('Managed Models use', 'Reading from OpenRouter…');
       fetch('/api/insights/person/' + encodeURIComponent(p.id), { cache: 'no-store' })
@@ -265,7 +265,7 @@
       if (p.claimed) chips.append(el('span', 'chip', 'claimed ' + day(p.claimed)));
       if (p.renames) chips.append(el('span', 'chip', `renamed ${p.renames}x`));
       if (p.assistant_email) chips.append(el('span', 'chip', `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month`));
-      if (p.plus_status) chips.append(el('span', 'chip' + (p.plus_status === 'active' ? ' up' : ''), 'Closedhand+ ' + p.plus_status));
+      if (p.plus_status) chips.append(el('span', 'chip' + (p.plus_status === 'active' ? ' up' : ''), 'Subscription ' + p.plus_status));
       else if (p.first_month_usd != null && !p.first_month_stopped && new Date(p.first_month_until) > Date.now()) chips.append(el('span', 'chip', 'first month to ' + day(p.first_month_until)));
       main.append(chips);
       let more = open.has(p.id) ? details(p) : null;

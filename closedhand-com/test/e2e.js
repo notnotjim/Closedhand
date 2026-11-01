@@ -772,7 +772,7 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   if (held) assert.ok(data.people.some(p => p.hostname === held.hostname && p.email === held.email && p.last_online), 'a claimed personal URL shows with its owner');
   assert.ok(Array.isArray(data.reports) && data.reports.length > 0, 'recent bug reports are listed');
   assert.ok(!/tunnel_token|secret_hash|key_hash/.test(text), 'connection secrets and Managed Models keys never reach the page');
-  assert.ok(me.id && 'first_month_usd' in me && 'plus_status' in me && 'more_sign_ins' in me, 'each row carries its first month, Closedhand+ and other sign-ins');
+  assert.ok(me.id && 'first_month_usd' in me && 'plus_status' in me && 'more_sign_ins' in me, 'each row carries its first month, subscription and other sign-ins');
   assert.equal(typeof data.managed.running, 'number');
   assert.equal(typeof data.managed.allowance, 'number');
   assert.equal(typeof data.managed.plus, 'object');
@@ -857,7 +857,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     await db.query("DELETE FROM operator_notices WHERE text LIKE 'Closedhand: new sign-up%'");
     const asked = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
     assert.deepEqual(asked.models, done.included_ai.models);
-    assert.deepEqual(asked.plan, { name: 'first-month', ends_at: new Date(row.ends_at).toISOString(), email: false, plus_trial: true }, 'and that it is in its first month');
+    assert.deepEqual(asked.plan, { name: 'first-month', ends_at: new Date(row.ends_at).toISOString(), email: false }, 'and that it is in its first month');
     assert.equal(asked.key, undefined);
     assert.equal(asked.notices, undefined, 'nothing waiting for the maintainer yet');
     assert.deepEqual((await (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json()).plan, asked.plan, 'the account page is told the same');
@@ -887,10 +887,10 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
   } finally { other.close(); }
 });
 
-// Closedhand+ through the real routes: the account subscribes on
+// The subscription through the real routes: the account subscribes on
 // closedhand.com, Polar's signed webhooks say so, the computer collects its
 // key, and cancelling then ending stops it. Polar and OpenRouter are stand-ins.
-test('Closedhand+: checkout, a signed webhook, the computer collects its key, cancelling ends it', async () => {
+test('the subscription: checkout, a signed webhook, the computer collects its key, cancelling ends it', async () => {
   const PLUS = '44444444-4444-4444-8444-444444444444', EXTEND = '55555555-5555-4555-8555-555555555555', SECRET = 'whsec_' + crypto.randomBytes(32).toString('base64');
   const keys = new Map(), polar = [];
   const fake = async (url, opts = {}) => {
@@ -959,10 +959,10 @@ test('Closedhand+: checkout, a signed webhook, the computer collects its key, ca
     const ownerId = (await db.query("SELECT id FROM owners WHERE subject = 'g-rowan'")).rows[0].id;
     assert.deepEqual((await (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json()).plus, { available: true, active: false, free_month: true, extended: false, nearly: false, prices: { plus: '$10', extend: '$8' } });
     const tap = cookie => fetch(at + '/carry-on', { redirect: 'manual', headers: cookie ? { cookie } : {} });
-    assert.equal((await tap(owner.cookie)).headers.get('location'), '/account', 'nothing to carry on without Closedhand+');
-    // Closedhand+ from My Account in the dashboard: one tap to Polar's page.
-    const plusTap = cookie => fetch(at + '/plus', { redirect: 'manual', headers: cookie ? { cookie } : {} });
-    assert.equal((await plusTap(null)).headers.get('location'), '/account?then=plus', 'signed out: sign in first, then on');
+    assert.equal((await tap(owner.cookie)).headers.get('location'), '/account', 'nothing to carry on without a subscription');
+    // Subscribing from the link in chat: one tap to Polar's page.
+    const plusTap = cookie => fetch(at + '/subscribe', { redirect: 'manual', headers: cookie ? { cookie } : {} });
+    assert.equal((await plusTap(null)).headers.get('location'), '/account?then=subscribe', 'signed out: sign in first, then on');
     assert.equal((await plusTap(owner.cookie)).headers.get('location'), 'https://sandbox.polar.sh/checkout/fixture', 'signed in: to take it out');
     assert.deepEqual(polar.at(-1).body.products, [PLUS]);
     assert.deepEqual((await (await call('GET', '/api/phone-enrollment/account', undefined, copy.auth)).json()).account.plus, { available: true, active: false, free_month: true, extended: false, nearly: false, prices: { plus: '$10', extend: '$8' } }, "My Account offers it in the person's currency, its first month free");
@@ -970,7 +970,7 @@ test('Closedhand+: checkout, a signed webhook, the computer collects its key, ca
     assert.equal((await call('POST', '/api/phone-enrollment/plus/checkout', { kind: 'plus' })).status, 401, 'only its own computer');
     assert.deepEqual(await (await call('POST', '/api/phone-enrollment/plus/checkout', { kind: 'plus' }, copy.auth)).json(), { url: 'https://sandbox.polar.sh/checkout/fixture' });
     assert.deepEqual([polar.at(-1).body.products, polar.at(-1).body.embed_origin, polar.at(-1).body.external_customer_id], [[PLUS], 'https://rowan-plus.closedhand.ai', ownerId]);
-    assert.equal((await call('POST', '/api/phone-enrollment/plus/checkout', { kind: 'extend' }, copy.auth)).status, 409, 'carrying on is part of Closedhand+');
+    assert.equal((await call('POST', '/api/phone-enrollment/plus/checkout', { kind: 'extend' }, copy.auth)).status, 409, 'carrying on is part of the subscription');
     assert.equal((await call('POST', '/api/phone-enrollment/plus/card', {}, copy.auth)).status, 409, 'no card to change yet');
 
     assert.equal((await call('POST', '/api/plus/checkout', {}, { cookie: owner.cookie })).status, 403, 'only from closedhand.com');
@@ -988,7 +988,7 @@ test('Closedhand+: checkout, a signed webhook, the computer collects its key, ca
     // The computer learns its plan and collects its key, once.
     const first = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
     assert.deepEqual(first.plan, { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', extended: false, base: 0, email: false });
-    assert.deepEqual(first.prices, { plus: '$10', extend: '$8' }, 'what Closedhand+ costs, for Closedhand to say when asked');
+    assert.deepEqual(first.prices, { plus: '$10', extend: '$8' }, 'what the subscription costs, for Closedhand to say when asked');
     assert.match(first.key, /^sk-or-v1-[a-f0-9]{64}$/);
     const [, made] = [...keys][0];
     assert.deepEqual([made.limit, made.limit_reset ?? null], [20, null]);
@@ -996,7 +996,7 @@ test('Closedhand+: checkout, a signed webhook, the computer collects its key, ca
     assert.equal((await db.query("SELECT count(*) AS n FROM included_ai_keys WHERE owner_id = $1 AND key_hash = $2", [ownerId, [...keys.keys()][0]])).rows[0].n, '1');
     const manage = await (await call('POST', '/api/plus/manage', {}, signedIn(owner.cookie))).json();
     assert.equal(manage.url, 'https://sandbox.polar.sh/portal/fixture');
-    // My Account with Closedhand+ running: the card form's session, cancelling
+    // My Account with a subscription running: the card form's session, cancelling
     // and keeping it, and what was paid with its invoice.
     assert.equal((await call('POST', '/api/phone-enrollment/plus/checkout', { kind: 'plus' }, copy.auth)).status, 409, 'already subscribed');
     assert.deepEqual(await (await call('POST', '/api/phone-enrollment/plus/card', {}, copy.auth)).json(), { token: 'polar_cst_fixture', web: 'https://sandbox.polar.sh' });
@@ -1006,7 +1006,7 @@ test('Closedhand+: checkout, a signed webhook, the computer collects its key, ca
     assert.equal(cancelled.plus.ends_at, '2026-12-01T00:00:00.000Z', 'on to the end of the paid month');
     assert.equal((await (await call('POST', '/api/phone-enrollment/plus/cancel', { cancel: false }, copy.auth)).json()).plus.renews_at, '2026-12-01T00:00:00.000Z', 'and kept after all');
     assert.deepEqual((await (await call('GET', '/api/phone-enrollment/plus/payments', undefined, copy.auth)).json()).payments,
-      [{ id: '11111111-2222-4333-8444-555555555555', at: '2026-11-01T00:00:05Z', what: 'plus', amount: '$10', refunded: false }], 'only what Closedhand+ was paid');
+      [{ id: '11111111-2222-4333-8444-555555555555', at: '2026-11-01T00:00:05Z', what: 'plus', amount: '$10', refunded: false }], 'only what the subscription was paid');
     assert.deepEqual(await (await call('GET', '/api/phone-enrollment/plus/invoice?id=11111111-2222-4333-8444-555555555555', undefined, copy.auth)).json(), { url: 'https://files.example.com/invoice.pdf' });
     assert.ok(polar.some((c) => c.method === 'POST' && c.url.endsWith('/invoice')), 'made the first time it is asked for');
     assert.equal((await call('GET', '/api/phone-enrollment/plus/invoice?id=22222222-2222-4333-8444-555555555555', undefined, copy.auth)).status, 404, "never another customer's");
@@ -1023,7 +1023,7 @@ test('Closedhand+: checkout, a signed webhook, the computer collects its key, ca
     assert.equal('base' in page.plan, false, 'never the amount its computer counts from');
     const mine = (await (await call('GET', '/api/phone-enrollment/account', undefined, copy.auth)).json()).account;
     assert.deepEqual([mine.used, mine.plan.name, mine.plus.active, 'base' in mine.plan], [0.25, 'plus', true, false], 'My Account shows the same, from the computer');
-    assert.deepEqual(mine.plus.card, { brand: 'visa', last4: '4242', expires: '08/29' }, 'the card Closedhand+ is paid with: the default one');
+    assert.deepEqual(mine.plus.card, { brand: 'visa', last4: '4242', expires: '08/29' }, 'the card the subscription is paid with: the default one');
     made.usage = 0;
 
     // Cancelled in the portal: on until the paid month ends, then stopped.
@@ -1066,12 +1066,12 @@ test("Railway's sign-in for Go always-on goes straight back to the Closedhand th
   assert.equal((await fetch(`${base}/railway/return`, { redirect: 'manual' })).status, 404);
 });
 
-test('the accounts tool shows each recent account\'s first month and Closedhand+, never an email', async () => {
+test('the accounts tool shows each recent account\'s first month and subscription, never an email', async () => {
   const { recent } = require('../tools/accounts');
   const id = (await db.query("INSERT INTO owners (provider, subject, email) VALUES ('google', 'g-tool-ivy', 'ivy@example.com') RETURNING id")).rows[0].id;
   await db.query(`INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, ends_at) VALUES ($1, 'hash-tool-ivy', 5, now() + interval '30 days')`, [id]);
   const out = await recent(db, { usage: async (o) => (o === id ? { used: 1.25, limit: 5 } : null), spentThisMonth: async () => 9.5 }, 1);
-  assert.match(out, /google  no personal URL  first month \$5\.00 from \d{4}-\d{2}-\d{2} \d{2}:\d{2} to \d{4}-\d{2}-\d{2} \d{2}:\d{2}, used \$1\.25 of \$5\.00  no Closedhand\+/);
+  assert.match(out, /google  no personal URL  first month \$5\.00 from \d{4}-\d{2}-\d{2} \d{2}:\d{2} to \d{4}-\d{2}-\d{2} \d{2}:\d{2}, used \$1\.25 of \$5\.00  no subscription/);
   assert.match(out, /OpenRouter spend this month across every key: \$9\.50/);
   assert.doesNotMatch(out, /ivy@example\.com|hash-tool-ivy/, 'no email, no key');
 });

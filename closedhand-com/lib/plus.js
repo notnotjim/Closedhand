@@ -1,4 +1,4 @@
-// Closedhand+: Closedhand Managed Models carried on after the free use, for a
+// The Managed Models subscription: Closedhand Managed Models carried on after the free month, for a
 // monthly payment. Polar sells it (it is the merchant of record: it takes the
 // card, charges tax and handles refunds), so nothing about a payment is kept
 // here, only what the subscription allows. The person subscribes from their
@@ -125,7 +125,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       active,
       // In its free first month, or able to start with one.
       ...(active && sub.status === 'trialing' ? { trial: true } : {}),
-      ...(enabled() && !sub ? { free_month: true } : {}),
+      ...(ownerId && await freeMonth(ownerId) ? { free_month: true } : {}),
       ...(active && until ? (sub.cancel_at_period_end ? { ends_at: until } : { renews_at: until }) : {}),
       extended: active && !!sub.extended_for && !!sub.current_period_start && new Date(sub.extended_for).getTime() === new Date(sub.current_period_start).getTime(),
       nearly: !!used && used.used >= used.limit * NEARLY_USED,
@@ -179,12 +179,14 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   // Polar's checkout for one product, tied to this account by its own ID, so
   // the webhooks that follow can name it. origin: the personal URL that frames
   // it in My Account, which Polar then lets show it.
-  // The first month of Closedhand+ is free for an account that has never had
-  // it: Polar takes the card, charges nothing until the month ends and emails
-  // three days before it does (Polar's trials). Once had, never again; any
-  // trial set on the product in Polar is turned off for everyone else.
+  // Each person has one free month of Managed Models. It is the first month,
+  // set up when they claim their personal URL; someone who did not get it then
+  // has it as the subscription's first month instead: Polar takes the card,
+  // charges nothing until the month ends and emails three days before it does
+  // (Polar's trials). Once had, never again; any trial set on the product in
+  // Polar is turned off for everyone else.
   async function freeMonth(ownerId) {
-    return enabled() && !!ownerId && !(await row(ownerId));
+    return enabled() && !!ownerId && !(await row(ownerId)) && !(await includedAi.hadFreeMonth(ownerId));
   }
   async function checkoutFor(owner, product, back, origin, trial = false) {
     const made = await api('/v1/checkouts/', 'POST', {
@@ -202,7 +204,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   const checkout = async (owner, origin) => checkoutFor(owner, plusProduct, 'welcome', origin, await freeMonth(owner.id));
   const extend = (owner, origin) => checkoutFor(owner, extendProduct, 'extended', origin);
 
-  // My Account's Closedhand+, asked for by the person's computer. Each answers
+  // My Account's subscription, asked for by the person's computer. Each answers
   // null when there is nothing to do it to.
   // Polar's form for the card, framed on the personal URL: a short session
   // for this account's customer at Polar, which can do nothing else here.
@@ -213,7 +215,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     if (typeof made?.token !== 'string') throw new Error('Polar did not return a session');
     return { token: made.token, web: WEB };
   }
-  // The card Closedhand+ is paid with, as Polar shows it to its own
+  // The card the subscription is paid with, as Polar shows it to its own
   // customer: brand, last four digits and expiry, never kept here. Read
   // through a short customer session, the only way Polar gives it.
   async function cardOnFile(ownerId) {
@@ -236,7 +238,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       expires: Number.isInteger(month) && Number.isInteger(year) ? String(month).padStart(2, '0') + '/' + String(year).slice(-2) : null,
     };
   }
-  // Cancelling keeps Closedhand+ to the end of the paid month, and until then
+  // Cancelling keeps the subscription to the end of the paid month, and until then
   // it can be kept after all.
   async function setCancel(ownerId, cancel) {
     const sub = await row(ownerId);
@@ -446,7 +448,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       const ownerId = sessions.owner(req);
       if (!ownerId) { res.status(401).json({ error: 'Sign in to your Closedhand account first.' }); return null; }
       if (req.headers.origin !== baseUrl) { res.status(403).json({ error: 'Open this on closedhand.com.' }); return null; }
-      if (!enabled()) { res.status(503).json({ error: 'Closedhand+ is not available yet.' }); return null; }
+      if (!enabled()) { res.status(503).json({ error: 'Subscribing is not available yet.' }); return null; }
       const owner = (await db.query('SELECT id, email FROM owners WHERE id = $1', [ownerId])).rows[0];
       if (!owner) { res.status(401).json({ error: 'Sign in to your Closedhand account first.' }); return null; }
       return owner;
@@ -461,19 +463,19 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       }
     });
     route('/api/plus/checkout', async (owner, req, res) => {
-      if ((await state(owner.id)).active) return res.status(409).json({ error: 'You already have Closedhand+.' });
+      if ((await state(owner.id)).active) return res.status(409).json({ error: 'You already subscribe to Managed Models.' });
       const address = (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount;
       if (!address) return res.status(409).json({ error: 'Claim your personal URL from Closedhand on your computer first.' });
       res.json({ url: await checkout(owner) });
     });
     route('/api/plus/extend', async (owner, req, res) => {
       const now = await state(owner.id);
-      if (!now.active) return res.status(409).json({ error: 'Carrying on past fair use is part of Closedhand+.' });
+      if (!now.active) return res.status(409).json({ error: 'Carrying on past fair use is part of the subscription.' });
       if (now.extended || !extendProduct) return res.status(409).json({ error: 'You can already carry on to the end of this month.' });
       res.json({ url: await extend(owner) });
     });
-    // Carrying on, from the link in Closedhand's chat: signed in with
-    // Closedhand+ running and not yet carried on this month, one tap goes
+    // Carrying on, from the link in Closedhand's chat: signed in with a
+    // subscription running and not yet carried on this month, one tap goes
     // straight to Polar's page to pay; signed out, it is sign in first, then
     // on. Anything else goes to the account page, which says where things stand.
     app.get('/carry-on', async (req, res) => {
@@ -490,15 +492,15 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
         res.redirect(302, '/account');
       }
     });
-    // Closedhand+ from My Account in the person's dashboard, which can't sign
-    // in here itself: signed in, one tap goes to Polar's page, to manage it
-    // while it runs or else to take it out; signed out, it is sign in first,
-    // then on. Anything else goes to the account page, which says why.
-    app.get('/plus', async (req, res) => {
+    // Subscribing, from the link in Closedhand's chat: signed in, one tap
+    // goes to Polar's page, to manage the subscription while it runs or else
+    // to take it out; signed out, it is sign in first, then on. Anything else
+    // goes to the account page, which says why.
+    app.get('/subscribe', async (req, res) => {
       res.set('Cache-Control', 'no-store');
       try {
         const ownerId = sessions.owner(req);
-        if (!ownerId) return res.redirect(302, '/account?then=plus');
+        if (!ownerId) return res.redirect(302, '/account?then=subscribe');
         const owner = enabled() && (await db.query('SELECT id, email FROM owners WHERE id = $1', [ownerId])).rows[0];
         if (!owner) return res.redirect(302, '/account');
         if ((await state(owner.id)).active) return res.redirect(302, await portal(owner));
@@ -506,12 +508,12 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
         if (!address) return res.redirect(302, '/account');
         res.redirect(302, await checkout(owner));
       } catch (e) {
-        console.error('[plus] plus:', e.message);
+        console.error('[plus] subscribe:', e.message);
         res.redirect(302, '/account');
       }
     });
     route('/api/plus/manage', async (owner, req, res) => {
-      if (!(await row(owner.id))) return res.status(409).json({ error: 'You have not subscribed to Closedhand+.' });
+      if (!(await row(owner.id))) return res.status(409).json({ error: 'You have not subscribed to Managed Models.' });
       res.json({ url: await portal(owner) });
     });
     // Polar's webhooks: the raw body is kept (server.js) for the signature.
