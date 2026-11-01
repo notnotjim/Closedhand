@@ -439,7 +439,8 @@ test("a job paused half a day or more is looked at before asking; a short pause 
   assert.equal(v.verdict, "change"); assert.equal(v.offer, "redo it for the same trip in April");
   assert.deepEqual(JSON.parse(JSON.stringify(v.parts)), [{ name: "Flights", job: "Flights out 11 Apr, back 15 Apr" }], "only agents on the team");
   assert.match(change.seen[0].messages[0].content, /Flights \(done\): Flights out 14 Mar, back 18 Mar\n  found: £412/);
-  assert.match(change.seen[0].system, /When unsure, finish\./);
+  assert.match(change.seen[0].system, /When unsure between change and drop, change; when unsure otherwise, finish\./);
+  assert.match(change.seen[0].system, /drop: it was tied to one occasion that is now over/, "a trip whose dates passed is a change, a dinner that has passed is a drop");
   const drop = resumeFunctions('{"verdict":"drop","why":"It was for Sat 14 Mar, which has passed."}');
   assert.deepEqual(JSON.parse(JSON.stringify(await drop.judgeResume(pausedTrip, {}, {}, "m"))), { verdict: "drop", why: "It was for Sat 14 Mar, which has passed." });
   assert.equal((await resumeFunctions("not json").judgeResume(pausedTrip, {}, {}, "m")).verdict, "finish", "anything unclear: finish");
