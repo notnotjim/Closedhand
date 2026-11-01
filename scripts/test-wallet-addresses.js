@@ -1,7 +1,9 @@
-// Addresses in the Wallet: one is home, where cards are billed and orders go
-// unless a card or a purchase names another. The card fill types the card's
-// billing address, fill_address types a delivery address, and the question
-// before paying says where the order is going.
+// Addresses in the Wallet: each card is billed to the one chosen for it, and
+// one may be home, where orders go unless a purchase names another; a card is
+// never kept without a billing address, and nothing is made home, labelled or
+// billed by guesswork. The card fill types the card's billing address,
+// fill_address types a delivery address, and the question before paying says
+// where the order is going.
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -29,7 +31,7 @@ test("addresses are a table of their own, added safely to any database", () => {
   assert.match(sql, /CREATE INDEX IF NOT EXISTS idx_wallet_addresses_user/);
 });
 
-test("home is used unless another is named, and a card is billed where it says, else home, else its old postcode", async () => {
+test("home is used unless another is named, and a card is billed where it says, else its old postcode, never a guess", async () => {
   const w = wallet([HOME, WORK]);
   assert.equal((await w.findAddress("u", undefined)).address.id, "a-home");
   assert.equal((await w.findAddress("u", "home")).address.id, "a-home");
@@ -38,8 +40,10 @@ test("home is used unless another is named, and a card is billed where it says, 
   assert.equal(miss.address, null);
   assert.deepEqual(Array.from(miss.all, (a) => a.label), ["Home", "Work"], "a miss can say what there is");
   assert.equal((await w.billingFor("u", { billing: { address_id: "a-work" } })).id, "a-work");
-  assert.equal((await w.billingFor("u", { billing: null })).id, "a-home");
-  assert.equal((await w.billingFor("u", { billing: { address_id: "gone" } })).id, "a-home", "an address since removed falls back to home");
+  assert.equal(await w.billingFor("u", { billing: null }), null, "no billing address is none, not home");
+  assert.equal(await w.billingFor("u", { billing: { address_id: "gone" } }), null, "nor is an address since removed");
+  assert.equal((await wallet([{ ...WORK }]).findAddress("u", "home")).address, null, "home is only an address marked home");
+  assert.equal((await w.findAddress("u", "sample street")).address.id, "a-work", "an address without a label is found by its words");
   const none = wallet([]);
   assert.deepEqual({ ...(await none.billingFor("u", { billing: { postcode: "TE9 9ZZ" } })) }, { postcode: "TE9 9ZZ" }, "a card from before addresses keeps its postcode");
   assert.equal(await none.billingFor("u", { billing: null }), null);
@@ -89,7 +93,9 @@ test("the question before paying says where the order is going, and a finished p
 test("fill_address types a saved address, says which are saved when the name is wrong, and asks when there is none", () => {
   const handlers = read("lib/tools/handlers.js");
   assert.match(handlers, /const \{ address, all \} = await wallet\.findAddress\(userId, toolInput\.address\);/);
-  assert.match(handlers, /There is no saved address matching "\$\{toolInput\.address\}"\. Saved: \$\{all\.map\(\(a\) => a\.label\)\.join\(", "\)\}\./);
+  assert.match(handlers, /There is no saved address matching "\$\{toolInput\.address\}"\. Saved: \$\{saved\}\./);
+  assert.match(handlers, /The user has not marked a saved address as home\. Saved: \$\{saved\}\. Ask them which one, or where it should go\./);
+  assert.match(handlers, /if \(action === "fill_card" && !billing\) parsed\.billing_address = "This card has no billing address in the Wallet\. If the page asks for one, ask the user for it and type it with fill/, "a card with no billing address asks, never goes without");
   assert.match(handlers, /The user has no address saved\. Ask them where it should go and type it with fill; they can save it under Wallet in Settings so it is filled in next time\./);
   assert.match(handlers, /wallet\.noteAddressFill\(userId, address\);/);
   const defs = read("lib/tools/definitions.js");
@@ -106,23 +112,45 @@ test("Settings adds, changes and removes addresses behind the dashboard's own ch
   }
   const fn = server.slice(server.indexOf("function cleanAddress("), server.indexOf("// A card's billing address"));
   const ctx = {}; vm.runInNewContext(fn + "; this.cleanAddress = cleanAddress;", ctx);
-  assert.equal(ctx.cleanAddress({ line1: "", city: "Testford", country: "GB" }).error, "Enter the first line of the address.");
-  assert.equal(ctx.cleanAddress({ line1: "1 Example Road", country: "GB" }).error, "Enter the town or the postcode.");
-  assert.equal(ctx.cleanAddress({ line1: "1 Example Road", city: "Testford", country: "" }).error, "Choose the country.");
-  assert.equal(ctx.cleanAddress({ line1: " 1 Example Road ", postcode: "TE1 1ST", country: "gb" }).address.country, "GB");
+  assert.equal(ctx.cleanAddress({ line1: "1 Example Road", city: "Testford", country: "GB" }).error, "Enter the name.");
+  assert.equal(ctx.cleanAddress({ name: "Ada Fixture", line1: "", city: "Testford", country: "GB" }).error, "Enter the first line of the address.");
+  assert.equal(ctx.cleanAddress({ name: "Ada Fixture", line1: "1 Example Road", country: "GB" }).error, "Enter the town or the postcode.");
+  assert.equal(ctx.cleanAddress({ name: "Ada Fixture", line1: "1 Example Road", city: "Testford", country: "" }).error, "Choose the country.");
+  assert.equal(ctx.cleanAddress({ name: "Ada Fixture", line1: " 1 Example Road ", postcode: "TE1 1ST", country: "gb" }).address.country, "GB");
+  assert.equal(ctx.cleanAddress({ name: "Ada Fixture", line1: "1 Example Road", postcode: "TE1 1ST", country: "GB" }).address.label, "", "a label is optional");
+  assert.doesNotMatch(server, /Give it a short name|address\.label = "Home"/, "and never made up");
+  assert.match(server, /const home = \(req\.body \|\| \{\}\)\.is_home === true;/, "home is only the address the person says is home");
   assert.match(server, /const \{ data \} = await supabase\.from\("wallet_addresses"\)\.select\("id"\)\.eq\("user_id", userId\)\.eq\("id", id\)\.limit\(1\);/, "a card is only billed to the person's own address");
-  assert.match(server, /if \(c\.billing && c\.billing\.address_id === id\) \{/, "removing an address sends its cards back to home");
-  assert.match(server, /if \(gone\.is_home\) \{/, "and the oldest address left becomes home");
+  assert.match(server, /if \(c\.billing && c\.billing\.address_id === id\) \{/, "removing an address leaves its cards without one");
+  assert.doesNotMatch(server, /if \(gone\.is_home\) \{/, "and makes nothing home in its place");
+  const add = server.slice(server.indexOf('app.post("/api/wallet", async'), server.indexOf('app.patch("/api/wallet/:id"'));
+  assert.match(add, /if \(!billing\) return res\.status\(400\)\.json\(\{ error: "Choose the card's billing address\." \}\);/, "a card is never kept without a billing address");
+  assert.match(add, /if \(!holder\) return res\.status\(400\)\.json\(\{ error: "Enter the name on the card\." \}\);/);
+  assert.match(add, /if \(!\/\^\\d\{3,4\}\$\/\.test\(cvc\)\) return res\.status\(400\)/, "nor without its security code");
+  const patch = server.slice(server.indexOf('app.patch("/api/wallet/:id"'), server.indexOf('app.delete("/api/wallet/:id"'));
+  assert.match(patch, /if \(!patch\.billing\) return res\.status\(400\)\.json\(\{ error: "Choose the card's billing address\." \}\);/, "nor changed to none");
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, /<div style="font-size:0.8125rem;font-weight:600;color:var\(--fg\);margin-bottom:0.25rem;">Addresses<\/div>/);
-  assert.match(dash, /addCard\('Add a card', 'toggleAddCard\(\)'\);/, "both lists end with the same add tile");
+  assert.match(dash, /addCard\('Add a card', 'openCardForm\(\)'\);/, "both lists end with the same add tile");
   assert.match(dash, /addCard\('Add an address', 'openAddressForm\(\)'\);/);
-  assert.match(dash, /<label class="wallet-field" id="wc-billing-wrap" style="grid-column:1\/-1;"><span>Billing address<\/span><select id="wc-billing"><\/select><\/label>/);
-  // The choice shows only once there is another address to choose; before
-  // any address, a line says where to add it.
-  assert.match(dash, /document\.getElementById\('wc-billing-wrap'\)\.hidden = addrs\.length < 2;/);
-  assert.match(dash, /'Billed to your home address\. <button type="button" class="notification-retry" onclick="openAddressForm\(\);/);
-  assert.match(dash, /<label class="wallet-field" style="grid-column:1\/-1;"><span>Name on card<\/span>/, "a name has room");
+  // Always chosen in the card form, among the saved addresses or a new one
+  // typed in there; never "your home address" before there is one.
+  assert.match(dash, /<label class="wallet-field" style="grid-column:1\/-1;"><span>Billing address<\/span><select id="wc-billing" onchange="billingChoice\(\)"><\/select><\/label>/);
+  assert.match(dash, /'<option value="new"' \+ \(pick === 'new' \? ' selected' : ''\) \+ '>New address<\/option>'/);
+  assert.match(dash, /if \(intoCard\) box\.appendChild\(fields\);/, "one set of address fields, moved into the card form");
+  assert.doesNotMatch(dash, /Billed to your home address|Name for it|Who it's for/);
+  // A saved card opens to change its label, billing address and limits, and
+  // its row says where it is billed.
+  assert.match(dash, /'<button class="conn-btn conn-btn-manage" onclick="openCardForm\(\\'' \+ c\.id \+ '\\'\)">Edit<\/button>'/);
+  assert.match(dash, /\(billedTo \? 'billed to ' \+ escHtml\(addressName\(billedTo\)\) : 'no billing address'\)/);
+  assert.match(dash, /<div id="wc-limits" style="grid-column:1\/-1;margin-top:0\.375rem;" hidden><div style="font-size:0\.75rem;color:var\(--muted\);margin-bottom:0\.375rem;">Your spending rules cover every card\. These are lower limits for this card alone\.<\/div>/);
+  // What may be left empty says so.
+  for (const label of ["Label (optional)", "Max per purchase (optional)", "Max per month (optional)", "Flat, floor or building (optional)", "County or state (optional)", "Phone (optional)"]) assert.ok(dash.includes(`<span>${label}</span>`), label);
+  assert.match(dash, /<label class="wallet-field" style="grid-column:1\/-1;"><span>Name<\/span><input type="text" id="wa-name"/);
+  // The password asked before spending more freely is a password's width, in neutral colours.
+  assert.match(dash, /\.wallet-confirm \{ margin:0 0 1rem; padding:0\.875rem 1rem; border:1px solid rgba\(var\(--fg-rgb\),0\.16\);/);
+  assert.match(dash, /\.wallet-confirm-row input \{ flex:0 1 13\.75rem;/);
+  assert.match(dash, /<label class="wallet-field wc-new" style="grid-column:1\/-1;"><span>Name on card<\/span>/, "a name has room");
   // Cards come first; the optional spending rules come after the addresses, folded.
   const at = (t) => dash.indexOf(t);
   assert.ok(at('margin-bottom:0.625rem;">Cards</div>') < at('margin-bottom:0.25rem;">Addresses</div>') && at('margin-bottom:0.25rem;">Addresses</div>') < at('id="spend-handle"') && at('id="spend-handle"') < at('>Purchases</div>'));

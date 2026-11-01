@@ -69,7 +69,7 @@ test("the tool flips a read by itself, never an action, and keeps the probe to i
   assert.match(browse, /if \(!onlyReads\) \{[\s\S]{0,200}so nothing was done there\. It runs in the visible browser from now on: do the step again\./);
   assert.match(browse, /answer = await sandboxBrowse\(userId, \{ \.\.\.again, engine: "visible" \}, 60000\);/);
   assert.match(browse, /delete parsed\.probe;/);
-  assert.match(browse, /wallet\.fillScript\(secret, require\("\.\.\/browse-engine"\)\.choose\(userId, \{ action: "fill_card" \}\), await wallet\.billingFor\(userId, secret\)\)/);
+  assert.match(browse, /wallet\.fillScript\(secret, require\("\.\.\/browse-engine"\)\.choose\(userId, \{ action: "fill_card" \}\), billing\)/);
   assert.match(browse, /wallet\.addressScript\(address, require\("\.\.\/browse-engine"\)\.choose\(userId, \{ action: "fill_address" \}\)\)/);
   // web_fetch hands what plain fetching cannot read to the browsers.
   assert.match(handlers, /if \(require\("\.\.\/blocked-page"\)\.looksBlocked\(body\)\) \{\n\s*return \(await inBrowser\(\)\) \|\|/);

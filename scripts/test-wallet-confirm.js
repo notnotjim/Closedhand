@@ -44,7 +44,7 @@ test("adding a card and loosening the rules are guarded on the server, where the
 });
 
 test("the dashboard asks for the password once and then makes the change", async () => {
-  const start = dashboard.indexOf("    function askWalletPassword() {"), end = dashboard.indexOf("    function toggleAddCard() {");
+  const start = dashboard.indexOf("    function askWalletPassword() {"), end = dashboard.indexOf("    // The card form adds a card, or changes a saved one");
   const calls = [];
   const els = {};
   const el = (id) => els[id] ||= { id, hidden: true, value: "", textContent: "", disabled: false, focus() {}, select() {}, scrollIntoView() {} };
@@ -68,5 +68,5 @@ test("the dashboard asks for the password once and then makes the change", async
   assert.deepEqual(calls, ["/api/settings/spend-limits", "/api/wallet/confirm", "/api/wallet/confirm", "/api/settings/spend-limits"]);
   assert.equal(el("wallet-confirm").hidden, true);
   assert.match(dashboard, /var res = await walletFetch\('\/api\/settings\/spend-limits'/);
-  assert.match(dashboard, /var res = await walletFetch\('\/api\/wallet', \{ method: 'POST'/);
+  assert.match(dashboard, /var res = await walletFetch\(editing \? '\/api\/wallet\/' \+ editing : '\/api\/wallet', \{ method: editing \? 'PATCH' : 'POST'/);
 });
