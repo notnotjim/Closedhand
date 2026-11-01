@@ -777,6 +777,7 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   assert.equal(typeof data.managed.allowance, 'number');
   assert.equal(typeof data.managed.plus, 'object');
   assert.ok('spentThisMonth' in data.managed, 'this month\'s Managed Models spend');
+  assert.ok('credit' in data.managed, 'what is left of OpenRouter\'s credit');
   const person = await fetch(base + '/api/insights/person/' + me.id, { headers: { cookie } });
   assert.equal(person.status, 200);
   assert.ok('usage' in await person.json(), 'one person\'s use, read when their row opens');

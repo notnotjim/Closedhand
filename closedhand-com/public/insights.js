@@ -62,6 +62,21 @@
     return t;
   }
 
+  // Managed Models by the one balance people depend on: every first month and
+  // every Closedhand+ subscriber draws on OpenRouter's credit, and all of them
+  // stop when it runs out. This month's spend and who is using it go under it.
+  function managedTile(m) {
+    const c = m.credit, low = !!c && (c.left <= 0 || (c.days != null && c.days < 14));
+    const lasts = !c ? "OpenRouter didn't answer."
+      : c.left <= 0 ? 'Used up, so Managed Models have stopped for everyone.'
+      : c.days == null ? 'Nothing used in the last 30 days.'
+      : c.days > 365 ? "Over a year at the last 30 days' pace."
+      : `About ${n(c.days)} ${c.days === 1 ? 'day' : 'days'} at the last 30 days' pace.`;
+    return tile({ label: 'OpenRouter credit left', value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '',
+      sub: `${lasts} ${m.spentThisMonth == null ? '' : `${usd(m.spentThisMonth)} this month, `}` +
+        `${n(m.running)} first ${m.running === 1 ? 'month' : 'months'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} Closedhand+.` });
+  }
+
   function drawTiles(d) {
     const a = d.accounts, u = d.urls, g = d.github, mac = g ? g.macTotal : 0, installs = d.installs.total, latest = g && g.macLatest;
     $('tiles').replaceChildren(
@@ -80,9 +95,7 @@
       tile({ label: 'Bug reports open', value: n(d.bugs.open), chip: d.bugs.week ? `+${n(d.bugs.week)} this week` : '',
         sub: d.bugs.open ? 'Listed at the bottom' : 'All clear', tone: d.bugs.open ? 'warn' : 'good' }),
       tile({ label: 'GitHub stars', value: g ? n(g.stars) : 'n/a', sub: g ? `${n(g.forks)} ${g.forks === 1 ? 'fork' : 'forks'}` : "GitHub didn't answer" }),
-      tile({ label: 'Managed Models this month', value: usd(d.managed.spentThisMonth),
-        sub: `${n(d.managed.running)} first ${d.managed.running === 1 ? 'month' : 'months'} running (${usd(d.managed.allowance)} allowed), ` +
-          `${n(d.managed.plus.active || 0)} Closedhand+` + (d.managed.spentThisMonth == null ? '. OpenRouter didn\'t answer.' : '') }),
+      managedTile(d.managed),
       tile({ label: 'Closedhand email', value: n(d.email.accounts), sub: `${d.email.accounts === 1 ? 'address' : 'addresses'} on, ${n(d.email.sent)} sent and ${n(d.email.received)} received this month` }),
     );
   }

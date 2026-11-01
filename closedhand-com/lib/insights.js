@@ -71,15 +71,16 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
     return github;
   }
 
-  // This month's Managed Models spend across every key, read from OpenRouter
-  // at most every five minutes.
-  let spend = null, spendAt = 0;
-  async function spentThisMonth() {
-    if (!includedAi || !includedAi.enabled()) return null;
-    if (Date.now() - spendAt < 5 * 60000) return spend;
-    spendAt = Date.now();
-    spend = await includedAi.spentThisMonth().catch(e => { console.error('[insights] spend unavailable:', e.message); return null; });
-    return spend;
+  // This month's Managed Models spend across every key and what is left of
+  // the OpenRouter credit they draw on, read at most every five minutes.
+  let openRouter = null, openRouterAt = 0;
+  async function fromOpenRouter() {
+    if (!includedAi || !includedAi.enabled()) return { spentThisMonth: null, credit: null };
+    if (Date.now() - openRouterAt < 5 * 60000) return openRouter;
+    openRouterAt = Date.now();
+    const read = (what, promise) => promise.catch(e => { console.error(`[insights] ${what} unavailable:`, e.message); return null; });
+    const [spentThisMonth, credit] = await Promise.all([read('spend', includedAi.spentThisMonth()), read('credit', includedAi.credit())]);
+    return (openRouter = { spentThisMonth, credit });
   }
 
   async function gather() {
@@ -158,7 +159,7 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       installs: { total: installs.total },
       bugs,
       email,
-      managed: { ...firstMonths, plus: Object.fromEntries(plusStates.map(r => [r.status, r.n])), spentThisMonth: await spentThisMonth() },
+      managed: { ...firstMonths, plus: Object.fromEntries(plusStates.map(r => [r.status, r.n])), ...await fromOpenRouter() },
       github: await githubCounts(),
     };
   }

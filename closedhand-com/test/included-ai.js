@@ -12,7 +12,7 @@ const MANAGEMENT = 'sk-or-v1-' + 'm'.repeat(64);
 
 // OpenRouter as far as Closedhand uses it: keys with a limit and usage, and
 // guardrails that keys are attached to.
-function openRouter({ down = false, failAssign = false } = {}) {
+function openRouter({ down = false, failAssign = false, credits = { total_credits: 0, total_usage: 0 }, activity = [] } = {}) {
   const keys = new Map(), guardrails = [], calls = [];
   const reply = (status, body) => new Response(body === undefined ? '' : JSON.stringify(body), { status });
   const request = async (url, opts = {}) => {
@@ -42,6 +42,8 @@ function openRouter({ down = false, failAssign = false } = {}) {
     }
     if (m && method === 'PATCH') { Object.assign(keys.get(m[1]), body); return reply(200, { data: keys.get(m[1]) }); }
     if (m && method === 'DELETE') { keys.delete(m[1]); return reply(200, { deleted: true }); }
+    if (method === 'GET' && path === '/credits') return reply(200, { data: credits });
+    if (method === 'GET' && path === '/activity') return activity ? reply(200, { data: activity }) : reply(403, { error: 'forbidden' });
     m = path.match(/^\/keys\?offset=(\d+)$/);
     if (m && method === 'GET') return reply(200, { data: [...keys.values()].slice(Number(m[1]), Number(m[1]) + 100).map(k => ({ usage_monthly: k.usage_monthly })) });
     throw new Error('unexpected ' + method + ' ' + url);
@@ -194,6 +196,18 @@ test('this month\'s spend is added up across every key, a page at a time', async
   for (let i = 0; i < 150; i++) or.keys.set(String(i), { usage_monthly: 0.5 });
   assert.equal(await ai.spentThisMonth(), 75);
   assert.deepEqual(or.calls.filter(c => c.startsWith('GET /keys?')), ['GET /keys?offset=0', 'GET /keys?offset=100', 'GET /keys?offset=150']);
+});
+
+test('what is left of the credit every key draws on, and how long it lasts at the last 30 days\' pace', async () => {
+  const day = (d, usage) => ({ date: `2027-03-${d} 00:00:00`, model: 'deepseek/deepseek-v4.1-flash', usage });
+  const at = new Date('2027-03-11T09:00:00Z');
+  const or = openRouter({ credits: { total_credits: 100, total_usage: 40 }, activity: [day('05', 2), day('05', 1), day('09', 1.5)] });
+  assert.deepEqual(await create({ db: database(), env: env(), request: or.request }).credit(at), { left: 60, days: 80 },
+    '$4.50 over the six days since the first use, $0.75 a day');
+  const idle = openRouter({ credits: { total_credits: 10, total_usage: 0 } });
+  assert.deepEqual(await create({ db: database(), env: env(), request: idle.request }).credit(at), { left: 10, days: null }, 'nothing used, no pace');
+  const unread = openRouter({ credits: { total_credits: 10, total_usage: 2.5 }, activity: null });
+  assert.deepEqual(await create({ db: database(), env: env(), request: unread.request }).credit(at), { left: 7.5, days: null }, 'the credit shows without the activity');
 });
 
 test('nothing is made without a management key, or when OpenRouter is unreachable', quiet(async () => {

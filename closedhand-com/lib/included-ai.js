@@ -350,6 +350,23 @@ function create({ db, env = process.env, request = fetch }) {
   async function spentThisMonth() {
     return cents((await allKeys()).reduce((total, k) => total + Number(k.usage_monthly || 0), 0));
   }
+  // What is left of the OpenRouter account's credit, which every key draws on:
+  // when it runs out, every first month and every Closedhand+ subscriber stops
+  // at once. With the days it lasts at the pace of the last 30 days, as
+  // OpenRouter reports them a completed UTC day at a time, counted from the
+  // first day with any use so a young account's pace isn't spread thin.
+  async function credit(now = new Date()) {
+    const [credits, activity] = await Promise.all([api('/credits'), api('/activity').catch(() => null)]);
+    const left = Number(credits?.data?.total_credits) - Number(credits?.data?.total_usage);
+    if (!Number.isFinite(left)) return null;
+    const rows = activity?.data || [];
+    const used = rows.reduce((total, r) => total + Number(r.usage || 0), 0);
+    if (!(used > 0)) return { left: cents(left), days: null };
+    const first = Math.min(...rows.map(r => Date.parse(String(r.date).slice(0, 10) + 'T00:00:00Z')));
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const span = Math.min(30, Math.max(1, Math.round((today - first) / 86400000)));
+    return { left: cents(left), days: Math.max(0, Math.floor(left / (used / span))) };
+  }
 
   // closedhand.com's own key, for the insights page's summary of possible
   // misuse (lib/misuse.js): made when first needed, behind the same guardrail,
@@ -396,7 +413,7 @@ function create({ db, env = process.env, request = fetch }) {
     return enabled() ? roles() : null;
   }
 
-  return { forOwner, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, forOperator, usage, fairUse };
+  return { forOwner, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, credit, forOperator, usage, fairUse };
 }
 
 module.exports = { create };
