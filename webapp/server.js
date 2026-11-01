@@ -1060,7 +1060,7 @@ app.get("/api/wallet", async (req, res) => {
   if (!walletAvailable()) return res.json({ available: false, reason: "no encryption key", cards: [], limits: {}, ledger: [] });
   try {
     const { data: cards, error } = await supabase.from("wallet_cards")
-      .select("id, label, brand, last4, exp_month, exp_year, holder, billing, limits, is_default, created_at")
+      .select("id, label, brand, last4, exp_month, exp_year, holder, billing, is_default, created_at")
       .eq("user_id", userId).order("is_default", { ascending: false }).order("created_at", { ascending: true });
     if (error) throw error;
     const { data: addresses, error: e2 } = await supabase.from("wallet_addresses").select(ADDRESS_COLUMNS)
@@ -1114,10 +1114,9 @@ app.post("/api/wallet", async (req, res) => {
       enc_number: encryptString(number),
       enc_cvc: encryptString(cvc),
       billing,
-      limits: cleanLimits(b.limits),
       is_default: !count,
     };
-    const { data, error } = await supabase.from("wallet_cards").insert(row).select("id, label, brand, last4, exp_month, exp_year, holder, billing, limits, is_default").single();
+    const { data, error } = await supabase.from("wallet_cards").insert(row).select("id, label, brand, last4, exp_month, exp_year, holder, billing, is_default").single();
     if (error) throw error;
     res.json({ success: true, card: data });
   } catch (e) {
@@ -1137,11 +1136,6 @@ app.patch("/api/wallet/:id", async (req, res) => {
     if (b.billing !== undefined) {
       patch.billing = await billingRef(userId, b.billing);
       if (!patch.billing) return res.status(400).json({ error: "Choose the card's billing address." });
-    }
-    if (b.limits !== undefined) {
-      patch.limits = cleanLimits(b.limits);
-      const { data: card } = await supabase.from("wallet_cards").select("limits").eq("id", req.params.id).eq("user_id", userId).maybeSingle();
-      if (loosensLimits(card && card.limits, patch.limits) && !(await walletConfirmed(req))) return walletNeedsPassword(res);
     }
     if (b.is_default === true) {
       const { error: e0 } = await supabase.from("wallet_cards").update({ is_default: false }).eq("user_id", userId);

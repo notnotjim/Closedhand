@@ -32,7 +32,7 @@ test("adding a card and loosening the rules are guarded on the server, where the
   const rules = server.slice(server.indexOf('app.post("/api/settings/spend-limits"'), server.indexOf('app.get("/keep"'));
   assert.match(rules, /if \(loosensLimits\(before, next\) && !\(await walletConfirmed\(req\)\)\) return walletNeedsPassword\(res\);/);
   const patch = server.slice(server.indexOf('app.patch("/api/wallet/:id"'), server.indexOf('app.delete("/api/wallet/:id"'));
-  assert.match(patch, /if \(loosensLimits\(card && card\.limits, patch\.limits\) && !\(await walletConfirmed\(req\)\)\) return walletNeedsPassword\(res\);/);
+  assert.doesNotMatch(patch, /limits/, "a card has no limits of its own: the spending rules, guarded above, cover every card");
   const del = server.slice(server.indexOf('app.delete("/api/wallet/:id"'), server.indexOf('app.delete("/api/wallet/:id"') + 600);
   assert.doesNotMatch(del, /walletConfirmed/, "removing a card never asks");
   const confirm = server.slice(server.indexOf('app.post("/api/wallet/confirm"'), server.indexOf("function walletAvailable()"));

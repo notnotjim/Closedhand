@@ -2562,7 +2562,6 @@
                     <label class="wallet-field"><span>Label (optional)</span><input type="text" id="wc-label" placeholder="e.g. Monzo"></label>
                     <label class="wallet-field" style="grid-column:1/-1;"><span>Billing address</span><select id="wc-billing" onchange="billingChoice()"></select></label>
                     <div id="wc-billing-new" style="grid-column:1/-1;padding:0.75rem;border:1px solid rgba(var(--fg-rgb),0.12);border-radius:0.5rem;" hidden></div>
-                    <div id="wc-limits" style="grid-column:1/-1;margin-top:0.375rem;" hidden><div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.375rem;">Your spending rules cover every card. These are lower limits for this card alone.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(9.375rem,1fr));gap:0.5rem;max-width:30rem;"><label class="wallet-field"><span>Max per purchase (optional)</span><span class="amount"><span class="cur" data-spend-currency></span><input type="number" id="wc-per-purchase" min="0" step="0.01"><button type="button" class="clear" title="No limit" aria-label="Clear" onclick="clearAmount(this)"><svg width="0.625rem" height="0.625rem" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button></span></label><label class="wallet-field"><span>Max per month (optional)</span><span class="amount"><span class="cur" data-spend-currency></span><input type="number" id="wc-per-month" min="0" step="0.01"><button type="button" class="clear" title="No limit" aria-label="Clear" onclick="clearAmount(this)"><svg width="0.625rem" height="0.625rem" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button></span></label></div></div>
                   </div>
                   <div style="margin-top:0.625rem;display:flex;align-items:center;gap:0.625rem;">
                     <button class="account-action-btn" onclick="saveWalletCard()">Save card</button>
@@ -5586,12 +5585,9 @@
         document.getElementById('wallet-addresses').after(document.getElementById('wallet-addr-form'));
         document.getElementById('wallet-cards').innerHTML = (cards.length ? cards.map(function(c) {
           var billedTo = billingAddress(c);
-          var lim = [];
-          if (c.limits && c.limits.per_purchase != null) lim.push('up to ' + money(c.limits.per_purchase, l.currency) + ' a purchase');
-          if (c.limits && c.limits.per_month != null) lim.push(money(c.limits.per_month, l.currency) + ' a month');
           return '<div class="wallet-card-row" data-id="' + c.id + '">' +
             '<span style="font-weight:600;">' + escHtml(c.brand || 'Card') + ' •••• ' + escHtml(c.last4) + '</span>' +
-            '<span class="muted">' + String(c.exp_month).padStart(2, '0') + '/' + String(c.exp_year).slice(-2) + (c.label ? ' · ' + escHtml(c.label) : '') + ' · ' + (billedTo ? 'billed to ' + escHtml(addressName(billedTo)) : 'no billing address') + (lim.length ? ' · ' + lim.join(', ') : '') + '</span>' +
+            '<span class="muted">' + String(c.exp_month).padStart(2, '0') + '/' + String(c.exp_year).slice(-2) + (c.label ? ' · ' + escHtml(c.label) : '') + ' · ' + (billedTo ? 'billed to ' + escHtml(addressName(billedTo)) : 'no billing address') + '</span>' +
             (c.is_default ? '<span class="plan-status on wallet-status">Default</span>' : '') +
             '<span class="wallet-row-actions">' +
             (c.is_default ? '' : '<button class="conn-btn conn-btn-manage" onclick="setDefaultCard(\'' + c.id + '\')">Make default</button>') +
@@ -5722,9 +5718,6 @@
       head.textContent = c ? (c.brand || 'Card') + ' •••• ' + c.last4 + ', expires ' + String(c.exp_month).padStart(2, '0') + '/' + String(c.exp_year).slice(-2) : '';
       ['wc-number', 'wc-exp-month', 'wc-exp-year', 'wc-cvc', 'wc-holder'].forEach(function (k) { document.getElementById(k).value = ''; });
       document.getElementById('wc-label').value = c ? (c.label || '') : '';
-      document.getElementById('wc-limits').hidden = !c;
-      document.getElementById('wc-per-purchase').value = c && c.limits && c.limits.per_purchase != null ? c.limits.per_purchase : '';
-      document.getElementById('wc-per-month').value = c && c.limits && c.limits.per_month != null ? c.limits.per_month : '';
       syncAmountFields();
       var billed = c ? billingAddress(c) : null;
       fillBilling(billed ? billed.id : '');
@@ -5876,8 +5869,7 @@
       }
       var editing = _editingCard;
       var body = { label: document.getElementById('wc-label').value, billing: { address_id: billing } };
-      if (editing) body.limits = { per_purchase: document.getElementById('wc-per-purchase').value, per_month: document.getElementById('wc-per-month').value };
-      else Object.assign(body, {
+      if (!editing) Object.assign(body, {
         number: document.getElementById('wc-number').value,
         exp_month: document.getElementById('wc-exp-month').value,
         exp_year: document.getElementById('wc-exp-year').value,

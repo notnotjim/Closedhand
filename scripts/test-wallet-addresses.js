@@ -142,13 +142,16 @@ test("Settings adds, changes and removes addresses behind the dashboard's own ch
   assert.match(dash, /'<option value="new"' \+ \(pick === 'new' \? ' selected' : ''\) \+ '>New address<\/option>'/);
   assert.match(dash, /if \(intoCard\) box\.appendChild\(fields\);/, "one set of address fields, moved into the card form");
   assert.doesNotMatch(dash, /Billed to your home address|Name for it|Who it's for/);
-  // A saved card opens to change its label, billing address and limits, and
-  // its row says where it is billed.
+  // A saved card opens to change its label and billing address, and its row
+  // says where it is billed. Limits are the spending rules', one set for
+  // every card.
   assert.match(dash, /'<button class="conn-btn conn-btn-manage" onclick="openCardForm\(\\'' \+ c\.id \+ '\\'\)">Edit<\/button>'/);
   assert.match(dash, /\(billedTo \? 'billed to ' \+ escHtml\(addressName\(billedTo\)\) : 'no billing address'\)/);
-  assert.match(dash, /<div id="wc-limits" style="grid-column:1\/-1;margin-top:0\.375rem;" hidden><div style="font-size:0\.75rem;color:var\(--muted\);margin-bottom:0\.375rem;">Your spending rules cover every card\. These are lower limits for this card alone\.<\/div>/);
+  assert.doesNotMatch(dash, /id="wc-limits"|wc-per-purchase|wc-per-month|c\.limits/, "no limits of a card's own");
+  assert.doesNotMatch(read("lib/spend-guard.js"), /fill\.limits/);
+  assert.doesNotMatch(read("webapp/server.js"), /patch\.limits|limits: cleanLimits\(b\.limits\)/);
   // What may be left empty says so.
-  for (const label of ["Label (optional)", "Max per purchase (optional)", "Max per month (optional)", "Flat, floor or building (optional)", "County or state (optional)", "Phone (optional)"]) assert.ok(dash.includes(`<span>${label}</span>`), label);
+  for (const label of ["Label (optional)", "Flat, floor or building (optional)", "County or state (optional)", "Phone (optional)"]) assert.ok(dash.includes(`<span>${label}</span>`), label);
   assert.match(dash, /<label class="wallet-field" style="grid-column:1\/-1;"><span>Name<\/span><input type="text" id="wa-name"/);
   // The password asked before spending more freely is a password's width, in neutral colours.
   assert.match(dash, /\.wallet-confirm \{ margin:0 0 1rem; padding:0\.875rem 1rem; border:1px solid rgba\(var\(--fg-rgb\),0\.16\);/);
