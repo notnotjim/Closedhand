@@ -5178,8 +5178,10 @@ app.get("/api/connections/scopes", async (req, res) => {
 // what is working or waiting on the person, and what finished in the last
 // week (Done lately). Pages use the same week before folding into Archived.
 const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
-const LIVE_RUN_STATUSES = ["running", "pending", "awaiting_confirmation"];
-const DONE_RUN_STATUSES = ["completed", "failed", "cancelled", "partial", "blocked"];
+// A task paused because its LLM's allowance ran out is still going: it waits,
+// however long, under Working now (lib/agents.js, pauseForAllowance).
+const LIVE_RUN_STATUSES = ["running", "pending", "awaiting_confirmation", "blocked"];
+const DONE_RUN_STATUSES = ["completed", "failed", "cancelled", "partial"];
 app.get("/api/agents", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
@@ -5723,17 +5725,20 @@ app.post("/api/agents/suggest", async (req, res) => {
   }
 });
 
-// Carry on now: a task paused because its LLM's allowance ran out goes back
-// in the queue at once, for when the person knows it is back (topped up).
-// It would carry on by itself anyway (lib/agents.js, retryPaused).
+// Finish it: a task paused because its LLM's allowance ran out goes back in
+// the queue, told when it was asked so it says if anything has passed since.
+// Pressing this is the person's answer; otherwise Closedhand asks them once
+// the LLM answers again (lib/agents.js, retryPaused).
 app.post("/api/agents/:id/carry-on", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
   try {
-    const { data: task, error } = await supabase.from("agent_tasks").select("id, status, runtime").eq("id", req.params.id).eq("user_id", userId).maybeSingle();
+    const { data: task, error } = await supabase.from("agent_tasks").select("id, status, runtime, pending_notes, created_at").eq("id", req.params.id).eq("user_id", userId).maybeSingle();
     if (error) throw error;
     if (!task || task.status !== "blocked" || !task.runtime?.allowance) return res.status(409).json({ error: "It isn't paused any more." });
-    const { error: saveError } = await supabase.from("agent_tasks").update({ status: "pending", updated_at: new Date().toISOString() })
+    const since = new Date(task.runtime.allowance.since || task.created_at).toISOString().slice(0, 10);
+    const note = { note: `This was asked on ${since}. It paused when the LLM's allowance ran out, and the person has now said to finish it. If anything it depends on has passed or changed since (dates, prices, availability), say so plainly in the answer.`, time: new Date().toISOString() };
+    const { error: saveError } = await supabase.from("agent_tasks").update({ status: "pending", pending_notes: [...(task.pending_notes || []), note], updated_at: new Date().toISOString() })
       .eq("id", task.id).eq("user_id", userId).eq("status", "blocked");
     if (saveError) throw saveError;
     res.json({ success: true });

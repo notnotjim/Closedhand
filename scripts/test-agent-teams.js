@@ -252,7 +252,7 @@ test("a routine keeps its agents and runs them first, keeping their state on the
   assert.match(runner, /if \(!resumeRow\?\.messages\?\.length && Array\.isArray\(config\.members\) && config\.members\.length\) \{/);
   assert.match(runner, /store: \{ save: \(updates\) => updateRun\(runId, updates\), read: \(\) => getRun\(runId\) \},/, "kept on the routine's run");
   assert.match(runner, /if \(Date\.now\(\) - startTime > timeoutMs \+ teamMs\) \{/, "the team's time is not the run's");
-  assert.match(read("lib/agents.js"), /dropConfirmation, runMapSub, pauseForAllowance, retryPaused \};/);
+  assert.match(read("lib/agents.js"), /dropConfirmation, runMapSub, pauseForAllowance, retryPaused, askToFinish \};/);
   const server = read("webapp/server.js");
   const create = server.slice(server.indexOf('app.post("/api/automations"'), server.indexOf('app.put("/api/automations/:id"'));
   assert.match(create, /const members = teamMembers\(req\.body\.members\);/);
@@ -351,27 +351,32 @@ test("a used-up allowance stops the team cleanly: no new parts, the stopped one 
   assert.equal(row.team[0].status, "waiting", "it runs again when the allowance is back");
 });
 
-test("the task pauses, says so once, carries on by itself, and gives up only after two days", () => {
+test("the task pauses, says so once, waits for as long as it takes, and asks before finishing", () => {
   const src = read("lib/agents.js");
   assert.match(src, /if \(error\.code === "ALLOWANCE_USED"\) return pauseForAllowance\(taskId, userId, platform, chatId, error\);/);
-  assert.match(src, /const ALLOWANCE_RETRY_MS = 30 \* 60 \* 1000;\nconst ALLOWANCE_GIVE_UP_MS = 2 \* 24 \* 60 \* 60 \* 1000;/);
-  assert.match(src, /status: "blocked", error: "The LLM said its allowance is used up\.",/);
-  assert.match(src, /allowance: \{ since, nextTry, resetsAt, told: true \}/);
-  assert.match(src, /if \(was\?\.told\) return;/, "said once");
-  assert.match(src, /const why = managed \? "this month's Managed Models use has reached its fair-use limit" : "your LLM provider says its allowance is used up";/);
-  assert.match(src, /I've paused "\$\{name\}": \$\{why\}\. What it has done so far is kept, and it carries on by itself \$\{when\}\./);
-  assert.match(src, /setInterval\(retryPaused, 60000\)\.unref\(\);/);
-  assert.match(src, /if \(!\(next <= Date\.now\(\)\)\) continue;/);
+  assert.doesNotMatch(src, /ALLOWANCE_GIVE_UP_MS/, "no stopping after two days");
+  assert.match(src, /allowance: \{ since: was\?\.since \|\| new Date\(\)\.toISOString\(\), nextTry, resetsAt, told: true, back: false \}/);
+  assert.match(src, /if \(was\?\.told \|\| !chatId \|\| !platform \|\| platform === "dashboard"\) return;/, "said once, in its chat");
+  assert.match(src, /What it has done so far is kept\. When your LLM takes requests again, I'll ask whether you still want it finished\./);
+  assert.match(src, /\{ model, max_tokens: 5, messages: \[\{ role: "user", content: "Reply with OK\." \}\] \}/, "a one-word call to see if it is back");
+  assert.match(src, /Shall I finish it now, or is it no longer needed\? Reply yes to finish it or no to drop it\./);
+  assert.match(src, /kind: "resume", taskId: task\.id/);
+  assert.match(src, /if \(ctx\.pendingConfirmations\[task\.user_id\]\) \{/, "one question at a time");
+  assert.match(src, /return "OK, I've dropped it\.";/);
+  assert.match(read("lib/confirmation.js"), /pending\.kind === "sign_in" \|\| pending\.kind === "resume" \? String\(response\)/, "the answer is kept as said");
+  assert.match(src, /status: "pending", pending_notes: \[\.\.\.\(saved\.pending_notes \|\| \[\]\), resumeNote\(saved\)\]/);
+  assert.match(src, /If anything it depends on has passed or changed since \(dates, prices, availability\), say so plainly in the answer\./);
   const server = read("webapp/server.js");
+  assert.match(server, /const LIVE_RUN_STATUSES = \["running", "pending", "awaiting_confirmation", "blocked"\];/, "listed under Working now however long it waits");
   assert.match(server, /app\.post\("\/api\/agents\/:id\/carry-on"/);
+  assert.match(server, /pending_notes: \[\.\.\.\(task\.pending_notes \|\| \[\]\), note\]/, "told when it was asked, from the dashboard too");
   assert.match(server, /if \(\/:free\$\/\.test\(String\(conn\.model \|\| ""\)\) && free/);
   const dash = read("webapp/views/dashboard.html");
-  const fn = dash.slice(dash.indexOf("    function runWord(a) {"), dash.indexOf("    // Runs from before the check's notes") > 0 ? dash.indexOf("    function runOutcome(a) {") + 2000 : 0);
   assert.match(dash, /if \(a\.status === 'blocked' && a\.runtime && a\.runtime\.allowance\) return 'Paused';/);
-  assert.match(dash, /'Your LLM\\'s allowance ran out\. What it has done is kept, and it carries on by itself '/);
-  assert.match(dash, />Carry on<\/button>/);
+  assert.match(dash, /'Your LLM is working again\. Finish it, or delete it if it\\'s no longer needed\.'/);
+  assert.match(dash, />Finish it<\/button>/);
+  assert.match(dash, /\|\| \(a\.status === 'blocked' && !!\(a\.runtime && a\.runtime\.allowance\)\); \};/);
   assert.match(dash, /This month\\'s Managed Models use is close to its fair-use limit, so a team may pause partway\. It carries on by itself when there\\'s more\./);
-  assert.ok(fn.length > 0);
 });
 
 test("carrying on after a pause uses the LLM chosen now, and keeps the parts already done, whatever LLM did them", async () => {

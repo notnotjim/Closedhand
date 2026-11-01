@@ -41,7 +41,7 @@ test("a run that could not finish says why in plain words, never the check's not
 
 test("tasks handed over in chat: going or waiting under Working now, finished this week under Done lately", () => {
   const server = read("webapp/server.js");
-  assert.match(server, /const LIVE_RUN_STATUSES = \["running", "pending", "awaiting_confirmation"\];/);
+  assert.match(server, /const LIVE_RUN_STATUSES = \["running", "pending", "awaiting_confirmation", "blocked"\];/, "a task paused for its LLM's allowance waits under Working now");
   assert.match(server, /const lists = \[runs\(\)\.in\("status", LIVE_RUN_STATUSES\), runs\(\)\.in\("status", DONE_RUN_STATUSES\)\.gte\("created_at", cutoff\)\];/, "a delivered task stays a week, under Done lately");
   assert.match(server, /const fields = "id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status";/);
   assert.doesNotMatch(server, /\/api\/agents[^\n]*archived|req\.query\.archived === "1" && req\.query\.count === "1"\) \{\n\s*const \{ count, error \} = await supabase\.from\("agent_tasks"\)/, "no archive of delivered runs");
