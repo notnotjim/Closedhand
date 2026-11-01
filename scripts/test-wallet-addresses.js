@@ -130,7 +130,10 @@ test("Settings adds, changes and removes addresses behind the dashboard's own ch
   const patch = server.slice(server.indexOf('app.patch("/api/wallet/:id"'), server.indexOf('app.delete("/api/wallet/:id"'));
   assert.match(patch, /if \(!patch\.billing\) return res\.status\(400\)\.json\(\{ error: "Choose the card's billing address\." \}\);/, "nor changed to none");
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /<div style="font-size:0.8125rem;font-weight:600;color:var\(--fg\);margin-bottom:0.25rem;">Addresses<\/div>/);
+  assert.match(dash, /<div style="font-size:0.8125rem;font-weight:600;color:var\(--fg\);margin-bottom:0.625rem;">Addresses<\/div>/);
+  // Where orders go is said for the addresses as they are, never "home" before one is marked home.
+  assert.doesNotMatch(dash, /Orders go to your home address/);
+  assert.match(dash, /var delivery = home \? 'Orders go to ' \+ escHtml\(addressName\(home\)\) \+ ' unless you ask for another\.' : 'None is marked home yet, so Closedhand asks where each order should go\.';/);
   assert.match(dash, /addCard\('Add a card', 'openCardForm\(\)'\);/, "both lists end with the same add tile");
   assert.match(dash, /addCard\('Add an address', 'openAddressForm\(\)'\);/);
   // Always chosen in the card form, among the saved addresses or a new one
@@ -153,7 +156,7 @@ test("Settings adds, changes and removes addresses behind the dashboard's own ch
   assert.match(dash, /<label class="wallet-field wc-new" style="grid-column:1\/-1;"><span>Name on card<\/span>/, "a name has room");
   // Cards come first; the optional spending rules come after the addresses, folded.
   const at = (t) => dash.indexOf(t);
-  assert.ok(at('margin-bottom:0.625rem;">Cards</div>') < at('margin-bottom:0.25rem;">Addresses</div>') && at('margin-bottom:0.25rem;">Addresses</div>') < at('id="spend-handle"') && at('id="spend-handle"') < at('>Purchases</div>'));
+  assert.ok(at('margin-bottom:0.625rem;">Cards</div>') < at('margin-bottom:0.625rem;">Addresses</div>') && at('margin-bottom:0.625rem;">Addresses</div>') < at('id="spend-handle"') && at('id="spend-handle"') < at('>Purchases</div>'));
   assert.match(dash, /<div id="spend-body" style="margin-top:0.75rem;" hidden>/);
   assert.match(dash, /document\.getElementById\('spend-summary'\)\.textContent = spendSummary\(l\);/);
   assert.doesNotMatch(dash, /wc-postcode|Billing postcode/);
