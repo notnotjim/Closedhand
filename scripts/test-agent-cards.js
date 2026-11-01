@@ -256,7 +256,7 @@ test("New agent: a task now, or a routine; a team led by Closedhand is one task;
     assert.ok(form.includes(part), "a routine's own: " + part.slice(0, 40));
   for (const part of ['id="auto-answer-row" class="task-only"'])
     assert.ok(form.includes(part), "a task's own: " + part.slice(0, 40));
-  for (const part of ['<div id="auto-team"></div>', '<div class="team-links">'])
+  for (const part of ['<div id="auto-team"></div>', '<div id="auto-team-add"></div>'])
     assert.ok(form.includes(part), "a task's or a routine's: " + part.slice(0, 40));
   assert.match(dashboard, /#auto-create-modal\.task-mode \.routine-only, #auto-create-modal:not\(\.task-mode\) \.task-only \{ display: none !important; \}/);
   assert.match(dashboard, /document\.getElementById\('auto-create-modal'\)\.classList\.toggle\('task-mode', type === 'now'\);/);

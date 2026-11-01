@@ -203,7 +203,12 @@ test("Closedhand plans which agent waits for which, runs the team as fast as the
 
 test("the form: named agents, Suggest agents, one start, and the note from the sixth in the LLM's own terms", () => {
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /<a href="#" class="team-add" id="auto-suggest-agents" onclick="event\.preventDefault\(\);suggestAgents\(\)">Suggest agents<\/a>/);
+  // Agents end with the shared dashed add tile (addCard), where the next one
+  // goes; Suggest agents is an outlined secondary button beside the heading.
+  assert.match(dash, /<div class="team-head"><label>Agents <span class="project-optional">Optional<\/span><\/label><button type="button" class="conn-btn conn-btn-manage" id="auto-suggest-agents" onclick="suggestAgents\(\)">Suggest agents<\/button><\/div>/);
+  assert.match(dash, /document\.getElementById\('auto-team-add'\)\.innerHTML = addCard\('Add an agent', 'addTeamAgent\(\)'\);/);
+  assert.match(dash, /\.int-card\.add-card \{ border-style: dashed;/, "the dashed tile wherever it is used, the form included");
+  assert.doesNotMatch(dash, /class="team-add"|\+ Add another agent/);
   assert.doesNotMatch(dash, /if \(box\.children\.length >= 4\) return;/, "no cap of five");
   const fn = dash.slice(dash.indexOf("    function renumberTeam() {"), dash.indexOf("    // Suggest agents:"));
   const notes = {};
@@ -285,7 +290,7 @@ test("set for a date it runs once and is done; it waits under Waiting to start u
 
 test("the form makes a team for any kind, and a routine that is a team says so", () => {
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /<div id="auto-team"><\/div>\n\s+<div class="team-links">/, "not only for Now");
+  assert.match(dash, /<div id="auto-team"><\/div>\n\s+<div id="auto-team-add"><\/div>/, "not only for Now");
   assert.match(dash, /<p class="team-note" id="auto-team-note" hidden><\/p>/);
   assert.match(dash, /members: members,\n/, "a routine saves its agents");
   assert.match(dash, /\(Array\.isArray\(a\.members\) \? a\.members : \[\]\)\.forEach\(function \(m\) \{ addTeamAgent\(m\.name, m\.part\); \}\);/, "and opens with them");
