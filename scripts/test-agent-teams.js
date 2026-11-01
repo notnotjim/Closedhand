@@ -480,6 +480,7 @@ test("agents read pages in the browser, each in tabs of its own, but never click
   assert.match(src, /return browse && usable\(browse\) \? \[\.\.\.tools, AGENT_READ_PAGES\] : tools;/);
   assert.match(src, /r = b\.input\?\.action === "read_pages" \? await readPagesFor\(userId, platform, chatId, b\.input\)\n\s+: \{ error: "Agents only read pages here/, "anything else is refused, whatever it asks");
   assert.match(src, /return handleInternalTool\("sandbox_browse", \{ action: "read_pages", urls, _userId: userId, _chatId: chatId \}\);/, "only the urls go through");
+  assert.match(src, /const urls = Array\.isArray\(input\?\.urls\) \? input\.urls : input\?\.url \? \[input\.url\] : \[\];/, "one page as url reads too");
   const fn = src.slice(src.indexOf("function readPagesFor("), src.indexOf("async function runMapSub("));
   assert.doesNotMatch(fn, /acquireUserMutex|syncAdapterBack/, "a page read never holds the chat up or saves over it");
   assert.match(read("lib/tools/definitions.js"), /can read pages in the sandbox computer's browser, and returns its findings to you; parts never click, type, sign in, send, pay or book/);
