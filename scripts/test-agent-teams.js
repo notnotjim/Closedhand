@@ -373,3 +373,34 @@ test("the task pauses, says so once, carries on by itself, and gives up only aft
   assert.match(dash, /This month\\'s Managed Models use is close to its fair-use limit, so a team may pause partway\. It carries on by itself when there\\'s more\./);
   assert.ok(fn.length > 0);
 });
+
+test("carrying on after a pause uses the LLM chosen now, and keeps the parts already done, whatever LLM did them", async () => {
+  assert.match(read("lib/agents.js"), /model = task\.runtime\?\.allowance \? resolveUserModel\(userId, task\.runtime\?\.modelTier \|\| "default", userStore\)/);
+  assert.match(read("lib/agents.js"), /runPart: runMapSub,\n\s+previous: task\.team,/);
+  capacity.reset();
+  db.tables.agent_tasks.push({ id: "task-switch", user_id: "u-team", progress: [] });
+  const first = stubParts(FOUND);
+  await withTaskRun({ userId: "u-team", taskId: "task-switch", budget: makeBudget() }, () =>
+    team.runTeam("u-team", "web", "c", "task-switch", TRIP, "old-provider-model", { runPart: first.runPart }));
+  const row = db.tables.agent_tasks.find((t) => t.id === "task-switch");
+  row.team[1] = { ...row.team[1], status: "waiting", key: null, findings: null };
+  const second = stubParts(FOUND);
+  await withTaskRun({ userId: "u-team", taskId: "task-switch", budget: makeBudget() }, () =>
+    team.runTeam("u-team", "web", "c", "task-switch", TRIP, "new-provider-model", { runPart: second.runPart, previous: structuredClone(row.team) }));
+  assert.deepEqual(second.log.order, ["Stays"], "only the part not done runs, on the new LLM");
+});
+
+test("a part waiting on one that ran again runs again too, with the new findings", async () => {
+  capacity.reset();
+  db.tables.agent_tasks.push({ id: "task-redo", user_id: "u-team", progress: [] });
+  const first = stubParts(FOUND);
+  await withTaskRun({ userId: "u-team", taskId: "task-redo", budget: makeBudget() }, () =>
+    team.runTeam("u-team", "web", "c", "task-redo", TRIP, "fixture-model", { runPart: first.runPart }));
+  const row = db.tables.agent_tasks.find((t) => t.id === "task-redo");
+  db.tables.task_worker_results = db.tables.task_worker_results.filter((r) => r.item_key !== row.team[0].key);
+  row.team[0] = { ...row.team[0], status: "waiting", key: null, findings: null };
+  const second = stubParts({ ...FOUND, Flights: { ...FOUND.Flights, findings: "Landing at Kansai 07:50 on 15 Mar instead." } });
+  await withTaskRun({ userId: "u-team", taskId: "task-redo", budget: makeBudget() }, () =>
+    team.runTeam("u-team", "web", "c", "task-redo", TRIP, "fixture-model", { runPart: second.runPart, previous: structuredClone(row.team) }));
+  assert.deepEqual(second.log.order, ["Flights", "Getting around"], "Stays is kept; Getting around waits on Flights, so it runs again");
+});
