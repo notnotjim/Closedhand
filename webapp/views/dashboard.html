@@ -6824,6 +6824,9 @@
       try {
         var res = await fetch('/api/reminders');
         var rows = res.ok ? await res.json() : [];
+        // A task set for a time waits under Waiting to start on the Agents tab
+        // and its run shows there; Upcoming keeps the reminders.
+        rows = rows.filter(function (r) { return !(r.kind === 'task' && !r.repeats); });
         // Live one-offs here; the last few that ran go under Past.
         var live = rows.filter(function(r) { return !r.archived; });
         var past = rows.filter(function(r) { return !!r.archived; });
@@ -7103,6 +7106,54 @@
         model: 'fast',
         quality_check: 'Must categorise every email and draft replies for urgent ones'
       },
+      // Starter teams: routines with agents of their own, put together by
+      // Closedhand into one note. Each opens the form filled in, so every
+      // agent's part is seen and can be changed before it runs.
+      'money-check': {
+        name: 'Monday money check',
+        about: 'What went out, renewals coming and bills due, put together into one note.',
+        prompt: "Give me a short note on my money this week: what went out, any subscription renewing in the next two weeks, and any bill due this month. Flag anything unusual.",
+        trigger: 'scheduled',
+        cron: '0 9 * * 1',
+        humanSchedule: 'Every Monday at 9am',
+        needs: ['simplefin', 'lunchflow'],
+        model: 'default',
+        members: [
+          { name: 'Bank', part: 'What went in and out of my accounts in the last seven days, and anything unusual.' },
+          { name: 'Subscriptions', part: 'Subscriptions renewing in the next two weeks, from my bank and my mail.' },
+          { name: 'Bills', part: "Bills due this month that aren't paid yet, from my mail and my bank." }
+        ]
+      },
+      'meeting-prep': {
+        name: 'Meeting prep',
+        about: "Today's meetings: who's coming, what you last said to them, and a line on anyone new.",
+        prompt: "Before my working day, give me a short brief on today's meetings: who is coming and where, what I last said to each of them, and a line on any person or company I haven't met before.",
+        trigger: 'scheduled',
+        cron: '0 7 * * 1-5',
+        humanSchedule: 'Weekday mornings at 7am',
+        needs: ['google', 'microsoft'],
+        model: 'default',
+        members: [
+          { name: 'Calendar', part: "Today's meetings, with who is coming and where." },
+          { name: 'Mail', part: 'My recent emails with the people I meet today, and anything they asked me.' },
+          { name: 'People', part: "A line on each person or company I'm meeting today that I haven't met before, from the web." }
+        ]
+      },
+      'inbox-sweep': {
+        name: 'Friday inbox sweep',
+        about: 'Replies you owe, newsletters to drop and the week\'s receipts.',
+        prompt: "Every Friday, sum up my week's mail in one note: emails still waiting for my reply, newsletters I could unsubscribe from, and this week's receipts and invoices.",
+        trigger: 'scheduled',
+        cron: '0 17 * * 5',
+        humanSchedule: 'Every Friday at 5pm',
+        needs: ['google', 'microsoft'],
+        model: 'default',
+        members: [
+          { name: 'Replies', part: 'Emails from the last week still waiting for my reply, most important first.' },
+          { name: 'Newsletters', part: "Newsletters and mailing lists I haven't opened in a month." },
+          { name: 'Receipts', part: 'Receipts and invoices from the last week, with the amount and who from.' }
+        ]
+      },
       'shopify-sales': {
         name: 'Shopify sales',
         about: "The day's revenue, orders and top products from your shop.",
@@ -7118,12 +7169,13 @@
 
     // The templates as cards in the empty Routines list and as choices in the
     // new-routine form, both drawn from WORKER_TEMPLATES: one name each. Only
-    // routines that repeat (a one-off job is asked for in chat), and one that
-    // needs a connection only once it is connected.
-    var TEMPLATE_ORDER = ['morning-briefing', 'smart-morning', 'weekly-review', 'inbox-triage', 'competitor-monitor', 'shopify-sales'];
+    // routines that repeat, and one that needs a connection only once it is
+    // connected.
+    var TEMPLATE_ORDER = ['morning-briefing', 'smart-morning', 'money-check', 'meeting-prep', 'weekly-review', 'inbox-sweep', 'inbox-triage', 'competitor-monitor', 'shopify-sales'];
     function shownTemplates() {
       var connected = (window._connectionsCache || []).map(function (c) { return String(c.service || '').replace(/_extra_.*$/, ''); });
-      return TEMPLATE_ORDER.filter(function (id) { var need = WORKER_TEMPLATES[id].needs; return !need || connected.indexOf(need) !== -1; });
+      // A template needs one connection, or any one of several (either bank).
+      return TEMPLATE_ORDER.filter(function (id) { var need = WORKER_TEMPLATES[id].needs; return !need || [].concat(need).some(function (n) { return connected.indexOf(n) !== -1; }); });
     }
     function drawAgentTemplates() {
       var grid = document.getElementById('agent-tpl-grid'), select = document.getElementById('auto-template-select');
@@ -7132,7 +7184,7 @@
         return '<button type="button" class="auto-template" onclick="loadAgentTemplate(\'' + id + '\')">'
           + '<span class="auto-template-name">' + escHtml(t.name) + '</span>'
           + '<span class="auto-template-about">' + escHtml(t.about) + '</span>'
-          + '<span class="auto-template-when">' + escHtml(t.humanSchedule || 'When you press Run') + '</span></button>';
+          + '<span class="auto-template-when">' + escHtml((t.members ? 'Team of ' + t.members.length + ' \u00b7 ' : '') + (t.humanSchedule || 'When you press Run')) + '</span></button>';
       }).join('');
       if (select) { while (select.options.length > 1) select.remove(1); shownTemplates().forEach(function (id) { select.add(new Option(WORKER_TEMPLATES[id].name, id)); }); }
     }
@@ -7151,6 +7203,9 @@
       document.getElementById('auto-name-input').value = t.name;
       document.getElementById('auto-prompt-input').value = t.prompt;
       document.getElementById('auto-quality-input').value = t.quality_check || '';
+      document.getElementById('auto-team').innerHTML = '';
+      (t.members || []).forEach(function (m) { addTeamAgent(m.name, m.part); });
+      renumberTeam();
       selectModel(t.model);
       if (t.trigger === 'scheduled') {
         selectTrigger('scheduled');
@@ -7399,8 +7454,10 @@
       try { var r = await fetch(url); return r.ok ? await r.json() : null; } catch (e) { return null; }
     }
     async function loadAgents() {
-      var got = await Promise.all([getJson('/api/agents'), getJson('/api/automations'), getJson('/api/automations/recent')]);
+      var got = await Promise.all([getJson('/api/agents'), getJson('/api/automations'), getJson('/api/automations/recent'), getJson('/api/reminders')]);
       var tasks = got[0], routines = got[1], runs = got[2] || [];
+      // Tasks set in chat for a date, not yet run: Waiting to start too.
+      var jobs = (Array.isArray(got[3]) ? got[3] : []).filter(function (r) { return r.kind === 'task' && !r.archived && !r.repeats; });
       if (routines) {
         document.getElementById('auto-saved-error').hidden = true;
         // Set to run once and not yet started: Waiting to start. What has run
@@ -7409,8 +7466,8 @@
         var repeating = routines.filter(function (a) { return !a.run_once; });
         document.getElementById('auto-empty').style.display = repeating.length ? 'none' : 'block';
         drawInto('auto-saved-list', repeating.map(renderAutomationCard).join(''));
-        drawInto('agents-waiting-list', waiting.map(renderWaitingCard).join(''));
-        document.getElementById('agents-waiting').hidden = !waiting.length;
+        drawInto('agents-waiting-list', waiting.map(renderWaitingCard).join('') + jobs.map(renderWaitingJob).join(''));
+        document.getElementById('agents-waiting').hidden = !waiting.length && !jobs.length;
       } else {
         document.getElementById('auto-empty').style.display = 'none';
         document.getElementById('auto-saved-error').hidden = false;
@@ -7914,6 +7971,24 @@
         '<div class="auto-card-meta">' + esc((Array.isArray(r.team) && r.team.length ? 'Routine, a team of ' + r.team.length : 'Routine') + ' \u00b7 ' + how) + '</div>' +
         (Array.isArray(r.team) && r.team.length ? teamLines(r, r.team, r.live) : '') +
       '</div>';
+    }
+
+    // A task set in chat for a date: when it starts, and Cancel, which asks first.
+    function renderWaitingJob(r) {
+      return '<div class="auto-card routine-card">' +
+        '<div class="routine-main">' +
+          '<div class="auto-card-name">' + esc(reminderTitle(r.name)) + '</div>' +
+          '<div class="auto-card-meta">' + esc('Task \u00b7 starts ' + (r.next_at ? dayAndTime(r.next_at) : (r.next_run || 'on its date')) + ' \u00b7 set in chat') + '</div>' +
+        '</div>' +
+        '<div class="auto-card-actions">' +
+          '<button type="button" title="Cancel this" aria-label="Cancel this" data-name="' + esc(r.name) + '" onclick="cancelWaitingJob(this)">' + TRASH_ICON + '</button>' +
+        '</div>' +
+      '</div>';
+    }
+    async function cancelWaitingJob(btn) {
+      if (!(await askFirst(btn.closest('.auto-card-actions') || btn, { text: 'Cancel this? It won\u2019t run.', yes: 'Cancel it' }))) return;
+      var res = await fetch('/api/reminders/' + encodeURIComponent(btn.dataset.name), { method: 'DELETE' }).catch(function () { return null; });
+      if (res && res.ok) { showToast('Cancelled'); loadAgents(); } else showToast('Could not cancel it', true);
     }
 
     // A job set to start once, on a date or the first time something

@@ -293,3 +293,35 @@ test("the form makes a team for any kind, and a routine that is a team says so",
   assert.match(dash, /\(Array\.isArray\(r\.team\) && r\.team\.length \? teamLines\(r, r\.team, r\.live\) : ''\)/, "a routine's run has a line per agent");
   assert.match(read("lib/agent-team.js"), /Do not describe the team or how the work went \(who found what, that the parts agree\) unless a part did not finish or two disagree\./);
 });
+
+// A task set in chat for a date waits under Waiting to start and runs as a
+// task; a reminder stays on Upcoming; starter teams open the form filled in.
+test("chat says whether a schedule is a reminder or a task, and a task runs as one when it fires", () => {
+  assert.match(read("migrations/082_schedule_kind.sql"), /ALTER TABLE schedules ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'reminder';/);
+  const defs = read("lib/tools/definitions.js");
+  assert.match(defs, /kind: \{\n\s+type: "string",\n\s+enum: \["reminder", "task"\],/);
+  assert.match(read("lib/tools/handlers.js"), /eventAt, toolInput\.kind === "task" \? "task" : "reminder"\);/);
+  assert.match(read("user-store.js"), /select\("user_id, name, cron_expression, task, chat_id, run_once, timezone, kind"\)/);
+  const sched = read("lib/scheduling.js");
+  assert.match(sched, /if \(still && \(still\.enabled === false \|\| still\.archived_at\)\) \{/, "cancelled from the dashboard, not run");
+  assert.match(sched, /if \(schedule\.kind === "task"\) \{\n\s+await require\("\.\/agents"\)\.startAgent\(targetUserId, deliverPlatform, targetChatId, schedule\.prompt, null\);/);
+  assert.match(sched, /\.\.\.\(once \? \{ enabled: false, archived_at: new Date\(\)\.toISOString\(\) \} : \{\}\)/, "retired only when set for once");
+  const server = read("webapp/server.js");
+  assert.match(server, /select\(withKind \? fields \+ ", kind" : fields\)/);
+  assert.match(server, /app\.delete\("\/api\/reminders\/:name"/);
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /rows = rows\.filter\(function \(r\) \{ return !\(r\.kind === 'task' && !r\.repeats\); \}\);/, "Upcoming keeps reminders");
+  assert.match(dash, /esc\('Task \\u00b7 starts ' \+ \(r\.next_at \? dayAndTime\(r\.next_at\) : \(r\.next_run \|\| 'on its date'\)\) \+ ' \\u00b7 set in chat'\)/);
+  assert.match(dash, /askFirst\(btn\.closest\('\.auto-card-actions'\) \|\| btn, \{ text: 'Cancel this\? It won\\u2019t run\.', yes: 'Cancel it' \}\)/);
+});
+
+test("starter teams join the routine templates, only for what is connected, and open with their agents", () => {
+  const dash = read("webapp/views/dashboard.html");
+  for (const name of ["Monday money check", "Meeting prep", "Friday inbox sweep"]) assert.ok(dash.includes(`name: '${name}',`), name);
+  assert.match(dash, /needs: \['simplefin', 'lunchflow'\],/, "either bank");
+  assert.match(dash, /\[\]\.concat\(need\)\.some\(function \(n\) \{ return connected\.indexOf\(n\) !== -1; \}\)/);
+  assert.match(dash, /\(t\.members \|\| \[\]\)\.forEach\(function \(m\) \{ addTeamAgent\(m\.name, m\.part\); \}\);/);
+  assert.match(dash, /\(t\.members \? 'Team of ' \+ t\.members\.length \+ ' \\u00b7 ' : ''\)/);
+  const order = dash.match(/var TEMPLATE_ORDER = \[([^\]]+)\]/)[1];
+  for (const id of ["money-check", "meeting-prep", "inbox-sweep"]) assert.ok(order.includes(`'${id}'`), id);
+});

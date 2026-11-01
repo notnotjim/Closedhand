@@ -516,12 +516,12 @@ class UserStore {
   // eventAt: when the thing the reminder is about happens, if it is about a
   // dated event, so the dashboard can show that rather than the reminder's
   // own firing time.
-  async saveSchedule(name, cronExpression, task, chatId, runOnce = null, timezone = null, platform = null, eventAt = null) {
+  async saveSchedule(name, cronExpression, task, chatId, runOnce = null, timezone = null, platform = null, eventAt = null, kind = "reminder") {
     // Remove existing with same name
     await supabase.from("schedules").delete().eq("user_id", this.userId).eq("name", name);
     const { data } = await supabase
       .from("schedules")
-      .insert({ user_id: this.userId, name, cron_expression: cronExpression, task, enabled: true, chat_id: chatId, run_once: runOnce, timezone, platform, event_at: eventAt })
+      .insert({ user_id: this.userId, name, cron_expression: cronExpression, task, enabled: true, chat_id: chatId, run_once: runOnce, timezone, platform, event_at: eventAt, kind: kind === "task" ? "task" : "reminder" })
       .select()
       .single();
 
@@ -632,7 +632,7 @@ class UserStore {
     // Get users with active schedules
     const { data: schedUsers } = await supabase
       .from("schedules")
-      .select("user_id, name, cron_expression, task, chat_id, run_once, timezone")
+      .select("user_id, name, cron_expression, task, chat_id, run_once, timezone, kind")
       .eq("enabled", true);
 
     // Get users with pulse enabled
@@ -694,6 +694,7 @@ class UserStore {
               // own id is the web chat.
               _platform: s.platform || platformOfChat[`${userId}:${target}`] || (target === userId ? "web" : null),
               run_once: s.run_once,
+              kind: s.kind || "reminder",
             };
           })
           .filter((s) => s._chatId),

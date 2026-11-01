@@ -8,7 +8,7 @@ const html = fs.readFileSync(path.join(root, 'webapp/views/dashboard.html'), 'ut
 const server = fs.readFileSync(path.join(root, 'webapp/server.js'), 'utf8');
 // The Agents tab's loading (loadAgents): what is working now, the routines
 // and what finished this week, from three reads drawn together.
-function dashboard({ tasks = [], routines = [], runs = [], fail = '' } = {}) {
+function dashboard({ tasks = [], routines = [], runs = [], reminders = [], fail = '' } = {}) {
   const elements = new Map(), requests = [], timers = [], drawn = {}, telling = { on: false };
   const get = id => {
     if (!elements.has(id)) {
@@ -18,13 +18,14 @@ function dashboard({ tasks = [], routines = [], runs = [], fail = '' } = {}) {
     }
     return elements.get(id);
   };
-  const body = { '/api/agents': tasks, '/api/automations': routines, '/api/automations/recent': runs };
+  const body = { '/api/agents': tasks, '/api/automations': routines, '/api/automations/recent': runs, '/api/reminders': reminders };
   const context = vm.createContext({ console, Date, window: {},
     document: { hidden: false, getElementById: get, addEventListener() {}, querySelector: (sel) => (sel === '.agent-tell' && telling.on ? {} : null) },
     fetch: async url => { requests.push(url); return { ok: url !== fail, json: async () => body[url] }; },
     renderAgentCard: a => '[task ' + a.id + ']',
     renderAutomationCard: a => '[routine ' + a.id + ']',
     renderWaitingCard: a => '[waiting ' + a.id + ']',
+    renderWaitingJob: r => '[job ' + r.name + ']',
     renderRoutineRun: r => '[run ' + r.id + ']',
     loadUpcoming() { requests.push('upcoming'); },
     setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearInterval() {},
@@ -35,10 +36,11 @@ function dashboard({ tasks = [], routines = [], runs = [], fail = '' } = {}) {
 }
 const at = (mins) => new Date(Date.now() - mins * 60000).toISOString();
 test('a job set to start once waits under Waiting to start, not Routines, and is gone from both once it has started', async () => {
-  const h = dashboard({ routines: [{ id: 'r1' }, { id: 'w1', run_once: true, status: 'active' }, { id: 'w2', run_once: true, status: 'done', fired_at: at(5) }] });
+  const h = dashboard({ routines: [{ id: 'r1' }, { id: 'w1', run_once: true, status: 'active' }, { id: 'w2', run_once: true, status: 'done', fired_at: at(5) }],
+    reminders: [{ name: 'Check the Lisbon fares', kind: 'task' }, { name: 'Call the plumber', kind: 'reminder' }, { name: 'Weekly fares', kind: 'task', repeats: 'every Monday' }, { name: 'Old', kind: 'task', archived: true }] });
   await h.context.loadAgents();
   assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1]');
-  assert.equal(h.get('agents-waiting-list').innerHTML, '[waiting w1]');
+  assert.equal(h.get('agents-waiting-list').innerHTML, '[waiting w1][job Check the Lisbon fares]', "a task set in chat for a date waits there too; a reminder does not");
   assert.equal(h.get('agents-waiting').hidden, false);
 });
 test('Working now holds tasks going or waiting and routines mid-run; Done lately what finished this week', async () => {

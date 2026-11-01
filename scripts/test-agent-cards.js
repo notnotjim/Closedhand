@@ -244,7 +244,7 @@ test("a reminder about an appointment shows the appointment's time, and when it 
   assert.match(html, /Water the plants<\/span><span class="upcoming-kind">Reminder, every Sat<\/span><\/span><span class="upcoming-when">18:00<\/span>/, "a plain reminder still shows when it fires");
   assert.match(read("migrations/056_reminder_event_time.sql"), /ALTER TABLE schedules ADD COLUMN IF NOT EXISTS event_at timestamptz;/);
   assert.match(read("lib/tools/definitions.js"), /event_at: \{\n\s*type: "string",\n\s*description: "When the reminder is about something at a set time/);
-  assert.match(read("user-store.js"), /run_once: runOnce, timezone, platform, event_at: eventAt \}/);
+  assert.match(read("user-store.js"), /run_once: runOnce, timezone, platform, event_at: eventAt, kind: kind === "task" \? "task" : "reminder" \}/);
 });
 
 test("New agent: a task now, or a routine; a team led by Closedhand is one task; it answers in the chat chosen", async () => {

@@ -6678,11 +6678,12 @@ app.get("/api/reminders", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
   try {
-    const { data, error } = await supabase
-      .from("schedules")
-      .select("name, cron_expression, task, enabled, run_once, archived_at, timezone, event_at")
-      .eq("user_id", userId)
-      .order("name");
+    // Whether it is a reminder or a task (schedules.kind) comes from a
+    // migration the bot applies as it starts; until it has, all are reminders.
+    const fields = "name, cron_expression, task, enabled, run_once, archived_at, timezone, event_at";
+    const read = (withKind) => supabase.from("schedules").select(withKind ? fields + ", kind" : fields).eq("user_id", userId).order("name");
+    let { data, error } = await read(true);
+    if (error && /\bkind\b/.test(String(error.message || ""))) ({ data, error } = await read(false));
     if (error) throw error;
     // A cron line means nothing to the user; say when it actually fires, in
     // the timezone the schedule was created in. Fall back to the raw cron
@@ -6718,6 +6719,23 @@ app.get("/api/reminders", async (req, res) => {
     res.json(live.concat(past));
   } catch (e) {
     res.status(500).json({ error: "Failed to load reminders" });
+  }
+});
+
+// Cancel a schedule set in chat, from the dashboard: archived, so it never
+// runs, and the bot's timer for it stops when it comes round (lib/scheduling.js).
+app.delete("/api/reminders/:name", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not logged in" });
+  try {
+    const { data, error } = await supabase.from("schedules").update({ enabled: false, archived_at: new Date().toISOString() })
+      .eq("user_id", userId).eq("name", String(req.params.name || "")).eq("enabled", true).select("name");
+    if (error) throw error;
+    if (!data?.length) return res.status(404).json({ error: "That has already run or gone." });
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[reminders] cancel:", e.message);
+    res.status(500).json({ error: "Could not cancel it." });
   }
 });
 
