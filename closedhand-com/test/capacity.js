@@ -173,11 +173,11 @@ test('personal URLs nearing the limit are told at 75%, 90% and 100%, and again o
 });
 
 // Possible misuse (lib/misuse.js), with OpenRouter's keys and its LLM stood in.
-function misuseWorld(keys, answer = 'A household on one connection, probably harmless.') {
+function misuseWorld(keys, answer = 'A household on one connection, probably harmless.', env = {}) {
   const asked = [];
   const includedAi = { enabled: () => true, allKeys: async () => keys, forOperator: async () => ({ key: 'sk-or-v1-operator', model: 'deepseek/deepseek-v4.1-flash' }) };
   const request = async (url, opts) => { asked.push(JSON.parse(opts.body)); return new Response(JSON.stringify({ choices: [{ message: { content: answer } }] }), { status: 200 }); };
-  return { asked, misuse: require('../lib/misuse').create({ db, env: { INCLUDED_AI_PER_CONNECTION: '3', OPENROUTER_MONTHLY_BUDGET_USD: '100' }, includedAi, request }) };
+  return { asked, misuse: require('../lib/misuse').create({ db, env: { INCLUDED_AI_PER_CONNECTION: '3', ...env }, includedAi, request }) };
 }
 const hex = () => crypto.randomBytes(32).toString('hex');
 
@@ -187,6 +187,16 @@ test('possible misuse: nothing to report shows nothing and asks no LLM', async (
   const { asked, misuse } = misuseWorld([]);
   assert.deepEqual(await misuse.report(), { signs: [], summary: null });
   assert.equal(asked.length, 0);
+});
+
+// Spend so far over how much of the month has gone: one test with fixed days,
+// since any fixed spend is on pace past a budget early enough in a month.
+test('possible misuse: spend on pace past the monthly budget is named, by how far into the month it is', async () => {
+  await fresh();
+  await db.query('DELETE FROM included_ai_keys; DELETE FROM retired_ai_keys; DELETE FROM addresses; DELETE FROM starter_grants');
+  const { misuse } = misuseWorld([{ hash: hex(), name: 'Closedhand insights', limit: 100, usage: 40, usage_monthly: 40 }], undefined, { OPENROUTER_MONTHLY_BUDGET_USD: '100' });
+  assert.deepEqual((await misuse.report(new Date(Date.UTC(2026, 10, 10)))).signs, ['OpenRouter spend is $40.00 so far this month, on pace for $133.33 against the $100.00 budget.']);
+  assert.deepEqual((await misuse.report(new Date(Date.UTC(2026, 10, 20)))).signs, [], 'not past it later in the month');
 });
 
 test('possible misuse: fast use, unused first months, full connections and loose keys are named, and an LLM sums them up without emails', async () => {
