@@ -5186,12 +5186,16 @@ app.get("/api/agents", async (req, res) => {
 
   try {
     const cutoff = new Date(Date.now() - ARCHIVE_AFTER_MS).toISOString();
-    const runs = () => supabase
-      .from("agent_tasks")
-      .select("id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status")
-      .eq("user_id", userId);
-    const lists = [runs().in("status", LIVE_RUN_STATUSES), runs().in("status", DONE_RUN_STATUSES).gte("created_at", cutoff)];
-    const results = await Promise.all(lists.map((q) => q.order("created_at", { ascending: false }).limit(50)));
+    // A task's team (agent_tasks.team) comes from a migration the bot applies
+    // as it starts; until it has, the list is read without it.
+    const fields = "id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status";
+    const read = async (withTeam) => {
+      const runs = () => supabase.from("agent_tasks").select(withTeam ? fields + ", team" : fields).eq("user_id", userId);
+      const lists = [runs().in("status", LIVE_RUN_STATUSES), runs().in("status", DONE_RUN_STATUSES).gte("created_at", cutoff)];
+      return Promise.all(lists.map((q) => q.order("created_at", { ascending: false }).limit(50)));
+    };
+    let results = await read(true);
+    if (results.some((r) => r.error && /\bteam\b/.test(String(r.error.message || "")))) results = await read(false);
     const error = results.find((r) => r.error)?.error;
     if (error) throw error;
     const data = results.flatMap((r) => r.data || [])
