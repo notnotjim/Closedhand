@@ -6,21 +6,23 @@ Closedhand is a private AI assistant that runs on your own computer. Connect any
 
 ## Why Closedhand
 
-AI assistants from the frontier labs run on the lab's own servers, with its own models, on its own terms. Closedhand runs on a computer you control, works with any LLM and belongs to you.
+Assistants from the big AI labs run on their servers, with their models, on their terms. Closedhand runs on a computer you control, works with any large language model (LLM), including uncensored ones, and serves only you.
 
-**Built for local, because local is safer.** AI is making attacks cheaper, faster and more convincing, and a company holding the mail, messages and health questions of millions of people is the prize that makes them worth it. Closedhand keeps your data on a computer you control: your own Mac or PC, a rented server or a server in your own Railway account. One computer can be attacked too, but it holds one person's life, not millions. Your conversations, mail and files never reach closedhand.com. If you turn on Closedhand's own email address, mail to it passes through closedhand.com sealed so that only your computer can read it.
+**Your data stays with you.** Aside from the track record of large tech companies holding your data, AI is making hacking cheaper, faster and easier. Any company sitting on the private data of millions of people is a prized target. Closedhand keeps everything on a machine you control and sends your data straight from there to whichever LLM you choose, so your conversations, mail, files and anything else you connect never touch closedhand.com or any other company in between.
 
-**The LLM can be local too.** LLMs keep getting smarter and smaller, and more of them run well on an ordinary computer. Closedhand can use one today, and then no company sees what you ask at all. With a hosted LLM you still need no company in the middle: with your own LLM provider's key, Closedhand talks to that provider directly.
+**Your LLM can be local too.** Models keep getting smarter and smaller, and today's best will soon run well on an ordinary laptop. Running a model fully locally means nothing if the harness around it (the software that lets it remember, search and act for you) sends your data back to the company that made it. Closedhand is a harness that runs entirely on your machine and doesn't report back to anyone, and it's simple enough for anyone to set up. Pair it with a local model and your conversations are completely sealed, with no company able to see what you ask.
 
-**Any LLM, chosen for you, not for a lab.** A frontier lab's assistant runs on that lab's own models and works with what fits its platform. Closedhand works with any LLM from any provider, free ones included, and you can switch the day a better one is out. It has no LLM of its own to promote, so the only things it weighs are how well it works for you and how private it keeps you. If you'd rather not choose, Closedhand Managed Models pick the best LLM for each job, only from LLM providers that keep nothing you send.
+**Any LLM, no bias.** Every frontier lab's assistant runs on that lab's models. Closedhand has no model of its own to push, so it works with any LLM from any provider and you can switch the day a better one comes out because its only loyalty is to giving you the best possible results. If you'd rather not manage model keys yourself, Closedhand Managed Models picks the best LLM for each job and only uses providers with zero data retention.
 
-**It can know what you'd never hand over.** An assistant is only as good as what it knows about you, and most people would never give a big tech company their health records or bank statements to keep. Closedhand keeps them on your computer, so it can know them, and with a local LLM nothing ever leaves it.
+**Closedhand can't police you.** Closed assistants check your conversations against their owner's rules and can refuse, flag or ban you for whatever that company decides is misuse. The same company can raise prices, withdraw a model overnight or cut users off when a government tells it to, which leaves you with a restricted, revocable version of the technology while the company and its partners get the real thing. An open model you've downloaded can't be taken back, and Closedhand runs any of them, including uncensored and abliterated ones (open models with their built-in refusals stripped out), with the same memory, connections and tools as any other LLM, which makes it the agent closed AI can never be.
 
-**It already knows your world.** The Preemptive Context Layer keeps one live picture of your world and searches it once, before the LLM reads your message, so every answer starts from what you've said, sent and planned. The design is published at [closedhand.com/pcl](https://closedhand.com/pcl) for anyone to use.
+**It can know everything, because nothing leaves your custody.** A personal assistant is only as good as what it knows about you, which forces a trade between privacy and usefulness that closed assistants can never escape, since the more you give them, the more a company holds. Closedhand removes that trade by keeping everything on your machine so you can give it your email, health records and bank statements and they stay exactly where they already were, owned only by you.
 
-**It comes to you.** You talk to it in the chat apps you already use, and with Pulse turned on it checks your connected services and messages you when something needs your attention.
+**It already knows your world.** Closedhand's Preemptive Context Layer (PCL) keeps one live picture of everything you connect and checks it before the LLM even reads your message, so every answer starts from what you've said, sent and planned. The design is open at [closedhand.com/pcl](https://closedhand.com/pcl) for anyone to use.
 
-**It's yours.** Closedhand is free and open source under the Apache 2.0 licence. There's no subscription to use it, no change of terms can take back the code you run, and you can change any part of it to suit you.
+**It comes to you.** It lives in the chat apps you already use, so there's no extra app to download on your phone, and with Pulse turned on it watches your connected services and messages you when something needs you or when a heads-up would help.
+
+**It's yours.** Closedhand is free and open source under the Apache 2.0 licence, with no subscription required, no terms that can be changed to take back the code you run, and nothing you can't modify. You own it.
 
 ## Get started
 
@@ -65,7 +67,7 @@ By the time you say hello, Closedhand has already read your inbox and calendar.
 
 ## What it does
 
-**Chat that acts.** Closedhand answers, and it also sends mail, books calendar events, sets reminders, tracks flights and runs tasks in the background that report back when they're done. Sending a message on your behalf or spending money is put to you first.
+**Chat that acts.** Closedhand answers, and it also sends mail, books calendar events, sets reminders, tracks flights and runs tasks in the background that report back when they're done. Sending a message on your behalf or spending money is put to you first, unless your rules say otherwise.
 
 **Context Brain.** Pinned Facts about you, Context Notes from past conversations and your documents, all recalled by meaning, not just keywords. Ask "what did the accountant say about the deadline" and it finds the thread though you never said "email"; ask for an invoice number and it matches the number itself. You can see, edit and delete any of it on the dashboard.
 
@@ -87,7 +89,7 @@ By the time you say hello, Closedhand has already read your inbox and calendar.
 
 Closedhand is free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does.
 
-Closedhand Managed Models are a convenience if you'd rather not choose. They come with a first month at no charge, once per person, and then carry on with Closedhand+, an optional monthly subscription. You can switch to your own LLM provider at any time.
+If you'd rather not choose, Closedhand Managed Models picks the best LLM for each job, from any provider, and switch when a better one is out. They come with a first month at no charge, once per person, and then carry on with Closedhand+, an optional monthly subscription. You can switch to your own LLM provider at any time.
 
 ## Where it runs
 
@@ -95,7 +97,7 @@ Closedhand lives on one computer and you reach it from anywhere. On a laptop it 
 
 Closedhand's data moves from Always on in My Account, to a computer that stays on. It can go to a computer of your own, like a Mac mini at home: set Closedhand up there, choose Bring Closedhand from another computer in its setup, and type the move code My Account shows; it fetches everything through your personal URL. Or it can go to a server in your own Railway account, and from there back to a computer of your own the same way, after which you delete the project on Railway. Either way this computer then stops running Closedhand and, once the new one runs, clears everything Closedhand kept on it. Setting Closedhand up anywhere else without moving it starts with an empty Context Brain, no connections and no history.
 
-Closedhand starts again by itself after a restart, once someone logs in; a Mac with FileVault turned on waits for that login. The Mac app turns on Launch at Login the first time it opens, and the installer turns on Docker Desktop's "Start Docker Desktop when you sign in"; either can be turned off. On Linux, Docker itself must start with the computer (`sudo systemctl enable docker`). With the Mac app, also turn on Keep Mac Awake in the menu bar; it can't stop a laptop sleeping when its lid is closed.
+Closedhand starts again by itself after a restart, once someone logs in; a Mac with FileVault turned on waits for that login. The Mac app turns on Launch at Login the first time it opens, and the installer turns on Docker Desktop's "Start Docker Desktop when you sign in"; either can be turned off. On Linux, Docker itself must start with the computer (`sudo systemctl enable docker`). With the Mac app, Keep Mac Awake in the menu bar keeps it running while the lid is open.
 
 **On a rented server.** Rent a small Linux server (see Requirements for how much memory), install [Docker Engine](https://docs.docker.com/engine/install/), connect over SSH and run the install command above. It then prints an `ssh -N -L 3000:127.0.0.1:3000 user@server` command: run that on your own computer, keep it open and open http://localhost:3000 to finish setup. After that your personal URL reaches Closedhand from any device. The hosting company provides the machine, so choose one you trust and turn on disk encryption where it offers it.
 
@@ -132,7 +134,7 @@ Two Node services, the bot and the webapp, share a Postgres database with pgvect
 
 ## What it isn't
 
-Closedhand serves one person, deliberately, and it is not a hosted service: it runs where you put it. It is a young project with one maintainer, and support happens in GitHub issues with no promise of response times.
+Closedhand serves one person, deliberately, and it is not a hosted service: it runs where you put it. It is a young project and support happens in GitHub issues.
 
 ## Reporting a problem
 
@@ -143,7 +145,7 @@ problem is fixed, Closedhand tells you.
 
 ## Contributing
 
-Issues and pull requests are welcome. Open an issue before starting anything sizeable so the approach can be agreed first. A genuinely useful first contribution: run `install.sh` on a clean Linux box or WSL and report what breaks. Contributor rules are in [AGENTS.md](AGENTS.md).
+Issues and pull requests are welcome. Open an issue before starting anything sizeable so the approach can be agreed first. A genuinely useful first contribution: run `install.sh` on a clean Linux box or WSL and report anything that doesn't work. Contributor rules are in [AGENTS.md](AGENTS.md).
 
 ## License
 
