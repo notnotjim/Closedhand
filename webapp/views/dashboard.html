@@ -3035,13 +3035,13 @@
 
     let welcomeStep = 0, welcomeInitialized = false;
     const welcomeSteps = [
-      { tab: 'connections', text: 'Your connected apps and skills live here. Add one when you need more, or disconnect one any time.' },
+      { tab: 'connections', text: 'Your chat apps, connected apps and skills live here. Add one when you need more, or disconnect one any time.' },
       { tab: 'upcoming', text: 'Upcoming is what is coming up: bookings, flights and reminders from everything you have connected, with a hotel stay holding what happens while you are there.' },
-      { tab: 'agents', text: 'Agents is Closedhand working for you: tasks you hand it in chat while they run, and routines like a morning briefing that run on their own.' },
+      { tab: 'agents', text: 'Agents is Closedhand working for you: tasks you hand it in chat or start here, alone or as a team that splits the work, and routines like a morning briefing that run on their own.' },
       { tab: 'projects', text: 'Projects are the bigger things you are working towards. Each shows its goal, how far along you are and what Closedhand has done for the project.' },
       { tab: 'pages', text: 'Pages are what Closedhand makes beyond a chat answer, like a trip plan or a comparison. Each opens as PDF, Word or Excel too.' },
       { tab: 'brain', text: 'Context Brain is what Closedhand remembers: your Pinned Facts and Context Notes. Read, correct or delete any of them.' },
-      { tab: 'settings', text: 'Settings is how Closedhand works for you: notifications, Pulse, your models and more. Your account is at the top right.' }
+      { tab: 'settings', text: 'Settings is how Closedhand works for you: notifications, Pulse, your Wallet and spending rules, your models and more. Your account is at the top right.' }
     ];
     function positionWelcome() {
       const panel = document.getElementById('dashboard-welcome');
@@ -3104,8 +3104,9 @@
       // dashboard, on whichever device; it is kept in their settings, so a new
       // browser or an update never runs it again. Opened for one particular
       // thing (My Account, a project, adding a connection), it waits for
-      // another time; opened on a tab, it runs.
-      const tabOnly = /^#?(connections|tasks|projects|pages|brain|settings)?$/.test(window.location.hash);
+      // another time; opened on a tab, any of the tour's, it runs.
+      const asked = window.location.hash.replace(/^#/, '');
+      const tabOnly = !asked || welcomeSteps.some(step => step.tab === asked);
       if (tabOnly && !inAccountPopup() && !data.toured) {
         fetch('/api/settings/toured', { method: 'POST' }).catch(function () {});
         showWelcomeStep(true);

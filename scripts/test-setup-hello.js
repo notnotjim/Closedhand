@@ -139,11 +139,12 @@ test('the hello plays once every step is done or skipped, and hands on to where 
 
 test('the dashboard tour runs once for each person, the first time the dashboard is opened plainly', () => {
   const dashboard = read('webapp/views/dashboard.html');
-  assert.match(dashboard, /const tabOnly = \/\^#\?\(connections\|tasks\|projects\|pages\|brain\|settings\)\?\$\/\.test\(window\.location\.hash\);\n\s+if \(tabOnly && !inAccountPopup\(\) && !data\.toured\) \{\n\s+fetch\('\/api\/settings\/toured', \{ method: 'POST' \}\)/, "the first time, opened on any tab");
+  assert.match(dashboard, /const asked = window\.location\.hash\.replace\(\/\^#\/, ''\);\n\s+const tabOnly = !asked \|\| welcomeSteps\.some\(step => step\.tab === asked\);\n\s+if \(tabOnly && !inAccountPopup\(\) && !data\.toured\) \{\n\s+fetch\('\/api\/settings\/toured', \{ method: 'POST' \}\)/, "the first time, opened on any tab");
   const steps = [...dashboard.slice(dashboard.indexOf("const welcomeSteps = ["), dashboard.indexOf("];", dashboard.indexOf("const welcomeSteps = ["))).matchAll(/tab: '([a-z]+)'/g)].map((m) => m[1]);
   const tabs = [...dashboard.matchAll(/<button class="tab[^"]*" data-tab="([a-z-]+)"/g)].map((m) => m[1]);
   assert.deepEqual(steps, tabs, "every tab, left to right");
-  assert.match(dashboard, /tab: 'connections', text: 'Your connected apps and skills live here\./);
+  assert.match(dashboard, /tab: 'connections', text: 'Your chat apps, connected apps and skills live here\./);
+  assert.match(dashboard, /tab: 'agents', text: 'Agents is Closedhand working for you: tasks you hand it in chat or start here, alone or as a team that splits the work,/, "agents start here too, and in teams");
   assert.match(fs.readFileSync(require.resolve("../webapp/public/welcome.css"), "utf8"), /:root\[data-theme="light"\] \.tour-top > img \{ filter: brightness\(0\.11\); \}/, "the fist shows on a light page");
   assert.doesNotMatch(dashboard, /ch-dashboard-toured/, 'kept for the person, not in one browser, so a new browser or an update never runs it again');
   assert.doesNotMatch(dashboard, /searchParams\.get\('welcome'\)/);
