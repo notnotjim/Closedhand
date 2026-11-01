@@ -252,7 +252,7 @@ test("a routine keeps its agents and runs them first, keeping their state on the
   assert.match(runner, /if \(!resumeRow\?\.messages\?\.length && Array\.isArray\(config\.members\) && config\.members\.length\) \{/);
   assert.match(runner, /store: \{ save: \(updates\) => updateRun\(runId, updates\), read: \(\) => getRun\(runId\) \},/, "kept on the routine's run");
   assert.match(runner, /if \(Date\.now\(\) - startTime > timeoutMs \+ teamMs\) \{/, "the team's time is not the run's");
-  assert.match(read("lib/agents.js"), /dropConfirmation, runMapSub, pauseForAllowance, retryPaused, askToFinish \};/);
+  assert.match(read("lib/agents.js"), /dropConfirmation, runMapSub, pauseForAllowance, retryPaused, askToFinish, judgeResume, changedTask, resumeReplyIsChange \};/);
   const server = read("webapp/server.js");
   const create = server.slice(server.indexOf('app.post("/api/automations"'), server.indexOf('app.put("/api/automations/:id"'));
   assert.match(create, /const members = teamMembers\(req\.body\.members\);/);
@@ -360,7 +360,7 @@ test("the task pauses, says so once, waits for as long as it takes, and asks bef
   assert.match(src, /What it has done so far is kept\. When your LLM takes requests again, I'll ask whether you still want it finished\./);
   assert.match(src, /\{ model, max_tokens: 5, messages: \[\{ role: "user", content: "Reply with OK\." \}\] \}/, "a one-word call to see if it is back");
   assert.match(src, /Shall I finish it now, or is it no longer needed\? Reply yes to finish it or no to drop it\./);
-  assert.match(src, /kind: "resume", taskId: task\.id/);
+  assert.match(src, /kind: "resume", change, taskId: task\.id/);
   assert.match(src, /if \(ctx\.pendingConfirmations\[task\.user_id\]\) \{/, "one question at a time");
   assert.match(src, /return "OK, I've dropped it\.";/);
   assert.match(read("lib/confirmation.js"), /pending\.kind === "sign_in" \|\| pending\.kind === "resume" \? String\(response\)/, "the answer is kept as said");
@@ -369,7 +369,7 @@ test("the task pauses, says so once, waits for as long as it takes, and asks bef
   const server = read("webapp/server.js");
   assert.match(server, /const LIVE_RUN_STATUSES = \["running", "pending", "awaiting_confirmation", "blocked"\];/, "listed under Working now however long it waits");
   assert.match(server, /app\.post\("\/api\/agents\/:id\/carry-on"/);
-  assert.match(server, /pending_notes: \[\.\.\.\(task\.pending_notes \|\| \[\]\), note\]/, "told when it was asked, from the dashboard too");
+  assert.match(server, /const notes = \[\.\.\.\(task\.pending_notes \|\| \[\]\), \{ note: `This was asked on \$\{since\}\./, "told when it was asked, from the dashboard too");
   assert.match(server, /if \(\/:free\$\/\.test\(String\(conn\.model \|\| ""\)\) && free/);
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, /if \(a\.status === 'blocked' && a\.runtime && a\.runtime\.allowance\) return 'Paused';/);
@@ -408,4 +408,62 @@ test("a part waiting on one that ran again runs again too, with the new findings
   await withTaskRun({ userId: "u-team", taskId: "task-redo", budget: makeBudget() }, () =>
     team.runTeam("u-team", "web", "c", "task-redo", TRIP, "fixture-model", { runPart: second.runPart, previous: structuredClone(row.team) }));
   assert.deepEqual(second.log.order, ["Flights", "Getting around"], "Stays is kept; Getting around waits on Flights, so it runs again");
+});
+
+// When the LLM is back, one look before asking: finish, change, or drop.
+function resumeFunctions(reply) {
+  const src = read("lib/agents.js");
+  const code = src.slice(src.indexOf("const RESUME_JUDGE_AFTER_MS"), src.indexOf("// The person's own change, in their words"))
+    + src.slice(src.indexOf("function resumeNote(task) {"), src.indexOf("// Paused tasks whose time to look again has come"));
+  const seen = [];
+  const ctx = { console, Date, JSON, String, Array, Set, Number, require: () => ({ getUserTimezone: () => "UTC" }),
+    createAgentResponse: async (client, params) => { seen.push(params); if (reply instanceof Error) throw reply; return { content: [{ type: "text", text: reply }] }; } };
+  require("node:vm").runInNewContext(code + "; this.judgeResume = judgeResume; this.changedTask = changedTask;", ctx);
+  return { ...ctx, seen };
+}
+const longAgo = new Date(Date.now() - 10 * 86400000).toISOString();
+const pausedTrip = { id: "t", goal: "Plan 14 to 18 March in Kyoto for two", created_at: longAgo, runtime: { allowance: { since: longAgo }, teamSource: "dashboard", teamDone: true },
+  team: [{ name: "Flights", job: "Flights out 14 Mar, back 18 Mar", status: "done", key: "k1", findings: "£412" }, { name: "Stays", job: "A ryokan near Gion", status: "done", key: "k2", findings: "Shirakawa-an" }] };
+
+test("a job paused half a day or more is looked at before asking; a short pause just asks", async () => {
+  const fresh = resumeFunctions('{"verdict":"drop","why":"x"}');
+  assert.equal((await fresh.judgeResume({ ...pausedTrip, created_at: new Date().toISOString(), runtime: { allowance: { since: new Date().toISOString() } } }, {}, {}, "m")).verdict, "finish");
+  assert.equal(fresh.seen.length, 0, "no call for a short pause");
+  const change = resumeFunctions('{"verdict":"change","why":"The Kyoto dates (14 to 18 Mar) have passed.","offer":"redo it for the same trip in April.","parts":[{"name":"Flights","job":"Flights out 11 Apr, back 15 Apr"},{"name":"Nobody","job":"x"}]}');
+  const v = await change.judgeResume(pausedTrip, {}, {}, "m");
+  assert.equal(v.verdict, "change"); assert.equal(v.offer, "redo it for the same trip in April");
+  assert.deepEqual(JSON.parse(JSON.stringify(v.parts)), [{ name: "Flights", job: "Flights out 11 Apr, back 15 Apr" }], "only agents on the team");
+  assert.match(change.seen[0].messages[0].content, /Flights \(done\): Flights out 14 Mar, back 18 Mar\n  found: £412/);
+  assert.match(change.seen[0].system, /When unsure, finish\./);
+  const drop = resumeFunctions('{"verdict":"drop","why":"It was for Sat 14 Mar, which has passed."}');
+  assert.deepEqual(JSON.parse(JSON.stringify(await drop.judgeResume(pausedTrip, {}, {}, "m"))), { verdict: "drop", why: "It was for Sat 14 Mar, which has passed." });
+  assert.equal((await resumeFunctions("not json").judgeResume(pausedTrip, {}, {}, "m")).verdict, "finish", "anything unclear: finish");
+  assert.equal((await resumeFunctions(new Error("down")).judgeResume(pausedTrip, {}, {}, "m")).verdict, "finish");
+  assert.equal((await resumeFunctions('{"verdict":"drop"}').judgeResume(pausedTrip, {}, {}, "m")).verdict, "finish", "never dropped without a reason to give");
+});
+
+test("a change agreed: agents whose jobs changed run again, the rest keep what they found, and the job starts again told why", () => {
+  const { changedTask } = resumeFunctions("{}");
+  const u = JSON.parse(JSON.stringify(changedTask(pausedTrip, { offer: "redo it for the same trip in April", parts: [{ name: "Flights", job: "Flights out 11 Apr, back 15 Apr" }] })));
+  assert.equal(u.status, "pending"); assert.deepEqual(u.messages, []);
+  assert.deepEqual(u.team.map((m) => [m.name, m.status, m.key]), [["Flights", "waiting", null], ["Stays", "done", "k2"]]);
+  assert.equal(u.runtime.teamDone, false);
+  assert.match(u.pending_notes.at(-1).note, /The person agreed to change the job: redo it for the same trip in April\. Do it that way\./);
+});
+
+test("asked in chat, dropped with a reason, a change in the person's own words, and the same on the dashboard", () => {
+  const src = read("lib/agents.js");
+  assert.match(src, /Shall I \$\{change\.offer\}\? Reply yes to do that, no to drop it, or tell me what to change\./);
+  assert.match(src, /I've dropped "\$\{taskName\(task\)\}": \$\{verdict\.why\} Ask me again if you still want it\./);
+  assert.match(src, /status: "cancelled", error: `Dropped: \$\{verdict\.why\}`/, "dropped, never deleted");
+  assert.match(src, /if \(opts\.amend\) \{\n\s+await updateTask\(taskId, changedTask\(saved, \{ offer: opts\.amend, parts: await partsForChange\(saved, opts\.amend\) \}\)\);/);
+  const conf = read("lib/confirmation.js");
+  assert.match(conf, /if \(!isYes && !isNo && pending\.kind === "resume" && pending\.isAgent\) \{/);
+  assert.match(conf, /if \(await resumeReplyIsChange\(userId, pending, response\)\) \{/, "only a reply about that job; anything else is a new message");
+  const server = read("webapp/server.js");
+  assert.match(server, /const change = req\.body\?\.change \? task\.runtime\.allowance\.change : null;/);
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /'Your LLM is working again\. ' \+ al\.change\.why \+ ' Shall I ' \+ al\.change\.offer \+ '\?'/);
+  assert.match(dash, />Yes, do that<\/button>/); assert.match(dash, />Finish as it was<\/button>/);
+  assert.match(dash, /return 'Dropped: ' \+ a\.runtime\.allowance\.dropped;/);
 });

@@ -5733,12 +5733,26 @@ app.post("/api/agents/:id/carry-on", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
   try {
-    const { data: task, error } = await supabase.from("agent_tasks").select("id, status, runtime, pending_notes, created_at").eq("id", req.params.id).eq("user_id", userId).maybeSingle();
+    const { data: task, error } = await supabase.from("agent_tasks").select("id, status, runtime, pending_notes, created_at, team").eq("id", req.params.id).eq("user_id", userId).maybeSingle();
     if (error) throw error;
     if (!task || task.status !== "blocked" || !task.runtime?.allowance) return res.status(409).json({ error: "It isn't paused any more." });
     const since = new Date(task.runtime.allowance.since || task.created_at).toISOString().slice(0, 10);
-    const note = { note: `This was asked on ${since}. It paused when the LLM's allowance ran out, and the person has now said to finish it. If anything it depends on has passed or changed since (dates, prices, availability), say so plainly in the answer.`, time: new Date().toISOString() };
-    const { error: saveError } = await supabase.from("agent_tasks").update({ status: "pending", pending_notes: [...(task.pending_notes || []), note], updated_at: new Date().toISOString() })
+    const notes = [...(task.pending_notes || []), { note: `This was asked on ${since}. It paused when the LLM's allowance ran out, and the person has now said to finish it. If anything it depends on has passed or changed since (dates, prices, availability), say so plainly in the answer.`, time: new Date().toISOString() }];
+    let updates = { status: "pending", pending_notes: notes, updated_at: new Date().toISOString() };
+    // Yes to the change Closedhand suggested: agents whose jobs changed run
+    // again, the rest keep what they found, and the job starts again with the
+    // change in front of it (as lib/agents.js changedTask does from chat).
+    const change = req.body?.change ? task.runtime.allowance.change : null;
+    if (change) {
+      const parts = Array.isArray(change.parts) ? change.parts : [];
+      const team = Array.isArray(task.team) ? task.team.map((m) => {
+        const now = parts.find((p) => p.name === m.name);
+        return now && now.job !== m.job ? { ...m, job: now.job, status: "waiting", key: null, findings: null, error: null } : m;
+      }) : task.team;
+      notes.push({ note: `The person agreed to change the job: ${change.offer}. Do it that way.`, time: new Date().toISOString() });
+      updates = { ...updates, team, messages: [], runtime: { ...task.runtime, teamDone: false } };
+    }
+    const { error: saveError } = await supabase.from("agent_tasks").update(updates)
       .eq("id", task.id).eq("user_id", userId).eq("status", "blocked");
     if (saveError) throw saveError;
     res.json({ success: true });

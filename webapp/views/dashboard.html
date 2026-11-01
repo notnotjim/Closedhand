@@ -7727,10 +7727,15 @@
       }
       if (a.status === 'cancelled') return 'Stopped before it finished.';
       if (a.status === 'blocked' && a.runtime && a.runtime.allowance) {
-        return a.runtime.allowance.back
+        var al = a.runtime.allowance;
+        if (al.back && al.change) return 'Your LLM is working again. ' + al.change.why + ' Shall I ' + al.change.offer + '?';
+        return al.back
           ? 'Your LLM is working again. Finish it, or delete it if it\'s no longer needed.'
           : 'Your LLM\'s allowance ran out. What it has done is kept. Once your LLM takes requests again, Closedhand asks whether you still want it finished.';
       }
+      // Dropped when the LLM came back because it plainly had no point any
+      // more: why, and what it found stays on the card.
+      if (a.status === 'cancelled' && a.runtime && a.runtime.allowance && a.runtime.allowance.dropped) return 'Dropped: ' + a.runtime.allowance.dropped;
       if (a.status === 'blocked') return 'It needs something from you to carry on.';
       var why = couldNotFinish(a.error);
       return why.charAt(0).toUpperCase() + why.slice(1) + '.';
@@ -7775,9 +7780,9 @@
       var unfinished = going && team.some(function (m) { return m.status !== 'done' && m.status !== 'stopped'; });
       return '<div class="team-members">' + rows + '</div>' + (unfinished ? '<div class="team-lead">Then Closedhand puts them together and sends one answer.</div>' : '');
     }
-    async function carryOn(btn, id) {
+    async function carryOn(btn, id, change) {
       btn.disabled = true;
-      var res = await fetch('/api/agents/' + encodeURIComponent(id) + '/carry-on', { method: 'POST' }).catch(function () { return null; });
+      var res = await fetch('/api/agents/' + encodeURIComponent(id) + '/carry-on', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ change: !!change }) }).catch(function () { return null; });
       var data = res ? await res.json().catch(function () { return {}; }) : {};
       if (!res || !res.ok) { btn.disabled = false; showToast(data.error || 'Could not carry on just now.', true); return; }
       showToast('Finishing it.');
@@ -7918,7 +7923,12 @@
         // Waiting for an answer is still working: it stops, never deletes.
         : a.status === 'awaiting_confirmation'
         ? '<button class="agent-del" title="Stop this task" style="color:var(--accent-strong);border-color:rgba(var(--fg-rgb),0.1);" onclick="event.stopPropagation();stopAgentRun(\'' + a.id + '\', this, true)">Stop</button>'
-        : (a.status === 'blocked' && a.runtime && a.runtime.allowance ? '<button class="agent-del" title="Finish it now, with your LLM\'s allowance back" onclick="event.stopPropagation();carryOn(this, \'' + a.id + '\')">Finish it</button>' : '') +
+        : (a.status === 'blocked' && a.runtime && a.runtime.allowance
+          ? (a.runtime.allowance.back && a.runtime.allowance.change
+            ? '<button class="agent-del" onclick="event.stopPropagation();carryOn(this, \'' + a.id + '\', true)">Yes, do that</button>' +
+              '<button class="agent-del" onclick="event.stopPropagation();carryOn(this, \'' + a.id + '\')">Finish as it was</button>'
+            : '<button class="agent-del" title="Finish it now, with your LLM\'s allowance back" onclick="event.stopPropagation();carryOn(this, \'' + a.id + '\')">Finish it</button>')
+          : '') +
           '<button class="agent-del" title="Delete this run" aria-label="Delete this run" onclick="event.stopPropagation();confirmAgentDelete(this, \'' + a.id + '\', ' + !!a.report_id + ')">' + TRASH_ICON + '</button>';
 
       // The finished work, as a file. Same content as the expanded card,
