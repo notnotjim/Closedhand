@@ -164,3 +164,80 @@ test("the lead gets its own time back from a team, kept across a restart", () =>
   assert.match(server, /select\(withTeam \? fields \+ ", team" : fields\)/, "the Agents tab gets each task's team");
   assert.match(server, /if \(results\.some\(\(r\) => r\.error && \/\\bteam\\b\/\.test/, "and still loads before the bot has added the column");
 });
+
+// A team made on the dashboard: one task, Closedhand leading with the goal
+// above, the agents its parts; no cap of five, a note from the sixth.
+test("the dashboard makes one task for a team, each agent named or numbered from 1", () => {
+  const server = read("webapp/server.js");
+  const fn = server.slice(server.indexOf("const TEAM_MAX = 20;"), server.indexOf("// Which note the form shows from the sixth agent"));
+  const ctx = {}; require("node:vm").runInNewContext(fn + "; this.teamMembers = teamMembers;", ctx);
+  assert.equal(ctx.teamMembers(undefined).length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(ctx.teamMembers([{ name: "Flights", part: "Return flights" }, { name: "", part: "A ryokan near Gion" }, { name: "flights", part: "Trains" }]))),
+    [{ name: "Flights", part: "Return flights" }, { name: "Agent 2", part: "A ryokan near Gion" }, { name: "flights (2)", part: "Trains" }]);
+  assert.equal(ctx.teamMembers([{ name: "A", part: "x" }]).error, "Say what each agent should do.");
+  assert.equal(ctx.teamMembers(Array.from({ length: 21 }, () => ({ part: "look it up" }))).error, "A team can have up to 20 agents.");
+  assert.equal(ctx.teamMembers(Array.from({ length: 12 }, () => ({ part: "look it up" }))).length, 12, "past five is fine");
+  assert.match(server, /\.\.\.\(members\.length \? \{ team: members\.map\(\(m\) => \(\{ name: m\.name, job: m\.part, after: \[\], status: "waiting"/);
+  assert.match(server, /\.\.\.\(members\.length \? \{ teamSource: "dashboard" \} : \{\}\)/);
+  assert.match(server, /app\.get\("\/api\/team-note"/, "not under /api/agents/:id, which would take it");
+  assert.match(server, /if \(require\("\.\/included-ai"\)\.inUse\(settings\)\) return res\.json\(\{ kind: "managed" \}\);/);
+  assert.match(server, /never sending, paying or booking/, "suggested parts only look things up");
+  const redo = server.slice(server.indexOf('app.post("/api/agents/:id/redo"'), server.indexOf("// AUTOMATIONS"));
+  assert.match(redo, /task_worker_results"\)\.delete\(\)\.eq\("user_id", userId\)\.eq\("task_id", task\.id\)\.eq\("item_key", member\.key\)/, "only that agent's findings go");
+  assert.match(redo, /status: "pending", messages: \[\]/);
+  assert.match(redo, /teamDone: false/);
+  assert.match(redo, /task\.runtime\?\.teamSource !== "dashboard"/);
+});
+
+test("Closedhand plans which agent waits for which, runs the team as fast as the LLM allows, then leads with what they found", () => {
+  const src = read("lib/agents.js");
+  assert.match(src, /if \(!resumeState && Array\.isArray\(task\.team\) && task\.team\.length && runtime\.teamSource === "dashboard" && !runtime\.teamDone\) \{/);
+  assert.match(src, /atOnce: \(size\) => capacity\.atOnce\(k, size\),\n\s+partLimits: team\.TEAM_PART_LIMITS,/, "no cap of three for a team made by hand");
+  assert.match(src, /const TEAM_BRIEF = "You lead a team the person set up on their dashboard\./);
+  assert.match(src, /show both where two disagree and you cannot settle it, say plainly which part did not finish/);
+  assert.match(src, /Reply ONLY with JSON: \{\\"after\\": \{\\"<agent name>\\": \[\\"<agent name>\\", \.\.\.\]\}\}/);
+  assert.match(read("lib/agent-team.js"), /m\.key = itemKey;/, "each agent's saved findings can be found again for Redo");
+});
+
+test("the form: named agents, Suggest agents, one start, and the note from the sixth in the LLM's own terms", () => {
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /<a href="#" class="team-add" id="auto-suggest-agents" onclick="event\.preventDefault\(\);suggestAgents\(\)">Suggest agents<\/a>/);
+  assert.doesNotMatch(dash, /if \(box\.children\.length >= 4\) return;/, "no cap of five");
+  const fn = dash.slice(dash.indexOf("    function renumberTeam() {"), dash.indexOf("    // Suggest agents:"));
+  const notes = {};
+  for (const kind of ["provider", "managed", "local"]) {
+    const ctx = { _teamNoteKind: kind }; require("node:vm").runInNewContext(fn + "; this.bigTeamNote = bigTeamNote;", ctx);
+    notes[kind] = ctx.bigTeamNote(6);
+  }
+  assert.equal(notes.provider, "A team of 6 does the work of 6 agents at once, so it uses your LLM provider's limits and adds to its bill about 6 times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.");
+  assert.equal(notes.managed, "A team of 6 does the work of 6 agents at once, so it uses this month's fair use about 6 times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.");
+  assert.equal(notes.local, "A team of 6 does the work of 6 agents on the computer running your model. How many it can work on at once depends on that computer's memory and how the model is served, and the rest wait their turn.");
+  assert.match(fn, /\(count >= 6 \? ' ' \+ bigTeamNote\(count\) : ''\)/);
+  assert.match(fn, /n\.placeholder = 'Agent ' \+ \(i \+ 1\);/);
+  assert.match(dash, /members: members\.length \? members : undefined \}\) \}\);/, "one task for the whole team");
+});
+
+test("a team's card: a line per agent, Working in green, waiting for whom, what it found, Redo once done", () => {
+  const dash = read("webapp/views/dashboard.html");
+  const fn = dash.slice(dash.indexOf("    function teamLines(a, team, going) {"), dash.indexOf("    function toggleTeamLine(row) {"));
+  const why = dash.slice(dash.indexOf("    function couldNotFinish(error) {"), dash.indexOf("    // Runs from before the check's notes"));
+  const ctx = { escapeHtml: (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;") };
+  require("node:vm").runInNewContext(why + fn + "; this.teamLines = teamLines;", ctx);
+  const team = [
+    { name: "Flights", status: "done", findings: "Landing at Kansai 11:35 on 15 Mar." },
+    { name: "Stays", status: "working", last: "Searching the web" },
+    { name: "Getting around", status: "waiting", after: ["Flights", "Stays"] },
+  ];
+  const going = ctx.teamLines({ id: "t1", runtime: { teamSource: "dashboard" } }, team, true);
+  assert.match(going, /<span class="tm-state on">Working<\/span>/);
+  assert.match(going, /Waiting for Stays/, "only the ones it still waits for");
+  assert.match(going, /<div class="tm-full" hidden onclick="event\.stopPropagation\(\)">Landing at Kansai 11:35 on 15 Mar\.<\/div>/);
+  assert.match(going, /Then Closedhand puts them together and sends one answer\./);
+  assert.doesNotMatch(going, />Redo</, "no Redo while it works");
+  const done = ctx.teamLines({ id: "t1", runtime: { teamSource: "dashboard" } }, [{ name: "Bank", status: "stopped", error: "The LLM said its allowance is used up." }, { name: "Bills", status: "waiting" }], false);
+  assert.match(done, /Your LLM's allowance ran out\./);
+  assert.match(done, /Did not start/);
+  assert.match(done, />Redo</);
+  assert.doesNotMatch(ctx.teamLines({ id: "t2", runtime: {} }, team.slice(0, 1), false), />Redo</, "a team from chat is redone by asking in chat");
+  assert.match(dash, /\(team \? 'Team of ' \+ team\.length : 'Task'\)/);
+});

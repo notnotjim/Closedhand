@@ -48,7 +48,7 @@ test("tasks handed over in chat: going or waiting under Working now, finished th
   assert.doesNotMatch(dashboard, /toggleArchivedRuns|_archivedRunCount|\/api\/agents\?archived=1/);
   assert.match(dashboard, /a\.delivery_status !== 'sent' &&\n\s*a\.completed_at && Date\.now\(\) - new Date\(a\.completed_at\)\.getTime\(\) > 2 \* 60000\) \{\n\s*detail = 'This may not have reached the chat you asked in, so it stays here\. ' \+ detail;/, "a late delivery says why");
   assert.match(dashboard, /function archiveRow\(toggle, count, open\) \{\n\s*if \(!count\) return '';/, "Pages keeps its Archived row");
-  assert.match(dashboard, /escapeHtml\('Task \\u00b7 ' \+ \(running \|\| asked \? '' : sentenceCase\(runWord\(a\)\) \+ ' \\u00b7 '\) \+ String\(detail\)\)/, "a task says what it is and how it stands, in words");
+  assert.match(dashboard, /escapeHtml\(\(team \? 'Team of ' \+ team\.length : 'Task'\) \+ ' \\u00b7 ' \+ \(running \|\| asked \? '' : sentenceCase\(runWord\(a\)\) \+ ' \\u00b7 '\) \+ String\(detail\)\)/, "a task or a team says what it is and how it stands, in words");
   assert.doesNotMatch(dashboard, /auto-status-pill|&#9632; Stop|&#8595; PDF|&#9654; Run|&#9208; Pause/, "no stock pills, no glyph buttons");
   assert.match(dashboard, />Closedhand working for you: tasks you hand it here or in chat, and routines that run on their own\.</, "the tab says what it holds");
 });
@@ -247,43 +247,49 @@ test("a reminder about an appointment shows the appointment's time, and when it 
   assert.match(read("user-store.js"), /run_once: runOnce, timezone, platform, event_at: eventAt \}/);
 });
 
-test("New agent: a task now, or a routine; a small team; each answers in the chat chosen", async () => {
+test("New agent: a task now, or a routine; a team led by Closedhand is one task; it answers in the chat chosen", async () => {
   const form = dashboard.slice(dashboard.indexOf('id="auto-create-modal"'), dashboard.indexOf('<!-- Note Modal -->'));
   assert.match(form, /<h3 id="auto-modal-title">New agent<\/h3>/);
   assert.match(form, /data-trigger="now" onclick="selectTrigger\('now'\)">Now<\/button>\n\s*<button type="button" class="auto-trigger-btn active" data-trigger="manual"/, "Now first, beside the routine choices");
   assert.match(form, /<label for="auto-scope-input">Scope <span class="project-optional">Optional<\/span><\/label>/);
   for (const part of ['class="routine-only" style="flex:1;min-width:13.75rem;">\n      <label for="auto-template-select">', 'id="auto-skills-section" class="routine-only"', 'id="auto-advanced" class="routine-only"', 'class="auto-project-hint routine-only"'])
     assert.ok(form.includes(part), "a routine's own: " + part.slice(0, 40));
-  for (const part of ['id="auto-team" class="task-only"', 'id="auto-answer-row" class="task-only"', 'class="task-only team-add"'])
+  for (const part of ['id="auto-team" class="task-only"', 'id="auto-answer-row" class="task-only"', 'class="task-only team-links"'])
     assert.ok(form.includes(part), "a task's own: " + part.slice(0, 40));
   assert.match(dashboard, /#auto-create-modal\.task-mode \.routine-only, #auto-create-modal:not\(\.task-mode\) \.task-only \{ display: none !important; \}/);
   assert.match(dashboard, /document\.getElementById\('auto-create-modal'\)\.classList\.toggle\('task-mode', type === 'now'\);/);
-  assert.match(dashboard, /if \(box\.children\.length >= 4\) return;/, "five agents at most");
+  assert.doesNotMatch(dashboard, /if \(box\.children\.length >= 4\) return;/, "no cap of five");
   assert.match(dashboard, /name: name,\n\s*description: prompt\.substring\(0, 200\),/, "a routine keeps the name as typed");
 
-  // The start step, run: each agent in the form is its own task.
-  const a = dashboard.indexOf("    async function startTasks()");
-  const code = dashboard.slice(a, dashboard.indexOf("\n    }\n", a) + 6);
+  // The start step, run: the agents in the form are one team, one task.
+  const a = dashboard.indexOf("    function teamFromForm()");
+  const code = dashboard.slice(a, dashboard.indexOf("\n    }\n", dashboard.indexOf("    async function startTasks()")) + 6);
   const el = (value) => ({ value, style: {}, textContent: "", disabled: false });
   const ids = { "auto-prompt-input": el("Find flights from Osaka to Seoul on 8 Nov"), "auto-scope-input": el("Direct only"), "auto-name-input": el("Seoul flights"),
     "auto-create-error": el(""), "auto-save-btn": el(""), "auto-answer-select": { value: "whatsapp_linked", selectedIndex: 0, options: [{ text: "WhatsApp" }] } };
-  const team = (goal, scope) => ({ querySelector: (sel) => (sel === ".team-goal" ? { value: goal } : { value: scope }) });
+  const team = (name, part) => ({ querySelector: (sel) => (sel === ".team-goal" ? { value: part } : { value: name }) });
   const posts = [], toasts = [];
-  const ctx = { document: { getElementById: (id) => ids[id], querySelectorAll: () => [team("Hotels near the clinic, under ¥20,000", "Walking distance"), team("", "")] },
+  let rows = [team("Hotels", "Hotels near the clinic, under ¥20,000"), team("", "Trains from the airport"), team("", "")];
+  const ctx = { document: { getElementById: (id) => ids[id], querySelectorAll: () => rows },
     fetch: async (url, opts) => { posts.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({}) }; },
     closeCreateAutomationModal() {}, showToast: (m) => toasts.push(m), loadAgents() {} };
   vm.runInNewContext(code + "\nthis.startTasks = startTasks;", ctx);
   await ctx.startTasks();
-  assert.equal(posts.length, 2, "an empty extra agent is left out");
-  assert.ok(posts.every((p) => p.url === "/api/agents" && p.body.answer_in === "whatsapp_linked"));
-  assert.equal(JSON.stringify(posts[0].body), JSON.stringify({ answer_in: "whatsapp_linked", goal: "Find flights from Osaka to Seoul on 8 Nov", scope: "Direct only", title: "Seoul flights" }));
-  assert.equal(JSON.stringify(posts[1].body), JSON.stringify({ answer_in: "whatsapp_linked", goal: "Hotels near the clinic, under ¥20,000", scope: "Walking distance" }));
-  assert.deepEqual(toasts, ["2 started. They answer in WhatsApp."]);
-  ids["auto-prompt-input"].value = "";
-  posts.length = 0;
+  assert.equal(posts.length, 1, "one task for the team");
+  assert.equal(JSON.stringify(posts[0].body), JSON.stringify({ answer_in: "whatsapp_linked", goal: "Find flights from Osaka to Seoul on 8 Nov", scope: "Direct only", title: "Seoul flights",
+    members: [{ name: "Hotels", part: "Hotels near the clinic, under ¥20,000" }, { name: "", part: "Trains from the airport" }] }), "an empty extra agent is left out");
+  assert.deepEqual(toasts, ["Team started. It answers in WhatsApp."]);
+  rows = []; posts.length = 0; toasts.length = 0;
+  await ctx.startTasks();
+  assert.equal(posts[0].body.members, undefined, "one agent alone is a task");
+  assert.deepEqual(toasts, ["Started. It answers in WhatsApp."]);
+  rows = [team("Hotels", "x")]; posts.length = 0;
   await ctx.startTasks();
   assert.equal(posts.length, 0);
   assert.equal(ids["auto-create-error"].textContent, "Say what each agent should do.");
+  ids["auto-prompt-input"].value = ""; rows = [];
+  await ctx.startTasks();
+  assert.equal(ids["auto-create-error"].textContent, "Say what it should do.");
 });
 
 test("a routine's scope travels in its instructions and reads back apart; a working task can be told something", () => {

@@ -5592,6 +5592,8 @@ app.post("/api/agents", async (req, res) => {
     if (!goal || typeof goal !== "string" || goal.trim().length < 3) {
       return res.status(400).json({ error: "Please provide a task description" });
     }
+    const members = teamMembers(req.body.members);
+    if (members.error) return res.status(400).json({ error: members.error });
     const place = (await answerPlaces(userId)).find((p) => p.id === (answer_in || "dashboard"));
     if (!place) return res.status(400).json({ error: "That chat is not connected." });
     const bounds = typeof scope === "string" ? scope.trim() : "";
@@ -5614,7 +5616,11 @@ app.post("/api/agents", async (req, res) => {
         user_id: userId,
         goal: goal.trim() + (bounds ? "\n\nScope: " + bounds.slice(0, 2000) : ""),
         title: typeof title === "string" && title.trim() ? title.trim().slice(0, 120) : null,
-        ...(typeof title === "string" && title.trim() ? { runtime: { named: true } } : {}),
+        // A team made here is one task: Closedhand leads, the agents are its parts.
+        ...(typeof title === "string" && title.trim() || members.length ? { runtime: {
+          ...(typeof title === "string" && title.trim() ? { named: true } : {}),
+          ...(members.length ? { teamSource: "dashboard" } : {}) } } : {}),
+        ...(members.length ? { team: members.map((m) => ({ name: m.name, job: m.part, after: [], status: "waiting", last: null, findings: null, error: null })) } : {}),
         model: "pending",
         platform: place.id,
         chat_id: place.chat_id,
@@ -5626,12 +5632,114 @@ app.post("/api/agents", async (req, res) => {
       .select()
       .single();
 
+    if (insertErr && members.length && /\bteam\b/.test(String(insertErr.message || ""))) {
+      return res.status(503).json({ error: "Closedhand is finishing an update. Try again in a minute." });
+    }
     if (insertErr) throw insertErr;
 
     res.json({ success: true, taskId: task.id, model: "pending" });
   } catch (e) {
     console.error("Create agent error:", e);
     res.status(500).json({ error: "Failed to create agent task" });
+  }
+});
+
+// The agents added to a new task, each a name and its part; a name left
+// empty is Agent 1, Agent 2 and so on, as the form shows it.
+const TEAM_MAX = 20;
+function teamMembers(list) {
+  if (list == null) return [];
+  if (!Array.isArray(list)) return { error: "Say what each agent should do." };
+  if (list.length > TEAM_MAX) return { error: `A team can have up to ${TEAM_MAX} agents.` };
+  const seen = new Set(); const members = [];
+  for (const [i, m] of list.entries()) {
+    const part = String(m?.part || "").trim().slice(0, 4000);
+    if (part.length < 3) return { error: "Say what each agent should do." };
+    let name = String(m?.name || "").replace(/\s+/g, " ").trim().slice(0, 40) || `Agent ${i + 1}`;
+    for (let n = 2; seen.has(name.toLowerCase()); n++) name = `${String(m?.name || `Agent ${i + 1}`).trim().slice(0, 36)} (${n})`;
+    seen.add(name.toLowerCase());
+    members.push({ name, part });
+  }
+  return members;
+}
+
+// Which note the form shows from the sixth agent: what a big team uses up
+// depends on whose LLM it is.
+app.get("/api/team-note", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not logged in" });
+  try {
+    const { data } = await supabase.from("profiles").select("settings").eq("id", userId).single();
+    const settings = data?.settings || {};
+    if (require("./included-ai").inUse(settings)) return res.json({ kind: "managed" });
+    const conn = require("./model-policy").getRole(settings, "chat");
+    let host = "";
+    try { host = new URL(conn?.baseUrl || "").hostname; } catch (_) {}
+    const local = ["localhost", "127.0.0.1", "[::1]", "host.docker.internal"].includes(host) || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+    res.json({ kind: local ? "local" : "provider" });
+  } catch (_) { res.json({ kind: "provider" }); }
+});
+
+// Suggest agents: the person's own LLM drafts a team from the goal, for them
+// to change before it starts.
+app.post("/api/agents/suggest", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not logged in" });
+  const goal = String(req.body?.goal || "").trim().slice(0, 4000);
+  const scope = String(req.body?.scope || "").trim().slice(0, 2000);
+  if (goal.length < 3) return res.status(400).json({ error: "Say what it should do first." });
+  try {
+    const model = await scanModelFor(userId);
+    if (!model) return res.status(503).json({ error: "Choose an LLM in Settings first." });
+    const system = "You split a person's job into a small team of agents for their personal assistant, Closedhand, which leads the team and puts the parts together. "
+      + "Give 2 to 5 agents, each one part that is worth an agent of its own and that can be looked up or worked out on its own: searching, reading, comparing. "
+      + "Never a part that only joins the others up, and never sending, paying or booking. Name each in one to three plain words the person would use (Flights, Stays, Getting around). "
+      + "Write each part as one sentence in the person's own terms, keeping their dates, places and limits. Reply ONLY with JSON: {\"agents\": [{\"name\": \"...\", \"part\": \"...\"}]}";
+    const reply = await require("./model-wire").request(model, { model: model.model, effort: "fast", max_tokens: 700, system,
+      messages: [{ role: "user", content: `The job: ${goal}${scope ? `\nScope: ${scope}` : ""}` }] }, { signal: AbortSignal.timeout(30000) });
+    const text = (reply.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+    const parsed = JSON.parse(String(text).match(/\{[\s\S]*\}/)?.[0] || "{}");
+    const agents = (Array.isArray(parsed.agents) ? parsed.agents : [])
+      .map((a) => ({ name: String(a?.name || "").trim().slice(0, 40), part: String(a?.part || "").trim().slice(0, 600) }))
+      .filter((a) => a.name && a.part.length >= 3).slice(0, 5);
+    if (agents.length < 2) return res.status(422).json({ error: "Closedhand couldn't split this into parts. Add the agents yourself." });
+    res.json({ agents });
+  } catch (e) {
+    console.error("[agents] suggest:", e.message);
+    res.status(503).json({ error: "Closedhand couldn't suggest agents just now. Add them yourself or try again." });
+  }
+});
+
+// Redo one agent of a finished team made here, with what the person adds:
+// its saved findings go, the others' stay, and Closedhand puts the team
+// together again and sends the updated answer where the first one went.
+app.post("/api/agents/:id/redo", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not logged in" });
+  try {
+    const { data: task, error } = await supabase.from("agent_tasks").select("id, status, team, runtime").eq("id", req.params.id).eq("user_id", userId).maybeSingle();
+    if (error) throw error;
+    if (!task || !Array.isArray(task.team) || task.runtime?.teamSource !== "dashboard") return res.status(404).json({ error: "That team is gone." });
+    if (!DONE_RUN_STATUSES.includes(task.status)) return res.status(409).json({ error: "Wait until the team has finished." });
+    const name = String(req.body?.name || "");
+    const member = task.team.find((m) => m.name === name);
+    if (!member) return res.status(404).json({ error: "That agent is not on this team." });
+    const note = String(req.body?.note || "").trim().slice(0, 2000);
+    if (member.key) {
+      const { error: dropError } = await supabase.from("task_worker_results").delete().eq("user_id", userId).eq("task_id", task.id).eq("item_key", member.key);
+      if (dropError) throw dropError;
+    }
+    const team = task.team.map((m) => (m.name === name ? { ...m, job: note ? `${m.job}\n\nThe person asked this time: ${note}` : m.job, status: "waiting", findings: null, error: null, key: null } : m));
+    const { error: saveError } = await supabase.from("agent_tasks").update({
+      team, status: "pending", messages: [], error: null, completed_at: null, delivery_status: null,
+      runtime: { ...(task.runtime || {}), teamDone: false, teamMs: 0, confirmation: null },
+      updated_at: new Date().toISOString(),
+    }).eq("id", task.id).eq("user_id", userId);
+    if (saveError) throw saveError;
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[agents] redo:", e.message);
+    res.status(500).json({ error: "Could not start that agent again." });
   }
 });
 

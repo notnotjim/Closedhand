@@ -1703,6 +1703,28 @@
     .team-agent textarea { width: 100%; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.5rem; padding: 0.5rem 0.625rem; color: var(--fg); font-size: 0.8125rem; font-family: inherit; resize: vertical; margin-bottom: 0.375rem; box-sizing: border-box; }
     .team-remove { background: none; border: 0; padding: 0; color: var(--muted); font: inherit; font-weight: 400; text-decoration: underline; cursor: pointer; }
     .team-add { display: inline-block; font-size: 0.8125rem; color: var(--muted); margin: 0 0 0.875rem; }
+    .team-agent-head { gap: 0.75rem; }
+    .team-agent-head .team-name { flex: 1; min-width: 0; background: none; border: 0; border-bottom: 1px dashed rgba(var(--fg-rgb),0.24); border-radius: 0; color: var(--fg); font: inherit; font-weight: 600; padding: 0 0 0.125rem; outline: none; }
+    .team-agent-head .team-name:focus { border-bottom-color: var(--accent); }
+    .team-links { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; margin: 0 0 0.875rem; }
+    .team-links .team-add { margin: 0; }
+    /* Setup's helper note: one colour, a side bar, no label. */
+    .team-note { border-left: 2px solid rgba(var(--accent-rgb),0.35); padding-left: 0.75rem; margin: 0 0 0.875rem; font-size: 0.8125rem; line-height: 1.5; color: var(--muted); }
+    /* A team's card: a line per agent, its state, what it is doing or found. */
+    .team-members { border-top: 1px solid rgba(var(--fg-rgb),0.1); margin: -0.375rem 1.25rem 0.875rem; }
+    .team-member { display: grid; grid-template-columns: minmax(6rem, 9rem) minmax(0, 1fr) auto; gap: 0.125rem 0.75rem; align-items: start; padding: 0.4375rem 0; border-bottom: 1px solid rgba(var(--fg-rgb),0.08); font-size: 0.8125rem; cursor: pointer; }
+    .team-member:last-child { border-bottom: 0; }
+    .team-member .tm-who { display: grid; gap: 0.0625rem; min-width: 0; }
+    .team-member .tm-name { font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
+    .team-member .tm-state { font-size: 0.75rem; color: var(--muted); }
+    .team-member .tm-state.on { color: var(--ok); }
+    .team-member .tm-what { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+    .team-member.open .tm-what { visibility: hidden; }
+    .team-member .tm-full { grid-column: 1 / -1; white-space: pre-wrap; color: var(--fg); line-height: 1.5; padding-top: 0.25rem; cursor: text; }
+    .team-member .tm-redo { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 0.375rem; cursor: default; }
+    .team-member .tm-redo input { flex: 1 1 14rem; min-width: 0; padding: 0.375rem 0.5rem; background: var(--bg); border: 1px solid rgba(var(--fg-rgb),0.2); border-radius: 0.375rem; color: var(--fg); font: inherit; }
+    .team-lead { font-size: 0.75rem; color: var(--muted); margin: -0.5rem 1.25rem 1rem; }
+    @media (max-width: 640px) { .team-member { grid-template-columns: minmax(0, 1fr) auto; } .team-member .tm-what { grid-column: 1 / -1; } }
     .agent-tell { padding: 0 1.25rem 1.125rem; }
     .agent-tell textarea { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.5rem; padding: 0.5rem 0.625rem; color: var(--fg); font: inherit; font-size: 0.8125rem; resize: vertical; }
     .agent-tell-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
@@ -7651,6 +7673,60 @@
       return /^Quality check/i.test(text) ? 'Improving the answer before sending it' : text;
     }
 
+    // A team's card holds a line per agent: its name, its state (Working in
+    // In use's green, the rest neutral) and what it is doing or found. A line
+    // opens to what that agent found, while the others are still working. A
+    // finished team made here offers Redo on each line: that agent works
+    // again with the person's note, the others' findings are kept, and the
+    // answer is sent again.
+    function teamLines(a, team, going) {
+      var redo = !going && a.runtime && a.runtime.teamSource === 'dashboard';
+      var rows = team.map(function (m) {
+        var waitingOn = (m.after || []).filter(function (n) { return team.some(function (o) { return o.name === n && o.status !== 'done' && o.status !== 'stopped'; }); });
+        var state = m.status === 'working' ? 'Working' : m.status === 'done' ? 'Done' : m.status === 'stopped' ? 'Could not finish'
+          : !going ? 'Did not start' : waitingOn.length ? 'Waiting for ' + waitingOn.join(' and ') : 'Waiting';
+        var found = String(m.findings || '').replace(/\s+/g, ' ').trim();
+        var what = m.status === 'working' ? (m.last || '') : m.status === 'done' ? (found.length > 150 ? found.slice(0, 150).replace(/\s+\S*$/, '') + '\u2026' : found)
+          : m.status === 'stopped' ? couldNotFinish(m.error).replace(/^./, function (c) { return c.toUpperCase(); }) + '.' : '';
+        return '<div class="team-member" data-task="' + escapeHtml(a.id) + '" data-name="' + escapeHtml(m.name) + '" onclick="event.stopPropagation();toggleTeamLine(this)">' +
+          '<div class="tm-who"><span class="tm-name">' + escapeHtml(m.name) + '</span><span class="tm-state' + (m.status === 'working' ? ' on' : '') + '">' + escapeHtml(state) + '</span></div>' +
+          '<div class="tm-what">' + escapeHtml(what) + '</div>' +
+          (redo && (m.status === 'done' || m.status === 'stopped') ? '<button type="button" class="agent-del" onclick="event.stopPropagation();openRedo(this)">Redo</button>' : '<span></span>') +
+          (m.findings ? '<div class="tm-full" hidden onclick="event.stopPropagation()">' + escapeHtml(String(m.findings)) + '</div>' : '') +
+        '</div>';
+      }).join('');
+      var unfinished = going && team.some(function (m) { return m.status !== 'done' && m.status !== 'stopped'; });
+      return '<div class="team-members">' + rows + '</div>' + (unfinished ? '<div class="team-lead">Then Closedhand puts them together and sends one answer.</div>' : '');
+    }
+    function toggleTeamLine(row) {
+      var full = row.querySelector('.tm-full');
+      if (!full) return;
+      full.hidden = !full.hidden;
+      row.classList.toggle('open', !full.hidden);
+    }
+    function openRedo(btn) {
+      var row = btn.closest('.team-member');
+      if (row.querySelector('.tm-redo')) return;
+      var box = document.createElement('div');
+      box.className = 'tm-redo';
+      box.innerHTML = '<input type="text" maxlength="2000" placeholder="What should it do differently? (optional)" aria-label="What this agent should do differently">' +
+        '<button type="button" class="agent-del">Redo</button><button type="button" class="agent-del">Cancel</button>';
+      box.addEventListener('click', function (e) { e.stopPropagation(); });
+      var buttons = box.querySelectorAll('button');
+      buttons[1].onclick = function () { box.remove(); };
+      buttons[0].onclick = async function () {
+        buttons[0].disabled = true;
+        var res = await fetch('/api/agents/' + encodeURIComponent(row.dataset.task) + '/redo', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: row.dataset.name, note: box.querySelector('input').value.trim() }) }).catch(function () { return null; });
+        var data = res ? await res.json().catch(function () { return {}; }) : {};
+        if (!res || !res.ok) { buttons[0].disabled = false; showToast(data.error || 'Could not start that agent again.', true); return; }
+        showToast(row.dataset.name + ' is working again. The updated answer goes where the first one went.');
+        loadAgents();
+      };
+      row.appendChild(box);
+      box.querySelector('input').focus();
+    }
+
     function renderAgentCard(a) {
       var running = a.status === 'running' || a.status === 'pending';
 
@@ -7690,8 +7766,9 @@
       // A finished card says how it ended in the person's terms: the first line
       // of the answer it sent, or why it could not finish, in the words the
       // chat used. The quality check's notes are Closedhand's own working.
+      // A team's lines say what each agent is doing, so its card says only how long.
       var detail = running
-        ? (last || 'Working on it') + ' \u00b7 running ' + when
+        ? (Array.isArray(a.team) && a.team.length ? 'running ' + when : (last || 'Working on it') + ' \u00b7 running ' + when)
         : runOutcome(a);
       if (!running && a.result_edited_at) detail += ' \u00b7 edited ' + timeAgo(a.result_edited_at);
       // A finished run is only listed when its answer may not have arrived.
@@ -7769,13 +7846,15 @@
           '<button class="agent-del" title="Download the page as a PDF" onclick="event.stopPropagation();location.href=\'/api/pages/' + a.report_id + '/pdf\'">PDF</button>'
         : '';
 
+      var team = Array.isArray(a.team) && a.team.length ? a.team : null;
       return '<div class="auto-card agent-card' + (_openAgents[a.id] ? ' open' : '') + '" onclick="toggleAgentCard(this, \'' + a.id + '\')" title="Click for detail">' +
         '<div class="auto-card-header">' +
           '<div class="auto-card-name">' + escapeHtml(goal) + '</div>' +
           pdfHtml +
           binHtml +
         '</div>' +
-        '<div class="auto-card-meta">' + escapeHtml('Task \u00b7 ' + (running || asked ? '' : sentenceCase(runWord(a)) + ' \u00b7 ') + String(detail)) + '</div>' +
+        '<div class="auto-card-meta">' + escapeHtml((team ? 'Team of ' + team.length : 'Task') + ' \u00b7 ' + (running || asked ? '' : sentenceCase(runWord(a)) + ' \u00b7 ') + String(detail)) + '</div>' +
+        (team ? teamLines(a, team, running || !!asked) : '') +
         '<div class="agent-detail">' + (steps || '<div class="agent-step">No steps recorded.</div>') + toolsHtml + errHtml + reportHtml + '</div>' +
       '</div>';
     }
@@ -8070,51 +8149,82 @@
       if (!sel.options.length) sel.innerHTML = '<option value="dashboard">Only here</option>';
     }
 
-    // A small team: more agents in the same task form, each with its own job
-    // and scope, started together. Five at most, under the running limit.
-    function addTeamAgent() {
+    // A team: agents added to a new task, each with a name and its part.
+    // Closedhand leads it with the goal above, and the team is one task with
+    // one answer. No cap of its own; from the sixth agent a note says what a
+    // team that big uses up, in the terms of the LLM in use (/api/team-note).
+    var _teamNoteKind = null;
+    function addTeamAgent(name, part) {
       var box = document.getElementById('auto-team');
-      if (box.children.length >= 4) return;
       var el = document.createElement('div');
       el.className = 'team-agent';
-      el.innerHTML = '<div class="team-agent-head"><span></span><button type="button" class="team-remove" onclick="this.closest(\'.team-agent\').remove();renumberTeam()">Remove</button></div>' +
-        '<textarea class="team-goal" rows="2" aria-label="What this agent does" placeholder="What this one does, e.g. find flights from Osaka to Seoul on 8 Nov"></textarea>' +
-        '<textarea class="team-scope" rows="1" aria-label="Its scope" placeholder="Its scope (optional)"></textarea>';
+      el.innerHTML = '<div class="team-agent-head"><input type="text" class="team-name" maxlength="40" autocomplete="off" aria-label="This agent\'s name"><button type="button" class="team-remove" onclick="this.closest(\'.team-agent\').remove();renumberTeam()">Remove</button></div>' +
+        '<textarea class="team-goal" rows="2" aria-label="What this agent does" placeholder="What this one does, e.g. find flights from Osaka to Seoul on 8 Nov"></textarea>';
       box.appendChild(el);
+      if (name) el.querySelector('.team-name').value = name;
+      if (part) el.querySelector('.team-goal').value = part;
       renumberTeam();
-      el.querySelector('.team-goal').focus();
+      if (!name) el.querySelector('.team-goal').focus();
     }
     function renumberTeam() {
-      var heads = document.querySelectorAll('#auto-team .team-agent-head span');
-      heads.forEach(function (h, i) { h.textContent = 'Agent ' + (i + 2); });
-      document.getElementById('auto-add-agent').hidden = heads.length >= 4;
+      var names = document.querySelectorAll('#auto-team .team-name');
+      names.forEach(function (n, i) { n.placeholder = 'Agent ' + (i + 1); });
+      var count = names.length, note = document.getElementById('auto-team-note');
+      note.hidden = !count;
+      note.textContent = count ? 'Closedhand leads the team. It gives each agent its part, waits where one part needs another\'s result, and sends you one answer.' + (count >= 6 ? ' ' + bigTeamNote(count) : '') : '';
+    }
+    function bigTeamNote(n) {
+      if (_teamNoteKind === 'managed') return 'A team of ' + n + ' does the work of ' + n + ' agents at once, so it uses this month\'s fair use about ' + n + ' times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.';
+      if (_teamNoteKind === 'local') return 'A team of ' + n + ' does the work of ' + n + ' agents on the computer running your model. How many it can work on at once depends on that computer\'s memory and how the model is served, and the rest wait their turn.';
+      return 'A team of ' + n + ' does the work of ' + n + ' agents at once, so it uses your LLM provider\'s limits and adds to its bill about ' + n + ' times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.';
+    }
+    // Suggest agents: the person's LLM drafts the team from the goal, in
+    // place of any agent left empty, for them to change before it starts.
+    async function suggestAgents() {
+      var link = document.getElementById('auto-suggest-agents'), errEl = document.getElementById('auto-create-error');
+      var goal = document.getElementById('auto-prompt-input').value.trim();
+      errEl.style.display = 'none';
+      if (goal.length < 3) { errEl.textContent = 'Say what it should do first.'; errEl.style.display = 'block'; return; }
+      link.textContent = 'Suggesting\u2026'; link.style.pointerEvents = 'none';
+      try {
+        var res = await fetch('/api/agents/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal: goal, scope: document.getElementById('auto-scope-input').value.trim() }) });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || 'Closedhand couldn\'t suggest agents just now. Add them yourself or try again.');
+        [].forEach.call(document.querySelectorAll('#auto-team .team-agent'), function (el) { if (!el.querySelector('.team-goal').value.trim()) el.remove(); });
+        data.agents.forEach(function (a) { addTeamAgent(a.name, a.part); });
+      } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+      link.textContent = 'Suggest agents'; link.style.pointerEvents = '';
+    }
+    function teamFromForm() {
+      return [].map.call(document.querySelectorAll('#auto-team .team-agent'), function (el) {
+        return { name: el.querySelector('.team-name').value.trim(), part: el.querySelector('.team-goal').value.trim() };
+      }).filter(function (m) { return m.name || m.part; });
     }
 
-    // A task started now: each agent in the form is its own task, answering
+    // A task started now: one agent, or a team led by Closedhand, answering
     // in the chat chosen.
     async function startTasks() {
       var errEl = document.getElementById('auto-create-error'), btn = document.getElementById('auto-save-btn');
       var sel = document.getElementById('auto-answer-select');
       errEl.style.display = 'none';
       var answerIn = sel.value || 'dashboard';
-      var agents = [{ goal: document.getElementById('auto-prompt-input').value.trim(), scope: document.getElementById('auto-scope-input').value.trim(), title: document.getElementById('auto-name-input').value.trim() }]
-        .concat([].map.call(document.querySelectorAll('#auto-team .team-agent'), function (el) { return { goal: el.querySelector('.team-goal').value.trim(), scope: el.querySelector('.team-scope').value.trim() }; }))
-        .filter(function (a, i) { return i === 0 || a.goal || a.scope; });
-      if (agents.some(function (a) { return a.goal.length < 3; })) { errEl.textContent = 'Say what each agent should do.'; errEl.style.display = 'block'; return; }
-      btn.disabled = true; btn.textContent = 'Starting…';
-      var started = 0, failed = '';
-      for (var i = 0; i < agents.length; i++) {
-        try {
-          var res = await fetch('/api/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ answer_in: answerIn }, agents[i])) });
-          if (res.ok) started++;
-          else failed = (await res.json().catch(function () { return {}; })).error || 'One could not start.';
-        } catch (e) { failed = 'Could not reach Closedhand.'; }
-      }
+      var goal = document.getElementById('auto-prompt-input').value.trim();
+      var members = teamFromForm();
+      if (goal.length < 3) { errEl.textContent = 'Say what it should do.'; errEl.style.display = 'block'; return; }
+      if (members.some(function (m) { return m.part.length < 3; })) { errEl.textContent = 'Say what each agent should do.'; errEl.style.display = 'block'; return; }
+      btn.disabled = true; btn.textContent = 'Starting\u2026';
+      var failed = '';
+      try {
+        var res = await fetch('/api/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          answer_in: answerIn, goal: goal, scope: document.getElementById('auto-scope-input').value.trim(), title: document.getElementById('auto-name-input').value.trim(),
+          members: members.length ? members : undefined }) });
+        if (!res.ok) failed = (await res.json().catch(function () { return {}; })).error || 'It could not start.';
+      } catch (e) { failed = 'Could not reach Closedhand.'; }
       btn.disabled = false; btn.textContent = 'Start';
-      if (!started) { errEl.textContent = failed; errEl.style.display = 'block'; return; }
+      if (failed) { errEl.textContent = failed; errEl.style.display = 'block'; return; }
       closeCreateAutomationModal();
       var where = answerIn === 'dashboard' ? 'here' : answerIn === 'web' ? 'in the web chat' : 'in ' + sel.options[sel.selectedIndex].text;
-      showToast((started === 1 ? 'Started. It answers ' : started + ' started. They answer ') + where + '.' + (failed ? ' ' + failed : ''), !!failed);
+      showToast((members.length ? 'Team started. It answers ' : 'Started. It answers ') + where + '.');
       loadAgents();
     }
 
@@ -8125,6 +8235,8 @@
       document.getElementById('auto-scope-input').value = '';
       document.getElementById('auto-team').innerHTML = '';
       document.getElementById('auto-add-agent').hidden = false;
+      renumberTeam();
+      if (_teamNoteKind == null) fetch('/api/team-note').then(function (r) { return r.json(); }).then(function (d) { _teamNoteKind = d.kind || 'provider'; renumberTeam(); }).catch(function () {});
       var emailHint = document.getElementById('auto-email-hint');
       if (emailHint) emailHint.hidden = true;
       document.getElementById('auto-template-select').value = '';
@@ -9420,7 +9532,8 @@
       <textarea id="auto-scope-input" rows="2" placeholder="e.g. Only hotels within 15 minutes of the clinic, under ¥20,000 a night. Don't book anything." style="width:100%;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.5rem;padding:0.625rem;color:var(--fg);font-size:0.8125rem;font-family:inherit;resize:vertical;margin-bottom:0.625rem;"></textarea>
       <!-- A small team for a task: each its own job and scope, side by side. -->
       <div id="auto-team" class="task-only"></div>
-      <a href="#" class="task-only team-add" id="auto-add-agent" onclick="event.preventDefault();addTeamAgent()">+ Add another agent</a>
+      <div class="task-only team-links"><a href="#" class="team-add" id="auto-add-agent" onclick="event.preventDefault();addTeamAgent()">+ Add another agent</a><a href="#" class="team-add" id="auto-suggest-agents" onclick="event.preventDefault();suggestAgents()">Suggest agents</a></div>
+      <p class="task-only team-note" id="auto-team-note" hidden></p>
 
       <label>When should it run?</label>
       <div style="display:flex;gap:0.375rem;margin-bottom:0.625rem;flex-wrap:wrap;" id="auto-trigger-options">
