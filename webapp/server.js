@@ -5622,7 +5622,7 @@ app.post("/api/agents", async (req, res) => {
         ...(typeof title === "string" && title.trim() || members.length ? { runtime: {
           ...(typeof title === "string" && title.trim() ? { named: true } : {}),
           ...(members.length ? { teamSource: "dashboard" } : {}) } } : {}),
-        ...(members.length ? { team: members.map((m) => ({ name: m.name, job: m.part, after: [], status: "waiting", last: null, findings: null, error: null })) } : {}),
+        ...(members.length ? { team: members.map((m) => ({ name: m.name, job: m.part, acts: m.acts === true, after: [], status: "waiting", last: null, findings: null, error: null })) } : {}),
         model: "pending",
         platform: place.id,
         chat_id: place.chat_id,
@@ -5660,7 +5660,9 @@ function teamMembers(list) {
     let name = String(m?.name || "").replace(/\s+/g, " ").trim().slice(0, 40) || `Agent ${i + 1}`;
     for (let n = 2; seen.has(name.toLowerCase()); n++) name = `${String(m?.name || `Agent ${i + 1}`).trim().slice(0, 36)} (${n})`;
     seen.add(name.toLowerCase());
-    members.push({ name, part });
+    // Let act on sites (book, pay, sign in) when the person ticked it; read
+    // only otherwise (lib/agents.js, actGate).
+    members.push({ name, part, ...(m?.acts === true ? { acts: true } : {}) });
   }
   return members;
 }

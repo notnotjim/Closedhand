@@ -1714,6 +1714,11 @@
     .team-remove { background: none; border: 0; padding: 0; color: var(--muted); font: inherit; font-size: 0.75rem; cursor: pointer; }
     .team-remove:hover { color: var(--fg); }
     #auto-team-add { margin: 0.5rem 0 0.875rem; }
+    /* Read only unless ticked: an agent let to act books and pays within the
+       spending rules, the same checkbox as the Wallet's. */
+    .agent-modal .team-acts { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 0; font-size: 0.8125rem; font-weight: 400; color: var(--fg); cursor: pointer; }
+    .agent-modal .team-acts input { flex: none; width: 0.875rem; height: 0.875rem; margin: 0; padding: 0; accent-color: var(--accent-strong); }
+    .agent-modal .team-acts-note { margin: 0.25rem 0 0 1.375rem; font-size: 0.75rem; line-height: 1.5; color: var(--muted); }
     /* Setup's helper note: one colour, a side bar, no label. */
     .team-note { border-left: 2px solid rgba(var(--accent-rgb),0.35); padding-left: 0.75rem; margin: 0 0 0.875rem; font-size: 0.8125rem; line-height: 1.5; color: var(--muted); }
     /* A team's card: a line per agent, its state, what it is doing or found. */
@@ -8109,7 +8114,7 @@
         if (!a) return;
         openCreateAutomationModal();
         document.getElementById('auto-modal-title').textContent = 'Routine';
-        (Array.isArray(a.members) ? a.members : []).forEach(function (m) { addTeamAgent(m.name, m.part); });
+        (Array.isArray(a.members) ? a.members : []).forEach(function (m) { addTeamAgent(m.name, m.part, m.acts); });
         document.querySelector('.auto-trigger-btn[data-trigger="now"]').hidden = true;
         document.getElementById('auto-name-input').value = a.name || '';
         var parts = splitRules(a.task_prompt || a.description || '');
@@ -8303,15 +8308,18 @@
     // one answer. No cap of its own; from the sixth agent a note says what a
     // team that big uses up, in the terms of the LLM in use (/api/team-note).
     var _teamNoteKind = null;
-    function addTeamAgent(name, part) {
+    function addTeamAgent(name, part, acts) {
       var box = document.getElementById('auto-team');
       var el = document.createElement('div');
       el.className = 'team-agent';
       el.innerHTML = '<div class="team-agent-head"><input type="text" class="team-name" maxlength="40" autocomplete="off" aria-label="This agent\'s name"><button type="button" class="team-remove" onclick="this.closest(\'.team-agent\').remove();renumberTeam()">Remove</button></div>' +
-        '<textarea class="team-goal" rows="2" aria-label="What this agent does" placeholder="What this one does, e.g. find flights from Osaka to Seoul on 8 Nov"></textarea>';
+        '<textarea class="team-goal" rows="2" aria-label="What this agent does" placeholder="What this one does, e.g. find flights from Osaka to Seoul on 8 Nov"></textarea>' +
+        '<label class="team-acts"><input type="checkbox" class="team-acts-box" onchange="this.closest(\'.team-agent\').querySelector(\'.team-acts-note\').hidden = !this.checked"> Can book and pay on sites</label>' +
+        '<p class="team-acts-note" hidden>Within your spending rules: anything they say to ask about, Closedhand asks you first.</p>';
       box.appendChild(el);
       if (name) el.querySelector('.team-name').value = name;
       if (part) el.querySelector('.team-goal').value = part;
+      if (acts) { el.querySelector('.team-acts-box').checked = true; el.querySelector('.team-acts-note').hidden = false; }
       renumberTeam();
       if (!name) el.querySelector('.team-goal').focus();
     }
@@ -8355,7 +8363,7 @@
     }
     function teamFromForm() {
       return [].map.call(document.querySelectorAll('#auto-team .team-agent'), function (el) {
-        return { name: el.querySelector('.team-name').value.trim(), part: el.querySelector('.team-goal').value.trim() };
+        return { name: el.querySelector('.team-name').value.trim(), part: el.querySelector('.team-goal').value.trim(), acts: el.querySelector('.team-acts-box').checked || undefined };
       }).filter(function (m) { return m.name || m.part; });
     }
 

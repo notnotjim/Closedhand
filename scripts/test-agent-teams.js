@@ -177,7 +177,7 @@ test("the dashboard makes one task for a team, each agent named or numbered from
   assert.equal(ctx.teamMembers([{ name: "A", part: "x" }]).error, "Say what each agent should do.");
   assert.equal(ctx.teamMembers(Array.from({ length: 21 }, () => ({ part: "look it up" }))).error, "A team can have up to 20 agents.");
   assert.equal(ctx.teamMembers(Array.from({ length: 12 }, () => ({ part: "look it up" }))).length, 12, "past five is fine");
-  assert.match(server, /\.\.\.\(members\.length \? \{ team: members\.map\(\(m\) => \(\{ name: m\.name, job: m\.part, after: \[\], status: "waiting"/);
+  assert.match(server, /\.\.\.\(members\.length \? \{ team: members\.map\(\(m\) => \(\{ name: m\.name, job: m\.part, acts: m\.acts === true, after: \[\], status: "waiting"/);
   assert.match(server, /\.\.\.\(members\.length \? \{ teamSource: "dashboard" \} : \{\}\)/);
   assert.match(server, /app\.get\("\/api\/team-note"/, "not under /api/agents/:id, which would take it");
   assert.match(server, /res\.json\(\{ kind: managed \? "managed" : local \? "local" : "provider", low, left \}\);/);
@@ -293,7 +293,7 @@ test("the form makes a team for any kind, and a routine that is a team says so",
   assert.match(dash, /<div id="auto-team"><\/div>\n\s+<div id="auto-team-add"><\/div>/, "not only for Now");
   assert.match(dash, /<p class="team-note" id="auto-team-note" hidden><\/p>/);
   assert.match(dash, /members: members,\n/, "a routine saves its agents");
-  assert.match(dash, /\(Array\.isArray\(a\.members\) \? a\.members : \[\]\)\.forEach\(function \(m\) \{ addTeamAgent\(m\.name, m\.part\); \}\);/, "and opens with them");
+  assert.match(dash, /\(Array\.isArray\(a\.members\) \? a\.members : \[\]\)\.forEach\(function \(m\) \{ addTeamAgent\(m\.name, m\.part, m\.acts\); \}\);/, "and opens with them");
   assert.match(dash, /'Team of ' \+ a\.members\.length \+ ': ' \+ a\.members\.map\(function \(m\) \{ return m\.name; \}\)\.join\(', '\)/);
   assert.match(dash, /\(Array\.isArray\(r\.team\) && r\.team\.length \? teamLines\(r, r\.team, r\.live\) : ''\)/, "a routine's run has a line per agent");
   assert.match(read("lib/agent-team.js"), /Do not describe the team or how the work went \(who found what, that the parts agree\) unless a part did not finish or two disagree\./);
@@ -477,7 +477,7 @@ test("asked in chat, dropped with a reason, a change in the person's own words, 
 test("agents read pages in the browser, each in tabs of its own, but never click, type, sign in or pay", () => {
   const src = read("lib/agents.js");
   assert.match(src, /enum: \["read_pages"\]/, "the only action an agent is offered");
-  assert.match(src, /return browse && usable\(browse\) \? \[\.\.\.tools, AGENT_READ_PAGES\] : tools;/);
+  assert.match(src, /acts \? \{ name: browse\.name, description: browse\.description, input_schema: browse\.input_schema \} : AGENT_READ_PAGES\]/);
   assert.match(src, /r = b\.input\?\.action === "read_pages" \? await readPagesFor\(userId, platform, chatId, b\.input\)\n\s+: \{ error: "Agents only read pages here/, "anything else is refused, whatever it asks");
   assert.match(src, /return handleInternalTool\("sandbox_browse", \{ action: "read_pages", urls, _userId: userId, _chatId: chatId \}\);/, "only the urls go through");
   assert.match(src, /const urls = Array\.isArray\(input\?\.urls\) \? input\.urls : input\?\.url \? \[input\.url\] : \[\];/, "one page as url reads too");
@@ -485,4 +485,48 @@ test("agents read pages in the browser, each in tabs of its own, but never click
   assert.doesNotMatch(fn, /acquireUserMutex|syncAdapterBack/, "a page read never holds the chat up or saves over it");
   assert.match(read("lib/tools/definitions.js"), /can read pages in the sandbox computer's browser, and returns its findings to you; parts never click, type, sign in, send, pay or book/);
   assert.match(read("lib/agent-team.js"), /\(clicking or signing in on a site, sending or booking, asking first as always\)/);
+});
+
+// Read only unless the person ticks "Can book and pay on sites" for an agent:
+// then it acts under every check Closedhand runs, taking turns on the page.
+test("an agent let to act gets the whole browser, under Closedhand's own checks", () => {
+  const src = read("lib/agents.js");
+  assert.match(src, /return \[\.\.\.tools, acts \? \{ name: browse\.name, description: browse\.description, input_schema: browse\.input_schema \} : AGENT_READ_PAGES\];/);
+  const gate = src.slice(src.indexOf("async function actGate("), src.indexOf("// A page read changes nothing"));
+  assert.match(gate, /sendGate\.browserSend\(/, "pressing Send");
+  assert.match(gate, /spendGuard\.assess\(\{ userId, userStore, toolName: block\.name, source: "agent", intent, page \}\)/, "paying, under the spending rules");
+  assert.match(gate, /if \(verdict\.action === "refuse"\) return \{ error: verdict\.message \};/, "over a limit: refused");
+  assert.match(gate, /from\("spend_ledger"\)\.delete\(\)\.eq\("id", verdict\.ledgerId\)/, "a purchase handed back leaves no stray entry");
+  assert.match(gate, /outboundGuard\.outboundIntent\(/, "data going somewhere new");
+  assert.match(src, /const HAND_BACK = "Not done here: this needs the person's yes\./);
+  assert.match(src, /if \(b\._spendLedgerId\) await spendGuard\.ledgerUpdate\(b\._spendLedgerId, \{ status: r && r\.error \? "failed" : "completed" \}\);/);
+  assert.match(src, /else if \(b\.name === "sandbox_browse" && \(!acts \|\| b\.input\?\.action === "read_pages"\)\) \{/, "read only unless let act");
+  assert.match(read("lib/agent-team.js"), /runPart\(userId, subGoal, platform, chatId, model, \{ \.\.\.limits, onStep, acts: m\.acts \}\)/);
+  assert.match(src, /goal: m\.job, acts: m\.acts === true \}/);
+  assert.match(read("lib/automations.js"), /goal: m\.job \|\| m\.part, acts: m\.acts === true \}/, "a team routine's too");
+});
+
+test("agents let to act take the one page that clicking works on in turns", async () => {
+  const src = read("lib/agents.js");
+  const ctx = { Map, Promise };
+  require("node:vm").runInNewContext(src.slice(src.indexOf("const browserTurns = new Map();"), src.indexOf("// What an agent allowed to act goes through")) + "; this.takeBrowser = takeBrowser;", ctx);
+  const order = [];
+  const one = (async () => { const done = await ctx.takeBrowser("u"); order.push("A in"); await new Promise((r) => setTimeout(r, 20)); order.push("A out"); done(); })();
+  const two = (async () => { const done = await ctx.takeBrowser("u"); order.push("B in"); done(); })();
+  await Promise.all([one, two]);
+  assert.deepEqual(order, ["A in", "A out", "B in"]);
+  assert.match(src, /finally \{ if \(turn\.release\) turn\.release\(\); \}/, "given back when the agent finishes, however it ends");
+});
+
+test("the form: Can book and pay on sites, per agent, off unless ticked", () => {
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /<label class="team-acts"><input type="checkbox" class="team-acts-box"[^>]*> Can book and pay on sites<\/label>/);
+  assert.match(dash, /<p class="team-acts-note" hidden>Within your spending rules: anything they say to ask about, Closedhand asks you first\.<\/p>/);
+  assert.match(dash, /acts: el\.querySelector\('\.team-acts-box'\)\.checked \|\| undefined/);
+  assert.match(dash, /addTeamAgent\(m\.name, m\.part, m\.acts\)/, "a routine opens with it as saved");
+  const server = read("webapp/server.js");
+  const fn = server.slice(server.indexOf("const TEAM_MAX = 20;"), server.indexOf("// Which note the form shows from the sixth agent"));
+  const ctx = {}; require("node:vm").runInNewContext(fn + "; this.teamMembers = teamMembers;", ctx);
+  assert.equal(JSON.stringify(ctx.teamMembers([{ name: "Dinner", part: "Book a table", acts: true }, { name: "Flights", part: "Find flights", acts: "yes" }])),
+    JSON.stringify([{ name: "Dinner", part: "Book a table", acts: true }, { name: "Flights", part: "Find flights" }]), "only a real tick lets an agent act");
 });
