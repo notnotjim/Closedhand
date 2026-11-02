@@ -58,7 +58,8 @@ test("names WhatsApp sends once are kept: the contact book at linking, and throu
   // At linking, the history arrives with its contacts (the contact book and
   // the names people give themselves); they were dropped, and most chats were
   // stored under a number.
-  assert.match(linked, /sock\.ev\.on\("messaging-history\.set", async \(\{ chats, contacts, messages \}\) => \{\n\s*try \{\n\s*learnChats\(chats\);\n\s*learnContacts\(contacts\);\n\s*if \(_historyIngested >= HISTORY_CAP\) return;/, "names first, even once the history cap is reached");
+  assert.match(linked, /sock\.ev\.on\("messaging-history\.set", async \(\{ chats, contacts, messages \}\) => \{\n\s*try \{\n\s*learnChats\(chats\);\n\s*learnContacts\(contacts\);\n\s*const n = await ingestMessages\(_ownerUserId, messages \|\| \[\]\);/, "names first, then all the history the phone sends");
+  assert.match(linked, /syncFullHistory: true,/, "the whole history, asked for when linked");
   assert.match(linked, /rememberName\(_chatNames, bareJid\(c\.id\), c\.name \|\| c\.subject \|\| c\.displayName\)/);
   assert.match(linked, /const \{ error \} = await supabase\.rpc\("name_whatsapp_chats", \{ match_user_id: _ownerUserId, known \}\)/, "each new name is kept with the chat's messages");
   assert.match(linked, /_saveTimer = setTimeout\(saveNames, 5000\);/, "a burst in one call");

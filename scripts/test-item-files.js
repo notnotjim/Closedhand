@@ -54,9 +54,6 @@ test("every connection goes through the one step, at the index's one entry", () 
   assert.match(usi, /update\(item\.text \+ \(files\.length \? JSON\.stringify\(files\) : ""\)\)/, "a file read later indexes its item again");
   const wa = read("lib/services/wa-digest.js");
   assert.match(wa, /rows: b\.items\.filter\(\(m\) => m\.file\)\.map\(rowOf\),/, "a chat's day names its messages");
-  const sync = read("lib/services/data-sync.js");
-  assert.equal((sync.match(/rows: fileRows\((msgs|seg\.msgs)\),/g) || []).length, 2, "a chat app's conversations and threads name their messages");
-  assert.match(sync, /\.\.\.\(p\.files \? \{ rows: \[\{ source: "notion", external_id: p\.external_id \}\] \} : \{\}\),/, "an app's page names itself");
   assert.match(read("lib/services/usi-connector.js"), /\.\.\.\(files \? \{ rows: \[\{ source, external_id: id \}\] \} : \{\}\)/, "a connected app's record names its first passage");
   assert.match(read("lib/mail-attachments.js"), /await files\.readFor\(userId, \[row\]\);/, "the scanners read the same text");
   assert.match(read("lib/services/usi-connector.js"), /if \(require\("\.\.\/item-files"\)\.whenRead\(file\) === "idle"\) \{ files\.push\(file\); parts\.push\(`\[file: \$\{file\.name\}\]`\); \}/, "a connected app's recordings wait like everyone's");

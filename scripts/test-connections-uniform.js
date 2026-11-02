@@ -9,6 +9,8 @@ const http = require("node:http");
 const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
 
 // data_cache as a list of rows, with the queries the code makes of it.
+// A column, or a path into a JSON one ("data->>_channelId").
+const val = (r, k) => (/->>/.test(k) ? k.split(/->>|->/).reduce((o, p) => (o == null ? o : o[p]), r) : r[k]);
 function fakeDb(rows) {
   return {
     from() {
@@ -16,8 +18,11 @@ function fakeDb(rows) {
       let cols = "*", one = false, upserting = null;
       const q = {
         select(c) { cols = c || "*"; return q; },
-        eq(k, v) { filters.push((r) => String(r[k]) === String(v)); return q; },
-        in(k, vs) { filters.push((r) => vs.map(String).includes(String(r[k]))); return q; },
+        eq(k, v) { filters.push((r) => String(val(r, k)) === String(v)); return q; },
+        in(k, vs) { filters.push((r) => vs.map(String).includes(String(val(r, k)))); return q; },
+        gt(k, v) { filters.push((r) => val(r, k) > v); return q; },
+        order() { return q; },
+        limit(n) { q.max = n; return q; },
         maybeSingle() { one = true; return q; },
         single() { one = true; return q; },
         upsert(batch) { upserting = batch; return q; },
@@ -34,7 +39,7 @@ function fakeDb(rows) {
             }
             return Promise.resolve({ error: null }).then(resolve, reject);
           }
-          const hit = rows.filter((r) => filters.every((f) => f(r))).map((r) => (/file_texts:data->file_texts/.test(cols)
+          const hit = rows.filter((r) => filters.every((f) => f(r))).slice(0, q.max || Infinity).map((r) => (/file_texts:data->file_texts/.test(cols)
             ? { external_id: r.external_id, file_texts: r.data?.file_texts ?? null } : JSON.parse(JSON.stringify(r))));
           return Promise.resolve({ data: one ? hit[0] || null : hit, error: null }).then(resolve, reject);
         },
@@ -46,7 +51,7 @@ function fakeDb(rows) {
 const stub = (rel, exports) => { const id = require.resolve(path.join("..", rel)); require.cache[id] = { id, filename: id, loaded: true, exports }; };
 
 test("the index's one entry reads the files of whatever rows an item names, given whole or by id, for any connection", async () => {
-  const rows = [{ user_id: "u1", source: "slack", external_id: "C1_17", data: { id: "C1_17", text: "[file: Plan.txt]", files: [{ key: "F9", name: "Plan.txt", mime: "text/plain", size: 900 }] } }];
+  const rows = [{ user_id: "u1", source: "connected:team-chat", external_id: "C1_17", data: { id: "C1_17", text: "[file: Plan.txt]", files: [{ key: "F9", name: "Plan.txt", mime: "text/plain", size: 900 }] } }];
   const db = fakeDb(rows);
   stub("user-store", { supabase: db, UserStore: { load: async () => ({}) } });
   stub("lib/db", { supabase: db });
@@ -56,7 +61,7 @@ test("the index's one entry reads the files of whatever rows an item names, give
   for (const m of ["lib/item-files", "lib/services/usi"]) delete require.cache[require.resolve(path.join("..", m))];
   const usi = require("../lib/services/usi");
   const items = [
-    { external_id: "conv-1", text: "Slack conversation", rows: [{ source: "slack", external_id: "C1_17" }] },
+    { external_id: "conv-1", text: "Slack conversation", rows: [{ source: "connected:team-chat", external_id: "C1_17" }] },
     { external_id: "mail-1", text: "Your bill", rows: [{ source: "gmail", external_id: "m1", data: { id: "m1", attachments: [{ filename: "Bill.txt", size: 800, attachmentId: "a1" }] } }] },
     { external_id: "page-1", text: "A page with no files" },
   ];
@@ -93,34 +98,6 @@ test("HTML from any connection is read whole, each link's address beside its wor
   assert.match(mail.body, /cabin 8127/, "nothing cut after a line that reads like a disclaimer");
   assert.match(mail.body, /Northsea Ferries$/, "or a signature");
   assert.equal(sync._test.eventText(`Bring <b>photo ID</b>. <a href="https://venue.example/map">Map</a>`), "Bring photo ID. Map (https://venue.example/map)", "an event description written in a calendar's editor");
-});
-
-test("an app's page is read whole: every block, nested blocks, links, its own files listed and links to elsewhere kept", async () => {
-  stub("user-store", { supabase: fakeDb([]), UserStore: {} });
-  delete require.cache[require.resolve("../lib/services/data-sync")];
-  const sync = require("../lib/services/data-sync");
-  const para = (id, text, extra = {}) => ({ id, type: "paragraph", has_children: false, paragraph: { rich_text: [{ plain_text: text }] }, ...extra });
-  const pages = {
-    "page-1": [
-      { results: [para("b1", "Kitchen plans"), { id: "b2", type: "paragraph", has_children: false, paragraph: { rich_text: [{ plain_text: "Supplier: " }, { plain_text: "Hearth", href: "https://hearth.example" }] } },
-        { id: "t1", type: "toggle", has_children: true, toggle: { rich_text: [{ plain_text: "Costs" }] } }], has_more: true, next_cursor: "c2" },
-      { results: [{ id: "v1", type: "video", has_children: false, video: { type: "file", name: "Site walk.mov", file: { url: "https://files.notion.example/x/Site%20walk.mov?sig=1" }, caption: [{ plain_text: "the corner" }] } },
-        { id: "v2", type: "video", has_children: false, video: { type: "external", external: { url: "https://videos.example/watch?v=9" }, caption: [{ plain_text: "how to tile" }] } },
-        { id: "f1", type: "pdf", has_children: false, pdf: { type: "file", file: { url: "https://files.notion.example/y/Quote%20B.pdf?sig=2" }, caption: [] } }], has_more: false },
-    ],
-    t1: [{ results: [para("b3", "Worktop 1,240")], has_more: false }],
-  };
-  const calls = {};
-  const api = async (url) => {
-    const id = /blocks\/([^/]+)\/children/.exec(url)[1];
-    calls[id] = (calls[id] || 0) + 1;
-    return pages[id][/start_cursor=c2/.test(url) ? 1 : 0];
-  };
-  const files = [];
-  const text = await sync._test.notionPageText(api, "page-1", files);
-  assert.equal(text, ["Kitchen plans", "Supplier: Hearth (https://hearth.example)", "Costs", "Worktop 1,240", "[file: Site walk.mov] the corner", "how to tile (https://videos.example/watch?v=9)", "[file: Quote B.pdf]"].join("\n"));
-  assert.deepEqual(files, [{ key: "v1", name: "Site walk.mov", mime: "", size: 0, kind: "video" }, { key: "f1", name: "Quote B.pdf", mime: "", size: 0 }]);
-  assert.equal(calls["page-1"], 2, "past the first hundred blocks");
 });
 
 test("calendar feeds keep descriptions whole and list attachments given by address, which are fetched from it", async () => {
@@ -162,4 +139,26 @@ test("every connection meets the one contract: no text cut, files listed and fet
   // (c) Nothing reads a connection's files its own way.
   assert.doesNotMatch(read("lib/assistant-email.js"), /extractAttachmentText/, "mail to Closedhand's own address");
   assert.match(read("AGENTS.md"), /Every connection meets one\n  contract\./);
+});
+
+test("how far back each kind of connection is read is decided the same way, in one place", () => {
+  const depth = require("../lib/services/sync-depth");
+  assert.deepEqual([depth.MAIL_DAYS, depth.PERSONAL_MAIL_DAYS, depth.CALENDAR_PAST_DAYS, depth.CALENDAR_FUTURE_DAYS], [365, 1825, 1825, 365]);
+  const t = Date.parse("2026-11-03T00:00:00Z"), DAY = 86400000;
+  const first = depth.calendarWindows("u9:test", t);
+  assert.deepEqual(first.map((w) => [Math.round((t - w.from) / DAY), Math.round((w.to - t) / DAY), w.far]), [[365, 365, false], [1825, -365, true]], "the year either side, and the years before");
+  assert.equal(depth.calendarWindows("u9:test", t + 3600000).length, 2, "the years before again until they are read");
+  depth.farRead("u9:test", t);
+  assert.equal(depth.calendarWindows("u9:test", t + 3600000).length, 1, "then once a day");
+  assert.ok(first.every((w) => w.to - w.from <= 4 * 365 * DAY + DAY), "no stretch longer than the four years a Mac answers at once");
+  const sync = read("lib/services/data-sync.js");
+  assert.equal((sync.match(/depth\.calendarWindows\(`\$\{userId\}:/g) || []).length, 3, "Google, Outlook and Mac calendars");
+  assert.match(read("lib/services/caldav.js"), /depth\.calendarWindows\(`\$\{userId\}:caldav`\)/);
+  assert.match(read("lib/services/ics-calendar.js"), /CALENDAR_PAST_DAYS: WINDOW_PAST_DAYS, CALENDAR_FUTURE_DAYS: WINDOW_FUTURE_DAYS \} = require\("\.\/sync-depth"\)/);
+  assert.doesNotMatch(read("lib/services/ics-calendar.js"), /MAX_OCCURRENCES/, "every occurrence of a repeating event, not the first hundred");
+  assert.match(read("lib/services/mail-history.js"), /const HORIZON_DAYS = depth\.MAIL_DAYS;/);
+  assert.match(read("lib/platforms/whatsapp-linked.js"), /syncFullHistory: true,/);
+  assert.doesNotMatch(read("lib/platforms/whatsapp-linked.js"), /HISTORY_CAP/);
+  assert.match(read("lib/services/bank-sync.js"), /const EMPTY_WINDOWS_AT_THE_END = 2;/);
+  assert.doesNotMatch(read("lib/services/recall-protocol.js"), /Page limit reached|Collection limit reached/, "a connected app is read on, not cut off");
 });

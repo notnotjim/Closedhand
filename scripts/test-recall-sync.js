@@ -409,14 +409,19 @@ test("temporary API discovery failure keeps existing records and reports the lat
   }
 });
 
-test("resource reads share the source budget and incomplete reads preserve unseen content", async () => {
+test("resource reads share the source budget, and a source larger than a pass is read on at the next from where it stopped", async () => {
   const h = harness({ user_mcps: [server] });
   await h.api.syncConnectedServices("user-a");
-  h.advance(); let reads = 0;
+  h.advance(); const read = [];
   h.client.listResources = async () => ({ resources: Array.from({ length: 301 }, (_, i) => ({ uri: "notes://" + i, name: "Note" })) });
-  h.client.readResource = async () => { reads++; return { contents: [{ text: "A useful note for recall." }] }; };
+  h.client.readResource = async ({ uri }) => { read.push(uri); return { contents: [{ text: "A useful note for recall: " + uri }] }; };
   await h.api.syncConnectedServices("user-a");
-  assert.equal(reads, 299);
-  assert.ok(h.db.tables.data_cache.some(r => r.data.body.includes("Train leaves")));
-  assert.equal(h.db.tables.index_progress[0].status, "error");
+  assert.equal(read.length, 299, "one pass reads its share");
+  assert.ok(h.db.tables.data_cache.some(r => r.data.body.includes("Train leaves")), "and what it has not seen yet stays");
+  assert.equal(h.db.tables.index_progress[0].status, "partial", "read on, not failed");
+  h.advance();
+  await h.api.syncConnectedServices("user-a");
+  assert.deepEqual(read.slice(299), ["notes://299", "notes://300"], "the next pass carries on from where it stopped");
+  assert.equal(new Set(read).size, 301, "nothing read twice");
+  assert.ok(!h.db.tables.data_cache.some(r => r.data.body.includes("Train leaves")), "a listing read on to its end clears what the source no longer has");
 });

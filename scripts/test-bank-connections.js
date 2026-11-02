@@ -24,7 +24,7 @@ const SF_USER = "fixture-sf-user", SF_PASS = "fixture-sf-secret-7Q2";
 const LF_KEY = "lf-fixture-key-0123456789";
 const DAY = 86400;
 const at = (d) => Math.floor(Date.parse(d + "T12:00:00Z") / 1000);
-const sf = { stage: 1, status: 200, requests: [], claimed: new Set() };
+const sf = { stage: 1, status: 200, requests: [], claimed: new Set(), historyFrom: null };
 const lf = { stage: 1, status: 200, retryAfter: null, requests: [] };
 
 function simplefinBody() {
@@ -92,6 +92,8 @@ before(async () => {
       if (sf.status !== 200) return send(sf.status, "refused");
       const body = simplefinBody();
       if (url.searchParams.get("balances-only") === "1") body.accounts.forEach((a) => { a.transactions = []; });
+      // A bank that keeps history back to sf.historyFrom (seconds), nothing older.
+      if (sf.historyFrom && Number(url.searchParams.get("end-date")) <= sf.historyFrom) body.accounts.forEach((a) => { a.transactions = []; });
       return send(200, body);
     }
     if (url.pathname.startsWith("/lf/api/v1/")) {
@@ -274,7 +276,7 @@ test("every copy of crypto-tokens seals the bank secrets", () => {
   assert.equal(read("lib/bank-feeds.js"), read("webapp/bank-feeds.js"), "both services read banks the same way");
 });
 
-test("SimpleFIN sync: one request a run, deduplicated by id, pending replaced once booked, history kept", async () => {
+test("SimpleFIN sync: one request a run and one for older history, deduplicated by id, pending replaced once booked, history kept", async () => {
   const db = memoryDb();
   sf.stage = 1; sf.claimed.clear();
   await webapp(db)("/api/bank/simplefin", { setupToken: setupToken(`${base}/claim/good`) });
@@ -283,10 +285,12 @@ test("SimpleFIN sync: one request a run, deduplicated by id, pending replaced on
   const before = sf.requests.length;
   const first = await sync.syncConnection("user-fixture", store, "simplefin");
   assert.deepEqual(first, { ok: true, accounts: 1, transactions: 3 });
-  assert.equal(sf.requests.length, before + 1);
-  const q = sf.requests.at(-1).query;
+  assert.equal(sf.requests.length, before + 2, "the run's request, and one for the window before it");
+  const q = sf.requests.at(-2).query;
   assert.equal(q.pending, "1");
   assert.equal(Number(q["start-date"]), Math.floor((T0 - 90 * DAY * 1000) / 1000), "the first run reads the Bridge's 90 days");
+  const back = sf.requests.at(-1).query;
+  assert.deepEqual([Number(back["start-date"]), Number(back["end-date"]), back.pending], [Math.floor((T0 - 180 * DAY * 1000) / 1000), Math.floor((T0 - 90 * DAY * 1000) / 1000), undefined], "and the 90 days before, as far back as the bank gives");
   assert.deepEqual(rows(db, "simplefin", "bank_transaction").map((r) => r.external_id).sort(), ["pending:ACT-1:P-1", "tx:ACT-1:T-1", "tx:ACT-1:T-2"]);
   const cafe = rows(db, "simplefin").find((r) => r.external_id === "tx:ACT-1:T-1");
   assert.equal(cafe.data.text, "Paid 12.40 USD to Example Cafe on 2026-10-03: CARD PAYMENT EXAMPLE CAFE (Example Bank Everyday)");
@@ -301,13 +305,14 @@ test("SimpleFIN sync: one request a run, deduplicated by id, pending replaced on
   // Not due yet: nothing is asked of SimpleFIN.
   state.now = T0 + 3 * 3600e3;
   assert.deepEqual(await sync.syncConnection("user-fixture", store, "simplefin"), { skipped: "not due" });
-  assert.equal(sf.requests.length, before + 1);
+  assert.equal(sf.requests.length, before + 2);
 
   // Next run: the grocer payment has booked under a new id, so the pending row goes.
   sf.stage = 2;
   state.now = T0 + 7 * 3600e3;
   await sync.syncConnection("user-fixture", store, "simplefin");
-  assert.equal(Number(sf.requests.at(-1).query["start-date"]), Math.floor((T0 - 7 * DAY * 1000) / 1000), "later runs overlap the last by a week");
+  assert.equal(Number(sf.requests.at(-2).query["start-date"]), Math.floor((T0 - 7 * DAY * 1000) / 1000), "later runs overlap the last by a week");
+  assert.equal(Number(sf.requests.at(-1).query["end-date"]), Math.floor((T0 - 180 * DAY * 1000) / 1000), "and history carries on back from where it got to");
   const ids = rows(db, "simplefin", "bank_transaction").map((r) => r.external_id).sort();
   assert.deepEqual(ids, ["pending:ACT-1:P-2", "tx:ACT-1:T-1", "tx:ACT-1:T-2", "tx:ACT-1:T-3"], "booked kept (T-2 is history outside this window), P-1 gone once booked as T-3, nothing doubled");
   assert.equal(conn.metadata.accounts[0].balance, 1475.3);
@@ -329,6 +334,23 @@ test("SimpleFIN sync: one request a run, deduplicated by id, pending replaced on
   assert.equal(state.told.length, 1, "a passing gap is shown on the dashboard, not sent to chat");
 });
 
+test("SimpleFIN's older history is read back window by window until the bank has none older, then one request a run", async () => {
+  const db = memoryDb();
+  sf.stage = 1; sf.claimed.clear();
+  sf.historyFrom = Math.floor((T0 - 200 * DAY * 1000) / 1000);
+  try {
+    await webapp(db)("/api/bank/simplefin", { setupToken: setupToken(`${base}/claim/good`) });
+    const { sync, state } = bot(db);
+    const store = storeFrom(db, "user-fixture");
+    const start = sf.requests.length;
+    for (let run = 0; run < 6; run++) { state.now = T0 + run * 7 * 3600e3; await sync.syncConnection("user-fixture", store, "simplefin"); }
+    const ends = sf.requests.slice(start).map((r) => r.query["end-date"]).filter(Boolean).map((e) => Math.round((T0 / 1000 - Number(e)) / DAY));
+    assert.deepEqual(ends, [90, 180, 270, 360], "90 days at a time, back past the bank's oldest, two empty windows to be sure");
+    assert.equal(db.tables.connections[0].config.bank.back_done, true);
+    assert.equal(sf.requests.length - start, 6 + 4, "then one request a run");
+  } finally { sf.historyFrom = null; }
+});
+
 test("SimpleFIN stays within a few requests a day however often the bot looks", async () => {
   const db = memoryDb();
   sf.stage = 1; sf.claimed.clear();
@@ -340,7 +362,7 @@ test("SimpleFIN stays within a few requests a day however often the bot looks", 
     state.now = T0 + m * 60e3;
     await sync.syncBanks("user-fixture", store);
   }
-  assert.equal(sf.requests.length - start, 4, "every five minutes for a day is four requests, well under the Bridge's 24");
+  assert.equal(sf.requests.length - start, 8, "every five minutes for a day is four runs, eight requests while older history is read back, well under the Bridge's 24");
 });
 
 test("refused access marks the connection to be renewed, stops asking, and the person is told in plain words", async () => {

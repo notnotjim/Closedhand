@@ -46,9 +46,10 @@ function fakeDb(tables) {
   };
 }
 
-// A Gmail account holding `mail` ({ id, at, spam? }), answering list and
-// get. Like Gmail, its order is only roughly newest first: neighbours are
-// swapped, across page edges too.
+// A Gmail account holding `mail` ({ id, at, spam?, bulk? }), answering list
+// and get. Like Gmail, its order is only roughly newest first: neighbours are
+// swapped, across page edges too. Bulk mail is in Gmail's categories, left
+// out by a search that leaves them out.
 function fakeGmail(mail, asked) {
   return async (method, url) => {
     const u = new URL(url);
@@ -57,7 +58,8 @@ function fakeGmail(mail, asked) {
     const q = u.searchParams.get('q');
     asked.lists.push(q);
     const before = Number(/before:(\d+)/.exec(q)[1]) * 1000, after = Number(/after:(\d+)/.exec(q)[1]) * 1000;
-    const hits = mail.filter((m) => !m.spam && m.at < before && m.at > after).sort((a, b) => b.at - a.at);
+    const own = /-category:promotions -category:social -category:updates -category:forums/.test(q);
+    const hits = mail.filter((m) => !m.spam && !(own && m.bulk) && m.at < before && m.at > after).sort((a, b) => b.at - a.at);
     for (let i = 4; i + 1 < hits.length; i += 5) [hits[i], hits[i + 1]] = [hits[i + 1], hits[i]];
     const from = Number(u.searchParams.get('pageToken') || 0), size = Number(u.searchParams.get('maxResults'));
     return { messages: hits.slice(from, from + size).map((m) => ({ id: m.id })), ...(from + size < hits.length ? { nextPageToken: String(from + size) } : {}) };
@@ -82,27 +84,32 @@ function setup(mail, cached = []) {
 const now = Date.now();
 const mailbox = () => {
   const mail = [];
-  for (let i = 0; i < 500; i++) mail.push({ id: 'm' + i, at: now - i * 0.9 * DAY - 3600000 });
+  for (let i = 0; i < 500; i++) mail.push({ id: 'm' + i, at: now - i * 0.9 * DAY - 3600000, bulk: i % 3 === 0 });
+  for (let i = 0; i < 90; i++) mail.push({ id: 'old' + i, at: now - (420 + i * 20) * DAY, bulk: i % 2 === 0 });
   mail.push({ id: 'junk', at: now - 5 * DAY, spam: true });
   return mail;
 };
 
-test('a mailbox is read back a year, newest first, keeping only what is not cached yet', async () => {
+test('a mailbox is read back a year, newest first, then its own mail on to five years, keeping only what is not cached yet', async () => {
   const mail = mailbox();
   const recent = mail.filter((m) => !m.spam && m.at > now - 20 * DAY);
   const s = setup(mail, recent);
   try {
     const done = await s.mod.runAccount({ reader: 'gmail', userId: 'u1', store: null, serviceKey: 'google', source: 'gmail', deadline: Date.now() + 60000 });
     assert.equal(done, true);
-    const want = mail.filter((m) => !m.spam && m.at > now - 365 * DAY && !recent.includes(m)).map((m) => m.id).sort();
-    assert.deepEqual(s.stored.map((i) => i.external_id).sort(), want, 'everything in the year that was missing, and nothing older');
+    const want = mail.filter((m) => !m.spam && !recent.includes(m) && (m.at > now - 365 * DAY || (!m.bulk && m.at > now - 5 * 365 * DAY))).map((m) => m.id).sort();
+    assert.deepEqual(s.stored.map((i) => i.external_id).sort(), want, 'everything in the year that was missing, the person\'s own mail on to five years, nothing bulk past the year and nothing past five');
+    assert.ok(s.stored.some((i) => /^old/.test(i.external_id)) && mail.some((m) => m.at < now - 5 * 365 * DAY), 'the five years reached, and mail older left');
     assert.ok(s.stored.every((i) => i.from_history), 'marked, so it is indexed without a summary');
     assert.deepEqual(s.indexed.map((r) => r.external_id).sort(), want, 'and indexed');
     assert.equal(s.asked.gets.filter((id) => recent.some((m) => m.id === id)).length, 0, 'mail already cached is never fetched again');
     assert.ok(s.asked.lists.every((q) => /-in:spam -in:trash -in:drafts/.test(q)), 'spam, trash and drafts are left out');
-    const cov = s.tables.mail_coverage[0];
+    const cov = s.tables.mail_coverage.find((c) => c.source === 'gmail');
     assert.equal(cov.done, true);
-    assert.ok(Math.abs(Date.parse(cov.complete_since) - (now - 365 * DAY)) < 60000, 'complete back to the year');
+    assert.ok(Math.abs(Date.parse(cov.complete_since) - (now - 365 * DAY)) < 60000, 'complete back to the year, for every kind of mail');
+    const own = s.tables.mail_coverage.find((c) => c.source === 'gmail#personal');
+    assert.equal(own.done, true);
+    assert.ok(Math.abs(Date.parse(own.complete_since) - (now - 5 * 365 * DAY)) < 60000, 'and the person\'s own back to five years, kept apart');
   } finally { s.restore(); }
 });
 
@@ -192,7 +199,7 @@ test('mail archived before the regular sync saw it is caught by the next sweep',
 
 test('an IMAP mailbox is read back too: inbox, sent and archive, newest first, missing ones only', async () => {
   const folders = { INBOX: [], Sent: [], Archive: [] };
-  for (let i = 0; i < 260; i++) folders[['INBOX', 'Sent', 'Archive'][i % 3]].push({ uid: 1000 - i, at: now - i * 1.6 * DAY });
+  for (let i = 0; i < 260; i++) folders[['INBOX', 'Sent', 'Archive'][i % 3]].push({ uid: 1000 - i, at: now - i * 1.6 * DAY, bulk: i % 4 === 0 });
   const tables = { data_cache: [{ user_id: 'u1', source: 'imap', type: 'email', external_id: 'imap-7-1000', received_at: new Date(now).toISOString() }], mail_coverage: [] };
   const stored = [];
   const client = {
@@ -207,7 +214,7 @@ test('an IMAP mailbox is read back too: inbox, sent and archive, newest first, m
     withClient: async (settings, fn) => fn(client),
     idPrefix: (key, v) => (key === 'inbox' ? `imap-${v}-` : `imap-${key}-${v}-`),
     parseMessage: async (source) => JSON.parse(source),
-    itemFromParsed: (id, parsed, account, label) => ({ external_id: id, id, account, labels: [label], date: new Date(parsed.at).toISOString() }),
+    itemFromParsed: (id, parsed, account, label) => ({ external_id: id, id, account, labels: [label], date: new Date(parsed.at).toISOString(), bulk: !!parsed.bulk }),
     HISTORY_FOLDERS: [{ key: 'inbox', label: 'INBOX' }, { key: 'sent', label: 'SENT', specialUse: '\\Sent' }, { key: 'archive', label: 'ARCHIVE', specialUse: '\\Archive' }],
   };
   const { mod, restore } = withModules({
@@ -219,11 +226,12 @@ test('an IMAP mailbox is read back too: inbox, sent and archive, newest first, m
   try {
     const store = { getConnection: (k) => (k === 'imap' ? { metadata: { email: 'robin@example.org' } } : null) };
     assert.equal(await mod.runAccount({ reader: 'imap', userId: 'u1', store, serviceKey: 'imap', source: 'imap', deadline: Date.now() + 60000 }), true);
-    const want = Object.values(folders).flat().filter((m) => m.at > now - 365 * DAY).length - 1;
-    assert.equal(stored.length, want, 'every message of the year in the three folders, but the one already cached');
+    const want = Object.values(folders).flat().filter((m) => m.at > now - 365 * DAY || !m.bulk).length - 1;
+    assert.equal(stored.length, want, 'every message of the year in the three folders, and the person\'s own past it, but the one already cached');
+    assert.ok(!stored.some((i) => i.bulk && Date.parse(i.date) < now - 366 * DAY), 'no bulk mail past the year');
     assert.ok(stored.some((i) => i.external_id.startsWith('imap-sent-7-')) && stored.some((i) => i.external_id.startsWith('imap-archive-7-')));
     assert.ok(stored.every((i) => i.from_history));
-    assert.equal(tables.mail_coverage[0].done, true);
+    assert.ok(tables.mail_coverage.every((c) => c.done));
   } finally { restore(); }
 });
 
@@ -287,7 +295,10 @@ test('mail is indexed from its own words and never summarised, and a year of it 
   assert.match(read('lib/services/email-record.js'), /from_history: !!f\.from_history,/);
   const sync = read('lib/services/data-sync.js');
   assert.equal((sync.match(/evictOldItems\(userId, sourceTag, "email", 5000, require\("\.\/mail-history"\)\.horizon\(\), new Set\(/g) || []).length, 2, 'Gmail and Outlook keep their year, and what their list just named');
-  assert.match(sync, /if \(keepSince\) gone = gone\.lt\("received_at", keepSince\);/);
+  assert.match(sync, /const aged = since \? gone\.lt\("received_at", since\) : gone;/);
+  assert.equal((sync.match(/\{ personalSince: require\("\.\/mail-history"\)\.personalHorizon\(\) \}\);/g) || []).length, 2, "past the year, only bulk mail goes; the person's own stays five years");
+  assert.match(sync, /if \(personalSince && keepSince\) \{\n\s+await older\(keepSince, true\);\n\s+await older\(personalSince\);/);
+  assert.match(sync, /await unlisted\(bulkOnly \? aged\.eq\("data->>bulk", "true"\) : aged\)/);
   assert.match(sync, /require\("\.\/mail-history"\)\.kick\(userId, store\);/);
   assert.match(read('migrations/061_mail_coverage.sql'), /CREATE TABLE IF NOT EXISTS mail_coverage/);
   assert.match(read('lib/services/mail-history.js'), /\{ quiet: true \}\);/, 'older mail never shows as new mail');
