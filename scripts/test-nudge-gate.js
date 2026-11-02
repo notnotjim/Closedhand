@@ -32,6 +32,10 @@ test("a message goes only when the person's LLM clearly says so, and never when 
   // "You won't be back by then?" from a dad abroad, answered "no", was read as
   // back where the flight lands, and they were told to correct themselves.
   assert.match(seen[0].system, /- it tells them something they said, wrote or decided is wrong, or that they should change it, and the evidence does not state outright that it is wrong: they know their own plans and people, and a reading of the evidence is not enough\./);
+  // A project's open items, settled since in a chat or put off to the day,
+  // went out as things to chase this week: every fact matched the notes.
+  assert.match(seen[0].system, /- it asks them to do, chase, check or decide something that does not need them now: the evidence shows it is done or settled, no longer needed, or will be decided or done anyway, by someone else or later at a set time, or the message itself gives that reason\. Closedhand's own notes \(a project's summary and open items\) can be out of date: where a message or email in the evidence shows otherwise, it wins;/);
+  assert.match(require("fs").readFileSync(require("path").join(__dirname, "../lib/pulse.js"), "utf8"), /\$\{p\.name\}, Closedhand's notes: /, "Pulse gives a project's line as Closedhand's notes");
 
   const no = await gate.check({ userId: "u1", store: tokyo, message: "Your dentist is on Friday.", evidence: "Dentist Thursday 09:00", modelFor: judge('{"send": false, "problems": ["The evidence says Thursday"]}') });
   assert.deepEqual(no, { send: false, problems: ["The evidence says Thursday"] });
