@@ -147,9 +147,10 @@ test("how far back each kind of connection is read is decided the same way, in o
   const t = Date.parse("2026-11-03T00:00:00Z"), DAY = 86400000;
   const first = depth.calendarWindows("u9:test", t);
   assert.deepEqual(first.map((w) => [Math.round((t - w.from) / DAY), Math.round((w.to - t) / DAY), w.far]), [[365, 365, false], [1825, -365, true]], "the year either side, and the years before");
-  assert.equal(depth.calendarWindows("u9:test", t + 3600000).length, 2, "the years before again until they are read");
-  depth.farRead("u9:test", t);
-  assert.equal(depth.calendarWindows("u9:test", t + 3600000).length, 1, "then once a day");
+  assert.equal(depth.calendarWindows("u9:test", t + 600000).length, 1, "not begun again beside a read under way");
+  assert.equal(depth.calendarWindows("u9:test", t + 3600000).length, 2, "but again an hour on, if that one never finished");
+  depth.farRead("u9:test", t + 3600000);
+  assert.equal(depth.calendarWindows("u9:test", t + 7200000).length, 1, "then once a day");
   assert.ok(first.every((w) => w.to - w.from <= 4 * 365 * DAY + DAY), "no stretch longer than the four years a Mac answers at once");
   const sync = read("lib/services/data-sync.js");
   assert.equal((sync.match(/depth\.calendarWindows\(`\$\{userId\}:/g) || []).length, 3, "Google, Outlook and Mac calendars");
