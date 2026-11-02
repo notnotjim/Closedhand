@@ -76,3 +76,23 @@ test("every source goes through the one step: mail, events, chats, the scanners 
   assert.match(fts, /1000000\),/, "and can never make saving an item fail");
   assert.doesNotMatch(read("lib/platforms/whatsapp-linked.js"), /INGEST_TEXT_CAP/, "a long WhatsApp message is kept whole");
 });
+
+test("two readers of one item at once (a sync running long, the sweep after it) fetch its files once", async () => {
+  const stub = (rel, exports) => { const id = require.resolve(path.join("..", "lib", rel)); require.cache[id] = { id, filename: id, loaded: true, exports }; };
+  let fetches = 0;
+  const writes = [];
+  stub("../user-store", { UserStore: { load: async () => ({}) } });
+  stub("storage", { swapToCloudStore: () => {} });
+  stub("services/data-access", { attachmentBytes: async () => { fetches++; await new Promise((r) => setTimeout(r, 30)); return { buffer: Buffer.from("Total due £35.50"), filename: "INV-2291.pdf" }; } });
+  stub("services/usi", { extractAttachmentText: async (b) => b.toString() });
+  const chain = { update: (v) => { writes.push(v); return chain; }, eq: () => chain, then: (r) => r({ error: null }) };
+  stub("db", { supabase: { from: () => chain } });
+  const row = () => ({ source: "gmail", external_id: "m-1", data: { id: "m-1", attachments: [{ filename: "INV-2291.pdf", size: 50000, attachmentId: "a0" }] } });
+  const [a, b] = [row(), row()];
+  await Promise.all([files.readFor("u-1", [a]), files.readFor("u-1", [b])]);
+  assert.equal(fetches, 1, "the second waits for the first");
+  assert.equal(writes.length, 1);
+  assert.equal(b.data.file_texts[0].text, "Total due £35.50", "and gets what it read");
+  await files.readFor("u-1", [row()]);
+  assert.equal(fetches, 2, "a later read is not held back");
+});
