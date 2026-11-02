@@ -95,10 +95,11 @@ test("Closedhand's agents: a one-off job is a task, one that repeats a routine, 
 });
 
 test("a routine says what it does, when it runs, how it last ran and whether it is on; a run says how it went", () => {
+  const line = (sig) => { const a = dashboard.indexOf("    " + sig); return dashboard.slice(a, dashboard.indexOf("\n", a)); };
   const code = ["function renderAutomationCard(a)", "function renderRoutineRun(r)", "function dayAndTime(iso)"].map((sig) => {
     const a = dashboard.indexOf("    " + sig);
     return dashboard.slice(a, dashboard.indexOf("\n    }\n", a) + 6);
-  }).join("\n");
+  }).join("\n") + "\n" + line("function isTeam(a)") + "\n" + line("function routineWhen(a)");
   const ctx = { esc: (t) => String(t), truncatePrompt: (t) => String(t), watchLine: () => "When an email from the bank arrives", TRASH_ICON: "[bin]" };
   vm.runInNewContext(code + "\nthis.card = renderAutomationCard; this.run = renderRoutineRun;", ctx);
   const at = (days, h) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0); return d.toISOString(); };
@@ -106,6 +107,12 @@ test("a routine says what it does, when it runs, how it last ran and whether it 
   assert.match(on, /Every morning at 08:00 · next tomorrow at 08:00 · last ran today at 08:00/);
   assert.match(on, /<input type="checkbox" checked onchange="setRoutineOn\('r1', this\)"/);
   assert.match(on, />Run now<\/button>[\s\S]*>Edit<\/button>[\s\S]*\[bin\]/);
+  // A team names its agents under what it does, and its bin says team.
+  const team = ctx.card({ id: "t1", name: "Monday money check", status: "active", trigger_type: "scheduled", trigger_human_schedule: "Every Monday at 09:00", members: [{ name: "Bank", part: "x" }, { name: "Bills", part: "y" }] });
+  assert.match(team, /<div class="team-tags"><span class="team-tag">Bank<\/span><span class="team-tag">Bills<\/span><\/div>/);
+  assert.match(team, /2 agents · Every Monday at 09:00/);
+  assert.match(team, /title="Delete this team" aria-label="Delete this team" data-what="team"/);
+  assert.doesNotMatch(on, /team-tags/);
   const off = ctx.card({ id: "r2", name: "Weekly review", status: "paused", trigger_type: "scheduled", trigger_human_schedule: "Every Friday at 17:00", last_run: { status: "failed", at: at(-2, 17) } });
   assert.match(off, /routine-card off/);
   assert.match(off, /Every Friday at 17:00 · off · last run could not finish, /);
@@ -133,7 +140,8 @@ test("templates are routines that repeat, shown only for what is connected; effo
   assert.ok(ctx.shown().includes("shopify-sales"), "Shopify sales once Shopify is connected");
   assert.doesNotMatch(dashboard, /'research-analyst'|'data-cruncher'|Research a topic|Work through data/, "a one-off job is asked for in chat");
   assert.doesNotMatch(dashboard, /'sonnet'|'haiku'|'opus'/, "no provider's model names");
-  assert.match(dashboard, /data-model="fast"[\s\S]*data-model="default"[\s\S]*data-model="strong"/);
+  assert.match(dashboard, /_selectedModel = t\.model \|\| 'default';/, "a starting point keeps its effort, said in the engine's words");
+  assert.match(dashboard, /var ids = shownTemplates\(\)\.filter\(function \(id\) \{ return !!WORKER_TEMPLATES\[id\]\.members === \(_mode === 'team'\); \}\);/, "the starting points under the box are the same ones, a team's in a new team");
   const auto = read("lib/automations.js");
   assert.match(auto, /const tierOf = \(key\) => \(\["fast", "default", "strong"\]\.includes\(key\) \? key : "default"\);/);
   assert.doesNotMatch(auto, /TIER_MAP|"sonnet"|"haiku"|"opus"/);
@@ -247,41 +255,47 @@ test("a reminder about an appointment shows the appointment's time, and when it 
   assert.match(read("user-store.js"), /run_once: runOnce, timezone, platform, event_at: eventAt, kind: kind === "task" \? "task" : "reminder" \}/);
 });
 
-test("New agent: a task now, or a routine; a team led by Closedhand is one task; it answers in the chat chosen", async () => {
+test("New agent: one description, then the plan as one sentence; a team led by Closedhand is one task; it answers in the chat chosen", async () => {
   const form = dashboard.slice(dashboard.indexOf('id="auto-create-modal"'), dashboard.indexOf('<!-- Note Modal -->'));
-  assert.match(form, /<h3 id="auto-modal-title">New agent<\/h3>/);
-  assert.match(form, /data-trigger="now" onclick="selectTrigger\('now'\)">Now<\/button>\n\s*<button type="button" class="auto-trigger-btn active" data-trigger="manual"/, "Now first, beside the routine choices");
-  assert.match(form, /<label for="auto-scope-input">Scope <span class="project-optional">Optional<\/span><\/label>/);
-  for (const part of ['class="routine-only" style="flex:1;min-width:13.75rem;">\n      <label for="auto-template-select">', 'id="auto-skills-section" class="routine-only"', 'id="auto-advanced" class="routine-only"', 'class="auto-project-hint routine-only"'])
-    assert.ok(form.includes(part), "a routine's own: " + part.slice(0, 40));
-  for (const part of ['id="auto-answer-row" class="task-only"'])
-    assert.ok(form.includes(part), "a task's own: " + part.slice(0, 40));
-  for (const part of ['<div id="auto-team"></div>', '<div id="auto-team-add"></div>'])
-    assert.ok(form.includes(part), "a task's or a routine's: " + part.slice(0, 40));
-  assert.match(dashboard, /#auto-create-modal\.task-mode \.routine-only, #auto-create-modal:not\(\.task-mode\) \.task-only \{ display: none !important; \}/);
-  assert.match(dashboard, /document\.getElementById\('auto-create-modal'\)\.classList\.toggle\('task-mode', type === 'now'\);/);
+  assert.match(form, /<h3 id="auto-modal-title">What should the agent do\?<\/h3>/);
+  assert.match(form, /<p class="plan-line" id="auto-plan-line" aria-live="polite"><\/p>/);
+  for (const part of ['id="plan-name"', 'id="plan-when"', 'id="plan-where"', 'id="plan-project"'])
+    assert.ok(form.includes(part), "a part of the plan: " + part);
+  assert.match(dashboard, /line\.innerHTML = tok\('name', name\) \+ ' ' \+ tok\('when', whenWords\(\)\)/);
+  // New agent makes one agent: saved on its own or added to a team, never a
+  // team inside it ("Add an agent" inside New agent read as a loop). A team's
+  // window has its agents, a card each, the tile that adds one last.
+  assert.match(form, /<div class="agents-row" id="auto-agents-row" hidden>\n\s*<div class="agents-row-head"><h4>Agents<\/h4><button type="button" class="quiet-link" id="auto-suggest-agents" onclick="suggestAgents\(\)">Suggest agents<\/button><\/div>\n\s*<p class="agents-row-note">Closedhand coordinates these agents and sends you one answer\.<\/p>\n\s*<div class="team-strip">\n\s*<div id="auto-team"><\/div>\n\s*<div id="auto-team-add"><\/div>/);
+  assert.doesNotMatch(form, /team-agent lead|on its own/);
+  assert.match(dashboard, /document\.getElementById\('auto-agents-row'\)\.hidden = !team;/, "agents only in a team's window");
+  assert.match(form, /<button type="button" class="quiet-link" id="auto-back-btn" onclick="composerBack\(\)">Cancel<\/button>\n\s*<button type="button" class="btn-quiet" id="auto-to-team" hidden onclick="openPick\(\)">Add to a team<\/button>\n\s*<button type="button" class="cta" id="auto-save-btn" onclick="composerGo\(\)">Next<\/button>/, "one main action, the team a secondary one");
+  assert.match(dashboard, /document\.getElementById\('auto-to-team'\)\.hidden = !\(_mode === 'agent' && _planned && !editing\);/);
+  assert.match(dashboard, /team: \['What should the team do\?', /);
+  assert.match(dashboard, /line\.innerHTML = tok\('name', name\) \+ ' joins ' \+ /, "an agent for a team runs when the team runs");
+  assert.match(dashboard, /fetch\('\/api\/agents\/plan', \{ method: 'POST'/, "Closedhand reads the plan from the words");
+  assert.match(dashboard, /if \(!editingRoutine\(\)\) rows\.push\(\{ kind: 'now', label: 'Now', note: 'Once, starting straight away' \}\);/, "Now first, beside the routine choices");
   assert.doesNotMatch(dashboard, /if \(box\.children\.length >= 4\) return;/, "no cap of five");
-  assert.match(dashboard, /name: name,\n\s*description: prompt\.substring\(0, 200\),/, "a routine keeps the name as typed");
+  assert.match(dashboard, /name: name,\n\s*description: prompt\.substring\(0, 200\),/, "a routine keeps the name as given");
 
-  // The start step, run: the agents in the form are one team, one task.
+  // The start step, run: the agents in the plan are one team, one task.
   const a = dashboard.indexOf("    function teamFromForm()");
   const e = dashboard.indexOf("    function emptyPart()");
   const code = dashboard.slice(e, dashboard.indexOf("\n", e)) + "\n" + dashboard.slice(a, dashboard.indexOf("\n    }\n", dashboard.indexOf("    async function startTasks()")) + 6);
   const needs = [];
   const el = (value) => ({ value, style: {}, textContent: "", disabled: false });
-  const ids = { "auto-prompt-input": el("Find flights from Osaka to Seoul on 8 Nov"), "auto-scope-input": el("Direct only"), "auto-name-input": el("Seoul flights"),
-    "auto-create-error": el(""), "auto-save-btn": el(""), "auto-answer-select": { value: "whatsapp_linked", selectedIndex: 0, options: [{ text: "WhatsApp" }] } };
+  const ids = { "auto-prompt-input": el("Find flights from Osaka to Seoul on 8 Nov, direct only"), "auto-name-input": el("Seoul flights"), "auto-create-error": el(""), "auto-save-btn": el("") };
   const team = (name, part) => ({ querySelector: (sel) => (sel === ".team-goal" ? { value: part } : { value: name }) });
   const posts = [], toasts = [];
   let rows = [team("Hotels", "Hotels near the clinic, under ¥20,000"), team("", "Trains from the airport"), team("", "")];
-  const ctx = { document: { getElementById: (id) => ids[id], querySelectorAll: () => rows },
-    fetch: async (url, opts) => { posts.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({}) }; },
-    closeCreateAutomationModal() {}, showToast: (m) => toasts.push(m), loadAgents() {}, needsField: (field, text) => needs.push({ field, text }) };
+  const ctx = { document: { getElementById: (id) => ids[id], querySelectorAll: () => rows }, _answerIn: "whatsapp_linked", _places: [{ id: "whatsapp_linked", name: "WhatsApp" }],
+    fetch: async (url, opts) => { posts.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({}) }; }, goLabel() {},
+    closeCreateAutomationModal() {}, showToast: (m) => toasts.push(m), loadAgents() {}, needsField: (field, text) => needs.push({ field, text }),
+    needsPart: () => needs.push({ text: "Say what this agent should do." }), needsAgent: () => needs.push({ text: "Add an agent to the team." }), _mode: "agent" };
   vm.runInNewContext(code + "\nthis.startTasks = startTasks;", ctx);
   await ctx.startTasks();
   assert.equal(posts.length, 1, "one task for the team");
-  assert.equal(JSON.stringify(posts[0].body), JSON.stringify({ answer_in: "whatsapp_linked", goal: "Find flights from Osaka to Seoul on 8 Nov", scope: "Direct only", title: "Seoul flights",
-    members: [{ name: "Hotels", part: "Hotels near the clinic, under ¥20,000" }, { name: "", part: "Trains from the airport" }] }), "an empty extra agent is left out");
+  assert.equal(JSON.stringify(posts[0].body), JSON.stringify({ answer_in: "whatsapp_linked", goal: "Find flights from Osaka to Seoul on 8 Nov, direct only", title: "Seoul flights",
+    members: [{ name: "Hotels", part: "Hotels near the clinic, under ¥20,000" }, { name: "", part: "Trains from the airport" }] }), "an empty extra agent is left out, and the limits are in the words");
   assert.deepEqual(toasts, ["Team started. It answers in WhatsApp."]);
   rows = []; posts.length = 0; toasts.length = 0;
   await ctx.startTasks();
@@ -296,17 +310,41 @@ test("New agent: a task now, or a routine; a team led by Closedhand is one task;
   await ctx.startTasks();
   assert.deepEqual(needs.at(-1), { field: ids["auto-prompt-input"], text: "Say what it should do." });
   assert.equal(ids["auto-create-error"].textContent, "", "nothing at the foot");
+  // A team with no agents is not a team.
+  ids["auto-prompt-input"].value = "Plan a weekend in Porto"; ctx._mode = "team"; posts.length = 0;
+  await ctx.startTasks();
+  assert.equal(posts.length, 0);
+  assert.equal(needs.at(-1).text, "Add an agent to the team.");
 });
 
-test("a routine's scope travels in its instructions and reads back apart; a working task can be told something", () => {
-  const a = dashboard.indexOf("    var SCOPE_HEAD");
-  const ctx = {};
-  vm.runInNewContext(dashboard.slice(a, dashboard.indexOf("    function splitRules(full) {")) + "\nthis.splitScope = splitScope; this.HEAD = SCOPE_HEAD;", ctx);
-  const back = ctx.splitScope("Check my inbox for invoices" + ctx.HEAD + "Only from the studio account");
-  assert.equal(back.prompt, "Check my inbox for invoices");
-  assert.equal(back.scope, "Only from the studio account");
-  assert.equal(ctx.splitScope("No scope here").scope, "");
-  assert.match(dashboard, /task_prompt: withRules\(prompt \+ \(scope \? SCOPE_HEAD \+ scope : ''\), /);
+test("Add to a team: an agent joins one of the person's teams, or a new team made with it", async () => {
+  const a = dashboard.indexOf("    async function addToTeam()");
+  const code = dashboard.slice(a, dashboard.indexOf("\n    }\n", a) + 6);
+  const el = (value) => ({ value, style: {}, textContent: "", disabled: false, checked: false });
+  const ids = { "auto-name-input": el("Train times"), "auto-prompt-input": el("Check my trains to work and tell me if one is late."), "auto-acts-box": el(""),
+    "auto-create-error": el(""), "auto-save-btn": el(""), "auto-new-team-name": el(""), "auto-pick-list": el("") };
+  const sent = [], toasts = [], needs = [];
+  const ctx = { document: { getElementById: (id) => ids[id] }, needsField: (f, t) => needs.push(t), goLabel() {}, closeCreateAutomationModal() {}, showToast: (m) => toasts.push(m),
+    loadAgents: async () => {}, justAdded() {}, routineBody: () => ({ name: "Train times", trigger_type: "scheduled", members: [] }),
+    fetch: async (url, opts) => { sent.push({ url, method: opts.method, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({ id: "t9" }) }; },
+    _pickTeam: null, _teamList: [{ id: "t1", name: "Monday money check", members: [{ name: "Bank", part: "What went out." }] }] };
+  vm.runInNewContext(code + "\nthis.addToTeam = addToTeam;", ctx);
+  await ctx.addToTeam();
+  assert.deepEqual(needs, ["Choose a team."]);
+  ctx._pickTeam = "t1";
+  await ctx.addToTeam();
+  assert.deepEqual(sent[0], { url: "/api/automations/t1", method: "PUT", body: { members: [{ name: "Bank", part: "What went out." }, { name: "Train times", part: "Check my trains to work and tell me if one is late." }] } }, "added after the agents it has");
+  assert.deepEqual(toasts, ["Train times added to Monday money check."]);
+  ctx._pickTeam = "new"; sent.length = 0;
+  await ctx.addToTeam();
+  assert.equal(needs.at(-1), "Name the team.");
+  ids["auto-new-team-name"].value = "Commute"; ids["auto-acts-box"].checked = true;
+  await ctx.addToTeam();
+  assert.deepEqual(sent[0], { url: "/api/automations", method: "POST", body: { name: "Commute", trigger_type: "scheduled", members: [{ name: "Train times", part: "Check my trains to work and tell me if one is late.", acts: true }] } }, "a new team takes the agent's plan and the agent");
+  assert.match(dashboard, /var trigger = _when\.kind === 'once' \|\| _when\.kind === 'custom' \? 'scheduled' : _when\.kind === 'now' \? 'manual' : _when\.kind;/, "starting now, kept as a team, runs when you ask");
+});
+
+test("a working task can be told something", () => {
   assert.match(dashboard, /onclick="event\.stopPropagation\(\);openTell\(this, \\'' \+ a\.id \+ '\\'\)">Tell it something<\/button>'/);
   assert.match(dashboard, /fetch\('\/api\/agents\/' \+ id \+ '\/note', \{ method: 'POST'/);
   assert.match(dashboard, /else if \(res && res\.status === 409\) \{ box\.remove\(\); showToast\('It finished before that reached it\. Its answer is under Done lately\.', true\); loadAgents\(\); \}/, "a note too late says the task finished and shows it");

@@ -213,25 +213,27 @@ test("Suggest agents says when no team is needed: most jobs are one agent's", ()
   assert.match(read("webapp/public/interface.css"), /\.field-needs \{ position: relative;[^}]*background: var\(--fg\); color: var\(--bg\);/, "one note style for any field still needed");
 });
 
-test("the form: named agents, Suggest agents, one start, and the note from the sixth in the LLM's own terms", () => {
+test("the plan's team: named agents, a suggestion on a tap, one start, and the note from the sixth in the LLM's own terms", () => {
   const dash = read("webapp/views/dashboard.html");
   // Agents end with the shared dashed add tile (addCard), where the next one
-  // goes; Suggest agents is an outlined secondary button beside the heading.
-  assert.match(dash, /<div class="team-head"><label>Agents <span class="project-optional">Optional<\/span><\/label><button type="button" class="conn-btn conn-btn-manage" id="auto-suggest-agents" onclick="suggestAgents\(\)">Suggest agents<\/button><\/div>/);
-  assert.match(dash, /document\.getElementById\('auto-team-add'\)\.innerHTML = addCard\('Add an agent', 'addTeamAgent\(\)'\);/);
+  // goes; Closedhand suggests a team from the words on a quiet link under them.
+  assert.match(dash, /<button type="button" class="quiet-link" id="auto-suggest-agents" onclick="suggestAgents\(\)">Suggest agents<\/button>/);
+  // The tile asks what the new agent should do, as New agent does, and the
+  // agent comes back to the team as a card.
+  assert.match(dash, /document\.getElementById\('auto-team-add'\)\.innerHTML = addCard\('Add an agent', 'openJoin\(\)'\);/);
   assert.match(dash, /\.int-card\.add-card \{ border-style: dashed;/, "the dashed tile wherever it is used, the form included");
   assert.doesNotMatch(dash, /class="team-add"|\+ Add another agent/);
   assert.doesNotMatch(dash, /if \(box\.children\.length >= 4\) return;/, "no cap of five");
   const fn = dash.slice(dash.indexOf("    function renumberTeam() {"), dash.indexOf("    // Suggest agents:"));
   const notes = {};
   for (const kind of ["provider", "managed", "local"]) {
-    const ctx = { _teamNoteKind: kind }; require("node:vm").runInNewContext(fn + "; this.bigTeamNote = bigTeamNote;", ctx);
+    const ctx = { _teamNoteKind: kind, renderPlan() {} }; require("node:vm").runInNewContext(fn + "; this.bigTeamNote = bigTeamNote;", ctx);
     notes[kind] = ctx.bigTeamNote(6);
   }
   assert.equal(notes.provider, "A team of 6 does the work of 6 agents at once, so it uses your LLM provider's limits and adds to its bill about 6 times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.");
   assert.equal(notes.managed, "A team of 6 does the work of 6 agents at once, so it uses this month's fair use about 6 times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.");
   assert.equal(notes.local, "A team of 6 does the work of 6 agents on the computer running your model. How many it can work on at once depends on that computer's memory and how the model is served, and the rest wait their turn.");
-  assert.match(fn, /\(count >= 6 \? ' ' \+ bigTeamNote\(count\) : ''\)/);
+  assert.match(fn, /var said = \(count >= 6 \? bigTeamNote\(count\) : ''\)/, "from the sixth agent, under the row");
   assert.match(fn, /n\.placeholder = 'Agent ' \+ \(i \+ 1\);/);
   assert.match(dash, /members: members\.length \? members : undefined \}\) \}\);/, "one task for the whole team");
 });
@@ -294,10 +296,11 @@ test("set for a date it runs once and is done; it waits under Waiting to start u
   assert.match(dash, /<div class="mc-section-label">Waiting to start<\/div>\n\s+<p class="section-desc">Set for a date, or for the first time something happens\. Each moves to Working now when it starts\.<\/p>/);
   assert.match(dash, /var waiting = routines\.filter\(function \(a\) \{ return a\.run_once && a\.status === 'active' && !a\.fired_at; \}\);\n\s+var repeating = routines\.filter\(function \(a\) \{ return !a\.run_once; \}\);/);
   assert.ok(dash.indexOf('id="agents-waiting"') < dash.indexOf('<div class="mc-section-label">Working now</div>'), "first, before Working now");
-  assert.match(dash, /<option value="once">Once, on a date…<\/option>/);
+  assert.match(dash, /rows\.push\(\{ kind: 'once', label: 'Once, on a date' \}\);/);
   assert.match(dash, /triggerCron = when\.getMinutes\(\) \+ ' ' \+ when\.getHours\(\) \+ ' ' \+ when\.getDate\(\) \+ ' ' \+ \(when\.getMonth\(\) \+ 1\) \+ ' \*';/);
-  assert.match(dash, /trigger_timezone: onceOnDate \? Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone : undefined,/, "in the time the person typed it");
-  assert.match(dash, /if \(when\.getTime\(\) <= Date\.now\(\) \+ 60000\) return needsField\(document\.getElementById\('auto-once-at'\), 'Choose a time that is still to come\.'\);/);
+  assert.match(dash, /trigger_timezone: triggerCron \? Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone : undefined,/, "in the time the person is in, a timetable as much as a date");
+  assert.match(dash, /if \(when\.getTime\(\) <= Date\.now\(\) \+ 60000\) \{ if \(_openTok !== 'when'\) openToken\('when'\); return needsField\(atInput, 'Choose a time that is still to come\.'\), null; \}/);
+  assert.match(server, /trigger_timezone: trigger_timezone \|\| await personZone\(userId\),/, "never London by default");
 });
 
 test("the form makes a team for any kind, and a routine that is a team says so", () => {
@@ -306,7 +309,8 @@ test("the form makes a team for any kind, and a routine that is a team says so",
   assert.match(dash, /<p class="team-note" id="auto-team-note" hidden><\/p>/);
   assert.match(dash, /members: members,\n/, "a routine saves its agents");
   assert.match(dash, /\(Array\.isArray\(a\.members\) \? a\.members : \[\]\)\.forEach\(function \(m\) \{ addTeamAgent\(m\.name, m\.part, m\.acts\); \}\);/, "and opens with them");
-  assert.match(dash, /'Team of ' \+ a\.members\.length \+ ': ' \+ a\.members\.map\(function \(m\) \{ return m\.name; \}\)\.join\(', '\)/);
+  assert.match(dash, /drawInto\('auto-team-list', repeating\.filter\(isTeam\)\.map\(renderAutomationCard\)\.join\(''\)\);/, "a team has its own card, under Teams");
+  assert.match(dash, /<div class="agents-head teams-head"><div class="mc-section-label">Teams<\/div><button type="button" class="goals-new" onclick="openNewTeam\(\)">\+ New team<\/button><\/div>/);
   assert.match(dash, /\(Array\.isArray\(r\.team\) && r\.team\.length \? teamLines\(r, r\.team, r\.live\) : ''\)/, "a routine's run has a line per agent");
   assert.match(read("lib/agent-team.js"), /Do not describe the team or how the work went \(who found what, that the parts agree\) unless a part did not finish or two disagree\./);
 });
@@ -536,10 +540,11 @@ test("agents let to act take the one page that clicking works on in turns", asyn
   assert.match(src, /finally \{ if \(turn\.release\) turn\.release\(\); \}/, "given back when the agent finishes, however it ends");
 });
 
-test("the form: Can take actions, per agent, off unless ticked, under the settings Closedhand already has", () => {
+test("the plan's team: Can act for you, per agent, off unless ticked, saying beside it what acting means and that it asks as Closedhand would", () => {
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /<label class="team-acts"><input type="checkbox" class="team-acts-box"[^>]*> Can take actions<\/label>/);
-  assert.match(dash, /<p class="team-acts-note" hidden>Agent can book, pay, send messages and change things for you, following the same settings as your main Closedhand\.<\/p>/);
+  // What acting means is on its i, said once wherever it is read, not under every card.
+  assert.match(dash, /<label class="team-acts"><input type="checkbox" class="team-acts-box"><span>Can act for you<span data-info="Books, pays, sends messages and changes things for you, asking first wherever your main Closedhand would\." data-info-label="About Can act for you"><\/span><\/span><\/label>/);
+  assert.match(read("webapp/public/interface.css"), /\.llm-hint-tip \{[^}]*z-index: 1100;/, "an i's note shows over a dialog, never behind it");
   assert.match(dash, /Ask before sending messages to other people/, "the setting the note names is there");
   assert.match(dash, /acts: el\.querySelector\('\.team-acts-box'\)\.checked \|\| undefined/);
   assert.match(dash, /addTeamAgent\(m\.name, m\.part, m\.acts\)/, "a routine opens with it as saved");

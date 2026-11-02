@@ -1,6 +1,6 @@
-// The New routine box: every field fits at once, each says what it does in the
-// person's words, an agent can carry several rules, and every destination in
-// "Send results to" actually delivers, Email included.
+// The New agent box: one description in the person's own words, then the plan
+// Closedhand read from it as one sentence to change part by part; and every
+// place results can go actually delivers, Email included.
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -10,39 +10,35 @@ const Module = require("node:module");
 const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
 const dashboard = read("webapp/views/dashboard.html");
 
-test("several rules go into the instructions as a list, and come back out when editing", () => {
-  const start = dashboard.indexOf("    var RULES_HEAD");
-  const box = {};
-  vm.runInNewContext(dashboard.slice(start, dashboard.indexOf("    async function saveAutomation()", start)) + "\nthis.withRules = withRules; this.splitRules = splitRules;", box);
-  const full = box.withRules("Check oil prices.", "Always include specific numbers\n- Name the source\n\n");
-  assert.equal(full, "Check oil prices.\n\nRULES (check the result follows every one of these before sending it, and fix it if not):\n- Always include specific numbers\n- Name the source");
-  assert.deepEqual({ ...box.splitRules(full) }, { prompt: "Check oil prices.", rules: "Always include specific numbers\nName the source" }, "saving again never adds them twice");
-  assert.equal(box.withRules("Check oil prices.", "  "), "Check oil prices.");
-  const old = "Brief me.\n\nQUALITY CHECK: Before delivering results, verify against these criteria: Must cite 5 sources. If any criteria fail, iterate and improve before reporting.";
-  assert.deepEqual({ ...box.splitRules(old) }, { prompt: "Brief me.", rules: "Must cite 5 sources" }, "an older agent's check reads back as one rule");
-  assert.match(dashboard, /task_prompt: withRules\(prompt \+ \(scope \? SCOPE_HEAD \+ scope : ''\), document\.getElementById\('auto-quality-input'\)\.value\),/);
-  assert.match(dashboard, /var parts = splitRules\(a\.task_prompt \|\| a\.description \|\| ''\);/);
-  assert.match(dashboard, /<label for="auto-quality-input" style="margin-top:0.625rem;">Rules <span[^>]*>\(optional, one per line\)<\/span><\/label>\s*<textarea id="auto-quality-input" rows="2"/);
-  assert.match(read("webapp/server.js"), /fullPrompt \+= "\\n\\nRULES \(check the result follows every one of these before sending it, and fix it if not\):\\n"/);
+test("one description holds the job and its limits; the words are saved whole and come back whole", () => {
+  // Scope, rules and limits were fields of their own; an AI reads them from
+  // the one description, so they are simply words in it.
+  assert.doesNotMatch(dashboard, /id="auto-scope-input"|id="auto-quality-input"|id="auto-skills-picker"|id="auto-advanced"|id="auto-template-select"|id="auto-project-select"/);
+  assert.match(dashboard, /task_prompt: prompt,\n/, "the words as written are the job");
+  assert.match(dashboard, /document\.getElementById\('auto-prompt-input'\)\.value = a\.task_prompt \|\| a\.description \|\| '';/, "editing starts from the whole instructions");
+  assert.match(read("webapp/server.js"), /project_id, task_prompt, task_tools, created_at, updated_at";/, "the list gives the editor the whole instructions, not the 200-character description");
+  // Older routines carry their rules inside their words, and the bot still checks them.
   assert.match(read("lib/automations.js"), /If the task includes a RULES list \(or, in older tasks, a QUALITY CHECK section\), check the result against each one explicitly/);
 });
 
-test("each field says what it does, in the names the person sees elsewhere", () => {
-  assert.match(dashboard, /Runs when you ask in any chat or press Run on its card under Routines\./);
-  assert.match(dashboard, /Preferred skills <span[^>]*>\(optional; add one on Connections\)<\/span>/);
-  assert.match(dashboard, /Urgent<\/label><span data-info="Notifications from this routine will be delivered even during your quiet hours\." data-info-label="About Urgent"/);
-  assert.doesNotMatch(dashboard, /Use for time-sensitive alerts/);
+test("each part of the plan says what it means, in the names the person sees elsewhere", () => {
+  assert.match(dashboard, /rows\.push\(\{ kind: 'manual', label: 'When you ask', note: 'In any chat, or with Run on its card' \}\);/);
+  assert.doesNotMatch(dashboard, /Preferred skills|>Urgent</, "skills come with the job, and urgency is said in the words");
+  assert.match(dashboard, /<p class="plan-hint">In a project, it works with the project's instructions and files, and its results come in the project's conversation\.<\/p>/);
   assert.match(read("webapp/public/builtin-skills.json"), /"name": "Comment on Instagram posts",/);
   assert.doesNotMatch(dashboard, /'the workspace browser'|'the workspace'/, "the sandbox computer is called that on agent cards too");
 });
 
-test("the box fits a laptop screen: room for the select's arrow, one row of advanced settings", () => {
+test("the box: one roomy description, starting points under it, then the plan and one main action", () => {
+  // It asks for a job, not an agent: titled New agent, adding agents inside it read as a loop.
+  assert.match(dashboard, /<div class="modal agent-modal composer" role="dialog" aria-labelledby="auto-modal-title">\n\s*<h3 id="auto-modal-title">What should the agent do\?<\/h3>/);
+  assert.match(dashboard, /<div class="ask-box">\n\s*<textarea id="auto-prompt-input" rows="3" aria-labelledby="auto-modal-title" placeholder="e\.g\. /);
+  assert.match(dashboard, /\.ask-box \{ border: 1px solid rgba\(var\(--accent-rgb\),0\.24\);[^}]*box-shadow: 0 0 2\.5rem rgba\(var\(--accent-rgb\),0\.07\);/, "the ember edge of Connect anything");
+  assert.match(dashboard, /<p class="starters-label">Or start from one of these<\/p>/);
+  assert.match(dashboard, /<button type="button" class="cta" id="auto-save-btn" onclick="composerGo\(\)">Next<\/button>/, "one main action, as every screen has");
   assert.match(dashboard, /\.modal select \{\n\s*appearance: none;[\s\S]{0,120}padding-right: 2.125rem !important;[\s\S]{0,500}background-position: right 0.75rem center;/);
-  assert.doesNotMatch(dashboard, /<select id="auto-template-select"[^>]*background:#1A1817/, "an inline background would hide the arrow");
-  assert.match(dashboard, /<div class="modal agent-modal" style="max-width:47.5rem;max-height:calc\(100vh - 1rem\);">/);
-  assert.match(dashboard, /<textarea id="auto-prompt-input" rows="2"/);
-  assert.doesNotMatch(dashboard, /id="auto-model-desc"/, "the speed descriptions are on the buttons, not a line of their own");
 });
+
 
 test("Email sends the results from the assistant's own address to its owner, as a new conversation", async () => {
   const inserts = [];
@@ -95,6 +91,6 @@ test("with the assistant's address off, Email says where to turn it on and canno
   assert.match(dashboard, /_assistantEmail = \{ on: !!\(d\.available && d\.enabled && d\.address\), name: d\.name \|\| 'Closedhand' \};/);
   assert.match(dashboard, /hint\.innerHTML = 'Turn on ' \+ escapeHtml\(_assistantEmail\.name\) \+ '\\u2019s email address in <a href="#" onclick="openEmailSettings\(\);return false;">Settings<\/a> to use this\.';/);
   assert.match(dashboard, /if \(_selectedDest === 'email' && _assistantEmail && !_assistantEmail\.on\) \{ errEl\.textContent = 'Turn on '/);
-  assert.match(dashboard, /function openCreateAutomationModal\(\) \{\n\s*loadAssistantEmailState\(\);/);
+  assert.match(dashboard, /function openCreateAutomationModal\(mode\) \{\n\s*loadAssistantEmailState\(\);/);
   assert.doesNotMatch(read("lib/own-email.js"), /gmail_send|outlook_send/, "one meaning for Email: from the assistant's address");
 });

@@ -30,11 +30,20 @@ function dashboard({ tasks = [], routines = [], runs = [], reminders = [], fail 
     loadUpcoming() { requests.push('upcoming'); },
     setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearInterval() {},
   });
+  const team = html.indexOf('    function isTeam(a)');
+  vm.runInContext(html.slice(team, html.indexOf('\n', team)), context);
   vm.runInContext(html.slice(html.indexOf('    var _agentsHtml = {};'), html.indexOf('    // Permission drift is invisible')), context);
   vm.runInContext(html.slice(html.indexOf('    var _tabPoll = null'), html.indexOf('    function fileSize(n) {')), context);
   return { context, get, requests, timers, drawn, telling };
 }
 const at = (mins) => new Date(Date.now() - mins * 60000).toISOString();
+test('a routine with agents of its own is a team, with its card under Teams', async () => {
+  const h = dashboard({ routines: [{ id: 'r1' }, { id: 't1', members: [{ name: 'Bank', part: 'x' }] }, { id: 'w1', run_once: true, status: 'active', members: [{ name: 'Bank', part: 'x' }] }] });
+  await h.context.loadAgents();
+  assert.equal(h.get('auto-team-list').innerHTML, '[routine t1]');
+  assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1]');
+  assert.equal(h.get('agents-waiting-list').innerHTML, '[waiting w1]', 'a team set to start once waits like any job');
+});
 test('a job set to start once waits under Waiting to start, not Routines, and is gone from both once it has started', async () => {
   const h = dashboard({ routines: [{ id: 'r1' }, { id: 'w1', run_once: true, status: 'active' }, { id: 'w2', run_once: true, status: 'done', fired_at: at(5) }],
     reminders: [{ name: 'Check the Lisbon fares', kind: 'task' }, { name: 'Call the plumber', kind: 'reminder' }, { name: 'Weekly fares', kind: 'task', repeats: 'every Monday' }, { name: 'Old', kind: 'task', archived: true }] });

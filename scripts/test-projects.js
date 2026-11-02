@@ -512,8 +512,10 @@ test("a routine can belong to a project: it runs with the project and reports in
   assert.match(server, /async function routineProject\(userId, id\) \{[\s\S]{0,300}\.eq\("status", "active"\)\.maybeSingle\(\);/);
   assert.match(server, /project_id: project,\n\s*\.\.\.watch\.fields,/);
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /<select id="auto-project-select"[^>]*><option value="">None<\/option><\/select>/);
-  assert.match(dash, /project_id: document\.getElementById\('auto-project-select'\)\.value \|\| null,/);
+  // In the New agent plan the project is one tap on the sentence, read from the words when they name one.
+  assert.match(dash, /tok\('project', project \? 'in ' \+ project\.emoji \+ ' ' \+ project\.name : 'in no project'\)/);
+  assert.match(dash, /project_id: _planProject \|\| null,/);
+  assert.match(server, /plan\.project = named \? \{ id: named\.id, name: named\.name, emoji: named\.emoji \|\| "" \} : null;/);
   const { projectHtml } = require("../webapp/projects");
   const html = projectHtml(move(), Date.parse("2026-11-01T12:00:00Z"), [], null, [{ name: "van-reminder", status: "active", trigger_type: "scheduled", trigger_human_schedule: "Every Friday at 9am" }]);
   assert.match(html, /<h2>Routines<span class="count">1<\/span><\/h2><ul class="routines"><li><span class="r-name">Van reminder<\/span><span class="r-when">Every Friday at 9am<\/span><\/li><\/ul>/);

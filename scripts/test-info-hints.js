@@ -36,7 +36,6 @@ test("each i sits in the flow of the words it explains, 0.375rem after them and 
   assert.match(chat, /<span>Sandbox computer<span data-info="[^"]*" data-info-label="About the sandbox computer"><\/span><\/span>/);
   assert.match(chat, /<span>Local computer<span data-info="[^"]*" data-info-label="About the local computer"><\/span><\/span>/);
   assert.match(dash, /<span><button class="memory-filter" data-filter="knowledge"[^>]*>Context Notes<\/button><span data-info="[^"]*" data-info-label="About Context Notes"><\/span><\/span>/);
-  assert.match(dash, /<span><label for="auto-urgent-check" style="display:inline;[^"]*">Urgent<\/label><span data-info="[^"]*" data-info-label="About Urgent"><\/span><\/span>/, "inline, as the form makes labels blocks");
   assert.match(dash, /' needs reconnecting<span data-info="Not yet allowed to: ' \+ escapeHtml\(what\) \+ '" data-info-label="What it is not allowed to do yet"><\/span><\/span>'/);
   assert.doesNotMatch(chat + dash, /data-info="[^"]*"[^>]*style=/, "no colour or place of its own");
   const roles = read("webapp/public/model-settings.css");
