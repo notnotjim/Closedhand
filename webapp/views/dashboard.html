@@ -3405,6 +3405,7 @@
       const modal = document.getElementById("shopify-modal");
       document.getElementById("shopify-form").reset();
       document.getElementById("shopify-error").style.display = "none";
+      clearNeeds(modal);
       document.getElementById("shopify-save-btn").disabled = false;
       const oauth = !!window._allServices?.shopify?.oauthReady;
       document.getElementById("shopify-oauth").hidden = !oauth;
@@ -3420,7 +3421,7 @@
     function shopifyDomain() {
       let domain = document.getElementById("shopify-store").value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
       if (!domain.includes(".")) domain += ".myshopify.com";
-      if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/.test(domain)) throw new Error("Enter your store's myshopify.com address, without a page path.");
+      if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/.test(domain)) throw Object.assign(new Error("Enter your store's myshopify.com address, without a page path."), { field: "shopify-store" });
       return domain;
     }
 
@@ -3428,7 +3429,10 @@
       const errEl = document.getElementById("shopify-error");
       try {
         (window.top || window).location.href = "/auth/shopify?store_domain=" + encodeURIComponent(shopifyDomain());
-      } catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; }
+      } catch (e) {
+        if (e.field) return needsField(document.getElementById(e.field), e.message);
+        errEl.textContent = e.message; errEl.style.display = "block";
+      }
     }
 
     async function saveShopifyToken() {
@@ -3440,7 +3444,7 @@
         const accessToken = document.getElementById("shopify-token").value.trim();
         const clientId = document.getElementById("shopify-client-id").value.trim();
         const clientSecret = document.getElementById("shopify-client-secret").value.trim();
-        if (!accessToken && (!clientId || !clientSecret)) throw new Error("Enter your app's Client ID and Client secret or use an existing access token below.");
+        if (!accessToken && (!clientId || !clientSecret)) throw Object.assign(new Error("Enter your app's Client ID and Client secret or use an existing access token below."), { field: clientId ? "shopify-client-secret" : "shopify-client-id" });
         btn.disabled = true;
         btn.textContent = "Connecting…";
         const res = await fetch("/api/connect-shopify-token", {
@@ -3454,6 +3458,7 @@
         showToast(`Connected to ${data.shopName || storeDomain}`);
         loadStatus();
       } catch (e) {
+        if (e.field) return needsField(document.getElementById(e.field), e.message);
         errEl.textContent = e.name === "TimeoutError" ? "The connection took too long. Please try again." : e.message;
         errEl.style.display = "block";
       } finally { btn.disabled = false; btn.textContent = "Connect store"; }
@@ -8322,13 +8327,34 @@
       if (_teamNoteKind === 'local') return 'A team of ' + n + ' does the work of ' + n + ' agents on the computer running your model. How many it can work on at once depends on that computer\'s memory and how the model is served, and the rest wait their turn.';
       return 'A team of ' + n + ' does the work of ' + n + ' agents at once, so it uses your LLM provider\'s limits and adds to its bill about ' + n + ' times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.';
     }
+    // A field still needed: it takes focus with a small nudge, and a note
+    // under it, pointing up at it, says what it wants. Typing in it takes the
+    // note away. A message at the foot of the form sent people hunting for
+    // what it meant.
+    function needsField(field, text) {
+      if (!field) return;
+      var note = field.nextElementSibling && field.nextElementSibling.classList.contains('field-needs') ? field.nextElementSibling : null;
+      if (!note) {
+        note = document.createElement('p'); note.className = 'field-needs'; note.setAttribute('role', 'alert');
+        field.insertAdjacentElement('afterend', note);
+        field.addEventListener('input', function gone() { note.remove(); field.removeEventListener('input', gone); });
+      }
+      note.textContent = text;
+      field.classList.remove('needs-nudge'); void field.offsetWidth; field.classList.add('needs-nudge');
+      field.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      field.focus({ preventScroll: true });
+    }
+    function clearNeeds(root) { [].forEach.call((root || document).querySelectorAll('.field-needs'), function (n) { n.remove(); }); }
+    // The first agent whose part is left empty.
+    function emptyPart() { return [].find.call(document.querySelectorAll('#auto-team .team-agent'), function (el) { var p = el.querySelector('.team-goal'), n = el.querySelector('.team-name'); return (p.value.trim() || n.value.trim()) && p.value.trim().length < 3; }); }
     // Suggest agents: the person's LLM drafts the team from the goal, in
-    // place of any agent left empty, for them to change before it starts.
+    // place of any agent left empty, for them to change before it starts. A
+    // job for one agent needs no team: Closedhand says so by the agents.
     async function suggestAgents() {
       var btn = document.getElementById('auto-suggest-agents'), errEl = document.getElementById('auto-create-error');
       var goal = document.getElementById('auto-prompt-input').value.trim();
       errEl.style.display = 'none';
-      if (goal.length < 3) { errEl.textContent = 'Say what it should do first.'; errEl.style.display = 'block'; return; }
+      if (goal.length < 3) return needsField(document.getElementById('auto-prompt-input'), 'Say what it should do.');
       btn.textContent = 'Suggesting\u2026'; btn.disabled = true;
       try {
         var res = await fetch('/api/agents/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal: goal, scope: document.getElementById('auto-scope-input').value.trim() }) });
@@ -8336,6 +8362,12 @@
         if (!res.ok) throw new Error(data.error || 'Closedhand couldn\'t suggest agents just now. Add them yourself or try again.');
         [].forEach.call(document.querySelectorAll('#auto-team .team-agent'), function (el) { if (!el.querySelector('.team-goal').value.trim()) el.remove(); });
         data.agents.forEach(function (a) { addTeamAgent(a.name, a.part); });
+        renumberTeam();
+        if (!data.agents.length && !document.querySelector('#auto-team .team-agent')) {
+          var note = document.getElementById('auto-team-note');
+          note.textContent = 'No team needed: Closedhand does this one on its own. Add agents yourself if you want it split.';
+          note.hidden = false;
+        }
       } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
       btn.textContent = 'Suggest agents'; btn.disabled = false;
     }
@@ -8354,8 +8386,8 @@
       var answerIn = sel.value || 'dashboard';
       var goal = document.getElementById('auto-prompt-input').value.trim();
       var members = teamFromForm();
-      if (goal.length < 3) { errEl.textContent = 'Say what it should do.'; errEl.style.display = 'block'; return; }
-      if (members.some(function (m) { return m.part.length < 3; })) { errEl.textContent = 'Say what each agent should do.'; errEl.style.display = 'block'; return; }
+      if (goal.length < 3) return needsField(document.getElementById('auto-prompt-input'), 'Say what it should do.');
+      if (emptyPart()) return needsField(emptyPart().querySelector('.team-goal'), 'Say what this agent should do.');
       btn.disabled = true; btn.textContent = 'Starting\u2026';
       var failed = '';
       try {
@@ -8389,6 +8421,7 @@
       document.getElementById('auto-quality-input').value = '';
       document.getElementById('auto-create-error').style.display = 'none';
       var modal = document.getElementById('auto-create-modal');
+      clearNeeds(modal);
       if (modal) delete modal.dataset.editId;
       _selectedSkills = [];
       document.getElementById('auto-event-source').value = 'email';
@@ -8462,8 +8495,8 @@
       var btn = document.getElementById('auto-save-btn');
       errEl.style.display = 'none';
 
-      if (!name) { errEl.textContent = 'Give it a name.'; errEl.style.display = 'block'; return; }
-      if (!prompt) { errEl.textContent = 'Describe what it should do.'; errEl.style.display = 'block'; return; }
+      if (!name) return needsField(document.getElementById('auto-name-input'), 'Give it a name.');
+      if (!prompt) return needsField(document.getElementById('auto-prompt-input'), 'Say what it should do.');
       if (_selectedDest === 'email' && _assistantEmail && !_assistantEmail.on) { errEl.textContent = 'Turn on ' + _assistantEmail.name + '\u2019s email address in Settings first or choose another place to send results.'; errEl.style.display = 'block'; return; }
 
       // Build schedule
@@ -8471,19 +8504,19 @@
       var humanSchedule = null;
       var onceOnDate = false;
       var members = teamFromForm();
-      if (members.some(function (m) { return m.part.length < 3; })) { errEl.textContent = 'Say what each agent should do.'; errEl.style.display = 'block'; return; }
+      if (emptyPart()) return needsField(emptyPart().querySelector('.team-goal'), 'Say what this agent should do.');
       if (_selectedTrigger === 'scheduled') {
         var sel = document.getElementById('auto-schedule-select');
         if (sel.value === 'custom') {
           triggerCron = document.getElementById('auto-cron-input').value.trim();
-          if (!triggerCron) { errEl.textContent = 'Enter a cron expression.'; errEl.style.display = 'block'; return; }
+          if (!triggerCron) return needsField(document.getElementById('auto-cron-input'), 'Enter a cron expression.');
           humanSchedule = triggerCron;
         } else if (sel.value === 'once') {
           // Once, on a date: that minute of that day, in this browser's time,
           // and done once it has started (lib/automations.js).
           var at = document.getElementById('auto-once-at').value, when = new Date(at);
-          if (!at || isNaN(when)) { errEl.textContent = 'Choose the day and time it starts.'; errEl.style.display = 'block'; return; }
-          if (when.getTime() <= Date.now() + 60000) { errEl.textContent = 'Choose a time that is still to come.'; errEl.style.display = 'block'; return; }
+          if (!at || isNaN(when)) return needsField(document.getElementById('auto-once-at'), 'Choose the day and time it starts.');
+          if (when.getTime() <= Date.now() + 60000) return needsField(document.getElementById('auto-once-at'), 'Choose a time that is still to come.');
           triggerCron = when.getMinutes() + ' ' + when.getHours() + ' ' + when.getDate() + ' ' + (when.getMonth() + 1) + ' *';
           humanSchedule = 'Once, ' + when.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' at ' + when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
           onceOnDate = true;
@@ -8498,7 +8531,7 @@
         eventCondition = document.getElementById('auto-event-condition').value.trim();
         eventWhen = document.getElementById('auto-event-when').value || 'arrives';
         eventOffset = eventWhen === 'arrives' ? 0 : Number(document.getElementById('auto-event-offset').value) || 0;
-        if (!eventCondition && eventWhen === 'arrives') { errEl.textContent = 'Say what it waits for.'; errEl.style.display = 'block'; return; }
+        if (!eventCondition && eventWhen === 'arrives') return needsField(document.getElementById('auto-event-condition'), 'Say what it waits for.');
         eventSource = document.getElementById('auto-event-source').value;
         eventWords = document.getElementById('auto-event-words').value.split(',').map(function(w) { return w.trim(); }).filter(Boolean);
         eventOnce = document.getElementById('auto-event-once').checked;

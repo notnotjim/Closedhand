@@ -34,7 +34,7 @@ test('Shopify dialog opens against the actual form and selects the available con
   const html=fs.readFileSync(path.join(root,'webapp/views/dashboard.html'),'utf8');
   const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(m=>[m[1],{style:{},hidden:false,value:'',reset(){this.resets=(this.resets||0)+1},showModal(){this.open=true},close(){this.open=false}}]));
   for (const oauthReady of [false,true]) {
-    const scope={document:{getElementById:id=>elements[id]||null},window:{_allServices:{shopify:{oauthReady}}}};
+    const scope={document:{getElementById:id=>elements[id]||null},window:{_allServices:{shopify:{oauthReady}}},clearNeeds(){scope.cleared=true}};
     vm.runInNewContext(html.slice(html.indexOf('    function openShopifyModal()'),html.indexOf('    function shopifyDomain()')),scope);
     scope.openShopifyModal();
     assert.equal(elements['shopify-modal'].open,true);

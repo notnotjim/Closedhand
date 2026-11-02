@@ -201,6 +201,18 @@ test("Closedhand plans which agent waits for which, runs the team as fast as the
   assert.match(read("lib/agent-team.js"), /m\.key = itemKey;/, "each agent's saved findings can be found again for Redo");
 });
 
+test("Suggest agents says when no team is needed: most jobs are one agent's", () => {
+  const server = read("webapp/server.js");
+  // Asked always for 2 to 5, it split one-step jobs into teams every time.
+  assert.match(server, /Most jobs need none: when the job is one piece of work, or each step needs the one before it, Closedhand does it alone, and you reply \{\\"agents\\": \[\]\}\./);
+  assert.match(server, /res\.json\(\{ agents: agents\.length >= 2 \? agents : \[\] \}\);/, "one agent is Closedhand on its own");
+  assert.doesNotMatch(server, /couldn't split this into parts/);
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, /note\.textContent = 'No team needed: Closedhand does this one on its own\. Add agents yourself if you want it split\.';/);
+  assert.match(dash, /if \(goal\.length < 3\) return needsField\(document\.getElementById\('auto-prompt-input'\), 'Say what it should do\.'\);\n\s*btn\.textContent = 'Suggesting/, "an empty job is pointed at, at its field");
+  assert.match(read("webapp/public/interface.css"), /\.field-needs \{ position: relative;[^}]*background: var\(--fg\); color: var\(--bg\);/, "one note style for any field still needed");
+});
+
 test("the form: named agents, Suggest agents, one start, and the note from the sixth in the LLM's own terms", () => {
   const dash = read("webapp/views/dashboard.html");
   // Agents end with the shared dashed add tile (addCard), where the next one
@@ -285,7 +297,7 @@ test("set for a date it runs once and is done; it waits under Waiting to start u
   assert.match(dash, /<option value="once">Once, on a date…<\/option>/);
   assert.match(dash, /triggerCron = when\.getMinutes\(\) \+ ' ' \+ when\.getHours\(\) \+ ' ' \+ when\.getDate\(\) \+ ' ' \+ \(when\.getMonth\(\) \+ 1\) \+ ' \*';/);
   assert.match(dash, /trigger_timezone: onceOnDate \? Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone : undefined,/, "in the time the person typed it");
-  assert.match(dash, /if \(when\.getTime\(\) <= Date\.now\(\) \+ 60000\) \{ errEl\.textContent = 'Choose a time that is still to come\.';/);
+  assert.match(dash, /if \(when\.getTime\(\) <= Date\.now\(\) \+ 60000\) return needsField\(document\.getElementById\('auto-once-at'\), 'Choose a time that is still to come\.'\);/);
 });
 
 test("the form makes a team for any kind, and a routine that is a team says so", () => {

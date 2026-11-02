@@ -5699,14 +5699,13 @@ app.post("/api/agents/suggest", async (req, res) => {
   if (!userId) return res.status(401).json({ error: "Not logged in" });
   const goal = String(req.body?.goal || "").trim().slice(0, 4000);
   const scope = String(req.body?.scope || "").trim().slice(0, 2000);
-  if (goal.length < 3) return res.status(400).json({ error: "Say what it should do first." });
+  if (goal.length < 3) return res.status(400).json({ error: "Say what it should do." });
   try {
     const model = await scanModelFor(userId);
     if (!model) return res.status(503).json({ error: "Choose an LLM in Settings first." });
-    const system = "You split a person's job into a small team of agents for their personal assistant, Closedhand, which leads the team and puts the parts together. "
-      + "Give 2 to 5 agents, each one part that is worth an agent of its own and that can be looked up or worked out on its own: searching, reading, comparing. "
-      + "Never a part that only joins the others up, and never sending, paying or booking. Name each in one to three plain words the person would use (Flights, Stays, Getting around). "
-      + "Write each part as one sentence in the person's own terms, keeping their dates, places and limits. Reply ONLY with JSON: {\"agents\": [{\"name\": \"...\", \"part\": \"...\"}]}";
+    // Most jobs need no team. Asked always for 2 to 5, it split "when is the
+    // tip open on Saturday" into three agents every time.
+    const system = "You decide whether a person's job needs a small team of agents for their personal assistant, Closedhand, which leads the team and puts the parts together. Most jobs need none: when the job is one piece of work, or each step needs the one before it, Closedhand does it alone, and you reply {\"agents\": []}. A team is for a job with 2 to 5 parts that are each worth an agent of their own and can be looked up or worked out apart: searching, reading, comparing. Never a part that only joins the others up, and never sending, paying or booking. Name each in one to three plain words the person would use (Flights, Stays, Getting around). Write each part as one sentence in the person's own terms, keeping their dates, places and limits. Reply ONLY with JSON: {\"agents\": [{\"name\": \"...\", \"part\": \"...\"}]}";
     const reply = await require("./model-wire").request(model, { model: model.model, effort: "fast", max_tokens: 700, system,
       messages: [{ role: "user", content: `The job: ${goal}${scope ? `\nScope: ${scope}` : ""}` }] }, { signal: AbortSignal.timeout(30000) });
     const text = (reply.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
@@ -5714,8 +5713,8 @@ app.post("/api/agents/suggest", async (req, res) => {
     const agents = (Array.isArray(parsed.agents) ? parsed.agents : [])
       .map((a) => ({ name: String(a?.name || "").trim().slice(0, 40), part: String(a?.part || "").trim().slice(0, 600) }))
       .filter((a) => a.name && a.part.length >= 3).slice(0, 5);
-    if (agents.length < 2) return res.status(422).json({ error: "Closedhand couldn't split this into parts. Add the agents yourself." });
-    res.json({ agents });
+    // One agent is Closedhand on its own: no team.
+    res.json({ agents: agents.length >= 2 ? agents : [] });
   } catch (e) {
     console.error("[agents] suggest:", e.message);
     res.status(503).json({ error: "Closedhand couldn't suggest agents just now. Add them yourself or try again." });

@@ -590,3 +590,11 @@ input[type=search]::-webkit-search-cancel-button:hover { background-color: var(-
 .card-open:hover .card-open-name, .card-open:focus-visible .card-open-name { text-decoration: underline; text-underline-offset: 0.1875rem; }
 .card-open:hover::after, .card-open:focus-visible::after { color: var(--fg); }
 .card-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.25rem; }
+/* A form field still needed (needsField in the dashboard): it takes focus with
+   a small nudge, and a note under it, pointing up at it, says what it wants. */
+.field-needs { position: relative; width: fit-content; max-width: 100%; margin: -0.25rem 0 0.75rem; padding: 0.4375rem 0.75rem; border-radius: 0.5rem; background: var(--fg); color: var(--bg); font-size: 0.8125rem; line-height: 1.4; animation: field-needs-in .3s cubic-bezier(.2, .8, .2, 1.25) both; }
+.field-needs::before { content: ""; position: absolute; left: 1rem; top: -0.25rem; width: 0.5625rem; height: 0.5625rem; background: inherit; border-radius: 0.125rem; transform: rotate(45deg); }
+@keyframes field-needs-in { from { opacity: 0; transform: translateY(-0.25rem) scale(.96); } to { opacity: 1; transform: none; } }
+.needs-nudge { animation: needs-nudge .34s ease 1; }
+@keyframes needs-nudge { 0%, 100% { transform: none; } 20% { transform: translateX(-0.1875rem); } 50% { transform: translateX(0.1875rem); } 80% { transform: translateX(-0.0625rem); } }
+@media (prefers-reduced-motion: reduce) { .field-needs, .needs-nudge { animation: none; } }

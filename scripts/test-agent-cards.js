@@ -265,7 +265,9 @@ test("New agent: a task now, or a routine; a team led by Closedhand is one task;
 
   // The start step, run: the agents in the form are one team, one task.
   const a = dashboard.indexOf("    function teamFromForm()");
-  const code = dashboard.slice(a, dashboard.indexOf("\n    }\n", dashboard.indexOf("    async function startTasks()")) + 6);
+  const e = dashboard.indexOf("    function emptyPart()");
+  const code = dashboard.slice(e, dashboard.indexOf("\n", e)) + "\n" + dashboard.slice(a, dashboard.indexOf("\n    }\n", dashboard.indexOf("    async function startTasks()")) + 6);
+  const needs = [];
   const el = (value) => ({ value, style: {}, textContent: "", disabled: false });
   const ids = { "auto-prompt-input": el("Find flights from Osaka to Seoul on 8 Nov"), "auto-scope-input": el("Direct only"), "auto-name-input": el("Seoul flights"),
     "auto-create-error": el(""), "auto-save-btn": el(""), "auto-answer-select": { value: "whatsapp_linked", selectedIndex: 0, options: [{ text: "WhatsApp" }] } };
@@ -274,7 +276,7 @@ test("New agent: a task now, or a routine; a team led by Closedhand is one task;
   let rows = [team("Hotels", "Hotels near the clinic, under ¥20,000"), team("", "Trains from the airport"), team("", "")];
   const ctx = { document: { getElementById: (id) => ids[id], querySelectorAll: () => rows },
     fetch: async (url, opts) => { posts.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({}) }; },
-    closeCreateAutomationModal() {}, showToast: (m) => toasts.push(m), loadAgents() {} };
+    closeCreateAutomationModal() {}, showToast: (m) => toasts.push(m), loadAgents() {}, needsField: (field, text) => needs.push({ field, text }) };
   vm.runInNewContext(code + "\nthis.startTasks = startTasks;", ctx);
   await ctx.startTasks();
   assert.equal(posts.length, 1, "one task for the team");
@@ -288,10 +290,12 @@ test("New agent: a task now, or a routine; a team led by Closedhand is one task;
   rows = [team("Hotels", "x")]; posts.length = 0;
   await ctx.startTasks();
   assert.equal(posts.length, 0);
-  assert.equal(ids["auto-create-error"].textContent, "Say what each agent should do.");
+  // What is still needed is said at the field itself, not at the foot of the form.
+  assert.equal(needs.at(-1).text, "Say what this agent should do.");
   ids["auto-prompt-input"].value = ""; rows = [];
   await ctx.startTasks();
-  assert.equal(ids["auto-create-error"].textContent, "Say what it should do.");
+  assert.deepEqual(needs.at(-1), { field: ids["auto-prompt-input"], text: "Say what it should do." });
+  assert.equal(ids["auto-create-error"].textContent, "", "nothing at the foot");
 });
 
 test("a routine's scope travels in its instructions and reads back apart; a working task can be told something", () => {
