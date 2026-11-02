@@ -50,7 +50,7 @@ test("tasks handed over in chat: going or waiting under Working now, finished th
   assert.match(dashboard, /function archiveRow\(toggle, count, open\) \{\n\s*if \(!count\) return '';/, "Pages keeps its Archived row");
   assert.match(dashboard, /escapeHtml\(\(team \? 'Team of ' \+ team\.length : 'Task'\) \+ ' \\u00b7 ' \+ \(running \|\| asked \? '' : sentenceCase\(runWord\(a\)\) \+ ' \\u00b7 '\) \+ String\(detail\)\)/, "a task or a team says what it is and how it stands, in words");
   assert.doesNotMatch(dashboard, /auto-status-pill|&#9632; Stop|&#8595; PDF|&#9654; Run|&#9208; Pause/, "no stock pills, no glyph buttons");
-  assert.match(dashboard, />Closedhand working for you: tasks you hand it here or in chat, and routines that run on their own\.</, "the tab says what it holds");
+  assert.match(dashboard, />Closedhand working for you in the background: tasks you hand it in chat or that you start here, done by one agent or a team that splits the work, and routines that run on their own\.</, "the tab says what it holds");
 });
 
 test("the Agents tab holds Closedhand working for you: what is working now, the routines, what finished; what it made is on Pages", () => {

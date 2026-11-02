@@ -144,7 +144,7 @@ test('the dashboard tour runs once for each person, the first time the dashboard
   const tabs = [...dashboard.matchAll(/<button class="tab[^"]*" data-tab="([a-z-]+)"/g)].map((m) => m[1]);
   assert.deepEqual(steps, tabs, "every tab, left to right");
   assert.match(dashboard, /tab: 'connections', text: 'Your chat apps, connected apps and skills live here\./);
-  assert.match(dashboard, /tab: 'agents', text: 'Agents is Closedhand working for you: tasks you hand it in chat or start here, alone or as a team that splits the work,/, "agents start here too, and in teams");
+  assert.match(dashboard, /tab: 'agents', text: 'Agents is where Closedhand works for you in the background: tasks you hand it in chat or that you start here, done by one agent or a team that splits the work,/, "agents start here too, and in teams");
   assert.match(fs.readFileSync(require.resolve("../webapp/public/welcome.css"), "utf8"), /:root\[data-theme="light"\] \.tour-top > img \{ filter: brightness\(0\.11\); \}/, "the fist shows on a light page");
   assert.doesNotMatch(dashboard, /ch-dashboard-toured/, 'kept for the person, not in one browser, so a new browser or an update never runs it again');
   assert.doesNotMatch(dashboard, /searchParams\.get\('welcome'\)/);

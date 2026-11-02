@@ -65,7 +65,7 @@ test('with nothing working, it says so and how to hand something over; with no r
   assert.equal(h.get('auto-active-desc').hidden, true);
   assert.equal(h.get('agents-done').hidden, true, 'no Done lately with nothing done');
   assert.equal(h.get('auto-empty').style.display, 'block');
-  assert.match(html, /<p class="section-desc" id="auto-active-empty">Nothing right now\. Start one with \+ New agent, or ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on\.<\/p>/);
+  assert.match(html, /<p class="section-desc" id="auto-active-empty">Nothing right now\. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on\. To pick the team yourself, start one with \+ New agent\.<\/p>/);
 });
 test('a failed read shows its own error and leaves the rest', async () => {
   const h = dashboard({ fail: '/api/agents', routines: [{ id: 'r1' }] });

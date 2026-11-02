@@ -2305,7 +2305,7 @@
           <!-- One way to start one, a task now or a routine (openNewAgent), at
                the top right of everything it makes. -->
           <div class="agents-head">
-            <p class="goals-intro">Closedhand working for you: tasks you hand it here or in chat, and routines that run on their own.</p>
+            <p class="goals-intro">Closedhand working for you in the background: tasks you hand it in chat or that you start here, done by one agent or a team that splits the work, and routines that run on their own.</p>
             <button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button>
           </div>
           <!-- One-off jobs set for a date or the first time something happens:
@@ -2318,7 +2318,7 @@
           </div>
           <div class="mc-section-label">Working now</div>
           <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from, or the one you picked.</p>
-          <p class="section-desc" id="auto-active-empty">Nothing right now. Start one with + New agent, or ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on.</p>
+          <p class="section-desc" id="auto-active-empty">Nothing right now. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on. To pick the team yourself, start one with + New agent.</p>
           <div id="auto-active-list"></div>
           <p id="auto-active-error" class="auto-card-meta" role="status" hidden>Could not refresh what is working now. Please try again shortly.</p>
           <div class="mc-section-label" style="margin-top:1.5rem;">Routines</div>
@@ -3006,7 +3006,7 @@
     const welcomeSteps = [
       { tab: 'connections', text: 'Your chat apps, connected apps and skills live here. Add one when you need more, or disconnect one any time.' },
       { tab: 'upcoming', text: 'Upcoming is what is coming up: bookings, flights and reminders from everything you have connected, with a hotel stay holding what happens while you are there.' },
-      { tab: 'agents', text: 'Agents is Closedhand working for you: tasks you hand it in chat or start here, alone or as a team that splits the work, and routines like a morning briefing that run on their own.' },
+      { tab: 'agents', text: 'Agents is where Closedhand works for you in the background: tasks you hand it in chat or that you start here, done by one agent or a team that splits the work, and routines like a morning briefing that run on their own.' },
       { tab: 'projects', text: 'Projects are the bigger things you are working towards. Each shows its goal, how far along you are and what Closedhand has done for the project.' },
       { tab: 'pages', text: 'Pages are what Closedhand makes beyond a chat answer, like a trip plan or a comparison. Each opens as PDF, Word or Excel too.' },
       { tab: 'brain', text: 'Context Brain is what Closedhand remembers: your Pinned Facts and Context Notes. Read, correct or delete any of them.' },
