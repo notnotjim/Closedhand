@@ -256,7 +256,8 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   assert.match(html, /<p class="fair-use-label">Payment history<\/p>/);
   assert.deepEqual([withAccount.el("my-plus-get").hidden, withAccount.el("my-card-row").hidden, withAccount.el("action-plus-cancel").hidden, withAccount.el("action-plus-keep").hidden, withAccount.el("my-plus-extend").hidden], [true, false, false, true, true]);
   assert.equal(withAccount.el("my-card-desc").textContent, "Visa ending 4242, expires 08/29", "the card it is paid with, shown");
-  assert.equal(withAccount.el("my-cancel-desc").textContent, "Your subscription stays on until 15 December, then ends.");
+  assert.equal(withAccount.el("my-cancel-desc").textContent, "If you cancel, your subscription stays on until 15 December, then ends.", "what cancelling would do, beside a plan that renews");
+  assert.match(html, /"If you cancel, your free month runs until " \+ day\(until\) \+ " and nothing is charged\."/, "a free month that renews isn't said to end");
   assert.equal(withAccount.el("plus-cancel-text").textContent, "Your subscription ends on 15 December and is not charged again. Until then you can resume your subscription.");
   assert.match(withAccount.el("delete-account-text").textContent, /^This deletes your Closedhand account: amber-fox-42\.closedhand\.ai stops working and closedhand\.com forgets your sign-in\. It also permanently deletes everything Closedhand keeps for you on your own computer/);
   const html2 = fs.readFileSync(require.resolve("../webapp/views/dashboard.html"), "utf8");

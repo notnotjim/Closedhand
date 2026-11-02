@@ -5076,9 +5076,10 @@
         const brand = card && card.brand ? ({ visa: "Visa", mastercard: "Mastercard", amex: "American Express", discover: "Discover", jcb: "JCB", unionpay: "UnionPay", diners: "Diners Club" })[card.brand.toLowerCase()] || card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : "Card";
         $("my-card-desc").textContent = card ? brand + " ending " + card.last4 + (card.expires ? ", expires " + card.expires : "") : "The card your subscription is paid with.";
         window._plusFacts = { until: p.ends_at || null, price: prices.plus || null, card: card ? "your " + brand + " ending " + card.last4 : null };
+        // What cancelling would do, never what is happening: a running subscription renews.
         // In its free month nothing has been charged, and cancelling keeps it so.
-        $("my-cancel-desc").textContent = p.trial ? "Your free month runs until " + day(until) + ", then your subscription ends and nothing is charged."
-          : until ? "Your subscription stays on until " + day(until) + ", then ends." : "Your subscription stays on to the end of the month you've paid for, then ends.";
+        $("my-cancel-desc").textContent = p.trial ? "If you cancel, your free month runs until " + day(until) + " and nothing is charged."
+          : until ? "If you cancel, your subscription stays on until " + day(until) + ", then ends." : "If you cancel, your subscription stays on to the end of the month you've paid for, then ends.";
         $("plus-cancel-text").textContent = p.trial ? "Your subscription ends on " + day(until) + " and nothing is charged. Until then you can resume your subscription."
           : "Your subscription ends on " + (until ? day(until) : "the last day you've paid for") + " and is not charged again. Until then you can resume your subscription.";
         $("my-keep-desc").textContent = "Your subscription will carry on past " + (p.ends_at ? day(p.ends_at) : "the month you've paid for") + " and renew every month.";
