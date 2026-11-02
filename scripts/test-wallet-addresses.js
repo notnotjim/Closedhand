@@ -176,7 +176,7 @@ test("the home address and the default card say so where the others offer to be 
   assert.equal((dash.match(/askFirst\(btn\.closest\('\.wallet-row-actions'\) \|\| btn, /g) || []).length, 2, "a card and an address");
   assert.match(dash, /askFirst\(btn\.closest\('#brain-panel-ways'\) \|\| btn, \{ text: 'Delete the Context Note/);
   assert.equal((dash.match(/askFirst\(btn\.closest\('\.conn-drawer-actions'\) \|\| btn, /g) || []).length, 2, "an MCP server and a connection");
-  assert.match(dash, /askFirst\(btn\.closest\('\.auto-card-actions'\) \|\| btn, \{ text: 'Delete this routine for good\?'/);
+  assert.match(dash, /askFirst\(btn\.closest\('\.auto-card-actions'\) \|\| btn, \{ text: 'Delete this ' \+ what \+ ' for good\?'/, "a routine or a team");
 });
 
 test("the folded spending rules say what they are now, in one line", () => {
