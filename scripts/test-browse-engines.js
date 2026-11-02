@@ -73,7 +73,7 @@ test("the tool flips a read by itself, never an action, and keeps the probe to i
   assert.match(browse, /wallet\.addressScript\(address, require\("\.\.\/browse-engine"\)\.choose\(userId, \{ action: "fill_address" \}\)\)/);
   // web_fetch hands what plain fetching cannot read to the browsers.
   assert.match(handlers, /if \(require\("\.\.\/blocked-page"\)\.looksBlocked\(body\)\) \{\n\s*return \(await inBrowser\(\)\) \|\|/);
-  assert.match(handlers, /if \(text\.length < 300 && \/<script\/i\.test\(body\)\) \{/);
+  assert.match(handlers, /if \(page\.text\.length < 300 && \/<script\/i\.test\(body\)\) \{/);
   // The checkout is read in the browser the paying step runs in.
   assert.match(read("lib/spend-guard.js"), /const engine = require\("\.\/browse-engine"\)\.choose\(userId, \{ \.\.\.input, url: url \|\| input\.url \}\);/);
   for (const f of ["lib/engine.js", "lib/agents.js", "lib/automations.js", "lib/scheduling.js"]) assert.match(read(f), /spendGuard\.readCheckout\(userId, \w+\.at, block\.input\)/, f);

@@ -451,12 +451,14 @@ def _do(page, context, step):
     if action == "outline":
         return dict({"outline": _outline(page)}, **_where(page, context))
     if action == "page_text":
-        # The whole visible text, for the spend check to read a checkout.
+        # The whole visible text, for the spend check to read a checkout, and
+        # the page itself for Closedhand's one page reader.
         try:
-            text = page.inner_text("body")[:30000]
+            text = page.inner_text("body")
+            html = page.content()
         except Exception:
-            text = ""
-        return dict({"text": text}, **_where(page, context))
+            text, html = "", ""
+        return dict({"text": text, "html": html}, **_where(page, context))
     if action == "screenshot":
         img = page.screenshot(full_page=bool(step.get("full_page")))
         return dict({"image": base64.b64encode(img).decode("utf-8")}, **_where(page, context))
@@ -669,7 +671,9 @@ def read_pages(urls, engine="headless"):
             try:
                 if page.url == "about:blank":
                     raise RuntimeError("The page did not open within 20 seconds.")
-                item = {"asked": u, "url": page.url, "title": page.title(), "text": page.inner_text("body")[:6000]}
+                # The page itself, read by Closedhand's one page reader
+                # (lib/page-reader.js), and its text, whole.
+                item = {"asked": u, "url": page.url, "title": page.title(), "text": page.inner_text("body"), "html": page.content()}
                 if engine == "headless":
                     item["probe"] = _probe(page)
                 out.append(item)
