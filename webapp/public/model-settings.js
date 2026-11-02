@@ -11,7 +11,6 @@
     "Primary model": "Handles your conversations, reasoning and tasks.",
     "Support model": "Does routine work like naming conversations and writing summaries.",
     "Image and video model": "Understands photos, screenshots and videos you send.",
-    "Document summaries": "Summarises mail and documents as they are indexed.",
     "Recall": "Recalls by meaning, not just keywords, across your files, past chats and everything you connect.",
     "Search ranking": "Puts the closest matches first. Stays the same when you change your primary model."
   };

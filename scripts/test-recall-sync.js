@@ -64,7 +64,6 @@ test("a saved GitHub connection is enrolled without the webapp hook or an LLM ca
   assert.equal(h.db.tables.data_cache.length, 1);
   assert.match(h.db.tables.data_cache[0].data.body, /10pm/);
   assert.equal(h.indexed[0][1], "connected:github");
-  assert.equal(h.indexed[0][3][0]._skipEnrich, true);
   assert.equal(h.indexed[0][4].scoped, true);
   assert.equal(h.db.tables.index_progress[0].status, "synced");
   const writes = h.db.writes.length;

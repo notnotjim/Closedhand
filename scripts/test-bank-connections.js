@@ -295,7 +295,6 @@ test("SimpleFIN sync: one request a run, deduplicated by id, pending replaced on
   // Recall gets booked payments only, as short lines, with no summarising model.
   assert.deepEqual(state.indexed[0].slice(0, 3), ["user-fixture", "simplefin", "bank_transaction"]);
   assert.deepEqual(state.indexed[0][3].map((i) => i.external_id).sort(), ["tx:ACT-1:T-1", "tx:ACT-1:T-2"]);
-  assert.ok(state.indexed[0][3].every((i) => i._skipEnrich === true));
   const conn = db.tables.connections[0];
   assert.equal(conn.config.bank.next_at, new Date(T0 + 6 * 3600e3 + 0.5 * 20 * 60e3).toISOString());
 

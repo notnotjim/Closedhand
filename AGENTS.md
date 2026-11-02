@@ -8,6 +8,12 @@ Rules for working on this codebase, for anyone doing it, human or agent.
 - They share the database but CANNOT import each other's code. Shared code is vendored into
   both (kept byte-identical); everything else communicates through the database.
 - Vanilla HTML/CSS/JS only for the dashboard. No React, no Tailwind, no build step.
+- Everything connected is filed the same way, by `lib/services/usi.js`: whole, in its own words,
+  in pieces the embedder reads in full, with no LLM writing into the index. The files that come with
+  any item (an email's attachments, an event's Drive files, a chat's photos and voice notes) are read
+  by one step, `lib/item-files.js`. A new source keeps its items' files on its cached rows (`files`:
+  key, name, mime, size) and gives `attachmentBytes` in `lib/services/data-access.js` a way to fetch
+  them; it never reads, cuts or indexes files its own way.
 
 ## Code Standards
 - Simplicity first. Minimal changes. Don't over-engineer.
@@ -155,8 +161,11 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   published there on 2026-09-29. It is free for anyone to use: no trademark sign. Describe it as
   one live picture of the person's world searched once before the model reads a message, never
   as searching every app or everything connected; that is what it replaces. Don't claim it
-  stores links between items (it doesn't), or that no model is involved in indexing (a
-  background model summarises items): no language model decides what to fetch or look up.
+  stores links between items (it doesn't), or that no model is involved in indexing (an
+  embedding model turns each item, pictures included, into a vector, and an image model, when
+  one is chosen, describes pictures with no words in them). No language model writes into the index or decides what to fetch: each
+  item is kept in its own words. Keep it that way; a step that has an LLM write into the
+  index needs a test showing it finds what the index misses without it.
 - The personal URL is required, and enforced: the home page and dashboard send people back to
   setup until it is claimed. The only way past without one is closedhand.com being unable to
   give one out right now, so an outage never locks anyone out of their own Closedhand.

@@ -227,12 +227,63 @@ test('an IMAP mailbox is read back too: inbox, sent and archive, newest first, m
   } finally { restore(); }
 });
 
-test('older mail is indexed from its own words and never summarised, and a year of it is kept', () => {
+// No language model writes into the index: each item is filed by code from
+// its own words and embedded. Tested against LLM summaries on invented mail,
+// events and chats (2026-11-02): the item that answers reached the model
+// either way, so the summaries only sent every synced item to an LLM.
+test('mail is indexed from its own words and never summarised, and a year of it is kept', () => {
   const usi = read('lib/services/usi.js');
-  assert.match(usi, /_raw: !!d\.from_history,/);
-  assert.match(usi, /if \(item\._skipEnrich \|\| item\._raw\) return;/);
-  assert.match(usi, /enrichment_level: enriched \? "full" : item\._raw \? "raw" : "basic",/);
-  assert.match(usi, /\.eq\("enrichment_level", "basic"\)/, 'the summary pass reads only basic');
+  const pass = usi.slice(usi.indexOf('async function indexItemsWithModels('), usi.indexOf('\n}\n', usi.indexOf('async function indexItemsWithModels(')));
+  assert.doesNotMatch(pass, /cheapChat\(|_enrichCompletion\(|complete\(/, 'no model call while filing');
+  assert.doesNotMatch(usi, /_enrichSummarize|enrichService|phase2/);
+  // Whole items, never cut: in pieces the embedder reads in full, each headed
+  // by what the item is; a piece is its own row pointing at the item's first,
+  // so deleting the item deletes its pieces.
+  // Two rounds: every item's first piece, then the rest; bulk mail keeps its
+  // first piece, and every file that came with an item is in its pieces
+  // (lib/item-files.js reads them; scripts/test-item-files.js).
+  assert.match(pass, /const body = piecesOf\(item\.gist \|\| item\.text\);/);
+  assert.ok(pass.indexOf("writeFirst(") < pass.indexOf("for (const x of later)"), "first pieces before the rest");
+  assert.match(pass, /const rest = x\.item\.bulk \? \[\] : x\.body\.slice\(1\)\.map/, "bulk mail by its first piece");
+  assert.match(pass, /for \(const file of x\.item\.files \|\| \[\]\) \{/);
+  assert.match(pass, /if \(vecs\.some\(\(v\) => !v\)\) continue;/, 'whole or not at all');
+  assert.match(usi, /piece_of: firstId, source_metadata: \{ \.\.\.meta, _piece_of: item\.external_id, _piece: k \+ 1 \}/);
+  assert.match(usi, /if \(!complete\) return true;\n\s*const \{ error: hashErr \} = await supabase\.from\("data_vectors"\)\.update\(\{ source_metadata: \{ \.\.\.meta, _pieces: rest\.length \+ 1, _content_hash: item\._content_hash \} \}\)/, 'the hash last');
+  // Bulk mail, the same for every mailbox, and no stored body cut short.
+  const { emailRecord } = require('../lib/services/email-record');
+  assert.equal(emailRecord({ id: 'a', labels: ['INBOX', 'CATEGORY_PROMOTIONS'] }).bulk, true);
+  assert.equal(emailRecord({ id: 'b', labels: ['INBOX', 'CATEGORY_PERSONAL'] }).bulk, false);
+  assert.equal(emailRecord({ id: 'c', bulk: true }).bulk, true, 'Outlook Other, a list header on IMAP');
+  const syncSrc = read('lib/services/data-sync.js');
+  assert.doesNotMatch(syncSrc, /body\.length > 10000/, 'whole bodies');
+  assert.match(syncSrc, /bulk: msg\.inferenceClassification === "other",/);
+  assert.doesNotMatch(read('lib/services/imap-mail.js'), /BODY_CAP/);
+
+  assert.match(read('migrations/085_vector_pieces.sql'), /ADD COLUMN IF NOT EXISTS piece_of uuid REFERENCES data_vectors\(id\) ON DELETE CASCADE;/);
+  assert.match(usi, /const unseen = \(vectors \|\| \[\]\)\.filter\(\(v\) => !v\.piece_of && !seen\.has\(v\.external_id\)\);/, 'pieces go with their item, not as stale on their own');
+  assert.match(usi, /const key = r\.service \+ ":" \+ \(r\.source_metadata\?\._piece_of \|\| r\.external_id\);/, 'an item counts once in the search, by its best piece');
+  const at = usi.indexOf('const PIECE_CHARS'), piecesOf = new Function(usi.slice(at, usi.indexOf('const pad =', at)) + '; return piecesOf;')();
+  const long = Array.from({ length: 900 }, (_, i) => 'word' + i).join(' ');
+  const cut = piecesOf(long);
+  assert.ok(cut.length > 1 && cut.every((p) => p.length <= 900));
+  const kept = new Set(cut.join(' ').split(' '));
+  assert.ok(long.split(' ').every((w) => kept.has(w)), 'every word in a piece');
+  const wa = read('lib/services/wa-digest.js');
+  assert.doesNotMatch(wa, /cheapChat|TRANSCRIPT_CAP/, 'a WhatsApp day is its whole transcript');
+  assert.match(wa, /await require\("\.\/usi"\)\.indexItems\(userId, "whatsapp", "chat_day", days, \{ scoped: true, quiet: true \}\);/);
+  assert.match(read('lib/brain.js'), /snippet = snippet\.substring\(0, r\.enriched \? 1500 : 1200\);/, 'the matching piece is shown whole');
+  assert.match(read('lib/services/reranker.js'), /\.substring\(0, 1200\)\);\n\s*const cap = Math\.min\(documents\.length, 20\);/, 'and ranked on all of it');
+  assert.doesNotMatch(read('lib/services/data-sync.js'), /\.join\("\\n"\)\.substring\(0, 8000\)/, 'no cut Slack or Notion text');
+  // What is shown and embedded: the subject and the email's own words, not
+  // the quoted mail under a reply.
+  const box = { require: (m) => require(m === '../item-files' ? '../lib/item-files' : m) };
+  require('node:vm').runInNewContext(usi.slice(usi.indexOf('function ownWords('), usi.indexOf('function _eventRowToIndexItem(')) + '\nthis.f = _emailRowToIndexItem;', box);
+  const item = box.f({ external_id: 'm1', source: 'gmail', data: {
+    from: 'Kofi <kofi@example.com>', subject: 'Re: Fence quote', date: '2026-02-27',
+    body: 'Hi,\n\nWe can reuse the posts, so it comes to £950.\n\nKofi\n\nOn Tue, 24 Feb 2026 at 09:12, Alex <alex@example.com> wrote:\n> Can it come down?\n>> It is £1,200.' } });
+  assert.equal(item.gist, 'Re: Fence quote\nHi, We can reuse the posts, so it comes to £950. Kofi');
+  assert.equal(item.head, 'Subject: Re: Fence quote\nFrom: Kofi <kofi@example.com>');
+  assert.match(item.text, /£1,200/, 'the full text stays for the word search and for reading');
   assert.match(read('lib/services/email-record.js'), /from_history: !!f\.from_history,/);
   const sync = read('lib/services/data-sync.js');
   assert.equal((sync.match(/evictOldItems\(userId, sourceTag, "email", 5000, require\("\.\/mail-history"\)\.horizon\(\), new Set\(/g) || []).length, 2, 'Gmail and Outlook keep their year, and what their list just named');

@@ -25,18 +25,21 @@ const EMBED_URL = process.env.EMBED_API_URL || "https://api.deepinfra.com/v1/ope
 const EMBED_MODEL = process.env.EMBED_MODEL || "Qwen/Qwen3-Embedding-4B";
 const CHAT_URL = process.env.ENRICH_API_URL || "https://api.deepinfra.com/v1/openai/chat/completions";
 // Same summariser as passive recall (data_vectors) for consistency and cost.
-const ENRICH_MODEL = process.env.ENRICH_MODEL || "deepseek-ai/DeepSeek-V4-Flash";
 const VISION_MODEL = process.env.VISION_MODEL || "Qwen/Qwen3-VL-30B-A3B-Instruct";
 const EMBED_DIMS = 1536; // Matryoshka truncation from native 4096
-const CHUNK_SIZE = 3200; // ~800 tokens
-const CHUNK_OVERLAP = 200;
+// Parts small enough that the embedder reads each whole, its heading (file
+// name and opening, up to 250 characters) included: at most 750 characters
+// and the 150 carried over from the part before, inside the 1,200 a local
+// embedder reads. A 3,200-character part was embedded from its first 1,200.
+const CHUNK_SIZE = 750;
+const CHUNK_OVERLAP = 150;
 const EMBED_BATCH_SIZE = 32;
 
 // One global ceiling on in-flight provider calls. Files are indexed in
-// parallel and each file enriches its chunks in parallel, so without a shared
+// parallel and each file reads its pictures in parallel, so without a shared
 // limit the two multiply into a burst that earns 429s, and 429s cost both
-// time and budget (attempts are metered). Every vision, enrichment and
-// embedding request passes through here.
+// time and budget (attempts are metered). Every vision and embedding request
+// passes through here.
 const LLM_CONCURRENCY = parseInt(process.env.RAG_LLM_CONCURRENCY || "12", 10);
 let _llmActive = 0;
 const _llmWaiters = [];
@@ -368,6 +371,12 @@ async function mediaRows(media, { documentId, userId, fileName, residency, after
 
 // --- Chunking ---
 
+// A document's own opening: its first two paragraphs, up to 200 characters,
+// which usually say what it is (a title, who it is from, what it is about).
+function docOpening(text) {
+  return String(text || "").split(/\n\s*\n/).slice(0, 2).join(" ").replace(/\s+/g, " ").trim().substring(0, 200);
+}
+
 function chunkText(text) {
   if (!text || text.trim().length === 0) return [];
 
@@ -413,84 +422,6 @@ function chunkText(text) {
   });
 
   return overlapped;
-}
-
-// --- Semantic enrichment ---
-// Prepends a topic/meaning summary to each chunk before embedding.
-// The embedding then captures what the chunk is ABOUT, not just its keywords.
-// Uses Qwen (free) so cost isn't a factor.
-
-async function enrichChunks(chunks, fileName) {
-  if (selectedModel("background") === undefined && !DEEPINFRA_API_KEY) {
-    console.log(`[RAG] No DEEPINFRA_API_KEY for enrichment, using raw chunks`);
-    return chunks;
-  }
-
-  console.log(`[RAG] Enriching ${chunks.length} chunks from ${fileName}`);
-  const enriched = new Array(chunks.length);
-
-  // Enrichment is one LLM call per chunk and was running strictly
-  // sequentially, so a folder of a few hundred documents took hours of
-  // wall-clock (and any restart in that window lost the unfinished files).
-  // Same token cost, ~8x faster, matching the email indexer's concurrency.
-  const CONCURRENCY = 8;
-  let cursor = 0;
-  const worker = async () => {
-    while (true) {
-      const i = cursor++;
-      if (i >= chunks.length) return;
-      const chunk = chunks[i];
-      // Skip enrichment for very short chunks
-      if (chunk.length < 50) {
-        enriched[i] = chunk;
-        continue;
-      }
-      enriched[i] = await enrichOneChunk(chunk, fileName);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
-
-  console.log(`[RAG] Enrichment complete: ${enriched.filter(c => c && c.startsWith("[About:")).length}/${chunks.length} chunks enriched`);
-  return enriched;
-}
-
-/** Contextualise one chunk. Returns the enriched text, or the raw chunk on any failure. */
-async function enrichOneChunk(chunk, fileName) {
-  if (selectedModel("background") !== undefined) {
-    try {
-      const summary = await modelJob("background", "Summarise this excerpt in two sentences. File: " + fileName + "\n" + chunk.substring(0, 2000));
-      return summary ? "[About: " + summary + "]\n\n" + chunk : chunk;
-    } catch (error) { console.log("[RAG] Summaries model unavailable: " + error.message); return chunk; }
-  }
-  try {
-    const resp = await llmSlot(() => fetch(CHAT_URL, {
-      method: "POST",
-      // Without a timeout one hung call blocks a worker for the whole run
-      signal: AbortSignal.timeout(60000),
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${DEEPINFRA_API_KEY}`, ...appHeaders(CHAT_URL) },
-      body: JSON.stringify({
-        model: ENRICH_MODEL,
-        // Suppress model "thinking" so it does not eat the 200-token budget.
-        // DeepSeek uses reasoning_effort, Qwen only respects its template kwarg.
-        ...(ENRICH_MODEL.startsWith("deepseek") ? { reasoning_effort: "none" } : { chat_template_kwargs: { enable_thinking: false } }),
-        messages: [{
-          role: "user",
-          content: `Describe what this text excerpt is about in 2-3 sentences. What topics does it cover? What questions could it answer? What concepts or entities does it mention? Be specific.\n\nFile: ${fileName}\nExcerpt:\n${chunk.substring(0, 2000)}`,
-        }],
-        max_tokens: 200,
-        temperature: 0.1,
-      }),
-    }));
-    if (resp.ok) {
-      const data = await resp.json();
-      let summary = data.choices?.[0]?.message?.content || "";
-      summary = summary.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-      if (summary) return `[About: ${summary}]\n\n${chunk}`;
-    }
-  } catch (e) {
-    // Enrichment failed for this chunk, index it raw rather than losing it
-  }
-  return chunk;
 }
 
 // --- Embedding ---
@@ -802,27 +733,25 @@ async function processDocumentWithModels(documentId, userId, fileBuffer, fileNam
       throw new Error("No text content could be extracted from this file");
     }
 
-    // 2. Chunk. Per-document ceiling so one enormous file cannot consume the
-    // whole indexing budget: enrichment cost is per chunk, so a 500-page PDF
-    // would otherwise cost as much as several hundred ordinary documents.
-    let chunks = text && text.trim().length >= 10 ? chunkText(text) : [];
-    const MAX_CHUNKS_PER_DOC = parseInt(process.env.RAG_MAX_CHUNKS_PER_DOC || "80", 10);
-    if (chunks.length > MAX_CHUNKS_PER_DOC) {
-      console.log(`[RAG] ${fileName}: ${chunks.length} chunks, indexing the first ${MAX_CHUNKS_PER_DOC}`);
-      chunks = chunks.slice(0, MAX_CHUNKS_PER_DOC);
-    }
+    // 2. Chunk, the whole file: a long one is never cut to its first pages.
+    const chunks = text && text.trim().length >= 10 ? chunkText(text) : [];
     console.log(`[RAG] ${fileName}: ${text.length} chars -> ${chunks.length} chunks`);
     if (chunks.length === 0 && !(media && media.length)) throw new Error("No chunks produced from text");
 
-    // 3. Enrich chunks with semantic summaries (Qwen, free)
-    // This makes search match on meaning/topics, not just keywords
-    const enrichedChunks = await enrichChunks(chunks, fileName);
+    // 3. Each part is embedded headed by the file's name and the document's
+    // own opening lines, so a part from deep inside ("the fee is £300") is
+    // found as part of what it belongs to. A background LLM once wrote a line
+    // per part instead, seeing only that part and the name; on invented
+    // documents (2026-11-02) the heading put the answering part as high or
+    // higher, with nothing sent to an LLM.
+    const head = (fileName + "\n" + docOpening(text)).slice(0, 249) + "\n";
+    const headed = chunks.map((c) => head + c);
 
-    // 4. Embed enriched chunks in batches
+    // 4. Embed the headed parts in batches
     const allEmbeddings = [];
-    for (let i = 0; i < enrichedChunks.length; i += EMBED_BATCH_SIZE) {
-      const batch = enrichedChunks.slice(i, i + EMBED_BATCH_SIZE);
-      console.log(`[RAG] Embedding batch ${Math.floor(i / EMBED_BATCH_SIZE) + 1}/${Math.ceil(enrichedChunks.length / EMBED_BATCH_SIZE)}`);
+    for (let i = 0; i < headed.length; i += EMBED_BATCH_SIZE) {
+      const batch = headed.slice(i, i + EMBED_BATCH_SIZE);
+      console.log(`[RAG] Embedding batch ${Math.floor(i / EMBED_BATCH_SIZE) + 1}/${Math.ceil(headed.length / EMBED_BATCH_SIZE)}`);
       const embeddings = await embedBatch(batch);
       // Kept in step with the chunks even when a batch has no vectors.
       allEmbeddings.push(...(embeddings.length === batch.length ? embeddings : batch.map(() => undefined)));
@@ -832,13 +761,13 @@ async function processDocumentWithModels(documentId, userId, fileBuffer, fileNam
     const { data: _profile } = await supabase.from("profiles").select("settings").eq("id", userId).single();
     const residency = _profile?.settings?.rag_residency || "standard";
 
-    // 5. Insert chunks with embeddings (store original text, embed enriched version)
+    // 5. Insert chunks with embeddings (the part's own text, embedded headed)
     const rows = chunks.map((content, idx) => ({
       document_id: documentId,
       user_id: userId,
       chunk_index: idx,
       content: residency === "zero" ? "[Zero residency - text not stored]" : content,
-      embedding: JSON.stringify(allEmbeddings[idx]), // embedded from enriched version
+      embedding: JSON.stringify(allEmbeddings[idx]),
       metadata: { source_file: fileName, chunk_of: chunks.length, ...(sourceContext || {}) },
     }));
 
@@ -978,11 +907,11 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
 
     // 5. Process each supported file
     // Indexing budget, counted in CHUNKS because that is the unit that costs
-    // money (one enrichment call each). A file count would be meaningless: a
+    // time and money (one embedding each). A file count would be meaningless: a
     // folder of photos and a folder of long PDFs differ ~50x in cost for the
     // same number of files. Files are processed newest-first, so if the budget
-    // runs out the oldest content is what goes unindexed.
-    const CHUNK_BUDGET = parseInt(process.env.RAG_CHUNK_BUDGET || "3000", 10);
+    // runs out the oldest wait, still pending, for the next scan.
+    const CHUNK_BUDGET = parseInt(process.env.RAG_CHUNK_BUDGET || "12000", 10);
     let skippedForBudget = 0;
     let processed = 0;
     const retryQueue = [];
@@ -1070,9 +999,9 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       }
     };
 
-    // Files in parallel. Each file also enriches its own chunks in parallel,
+    // Files in parallel. Each file also reads its own pictures in parallel,
     // so the shared llmSlot ceiling keeps the product of the two bounded
-    // rather than letting 4 files x 8 chunks become a 32-call burst.
+    // rather than letting 4 files x 8 pictures become a 32-call burst.
     const FILE_CONCURRENCY = parseInt(process.env.RAG_FILE_CONCURRENCY || "4", 10);
     let fileCursor = 0;
     const fileWorker = async () => {
@@ -1183,4 +1112,4 @@ async function recoverStalledDocuments() {
   }
 }
 
-module.exports = { init, processDocument, processSource, scanFolder, fetchFileContent, extractText, chunkText, embedBatch, embedSingle, getServiceToken, fetchWithRefresh, recoverStalledDocuments };
+module.exports = { init, processDocument, processSource, scanFolder, fetchFileContent, extractText, chunkText, docOpening, embedBatch, embedSingle, getServiceToken, fetchWithRefresh, recoverStalledDocuments };

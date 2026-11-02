@@ -198,3 +198,24 @@ test("a PDF with no words goes into File Search as a picture of its first page, 
   const rag = read("webapp/rag-processor.js");
   assert.match(rag, /if \(read\.kind === "pdf" && !String\(read\.text \|\| ""\)\.trim\(\) && media\) \{\n\s*const page = await reader\.pdfPicture\(buffer\);\n\s*if \(page\) media\.push\(\{ modality: "image", buffer: page, label: "\(picture\)" \}\);/);
 });
+
+// A part from deep inside a file is embedded headed by the file's name and
+// the document's own opening, never by a line an LLM wrote: tested on
+// invented documents (2026-11-02), the heading found the answering part as
+// well as the LLM line did, with nothing sent to an LLM.
+test("a file's parts are embedded headed by its name and opening, with no LLM", () => {
+  const rag = read("webapp/rag-processor.js");
+  assert.doesNotMatch(rag, /enrichChunks|enrichOneChunk|\[About: /);
+  assert.match(rag, /const head = \(fileName \+ "\\n" \+ docOpening\(text\)\)\.slice\(0, 249\) \+ "\\n";\n\s*const headed = chunks\.map\(\(c\) => head \+ c\);/);
+  // Every part fits what the embedder reads, heading included, and a long
+  // file is indexed to its end.
+  assert.match(rag, /const CHUNK_SIZE = 750;\nconst CHUNK_OVERLAP = 150;/);
+  assert.doesNotMatch(rag, /MAX_CHUNKS_PER_DOC/);
+  assert.match(rag, /content: residency === "zero" \? "\[Zero residency - text not stored\]" : content,/, "the part's own text is what is kept");
+  const at = rag.indexOf("function docOpening(text) {");
+  const docOpening = new Function(rag.slice(at, rag.indexOf("\n}\n", at) + 2) + "\nreturn docOpening;")();
+  assert.equal(docOpening("ASSURED SHORTHOLD TENANCY AGREEMENT\n\nThis agreement is made between Example Lettings and the Tenant for 1 Sample Row.\n\n1. Rent\n\nThe rent is due monthly."),
+    "ASSURED SHORTHOLD TENANCY AGREEMENT This agreement is made between Example Lettings and the Tenant for 1 Sample Row.");
+  assert.equal(docOpening("x".repeat(500)).length, 200);
+  assert.doesNotMatch(read("webapp/model-summary.js"), /Document summaries/, "no model listed for a step that is gone");
+});

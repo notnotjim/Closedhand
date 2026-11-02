@@ -132,9 +132,9 @@ test("the reranker can score a lone candidate when recall needs a relevance deci
   assert.equal(ranked[0]._rerank_score, 0.8);
 });
 
-test("a summary is shown whole, so what changed late in it is seen; an item never summarised shows its opening", async () => {
+test("a summary or a chat day is shown whole, so what changed late in it is seen; any other item shows its opening", async () => {
   const day = "[WhatsApp Fixture Clinic, 2026-03-02] " + "They went over prices and the aftercare plan at length. ".repeat(12) + "In the end the appointment on the 5th moved to a video call.";
-  const raw = "Opening line. " + "Filler about something else entirely. ".repeat(20) + "Late detail that is cut.";
+  const raw = "Opening line. " + "Filler about something else entirely. ".repeat(40) + "Late detail that is cut.";
   const r = recall({ services: [
     { service: "whatsapp", type: "chat_day", content: day, enriched: true, metadata: { chat_name: "Fixture Clinic", date: "2026-03-02" } },
     { service: "email", type: "email", content: raw, enriched: false, metadata: { subject: "Raw item" } },
@@ -144,4 +144,21 @@ test("a summary is shown whole, so what changed late in it is seen; an item neve
   assert.match(text, /moved to a video call/, "the whole summary is shown");
   assert.match(text, /Opening line/);
   assert.doesNotMatch(text, /Late detail that is cut/, "a raw item still shows only its opening");
+  // A chat day is its transcript now, never summarised: the piece that
+  // matched is shown whole.
+  const plain = recall({ services: [{ service: "whatsapp", type: "chat_day", content: day, enriched: false, metadata: { chat_name: "Fixture Clinic", date: "2026-03-02" } }] });
+  assert.match(await plain.run("Is the appointment on the 5th still in person?"), /moved to a video call/);
+});
+
+// The ranker reorders but never drops the two items the search put first: on
+// a long chat day it scored the piece holding the answer below short
+// lookalikes, and the answer never reached the model.
+test("the search's first two items always reach the model, whatever the ranker scores them", async () => {
+  const item = (id, words) => ({ service: "email", type: "email", id, content: words, metadata: { subject: "Note " + id } });
+  const services = [item("first", "irrelevant-looking chat piece that holds the answer"), item("second", "irrelevant too"),
+    ...Array.from({ length: 8 }, (_, i) => item("other" + i, "a short lookalike " + i))];
+  const text = await recall({ services }).run("Where is the new flat?");
+  assert.match(text, /irrelevant-looking chat piece that holds the answer/);
+  assert.match(text, /irrelevant too/);
+  assert.equal((text.match(/### Email: Note /g) || []).length, 7, "still seven in all");
 });

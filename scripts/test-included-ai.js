@@ -314,7 +314,7 @@ test("when the AI account refuses, the chat says so in fixed words instead of 's
   for (const f of ["lib/services/usi.js", "webapp/rag-processor.js"]) {
     const src = fs.readFileSync(path.join(root, f), "utf8");
     const calls = src.match(/"Authorization": `Bearer \$\{(?:machineryKey\(\)|embedKey\(\)|DEEPINFRA_API_KEY)\}`[^}]*\}/g) || [];
-    assert.ok(calls.length >= 3, f);
+    assert.ok(calls.length >= 2, f);
     for (const c of calls) assert.match(c, /\.\.\.appHeaders\(/, f + ": " + c);
   }
   assert.match(fs.readFileSync(path.join(root, "lib/provider-search.js"), "utf8"), /\.\.\.headers, \.\.\.appHeaders\(url\)/);

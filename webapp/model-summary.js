@@ -38,8 +38,6 @@ function modelSummary(settings, read = key => process.env[key], local = false) {
     const enrichKey = read("ENRICH_API_KEY") || read("DEEPINFRA_API_KEY");
     const enrichUrl = read("ENRICH_API_URL") || policy.BASES.deepinfra;
     add("Images", enrichKey ? read("VISION_MODEL") || "Qwen/Qwen3-VL-30B-A3B-Instruct" : null, enrichUrl);
-    const enrichModel = read("ENRICH_MODEL") || "deepseek-ai/DeepSeek-V4-Flash";
-    if (enrichKey && (enrichModel !== rows[1].model || location(enrichModel, enrichUrl) !== rows[1].provider)) add("Document summaries", enrichModel, enrichUrl);
   }
   const embed = read("EMBED_MODEL") || "Qwen/Qwen3-Embedding-4B";
   add("Recall", embed.startsWith("local:") || read("EMBED_API_KEY") || read("DEEPINFRA_API_KEY") ? embed : null,
