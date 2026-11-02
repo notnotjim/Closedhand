@@ -112,6 +112,7 @@ test('every row without a vector gets one: Pinned Facts and Context Notes first,
       { id: 'r1', user_id: 'u1', content: 'Tenancy runs to March', metadata: {}, created_at: '2026-10-01', embedding: null },
       { id: 'r2', user_id: 'u1', content: '[Zero residency - text not stored]', metadata: {}, created_at: '2026-10-01', embedding: null },
       { id: 'r3', user_id: 'u1', content: 'IMG_0412.jpg (picture)', metadata: { modality: 'image' }, created_at: '2026-10-01', embedding: null },
+      { id: 'r4', user_id: 'u1', content: 'Rent is due on the 1st', metadata: { head: 'Lease 7 Elm Grove.pdf\nTenancy agreement between' }, created_at: '2026-09-30', embedding: null },
     ],
     data_cache: [{ user_id: 'u1', external_id: 'm-77', type: 'email', data: {} }],
   };
@@ -125,12 +126,13 @@ test('every row without a vector gets one: Pinned Facts and Context Notes first,
   };
   const { mod, restore } = withModules({ '../user-store': { supabase: fakeDb(tables) }, '../lib/services/usi': usi }, '../lib/embed-backfill');
   try {
-    assert.equal(await mod.backfillOnce(), 4);
+    assert.equal(await mod.backfillOnce(), 5);
     assert.deepEqual(embedded, [
       'Priya is Tomas\'s sister',
       'Dentist on Tuesday',
       'Boiler service booked for Friday\n\nFrom: Ana Ruiz\nThe engineer comes Friday at 9.',
       'Tenancy runs to March',
+      'Lease 7 Elm Grove.pdf\nTenancy agreement between\nRent is due on the 1st',
     ]);
     assert.equal(tables.data_vectors.find((r) => r.id === 'f1').embedding, JSON.stringify([23]));
     assert.equal(tables.rag_chunks.find((r) => r.id === 'r2').embedding, null, 'a chunk whose words were not kept is left');
@@ -232,4 +234,10 @@ test('File Search uses the local model through the bot and keeps pictures and so
   assert.match(read('index.js'), /require\("\.\/lib\/embed-route"\)\.register\(ctx\.expressApp\);/);
   assert.match(read('index.js'), /require\("\.\/lib\/embed-backfill"\)\.start\(\);/);
   assert.match(read('webapp/server.js'), /EMBED_MODEL: "local:embeddinggemma-2"/, 'new installs start on EmbeddingGemma 2');
+});
+
+test('a file part keeps the heading it was embedded with, so a backfilled one is embedded the same; never under zero residency', () => {
+  const rag = read('webapp/rag-processor.js');
+  assert.match(rag, /metadata: \{ source_file: fileName, chunk_of: chunks\.length, \.\.\.\(residency === "zero" \? \{\} : \{ head: head\.trimEnd\(\) \}\), \.\.\.\(sourceContext \|\| \{\}\) \},/);
+  assert.match(read('lib/embed-backfill.js'), /if \(!c\) return \(r\.metadata && r\.metadata\.head \? r\.metadata\.head \+ "\\n" : ""\) \+ String\(r\.content \|\| ""\);/);
 });

@@ -761,14 +761,17 @@ async function processDocumentWithModels(documentId, userId, fileBuffer, fileNam
     const { data: _profile } = await supabase.from("profiles").select("settings").eq("id", userId).single();
     const residency = _profile?.settings?.rag_residency || "standard";
 
-    // 5. Insert chunks with embeddings (the part's own text, embedded headed)
+    // 5. Insert chunks with embeddings (the part's own text, embedded headed).
+    // The heading is kept with each part, so a part saved without a vector is
+    // given one headed the same (lib/embed-backfill.js in the bot); never under
+    // zero residency, where none of the file's words are kept.
     const rows = chunks.map((content, idx) => ({
       document_id: documentId,
       user_id: userId,
       chunk_index: idx,
       content: residency === "zero" ? "[Zero residency - text not stored]" : content,
       embedding: JSON.stringify(allEmbeddings[idx]),
-      metadata: { source_file: fileName, chunk_of: chunks.length, ...(sourceContext || {}) },
+      metadata: { source_file: fileName, chunk_of: chunks.length, ...(residency === "zero" ? {} : { head: head.trimEnd() }), ...(sourceContext || {}) },
     }));
 
     rows.push(...(await mediaRows(media, { documentId, userId, fileName, residency, after: chunks.length, sourceContext })));
