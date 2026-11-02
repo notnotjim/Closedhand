@@ -896,8 +896,10 @@ async function hearWaiting() {
 async function hearDocument(doc) {
   const { data: source } = await supabase.from("rag_sources").select("account").eq("id", doc.source_id).single();
   const { data: profile } = await supabase.from("profiles").select("settings").eq("id", doc.user_id).single();
-  const stillGoing = () => supabase.from("rag_documents").update({ updated_at: new Date().toISOString() }).eq("id", doc.id).then(() => {}, () => {});
-  await supabase.from("rag_documents").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", doc.id);
+  const kept = (what) => ({ error }) => { if (error) console.error(`[RAG] ${doc.name}: could not keep ${what}: ${error.message}`); };
+  const stillGoing = () => supabase.from("rag_documents").update({ updated_at: new Date().toISOString() }).eq("id", doc.id).then(kept("that it is still being heard")).catch(() => {});
+  const { error: markErr } = await supabase.from("rag_documents").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", doc.id);
+  if (markErr) console.error(`[RAG] ${doc.name}: could not keep that it is being heard: ${markErr.message}`);
   const beat = setInterval(stillGoing, 5 * 60000);
   try {
     await modelContext.run((profile && profile.settings) || {}, async () => {
@@ -911,7 +913,8 @@ async function hearDocument(doc) {
     // Nothing said in it is its answer for good; anything else is tried again.
     const tries = /^Nothing is said/.test(e.message) ? HEAR_TRIES : Number(doc.metadata?.hear_tries || 0) + 1;
     console.error(`[RAG] ${doc.name} not heard: ${e.message}`);
-    await supabase.from("rag_documents").update({ status: "error", error_message: e.message, metadata: { ...(doc.metadata || {}), hear_tries: tries }, updated_at: new Date().toISOString() }).eq("id", doc.id);
+    const { error } = await supabase.from("rag_documents").update({ status: "error", error_message: e.message, metadata: { ...(doc.metadata || {}), hear_tries: tries }, updated_at: new Date().toISOString() }).eq("id", doc.id);
+    if (error) console.error(`[RAG] ${doc.name}: could not keep that it was not heard: ${error.message}`);
   } finally {
     clearInterval(beat);
   }
@@ -1076,8 +1079,10 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       // changed since it was heard waits to be heard again.
       if (HEARD_TYPES.has(typeOf(file))) {
         if (existing && existing.metadata?.modified !== file.modified) {
-          await supabase.from("rag_chunks").delete().eq("document_id", existing.id);
-          await supabase.from("rag_documents").update({ status: "pending", error_message: null, metadata: { modified: file.modified } }).eq("id", existing.id);
+          const gone = await supabase.from("rag_chunks").delete().eq("document_id", existing.id);
+          const waits = await supabase.from("rag_documents").update({ status: "pending", error_message: null, metadata: { modified: file.modified } }).eq("id", existing.id);
+          const error = gone.error || waits.error;
+          if (error) console.error(`[RAG] ${file.name}: could not mark it to be heard again: ${error.message}`);
         }
         return;
       }
