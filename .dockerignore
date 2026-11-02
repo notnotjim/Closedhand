@@ -14,9 +14,13 @@ config.json
 
 # The webapp is its own image (build context ./webapp) — not needed in the bot,
 # except the fonts its pages are typeset in, which the bot uses when it sends
-# a page as a PDF (lib/run-pdf.js).
+# a page as a PDF (lib/run-pdf.js), and the brush stroke drawn in the pieces
+# the bot makes for a page (lib/paying-for-piece.js).
 webapp
 !webapp/fonts
+!webapp/public
+webapp/public/*
+!webapp/public/brush-underline.svg
 
 # Not needed at runtime.
 # The Mac app's sources and its build output (gigabytes of cached Node,

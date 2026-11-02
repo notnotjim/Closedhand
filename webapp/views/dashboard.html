@@ -9660,6 +9660,11 @@
         // Connection links open the catalogue and MCP input.
         switchTab('connections');
         setTimeout(window.beckonAddBox, 150);
+      } else if (resolved === 'bank') {
+        // "Connect your bank" (What you pay for, lib/paying-for.js): the
+        // catalogue showing the banks.
+        switchTab('connections');
+        setTimeout(function () { window.openConnectionCatalogue('bank'); }, 150);
       } else if (resolved === 'bridge') {
         switchTab('connections');
         setTimeout(window.beckonBridge, 150);

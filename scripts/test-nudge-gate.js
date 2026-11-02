@@ -159,7 +159,7 @@ test("Pulse reads what is new from every connection, not only mail and calendar,
   assert.match(pulse, /\.eq\("user_id", userId\)\.neq\("type", "email"\)\n\s*\.gt\("created_at", lookback\)/, "chats, bookings, pages, bank and the rest");
   assert.match(pulse, /const otherItems = \(newOther \|\| \[\]\)\.filter\(\(r\) => !watches\.ignored\(r\) && unclaimed\(r\) && !facts\.seenAsItCame\(r, wrote\)\)/, "never their own messages, nor what was told or is watched");
   assert.match(pulse, /\.\.\.otherItems\.map\(\(r\) => noted\(line\(r\), facts\.replyNote\(r, wrote\)\)\),/, "each with whether they wrote since");
-  assert.match(pulse, /const numbered = \[\.\.\.realEmails, \.\.\.otherItems, \.\.\.waitingRows, \.\.\.sentLines\.map\(\(\) => null\), \.\.\.coming, \.\.\.projectLines\.map\(\(\) => null\), \.\.\.worldLines\.map\(\(\) => null\)\];/, "and whatever it tells is recorded as told, never what they sent");
+  assert.match(pulse, /const numbered = \[\.\.\.realEmails, \.\.\.otherItems, \.\.\.waitingRows, \.\.\.sentLines\.map\(\(\) => null\), \.\.\.coming, \.\.\.projectLines\.map\(\(\) => null\), \.\.\.worldLines\.map\(\(\) => null\), \.\.\.paying\.lines\.map\(\(\) => null\)\];/, "and whatever it tells is recorded as told, never what they sent");
   assert.match(pulse, /\.eq\("type", "message"\)\.eq\("data->>sender", "me"\)/, "what they sent is in the picture, so an answered question is not called unanswered");
   assert.match(pulse, /const sentMail = mailRows\.filter\(\(e\) => Array\.isArray\(e\.data\.labels\) && e\.data\.labels\.includes\("SENT"\)\);/);
   assert.match(pulse, /const evidence = \[citedItems\.join\("\\n"\), chatText, about, flaggedText,/, "the check gets what the message stands on, the chats it comes from and who the people are");
