@@ -23,6 +23,12 @@ test("every source's files are seen in one shape, logos and oversized files left
   const later = { source: "connected:notes", external_id: "n1", data: { files: [{ key: "doc-3", name: "Plan.docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: 30000 }] } };
   assert.deepEqual(files.filesOf(later).map((f) => f.key), ["doc-3"]);
   assert.deepEqual(files.filesOf({ data: { body: "no files" } }), []);
+  // A picture set into bulk mail's body is decoration; one attached, or in
+  // the person's own mail, is read.
+  const banner = (labels, inline) => ({ source: "gmail", external_id: "m2", data: { labels, attachments: [{ filename: "hero.jpg", size: 90000, attachmentId: "b1", inline }] } });
+  assert.equal(files.filesOf(banner(["INBOX", "CATEGORY_PROMOTIONS"], true)).length, 0);
+  assert.equal(files.filesOf(banner(["INBOX", "CATEGORY_PROMOTIONS"], false)).length, 1);
+  assert.equal(files.filesOf(banner(["INBOX", "CATEGORY_PERSONAL"], true)).length, 1);
 });
 
 test("a file is read once; one that could not be fetched is tried again, less often, then once a month", () => {
