@@ -40,15 +40,37 @@
 #catalogue-setup .catalogue-steps {display:grid;gap:0.5rem;margin:1rem 0 0;padding-left:1.375rem;font-size:0.9375rem;color:var(--muted);line-height:1.6;}
 #catalogue-setup .catalogue-accounts {display:grid;gap:0.375rem;margin:0;padding-left:1.375rem;font-size:0.9375rem;color:var(--fg);line-height:1.5;}
 #catalogue-setup p.catalogue-notice {color:var(--warn-soft);}
-.connection-catalogue .mcp-hero {padding:1.5rem 0 2rem!important;margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;backdrop-filter:none!important;background:none!important;overflow:visible!important;}
-.connection-catalogue .mcp-copy {text-align:center;max-width:none;padding:0!important;margin:0 0 0.75rem!important;}
-.connection-catalogue .mcp-description {font-size:0.9375rem!important;color:var(--muted)!important;}
-.connection-catalogue .mcp-pill {max-width:40rem!important;margin:0 auto!important;}
+/* Connect anything: where the catalogue ends and anything at all can be pasted
+   in. Its own space below the skills, and a roomy box with the ember edge of
+   the theme switch and the talk button: an ember ring passes round it as it
+   first comes into view, while Connect, the tab's one main action, has its
+   brush stroke painted on. The edge brightens while the box is in use, and the
+   stroke is painted over once there is something to connect. */
+.connection-catalogue .mcp-hero {margin:3rem 0 0;padding:2.75rem 0 2rem;border-top:1px solid rgba(var(--fg-rgb),.08);text-align:center;}
+.connect-anything-title {margin:0 0 1.25rem;font:600 var(--ui-heading)/1.35 var(--font-ui);color:var(--fg);text-wrap:balance;}
+.connection-catalogue .mcp-pill {max-width:40rem;margin:0 auto;border:1px solid rgba(var(--accent-rgb),.24);border-radius:1rem;background:var(--raised);box-shadow:0 0 2.5rem rgba(var(--accent-rgb),.07);transition:border-color .3s,box-shadow .3s;}
+.connection-catalogue .mcp-pill:hover {border-color:rgba(var(--accent-rgb),.38);}
+.connection-catalogue .mcp-pill:focus-within {border-color:rgba(var(--accent-rgb),.65);box-shadow:0 0 0 1px rgba(var(--accent-rgb),.22),0 0 2.25rem .25rem rgba(var(--accent-rgb),.16);}
+.connection-catalogue .mcp-pill.lit {animation:ember-pass 1.6s cubic-bezier(.6,.04,.3,1) 1;}
+@keyframes ember-pass {
+  0% {box-shadow:0 0 2.5rem rgba(var(--accent-rgb),.07);}
+  35% {box-shadow:0 0 0 1.5px rgba(var(--accent-rgb),.8),0 0 2.25rem .5rem rgba(var(--accent-rgb),.32),inset 0 0 1.5rem rgba(var(--accent-rgb),.12);}
+  100% {box-shadow:0 0 2.5rem rgba(var(--accent-rgb),.07);}
+}
+.connection-catalogue .mcp-pill-inner {display:flex;align-items:center;gap:1rem;padding:0.875rem 1.25rem 0.875rem 1.375rem;}
+/* One line, level with Connect; it grows as a longer paste wraps. */
+#mcp-url-input {flex:1;min-width:0;min-height:1.5em;max-height:13.75rem;padding:0;border:0;background:transparent;color:var(--fg);font:inherit;font-size:0.9375rem;line-height:1.5;text-align:left;resize:none;outline:none;overflow-y:auto;}
+#mcp-url-input::placeholder {color:var(--muted);}
+/* The box's own border shows focus. */
+#mcp-url-input:focus-visible {outline:none;}
+.mcp-connect-btn::before {transition:clip-path .8s cubic-bezier(.65,0,.35,1);}
+.mcp-connect-btn.unpainted::before {clip-path:inset(0 100% 0 0);}
+.mcp-connect-btn.ready::after {clip-path:inset(0 0 0 0);}
+@media (prefers-reduced-motion: reduce) {.mcp-connect-btn::before {transition:none;} .connection-catalogue .mcp-pill.lit {animation:none;}}
 .connection-catalogue #mcp-credentials {max-width:40rem!important;margin-left:0!important;}
 .connection-catalogue #mcp-auth-status {text-align:left!important;}
-.connection-catalogue .mcp-scan {display:flex;width:fit-content;align-items:center;gap:0.375rem;margin:0.75rem auto 0;padding:0.25rem 0.625rem 0.25rem 0.5rem;border:1px solid rgba(var(--ok-rgb),.22);border-radius:62.4375rem;background:rgba(var(--ok-rgb),.06);color:var(--muted);font-size:0.7812rem;line-height:1.4;}
+.connection-catalogue .mcp-scan {display:flex;align-items:center;justify-content:center;gap:0.375rem;margin:0.875rem 0 0;color:var(--muted);font-size:0.7812rem;line-height:1.4;}
 .connection-catalogue .mcp-scan svg {flex:none;color:var(--ok);}
-.connection-catalogue .mcp-browse {justify-content:center;}
 .connection-catalogue :is(button,input,textarea,summary,a):focus-visible {outline:2px solid var(--accent-link);outline-offset:0.25rem;}
 .connection-catalogue [hidden] {display:none!important;}
 /* Two columns on a phone, each half the width whatever the names: a plain 1fr

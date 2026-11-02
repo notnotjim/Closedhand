@@ -5,6 +5,11 @@
   // The web chat's copy icon, and a tick once copied.
   const COPY_ICON='<svg width="1rem" height="1rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
   const DONE_ICON='<svg width="1rem" height="1rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+  // What went wrong, in words meant for the person: the server's own, or the
+  // plain fallback. A script's error ("Cannot read properties of undefined")
+  // or the browser's ("Failed to fetch") never shows.
+  const said=(e,fallback)=>e&&e.plain?e.message:fallback;
+  const plain=text=>Object.assign(new Error(text),{plain:true});
   async function loadCatalogue() {
     if(loading)return;
     loading=true;byId('catalogue-retry').hidden=true;
@@ -12,11 +17,12 @@
     try {
       const response=await fetch('/api/connection-catalogue',{cache:'no-store'});
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||'Could not load connections.');
+      if(!response.ok)throw plain(data.error||'Could not load connections.');
+      if(!Array.isArray(data.services))throw plain('Could not load connections.');
       services=data.services;loaded=true;
       byId('catalogue-status').textContent='';
       render(query);
-    }catch(e){byId('catalogue-status').textContent=e.message;byId('catalogue-retry').hidden=false;}finally{loading=false;}
+    }catch(e){byId('catalogue-status').textContent=said(e,'Could not load connections.');byId('catalogue-retry').hidden=false;}finally{loading=false;}
   }
   // Connected apps live under "Connected"; this list holds the rest, as
   // tiles. The search at the top of the tab narrows it.
@@ -126,7 +132,7 @@
       try{
         const response=await fetch(b.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({[b.field]:input.value})});
         const data=await response.json().catch(()=>({}));
-        if(!response.ok)throw new Error(data.error||'Could not connect. Try again.');
+        if(!response.ok)throw plain(data.error||'Could not connect. Try again.');
         input.value='';
         [intro,steps,link,form].forEach(n=>{n.hidden=true;});
         const accounts=data.accounts||[];
@@ -140,7 +146,7 @@
         box.append(el('p','','Balances and transactions arrive in the next few minutes, then update a few times a day.'));
         if(typeof window.loadStatus==='function')window.loadStatus();
         window.refreshConnectionCatalogue();
-      }catch(e){status.textContent=e.message;submit.disabled=false;}
+      }catch(e){status.textContent=said(e,'Could not connect. Try again.');submit.disabled=false;}
     };
     box.append(intro,steps,link,form);title.focus();
   }
@@ -158,7 +164,7 @@
     if(s.mode==='microsoft'){(window.top||window).location.href='/setup#step-accounts=microsoft';return;}
     if(s.mode==='oauth'){(window.top||window).location.href='/auth/'+s.key+(['google','microsoft'].includes(s.key)?'?extra=1':'');return;}
     if(s.mode==='mcp'){
-      byId('mcp-url-input').value=s.url;
+      byId('mcp-url-input').value=s.url;window.mcpGrowInput(byId('mcp-url-input'));
       byId('mcp-url-input').scrollIntoView({block:'center',behavior:'smooth'});
       button.disabled=true;
       try{await window.addMcpConnection();}finally{button.disabled=false;}
@@ -191,9 +197,9 @@
       event.preventDefault();submit.disabled=true;status.textContent='Saving…';
       try{
         const response=await fetch('/api/connection-catalogue/'+s.key+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:id.value,clientSecret:secret.value})});
-        const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save. Try again.');
+        const data=await response.json();if(!response.ok)throw plain(data.error||'Could not save. Try again.');
         secret.value='';(window.top||window).location.href=data.redirectUrl;
-      }catch(e){status.textContent=e.message;submit.disabled=false;}
+      }catch(e){status.textContent=said(e,'Could not save. Try again.');submit.disabled=false;}
     };
     box.append(help,link,form);title.focus();
   }

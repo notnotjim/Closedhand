@@ -83,7 +83,7 @@ test("the tab is laid out as Connected, then Add a connection", () => {
   assert.match(connected, /id="mcp-list"/, "pasted servers sit with everything else that is live");
   const add = dashboard.slice(dashboard.indexOf('id="mcp-section"'), dashboard.indexOf("<!-- Workers Tab Content -->"));
   for (const want of ["<h2>Add a connection</h2>", 'id="apple-local-section"', '<h3 class="add-sub" id="catalogue-apps-heading">Apps</h3>',
-    '<h3 class="add-sub">Connect anything</h3>', "Servers and skills are scanned for security risks</p>"]) {
+    '<h3 class="connect-anything-title">Connect anything</h3>', "Servers and skills are scanned for security risks</p>"]) {
     assert.ok(add.includes(want), want);
   }
   assert.doesNotMatch(dashboard, /Your MCPs|<summary>Connect more<\/summary>|id="catalogue-search"|Add a key when prompted|int-more-sub/);
@@ -102,7 +102,7 @@ test("the tab is laid out as Connected, then Add a connection", () => {
   assert.match(dashboard, /\(item\.builtin \? '' : '<div class="conn-drawer-actions"><button onclick="event\.stopPropagation\(\);deleteSkill\(/, "only an added skill can be removed");
   assert.match(dashboard, /async function installSkill\(acceptWarnings, url\) \{[\s\S]*?var btn = document\.getElementById\('mcp-connect-btn'\);/, "a skill's scan shows under the box it was pasted into");
   const at = (needle) => dashboard.indexOf(needle);
-  assert.ok(at('<h2>Add a connection</h2>') < at('id="connection-catalogue-list"') && at('id="connection-catalogue-list"') < at('id="skills-section"') && at('id="skills-section"') < at('<h3 class="add-sub">Connect anything</h3>'),
+  assert.ok(at('<h2>Add a connection</h2>') < at('id="connection-catalogue-list"') && at('id="connection-catalogue-list"') < at('id="skills-section"') && at('id="skills-section"') < at('<h3 class="connect-anything-title">Connect anything</h3>'),
     "Skills sit in Add a connection, under the apps and above the Connect anything box");
   assert.ok(at('id="skills-section"') < at('<div id="catalogue-setup" hidden>'), "and hide with the apps while one is being set up");
   assert.match(dashboard, /<h2>Chat apps<\/h2>\n\s*<p class="section-desc">Where you talk to Closedhand, besides the web chat\.<\/p>/, "Chat apps say what they are for");
@@ -154,12 +154,17 @@ test("a label inside Add a connection never reads as level with its heading", ()
   assert.match(css, /#mcp-section > #apple-local-section \{margin-bottom:2rem;\}/, "the Mac card sits as far from Apps as Apps from Connect anything");
 });
 
-test("Connect anything sits centred under the apps", () => {
+test("Connect anything stands apart under the skills, inviting, with Connect as the tab's main action", () => {
   const css = read("webapp/public/connection-catalogue.css");
-  assert.match(css, /\.connection-catalogue \.mcp-copy \{text-align:center;/);
-  assert.match(css, /\.connection-catalogue \.mcp-pill \{max-width:40rem!important;margin:0 auto!important;\}/);
-  assert.match(css, /\.connection-catalogue \.mcp-scan \{display:flex;width:fit-content;align-items:center;gap:0.375rem;margin:0.75rem auto 0;/);
-  assert.match(css, /\.connection-catalogue \.mcp-browse \{justify-content:center;\}/);
+  const dash = read("webapp/views/dashboard.html");
+  // It had lost its pull, and sat almost on the skills above it.
+  assert.match(css, /\.connection-catalogue \.mcp-hero \{margin:3rem 0 0;padding:2\.75rem 0 2rem;border-top:1px solid rgba\(var\(--fg-rgb\),\.08\);text-align:center;\}/);
+  assert.match(css, /\.connection-catalogue \.mcp-pill \{max-width:40rem;margin:0 auto;border:1px solid rgba\(var\(--accent-rgb\),\.24\);[^}]*box-shadow:0 0 2\.5rem rgba\(var\(--accent-rgb\),\.07\);/, "an ember edge, as on the theme switch and the talk button");
+  assert.match(css, /\.connection-catalogue \.mcp-pill\.lit \{animation:ember-pass 1\.6s[^}]*1;\}/, "an ember ring passes round it once");
+  assert.match(css, /prefers-reduced-motion: reduce\) \{\.mcp-connect-btn::before \{transition:none;\} \.connection-catalogue \.mcp-pill\.lit \{animation:none;\}\}/);
+  assert.match(dash, /<button onclick="addMcpConnection\(\)" id="mcp-connect-btn" class="cta mcp-connect-btn unpainted">Connect<\/button>/, "Connect is the brush-stroke main action");
+  assert.match(dash, /classList\.toggle\('ready', !!el\.value\.trim\(\)\)/, "its stroke is painted over once there is something to connect");
+  assert.match(css, /\.connection-catalogue \.mcp-scan \{display:flex;align-items:center;justify-content:center;gap:0\.375rem;margin:0\.875rem 0 0;color:var\(--muted\);/, "the scan note is a plain line, not a capsule");
 });
 
 test("a connected chat app opens like any connection: rows, the day it connected, the chat and turning it off", () => {

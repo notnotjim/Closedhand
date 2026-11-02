@@ -19,7 +19,8 @@
 .goal-summary .goal-progress:first-child { margin-top: 0; }
 .goal-tick:disabled { cursor: default; }
 
-.goal-card { background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.75rem; padding: 1.125rem 1.25rem; margin: 0 0 0.75rem; transition: border-color .15s; }
+/* Its box and inset are every list card's (interface.css). */
+.goal-card { background: var(--raised); transition: border-color .15s; }
 .goal-card:hover { border-color: rgba(var(--fg-rgb),0.22); }
 .goal-card { cursor: pointer; }
 .goal-detail { cursor: auto; }
@@ -94,7 +95,6 @@
 #tab-projects :is(.goal-tick, .goal-day) { padding: 0; }
 #tab-projects :is(button, input):focus-visible { outline: 2px solid var(--accent-link); outline-offset: 0.1875rem; }
 @media (max-width: 600px) {
-  .goal-card { padding: 1rem; }
   .goal-progress { flex-wrap: wrap; }
   .goal-facts, .goal-summary { grid-template-columns: 1fr; gap: 2px 0; }
   .goal-summary dd { margin-bottom: 0.5rem; }

@@ -312,14 +312,6 @@
     .int-card .int-badge.problem { display: inline-flex; align-items: center; justify-content: center; width: 1.125rem; height: 1.125rem; border-radius: 50%; background: var(--accent); color: #FFF; font-size: 0.75rem; font-weight: 700; line-height: 1; }
     .tab.has-attn::after { content: ""; display: inline-block; width: 0.4375rem; height: 0.4375rem; margin-left: 0.3125rem; border-radius: 50%; background: var(--accent); position: relative; top: -0.4375rem; }
 
-    /* Beckon: the add box answers the card. The border spins up, the logos
-       wake, and the box takes focus. */
-    .mcp-pill.beckon::before {
-      background: conic-gradient(from 0deg, transparent, rgba(var(--accent-strong-rgb),0.9), transparent, rgba(var(--accent-strong-rgb),0.5), transparent) !important;
-      animation-duration: 2.4s !important;
-    }
-    .mcp-pill.beckon .mcp-pill-inner { box-shadow: 0 0 0 1px rgba(var(--accent-strong-rgb),0.35), 0 0 2rem rgba(var(--accent-strong-rgb),0.18); }
-    .mcp-hero.beckon .mcp-logo-item { opacity: 0.85; }
     @keyframes bridge-beckon { 0%, 100% { box-shadow: none; } 40% { box-shadow: 0 0 0 1px rgba(var(--accent-strong-rgb),0.5), 0 0 1.5rem rgba(var(--accent-strong-rgb),0.2); } }
     .bridge-beckon { animation: bridge-beckon 1.6s ease 1; }
 
@@ -1686,8 +1678,8 @@
     /* A routine: what it does and when on the left, its actions and On box on
        the right, wrapping under on a phone. One that is off reads quieter. */
     .routine-card { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1rem; padding: 0.75rem 0.875rem; }
-    /* In the dashboard, in line with the task cards' headers (interface.css). */
-    .dashboard-container .routine-card { padding: 1.25rem; gap: 0.75rem 1rem; }
+    /* In the dashboard its inset is every list card's (interface.css). */
+    .dashboard-container .routine-card { gap: 0.75rem 1rem; }
     .routine-card .routine-main { flex: 1 1 18rem; min-width: 0; }
     .routine-card .auto-card-name { white-space: normal; }
     .routine-card .routine-about { font-size: 0.8125rem; color: var(--fg); margin-top: 0.125rem; }
@@ -1998,9 +1990,7 @@
       .dashboard-container { padding: 0.75rem 1rem; }
       .tab { font-size: 0.8125rem; padding: 0.625rem 0.75rem; }
       .settings-group { margin-bottom: 0.75rem; }
-      .conn-card, .auto-card { padding: 0.75rem; }
-      /* The card's padding and its header's, as on a task card beside it. */
-      .dashboard-container .routine-card { padding: 2rem; }
+      .conn-card { padding: 0.75rem; }
     }
 
     /* === Usage tab (BYOK spend) === */
@@ -2179,13 +2169,6 @@
 
         <!-- Connect a Service - Hero Section -->
         <style>
-          @keyframes mcp-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-          @keyframes mcp-float-1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(0.5rem,-0.75rem); } }
-          @keyframes mcp-float-2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-0.625rem,0.5rem); } }
-          @keyframes mcp-float-3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(0.375rem,0.625rem); } }
-          .mcp-logo-item { transition: transform 0.3s, opacity 0.3s; opacity: 0.35; }
-          .mcp-logo-item:hover { opacity: 0.8; transform: scale(1.3); }
-          .mcp-hero:hover .mcp-logo-item { opacity: 0.5; }
           /* A furled card: the header is a button, the chevron turns when open. */
           .furl-handle { display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid rgba(var(--fg-rgb),0.06); color:inherit; font:inherit; cursor:pointer; }
           .furl-handle h2 { display:flex; align-items:center; gap:0.5rem; }
@@ -2239,17 +2222,6 @@
           .wallet-card-row .wallet-status + .wallet-row-actions { margin-left:0; }
           .wallet-card-row select { padding:0.1875rem 0.5rem; background:var(--bg); border:1px solid rgba(var(--fg-rgb),0.16); border-radius:0.375rem; color:var(--fg); font:inherit; font-size:0.75rem; }
           #wallet-cards .int-wrap, #wallet-addresses .int-wrap { margin-top:2px; }
-          /* Paste anything to connect it: a field like the others, outlined, its
-             border brightening while typed in; Connect an outlined button. */
-          .mcp-pill { border-radius: 1rem; border: 1px solid rgba(var(--fg-rgb),0.16); transition: border-color 0.15s; }
-          .mcp-pill:focus-within { border-color: rgba(var(--accent-strong-rgb),0.45); }
-          .mcp-pill-inner { display: flex; align-items: center; gap: 0.5rem; background: rgba(var(--raised-rgb),0.95); border-radius: 1rem; padding: 0.875rem 1rem; }
-          .mcp-connect-btn {
-            padding: 0.4375rem 1.125rem; background: none; border: 1px solid rgba(var(--fg-rgb),0.16);
-            border-radius: 0.5rem; color: var(--fg); font-size: 0.8125rem; font-weight: 500; cursor: pointer;
-            font-family: inherit; white-space: nowrap; transition: background 0.15s;
-          }
-          .mcp-connect-btn:hover { background: rgba(var(--fg-rgb),0.08); }
         </style>
         <!-- Add a connection: the apps Closedhand has built in (only those not
              yet connected), the skills, then anything at all, pasted in. -->
@@ -2277,15 +2249,12 @@
             </div>
             <div id="catalogue-setup" hidden></div>
           <div class="mcp-hero">
-            <div class="mcp-copy">
-              <h3 class="add-sub">Connect anything</h3>
-            </div>
+            <h3 class="connect-anything-title">Connect anything</h3>
 
-            <!-- Glowing pill input (animated rotating conic-gradient border from 21st.dev GlowingInput pattern) -->
-            <div class="mcp-pill" style="max-width:32.5rem;margin:0 auto;">
+            <div class="mcp-pill">
               <div class="mcp-pill-inner">
-                <textarea id="mcp-url-input" rows="1" placeholder="Paste an MCP server, skill or API key" aria-label="MCP server, skill or API key" oninput="mcpGrowInput(this)" onkeydown="mcpInputKey(event)" onpaste="mcpPaste(event)" style="flex:1;padding:0;background:transparent;border:none;color:var(--fg);font-size:0.8125rem;outline:none;font-family:inherit;resize:none;line-height:1.5;max-height:13.75rem;overflow-y:auto;" spellcheck="false"></textarea>
-                <button onclick="addMcpConnection()" id="mcp-connect-btn" class="mcp-connect-btn">Connect</button>
+                <textarea id="mcp-url-input" rows="1" placeholder="Paste an MCP server, skill or API key" aria-label="MCP server, skill or API key" oninput="mcpGrowInput(this)" onkeydown="mcpInputKey(event)" onpaste="mcpPaste(event)" spellcheck="false"></textarea>
+                <button onclick="addMcpConnection()" id="mcp-connect-btn" class="cta mcp-connect-btn unpainted">Connect</button>
               </div>
             </div>
 
@@ -4078,8 +4047,10 @@
       el.textContent = text;
     }
 
-    // Empty, the box is as tall as the words that say what it takes.
+    // Empty, the box is as tall as the words that say what it takes. With
+    // something in it, Connect's stroke is painted over: ready to go.
     function mcpGrowInput(el) {
+      document.getElementById('mcp-connect-btn').classList.toggle('ready', !!el.value.trim());
       el.style.height = 'auto';
       var empty = !el.value;
       if (empty) el.value = el.placeholder;
@@ -4092,6 +4063,18 @@
       var box = document.getElementById('mcp-url-input'), width = 0;
       if (!box || !window.ResizeObserver) return;
       new ResizeObserver(function () { if (box.offsetWidth && box.offsetWidth !== width) { width = box.offsetWidth; mcpGrowInput(box); } }).observe(box);
+    })();
+    // The first time the box comes into view an ember ring passes round it and
+    // Connect's brush stroke is painted on.
+    (function () {
+      var btn = document.getElementById('mcp-connect-btn'), pill = btn && btn.closest('.mcp-pill');
+      if (!btn) return;
+      if (!window.IntersectionObserver) return btn.classList.remove('unpainted');
+      new IntersectionObserver(function (seen, watch) {
+        if (!seen.some(function (e) { return e.isIntersecting; })) return;
+        watch.disconnect();
+        setTimeout(function () { pill.classList.add('lit'); btn.classList.remove('unpainted'); }, 300);
+      }, { threshold: 1 }).observe(btn);
     })();
 
     function mcpInputKey(e) {
@@ -7406,6 +7389,7 @@
         _pendingSkillUrl = null;
         warnEl.style.display = 'none';
         document.getElementById('mcp-url-input').value = '';
+        mcpGrowInput(document.getElementById('mcp-url-input'));
         mcpStatus('');
         showToast('Skill "' + data.skill.name + '" added');
         loadSkills();
