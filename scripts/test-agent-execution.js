@@ -294,6 +294,23 @@ test("a background job that failed with nothing to show says what and why, and h
   assert.doesNotMatch(failedNote({ goal: "x" }), /dashboard/);
 });
 
+test("a routine that failed says so in plain words, that it tries again by itself, and says a used-up allowance once", () => {
+  const { failedNote, stopReason } = require("../lib/task-delivery");
+  const used = "The LLM said its allowance is used up.";
+  // It was read as the work allowance of one task, and told to try again.
+  assert.equal(failedNote({ automation_id: "a1", runtime: { config: { name: "Morning briefing", trigger_type: "scheduled" } }, error: used }),
+    'I couldn\'t finish "Morning briefing": your LLM\'s allowance ran out. It will try again at its next scheduled time.');
+  assert.match(failedNote({ automation_id: "a2", runtime: { config: { name: "New invoice", trigger_type: "event" } }, error: used }), /It will try again next time\.$/);
+  assert.match(failedNote({ automation_id: "a3", runtime: { config: { name: "Tidy inbox", trigger_type: "manual" } }, error: used }), /Say "try again" and I'll start it fresh\.$/, "one that runs only when asked waits to be asked");
+  const managed = { profile: { settings: { model_config: { included: true }, included_api_key: "sealed" } } };
+  assert.equal(stopReason(used, managed), "this month's Managed Models use has reached its fair-use limit", "the words a paused task uses");
+  assert.equal(stopReason("The LLM kept asking to slow down."), "your LLM kept asking it to slow down");
+  assert.match(failedNote({ automation_id: "a1", runtime: { config: { name: "Book the table", trigger_type: "scheduled", run_once: true } }, error: "fetch failed" }), /Say "try again" and I'll start it fresh\.$/, "one set for a single date does not run again");
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "task-delivery.js"), "utf8");
+  assert.match(src, /const toldAlready = !report && row\.automation_id && ALLOWANCE_USED\.test\(String\(row\.error \|\| ""\)\)/, "a routine's next run that hits the same wall says nothing more");
+  assert.match(src, /for \(const dest of toldAlready \? \[\] : destinations\)/);
+});
+
 test("a background job gets a short name, and until then its first sentence cut at a word", () => {
   const verification = fs.readFileSync(path.join(__dirname, "..", "lib", "verification.js"), "utf8");
   assert.match(verification, /The title is 3 to 7 words/);
