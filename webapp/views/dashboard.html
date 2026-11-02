@@ -8652,7 +8652,7 @@
       try {
         var res = await fetch('/api/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
           answer_in: answerIn, goal: goal, title: document.getElementById('auto-name-input').value.trim(),
-          members: members.length ? members : undefined }) });
+          members: members.length ? members : undefined, project_id: _planProject || undefined }) });
         if (!res.ok) failed = (await res.json().catch(function () { return {}; })).error || 'It could not start.';
       } catch (e) { failed = 'Could not reach Closedhand.'; }
       btn.disabled = false; goLabel();

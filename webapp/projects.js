@@ -271,9 +271,11 @@ function register(app, { db, userId: who, withAppearance }) {
       const p = data && data[0];
       if (!p || !["active", "archived"].includes(p.status)) return res.status(404).send(withAppearance(missingHtml()));
       const { data: threads } = await db.from("conversation_threads").select("messages").eq("user_id", userId).eq("project_id", p.id).limit(1);
-      const { data: routines } = await db.from("automations").select("name, status, trigger_type, trigger_human_schedule, trigger_event_source, trigger_event_condition, trigger_when, trigger_offset_minutes")
+      // Its teams and routines still to run; a one-off that has run is done with.
+      const { data: routines } = await db.from("automations").select("name, status, members, trigger_type, trigger_human_schedule, trigger_event_source, trigger_event_condition, trigger_when, trigger_offset_minutes")
         .eq("user_id", userId).eq("project_id", p.id).order("created_at", { ascending: true });
-      res.send(withAppearance(projectHtml(p, Date.now(), (threads && threads[0] && threads[0].messages) || [], await goalOf(userId, p.id), routines || [])));
+      const live = (routines || []).filter((r) => r.status !== "done" && r.status !== "expired");
+      res.send(withAppearance(projectHtml(p, Date.now(), (threads && threads[0] && threads[0].messages) || [], await goalOf(userId, p.id), live)));
     } catch (e) {
       console.error("Project page error:", e.message);
       res.status(500).send("Could not show this project.");
@@ -429,7 +431,12 @@ function projectHtml(p, now = Date.now(), messages = [], goal = null, routines =
     side.push(section("People", people.length, `<ul class="people">${people.map((x) => `<li><span class="avatar t${tint(x.name)}" aria-hidden="true">${esc(initials(x.name))}</span><span class="who"><span class="name">${esc(x.name)}${x.position && !/^unknown$/i.test(String(x.position).trim()) ? ` <span class="stance ${stance(x.position)}">${esc(x.position)}</span>` : ""}</span>${x.said ? `<span class="said">${page.inline(x.said)}</span>` : ""}</span></li>`).join("")}</ul>`));
   }
   if (facts.length) side.push(section("Worth knowing", 0, `<ul class="facts">${facts.map((t) => `<li>${page.inline(t)}</li>`).join("")}</ul>`));
-  if (routines.length) side.push(section("Routines", routines.length, `<ul class="routines">${routines.map((r) => `<li><span class="r-name">${esc(routineName(r.name))}</span><span class="r-when">${esc(routineWhen(r))}</span></li>`).join("")}</ul>`));
+  // Its teams, each with its agents, then the routines on their own, as the
+  // Agents tab sorts them.
+  const isTeam = (r) => Array.isArray(r.members) && r.members.length > 0;
+  const teams = routines.filter(isTeam), solo = routines.filter((r) => !isTeam(r));
+  if (teams.length) side.push(section("Teams", teams.length, `<ul class="routines">${teams.map((r) => `<li><span class="r-name">${esc(routineName(r.name))}</span><span class="r-agents">${esc(r.members.map((m) => m.name).join(", "))}</span><span class="r-when">${esc(routineWhen(r))}</span></li>`).join("")}</ul>`));
+  if (solo.length) side.push(section("Routines", solo.length, `<ul class="routines">${solo.map((r) => `<li><span class="r-name">${esc(routineName(r.name))}</span><span class="r-when">${esc(routineWhen(r))}</span></li>`).join("")}</ul>`));
   const rules = String(p.instructions || "").split(/\n+/).filter(Boolean);
   if (rules.length) side.unshift(section("Instructions", 0, `<ul class="rules">${rules.map((t) => `<li>${page.inline(t)}</li>`).join("")}</ul>`));
   const empty = !open.length && !decided.length && !context.length && !side.length && !p.summary && !p.about && !goal && !(messages || []).length;
@@ -572,6 +579,7 @@ a.ctx:hover, a.ctx:focus-visible { border-color: rgba(var(--accent-rgb),0.5); tr
 .routines li:last-child { border-bottom: 0; }
 .r-name { font-weight: 500; }
 .r-when { font-size: 0.8438rem; color: var(--muted); }
+.r-agents { font-size: 0.8438rem; color: var(--fg); }
 .facts li { position: relative; padding: 0.375rem 0 0.375rem 1rem; font-size: 0.9375rem; }
 .facts li::before { content: ""; position: absolute; left: 0; top: 0.9375rem; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--accent); opacity: .7; }
 .goal { margin: 0 0 2rem; }

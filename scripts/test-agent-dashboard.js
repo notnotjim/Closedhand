@@ -144,6 +144,7 @@ function agentRoutes(records, rpc = async () => ({ data: [{ id: 'x' }], error: n
       const q = {
         select() { return q; }, eq(k, v) { filters.push([k, v]); return q; },
         insert(row) { inserted.push({ table, row }); return { select: () => ({ single: async () => ({ data: { id: 'new-' + inserted.length, ...row }, error: null }) }) }; },
+        maybeSingle: async () => ({ data: (records[table] || []).filter((r) => filters.every(([k, v]) => r[k] === v))[0] || null, error: null }),
         then(resolve) { return Promise.resolve({ data: (records[table] || []).filter((r) => filters.every(([k, v]) => r[k] === v)), error: null }).then(resolve); },
       };
       return q;
@@ -153,7 +154,8 @@ function agentRoutes(records, rpc = async () => ({ data: [{ id: 'x' }], error: n
   const handlers = {};
   const app = { get(p, fn) { handlers['GET ' + p] = fn; }, post(p, fn) { handlers['POST ' + p] = fn; } };
   const block = (from, to) => server.slice(server.indexOf(from), server.indexOf(to, server.indexOf(from)));
-  const code = block('// Where a task started on the Agents tab can answer:', 'app.get("/api/agents/:id", async')
+  const code = block('// The project a routine is saved into', 'app.post("/api/automations"')
+    + block('// Where a task started on the Agents tab can answer:', 'app.get("/api/agents/:id", async')
     + block('// A task started from the Agents tab: what to do, its scope', '\n// ============================================================\n// AUTOMATIONS')
     + block('// Something to tell a task while it works', 'app.post("/api/agents/:id/stop"');
   vm.runInNewContext(code, { app, supabase: db, getUserIdFromRequest: () => 'owner', crypto: require('node:crypto'), console: { error() {} } });
@@ -181,6 +183,12 @@ test('a task started on the tab carries its scope and name, and answers in the c
   assert.equal(h.inserted[1].row.chat_id, 'owner', 'the web chat is the person\'s own');
   assert.equal(h.inserted[1].row.title, null);
   assert.equal(h.inserted[1].row.runtime, undefined);
+  // In a project, as the plan's sentence can say: the task works inside it.
+  const inProject = agentRoutes({ ...links, projects: [{ id: 'p1', user_id: 'owner', status: 'active' }, { id: 'p2', user_id: 'other', status: 'active' }] });
+  await inProject.call('POST /api/agents', { body: { goal: 'Find a van for moving day', answer_in: 'web', project_id: 'p1' } });
+  assert.equal(JSON.stringify(inProject.inserted[0].row.runtime), '{"projectId":"p1"}');
+  const notTheirs = await inProject.call('POST /api/agents', { body: { goal: 'Find a van for moving day', answer_in: 'web', project_id: 'p2' } });
+  assert.equal(notTheirs.code, 400, "another account's project is not theirs");
   const nope = await h.call('POST /api/agents', { body: { goal: 'Post to the team', answer_in: 'slack' } });
   assert.equal(nope.code, 400, 'another account\'s chat is not theirs');
   assert.equal(h.inserted.length, 2);

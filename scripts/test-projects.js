@@ -503,7 +503,7 @@ test("a routine can belong to a project: it runs with the project and reports in
   const handlers = read("lib/tools/handlers.js");
   assert.match(handlers, /const turn = projects\.turnOf\(userId\);\n\s*if \(turn && turn\.how !== "offer"\) project = \(await projects\.warm\(userId\)\)\.find\(\(p\) => p\.id === turn\.id && p\.status === "active"\) \|\| null;/);
   assert.match(handlers, /\.\.\.\(project \? \{ project_id: project\.id \} : \{\}\),/);
-  assert.match(read("lib/automations.js"), /THIS ROUTINE IS PART OF THE PROJECT \$\{p\.emoji\} \$\{p\.name\}\. Follow its instructions for anything in it; its record:\\n\$\{projects\.renderFull\(p, await projects\.fileTexts\(p\)/);
+  assert.match(read("lib/automations.js"), /prompt \+= await require\("\.\/projects"\)\.brief\(userId, automation\.project_id, "ROUTINE"\);/);
   const delivery = read("lib/task-delivery.js");
   assert.match(delivery, /const marked = project && message && !message\.trimStart\(\)\.startsWith\(project\.emoji\) \? `\$\{project\.emoji\} \$\{message\.trimStart\(\)\}` : message;/);
   assert.match(delivery, /if \(sentText && project\) await require\("\.\/projects"\)\.said\(row\.user_id, project, sentText\);\n\s*else if \(sentText\)/, "kept in the project's conversation, not the general one");
@@ -519,6 +519,35 @@ test("a routine can belong to a project: it runs with the project and reports in
   const { projectHtml } = require("../webapp/projects");
   const html = projectHtml(move(), Date.parse("2026-11-01T12:00:00Z"), [], null, [{ name: "van-reminder", status: "active", trigger_type: "scheduled", trigger_human_schedule: "Every Friday at 9am" }]);
   assert.match(html, /<h2>Routines<span class="count">1<\/span><\/h2><ul class="routines"><li><span class="r-name">Van reminder<\/span><span class="r-when">Every Friday at 9am<\/span><\/li><\/ul>/);
+  // A team is listed as one, with its agents, before the routines.
+  const both = projectHtml(move(), Date.parse("2026-11-01T12:00:00Z"), [], null, [{ name: "van-reminder", status: "active", trigger_type: "scheduled", trigger_human_schedule: "Every Friday at 9am" },
+    { name: "Moving day", status: "idle", trigger_type: "manual", members: [{ name: "Vans", part: "x" }, { name: "Utilities", part: "y" }] }]);
+  assert.match(both, /<h2>Teams<span class="count">1<\/span><\/h2><ul class="routines"><li><span class="r-name">Moving day<\/span><span class="r-agents">Vans, Utilities<\/span><span class="r-when">When you ask<\/span><\/li><\/ul><\/section><section><h2>Routines<span class="count">1<\/span>/);
+  assert.match(read("webapp/projects.js"), /const live = \(routines \|\| \[\]\)\.filter\(\(r\) => r\.status !== "done" && r\.status !== "expired"\);/, "a one-off that has run is done with");
+});
+
+// Work inside a project carries the project: a routine, a task started in the
+// project's conversation or with the project chosen, and each agent of a team,
+// which worked from its own part alone.
+test("a task, a routine and each agent of a team in a project work from the project's record", async () => {
+  const projects = require("../lib/projects");
+  const userId = "00000000-0000-0000-0000-00000000b71e";
+  projects._cache.set(userId, { at: Date.now(), rows: [{ id: "p1", emoji: "📦", name: "Flat move", status: "active", instructions: "Use the Leeds address.", about: "Moving to Leeds in March", state: { facts: ["Van booked for 14 Mar"] }, context: [] }] });
+  const each = await projects.brief(userId, "p1", "WORK", { files: false });
+  assert.match(each, /THIS WORK IS PART OF THE PROJECT 📦 Flat move\. Follow its instructions for anything in it; its record:\n/);
+  assert.match(each, /Use the Leeds address\./);
+  assert.match(each, /Van booked for 14 Mar/);
+  assert.equal(await projects.brief(userId, null), "", "in no project");
+  assert.equal(await projects.brief(userId, "gone"), "", "a project since deleted");
+  projects._cache.delete(userId);
+  const agents = read("lib/agents.js");
+  assert.match(agents, /const systemPrompt = buildAgentSystemPrompt\(subGoal, userStore\) \+ toolScope\.catalog \+ \(limits\.brief \|\| ""\)/, "each agent of a team");
+  assert.match(agents, /\+ await require\("\.\/projects"\)\.brief\(userId, projectId, "TASK"\);/, "a task");
+  assert.match(agents, /\{ request: snapshot, threadId: ctx\.activeThreadId \|\| null, \.\.\.\(project \? \{ projectId: project\.id \} : \{\}\) \}\);/, "started in the project's conversation");
+  assert.match(read("lib/agent-team.js"), /runPart\(userId, subGoal, platform, chatId, model, \{ \.\.\.limits, onStep, acts: m\.acts, brief: opts\.brief \}\)/);
+  assert.match(read("lib/automations.js"), /brief: await require\("\.\/projects"\)\.brief\(userId, config\.project_id, "WORK", \{ files: false \}\),/, "a routine's team");
+  assert.match(read("webapp/server.js"), /\.\.\.\(project \? \{ projectId: project \} : \{\}\) \} \} : \{\}\),/, "a task started on the dashboard with a project chosen");
+  assert.match(read("lib/task-delivery.js"), /const projectId = table === "automation_runs" \? \(row\.runtime\?\.config \|\| \{\}\)\.project_id : row\.runtime\?\.projectId \|\| null;/, "and reports in the project");
 });
 
 // Delete is on the project's page, its one home, archived ones too, asked

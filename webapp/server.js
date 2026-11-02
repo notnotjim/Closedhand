@@ -5593,6 +5593,9 @@ app.post("/api/agents", async (req, res) => {
     const place = (await answerPlaces(userId)).find((p) => p.id === (answer_in || "dashboard"));
     if (!place) return res.status(400).json({ error: "That chat is not connected." });
     const bounds = typeof scope === "string" ? scope.trim() : "";
+    // In a project, as the plan's sentence can say: it works inside it and reports there.
+    const project = await routineProject(userId, req.body.project_id);
+    if (project === false) return res.status(400).json({ error: "That project is not here any more." });
 
     // Check concurrency limit
     const { data: running } = await supabase
@@ -5613,9 +5616,10 @@ app.post("/api/agents", async (req, res) => {
         goal: goal.trim() + (bounds ? "\n\nScope: " + bounds.slice(0, 2000) : ""),
         title: typeof title === "string" && title.trim() ? title.trim().slice(0, 120) : null,
         // A team made here is one task: Closedhand leads, the agents are its parts.
-        ...(typeof title === "string" && title.trim() || members.length ? { runtime: {
+        ...(typeof title === "string" && title.trim() || members.length || project ? { runtime: {
           ...(typeof title === "string" && title.trim() ? { named: true } : {}),
-          ...(members.length ? { teamSource: "dashboard" } : {}) } } : {}),
+          ...(members.length ? { teamSource: "dashboard" } : {}),
+          ...(project ? { projectId: project } : {}) } } : {}),
         ...(members.length ? { team: members.map((m) => ({ name: m.name, job: m.part, acts: m.acts === true, after: [], status: "waiting", last: null, findings: null, error: null })) } : {}),
         model: "pending",
         platform: place.id,

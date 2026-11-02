@@ -290,7 +290,7 @@ test("New agent: one description, then the plan as one sentence; a team led by C
   const ctx = { document: { getElementById: (id) => ids[id], querySelectorAll: () => rows }, _answerIn: "whatsapp_linked", _places: [{ id: "whatsapp_linked", name: "WhatsApp" }],
     fetch: async (url, opts) => { posts.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({}) }; }, goLabel() {},
     closeCreateAutomationModal() {}, showToast: (m) => toasts.push(m), loadAgents() {}, needsField: (field, text) => needs.push({ field, text }),
-    needsPart: () => needs.push({ text: "Say what this agent should do." }), needsAgent: () => needs.push({ text: "Add an agent to the team." }), _mode: "agent" };
+    needsPart: () => needs.push({ text: "Say what this agent should do." }), needsAgent: () => needs.push({ text: "Add an agent to the team." }), _mode: "agent", _planProject: "" };
   vm.runInNewContext(code + "\nthis.startTasks = startTasks;", ctx);
   await ctx.startTasks();
   assert.equal(posts.length, 1, "one task for the team");

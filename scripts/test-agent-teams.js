@@ -235,7 +235,7 @@ test("the plan's team: named agents, a suggestion on a tap, one start, and the n
   assert.equal(notes.local, "A team of 6 does the work of 6 agents on the computer running your model. How many it can work on at once depends on that computer's memory and how the model is served, and the rest wait their turn.");
   assert.match(fn, /var said = \(count >= 6 \? bigTeamNote\(count\) : ''\)/, "from the sixth agent, under the row");
   assert.match(fn, /n\.placeholder = 'Agent ' \+ \(i \+ 1\);/);
-  assert.match(dash, /members: members\.length \? members : undefined \}\) \}\);/, "one task for the whole team");
+  assert.match(dash, /members: members\.length \? members : undefined, project_id: _planProject \|\| undefined \}\) \}\);/, "one task for the whole team");
 });
 
 test("a team's card: a line per agent, Working in green, waiting for whom, what it found, Redo once done", () => {
@@ -523,7 +523,7 @@ test("an agent let take actions gets Closedhand's own tools, under Closedhand's 
   assert.match(src, /else if \(b\.name === "sandbox_browse" && \(!acts \|\| b\.input\?\.action === "read_pages"\)\) \{/, "read only unless let act");
   assert.match(src, /const held = acts && toolScope\.has\(b\.name\) && !reading \? await actGate\(userId, userStore, b\) : null;/, "every action is checked, not only the browser's");
   assert.match(src, /\} else if \(acts\) \{\n\s+\/\/ A connected app's tool, as the lead runs one\./);
-  assert.match(read("lib/agent-team.js"), /runPart\(userId, subGoal, platform, chatId, model, \{ \.\.\.limits, onStep, acts: m\.acts \}\)/);
+  assert.match(read("lib/agent-team.js"), /runPart\(userId, subGoal, platform, chatId, model, \{ \.\.\.limits, onStep, acts: m\.acts, brief: opts\.brief \}\)/);
   assert.match(src, /goal: m\.job, acts: m\.acts === true \}/);
   assert.match(read("lib/automations.js"), /goal: m\.job \|\| m\.part, acts: m\.acts === true \}/, "a team routine's too");
 });
