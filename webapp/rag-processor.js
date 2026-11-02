@@ -166,6 +166,9 @@ const PICTURE_READER = "sure-lines-1";
 // What takes longest to read: pictures, sound and video, read after documents.
 const MEDIA_TYPES = new Set(["jpg", "jpeg", "png", "webp", "gif", "tif", "tiff", "bmp", "heic", "heif",
   "mp3", "m4a", "wav", "aac", "flac", "ogg", "oga", "opus", "aiff", "mp4", "m4v", "mov", "webm"]);
+// Of those, what is heard: recordings and videos, heard after a folder is read,
+// one at a time while Closedhand is otherwise idle (hearWaiting below).
+const HEARD_TYPES = new Set(["mp3", "m4a", "wav", "aac", "flac", "ogg", "oga", "opus", "aiff", "mp4", "m4v", "mov", "webm"]);
 
 const IMAGE_MIME = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
@@ -303,11 +306,14 @@ function clock(seconds) {
   const t = Math.max(0, Math.round(Number(seconds) || 0)), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60;
   return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(t % 60).padStart(2, "0");
 }
-async function hearFile(buffer, fileName, video, userId, media = null) {
+// `file` is its bytes, or a stream of them as they arrive from where it is
+// kept, passed straight on: the bot writes it to disk (lib/hear-route.js), so
+// neither holds a file of any size whole.
+async function hearFile(file, fileName, video, userId, media = null) {
   const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
   const query = new URLSearchParams({ name: fileName, ...(video ? { video: "1", frames: String(VIDEO_FRAMES) } : {}), ...(media ? { vectors: "1" } : {}) });
   const res = await fetch(`${BOT_INTERNAL_URL}/internal/hear?${query}`, {
-    method: "POST", body: buffer, signal: AbortSignal.timeout(90 * 60000),
+    method: "POST", body: file, ...(Buffer.isBuffer(file) ? {} : { duplex: "half" }), signal: AbortSignal.timeout(12 * 3600000),
     headers: { "Content-Type": "application/octet-stream", "x-closedhand-token": botToken(userId) },
   });
   const heard = await res.json().catch(() => ({}));
@@ -711,6 +717,28 @@ async function fetchFileContent(userId, origin, filePath, account) {
   throw new Error("Unknown origin: " + origin);
 }
 
+// A recording's or a video's bytes as they arrive, for hearing: it can be
+// any size, and is passed on to the bot without being held (hearFile). The
+// sandbox computer's files and a Mac's through Bridge come whole.
+async function openFileStream(userId, origin, filePath, account) {
+  const at = origin === "gdrive" ? ["google", "https://www.googleapis.com/drive/v3/files/" + filePath + "?alt=media"]
+    : origin === "onedrive" ? ["microsoft", "https://graph.microsoft.com/v1.0/me/drive/items/" + filePath + "/content"] : null;
+  if (at) {
+    const resp = await fetchWithRefresh(userId, account || at[0], at[1]);
+    if (!resp.ok) throw new Error((origin === "gdrive" ? "Google Drive" : "OneDrive") + " download error: " + resp.status);
+    return resp.body;
+  }
+  if (origin === "dropbox") {
+    const token = await getServiceToken(userId, "dropbox");
+    const resp = await fetch("https://content.dropboxapi.com/2/files/download", {
+      method: "POST", headers: { Authorization: "Bearer " + token, "Dropbox-API-Arg": JSON.stringify({ path: filePath }) },
+    });
+    if (!resp.ok) throw new Error("Dropbox download error: " + resp.status);
+    return resp.body;
+  }
+  return fetchFileContent(userId, origin, filePath, account);
+}
+
 // --- Main processing pipeline ---
 
 async function processDocument(documentId, userId, fileBuffer, fileName, fileType, sourceContext = null) {
@@ -729,70 +757,7 @@ async function processDocumentWithModels(documentId, userId, fileBuffer, fileNam
     // are (EmbeddingGemma 2, in the bot), go in beside the text's chunks.
     const media = (await localEmbedder()) ? [] : null;
     const text = await extractText(fileBuffer, fileType, fileName, userId, media);
-    if ((!text || text.trim().length < 10) && !(media && media.length)) {
-      throw new Error("No text content could be extracted from this file");
-    }
-
-    // 2. Chunk, the whole file: a long one is never cut to its first pages.
-    const chunks = text && text.trim().length >= 10 ? chunkText(text) : [];
-    console.log(`[RAG] ${fileName}: ${text.length} chars -> ${chunks.length} chunks`);
-    if (chunks.length === 0 && !(media && media.length)) throw new Error("No chunks produced from text");
-
-    // 3. Each part is embedded headed by the file's name and the document's
-    // own opening lines, so a part from deep inside ("the fee is £300") is
-    // found as part of what it belongs to. A background LLM once wrote a line
-    // per part instead, seeing only that part and the name; on invented
-    // documents (2026-11-02) the heading put the answering part as high or
-    // higher, with nothing sent to an LLM.
-    const head = (fileName + "\n" + docOpening(text)).slice(0, 249) + "\n";
-    const headed = chunks.map((c) => head + c);
-
-    // 4. Embed the headed parts in batches
-    const allEmbeddings = [];
-    for (let i = 0; i < headed.length; i += EMBED_BATCH_SIZE) {
-      const batch = headed.slice(i, i + EMBED_BATCH_SIZE);
-      console.log(`[RAG] Embedding batch ${Math.floor(i / EMBED_BATCH_SIZE) + 1}/${Math.ceil(headed.length / EMBED_BATCH_SIZE)}`);
-      const embeddings = await embedBatch(batch);
-      // Kept in step with the chunks even when a batch has no vectors.
-      allEmbeddings.push(...(embeddings.length === batch.length ? embeddings : batch.map(() => undefined)));
-    }
-
-    // Check user's data residency setting
-    const { data: _profile } = await supabase.from("profiles").select("settings").eq("id", userId).single();
-    const residency = _profile?.settings?.rag_residency || "standard";
-
-    // 5. Insert chunks with embeddings (the part's own text, embedded headed).
-    // The heading is kept with each part, so a part saved without a vector is
-    // given one headed the same (lib/embed-backfill.js in the bot); never under
-    // zero residency, where none of the file's words are kept.
-    const rows = chunks.map((content, idx) => ({
-      document_id: documentId,
-      user_id: userId,
-      chunk_index: idx,
-      content: residency === "zero" ? "[Zero residency - text not stored]" : content,
-      embedding: JSON.stringify(allEmbeddings[idx]),
-      metadata: { source_file: fileName, chunk_of: chunks.length, ...(residency === "zero" ? {} : { head: head.trimEnd() }), ...(sourceContext || {}) },
-    }));
-
-    rows.push(...(await mediaRows(media, { documentId, userId, fileName, residency, after: chunks.length, sourceContext })));
-
-    // Insert in batches of 50 to avoid payload limits
-    for (let i = 0; i < rows.length; i += 50) {
-      const batch = rows.slice(i, i + 50);
-      const { error } = await supabase.from("rag_chunks").insert(batch);
-      if (error) throw new Error(`Chunk insert failed: ${error.message}`);
-    }
-
-    // 5. Update document status
-    await supabase.from("rag_documents").update({
-      status: "ready",
-      chunk_count: rows.length,
-      metadata: { word_count: text.split(/\s+/).length, char_count: text.length },
-      updated_at: new Date().toISOString(),
-    }).eq("id", documentId);
-
-    console.log(`[RAG] ${fileName}: ready (${chunks.length} chunks)`);
-    return { chunks: chunks.length };
+    return await fileText(documentId, userId, fileName, text, media, sourceContext);
   } catch (e) {
     console.error(`[RAG] Processing failed for ${fileName}:`, e.message);
     await supabase.from("rag_documents").update({
@@ -801,6 +766,154 @@ async function processDocumentWithModels(documentId, userId, fileBuffer, fileNam
       updated_at: new Date().toISOString(),
     }).eq("id", documentId);
     return { error: e.message };
+  }
+}
+
+// A file's words (and its pictures, sound and frames), cut into parts,
+// embedded and kept, and the file marked ready. Throws when there is nothing
+// to keep.
+async function fileText(documentId, userId, fileName, text, media, sourceContext = null) {
+  if ((!text || text.trim().length < 10) && !(media && media.length)) {
+    throw new Error("No text content could be extracted from this file");
+  }
+
+  // 2. Chunk, the whole file: a long one is never cut to its first pages.
+  const chunks = text && text.trim().length >= 10 ? chunkText(text) : [];
+  console.log(`[RAG] ${fileName}: ${text.length} chars -> ${chunks.length} chunks`);
+  if (chunks.length === 0 && !(media && media.length)) throw new Error("No chunks produced from text");
+
+  // 3. Each part is embedded headed by the file's name and the document's
+  // own opening lines, so a part from deep inside ("the fee is £300") is
+  // found as part of what it belongs to. A background LLM once wrote a line
+  // per part instead, seeing only that part and the name; on invented
+  // documents (2026-11-02) the heading put the answering part as high or
+  // higher, with nothing sent to an LLM.
+  const head = (fileName + "\n" + docOpening(text)).slice(0, 249) + "\n";
+  const headed = chunks.map((c) => head + c);
+
+  // 4. Embed the headed parts in batches
+  const allEmbeddings = [];
+  for (let i = 0; i < headed.length; i += EMBED_BATCH_SIZE) {
+    const batch = headed.slice(i, i + EMBED_BATCH_SIZE);
+    console.log(`[RAG] Embedding batch ${Math.floor(i / EMBED_BATCH_SIZE) + 1}/${Math.ceil(headed.length / EMBED_BATCH_SIZE)}`);
+    const embeddings = await embedBatch(batch);
+    // Kept in step with the chunks even when a batch has no vectors.
+    allEmbeddings.push(...(embeddings.length === batch.length ? embeddings : batch.map(() => undefined)));
+  }
+
+  // Check user's data residency setting
+  const { data: _profile } = await supabase.from("profiles").select("settings").eq("id", userId).single();
+  const residency = _profile?.settings?.rag_residency || "standard";
+
+  // 5. Insert chunks with embeddings (the part's own text, embedded headed).
+  // The heading is kept with each part, so a part saved without a vector is
+  // given one headed the same (lib/embed-backfill.js in the bot); never under
+  // zero residency, where none of the file's words are kept.
+  const rows = chunks.map((content, idx) => ({
+    document_id: documentId,
+    user_id: userId,
+    chunk_index: idx,
+    content: residency === "zero" ? "[Zero residency - text not stored]" : content,
+    embedding: JSON.stringify(allEmbeddings[idx]),
+    metadata: { source_file: fileName, chunk_of: chunks.length, ...(residency === "zero" ? {} : { head: head.trimEnd() }), ...(sourceContext || {}) },
+  }));
+
+  rows.push(...(await mediaRows(media, { documentId, userId, fileName, residency, after: chunks.length, sourceContext })));
+
+  // Insert in batches of 50 to avoid payload limits
+  for (let i = 0; i < rows.length; i += 50) {
+    const batch = rows.slice(i, i + 50);
+    const { error } = await supabase.from("rag_chunks").insert(batch);
+    if (error) throw new Error(`Chunk insert failed: ${error.message}`);
+  }
+
+  // 5. Update document status. Its details are kept (when it was changed,
+  // how a picture was read): written over, every file read before looked
+  // changed, so each scan read them all again and never reached the rest.
+  const { data: had } = await supabase.from("rag_documents").select("metadata").eq("id", documentId).single();
+  await supabase.from("rag_documents").update({
+    status: "ready",
+    chunk_count: rows.length,
+    metadata: { ...((had && had.metadata) || {}), word_count: text.split(/\s+/).length, char_count: text.length },
+    updated_at: new Date().toISOString(),
+  }).eq("id", documentId);
+
+  console.log(`[RAG] ${fileName}: ready (${chunks.length} chunks)`);
+  return { chunks: chunks.length };
+}
+
+// --- Recordings and videos ---
+
+// Whether Closedhand is otherwise idle (lib/idle.js in the bot): no chat, no
+// sync or indexing, no File Search reading. False when it cannot say.
+async function botIdle(userId) {
+  try {
+    const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
+    const res = await fetch(`${BOT_INTERNAL_URL}/internal/idle`, { headers: { "x-closedhand-token": botToken(userId) }, signal: AbortSignal.timeout(10000) });
+    return res.ok && (await res.json()).idle === true;
+  } catch (_) { return false; }
+}
+
+// A recording or a video not heard yet, or due another try: a failed one
+// is tried again a few times, less often each time.
+const HEAR_TRIES = 5;
+const HEAR_AGAIN_MS = 6 * 3600000;
+function dueToHear(d, now = Date.now()) {
+  if (d.status === "pending") return true;
+  const tries = Number(d.metadata?.hear_tries || 0);
+  return d.status === "error" && tries < HEAR_TRIES && now - Date.parse(d.updated_at || 0) > HEAR_AGAIN_MS * Math.max(1, tries);
+}
+
+// Recordings and videos from every source, heard one at a time, the newest
+// first, while Closedhand is otherwise idle and no folder is being read. A
+// two-hour video takes about half an hour to hear, and nobody is waiting on
+// it: until then it is found by its name, like any file not read yet. Run
+// after each folder is read and every few minutes (webapp/server.js).
+let _hearing = false;
+async function hearWaiting() {
+  if (_hearing) return;
+  _hearing = true;
+  try {
+    for (;;) {
+      const { data: docs } = await supabase.from("rag_documents")
+        .select("id, user_id, source_id, name, file_type, file_path, origin, status, metadata, updated_at")
+        .in("status", ["pending", "error"]).in("file_type", [...HEARD_TYPES]);
+      const next = (docs || []).filter((d) => dueToHear(d))
+        .sort((a, b) => Date.parse(b.metadata?.modified || 0) - Date.parse(a.metadata?.modified || 0))[0];
+      if (!next || _readingSources.size || !(await botIdle(next.user_id))) return;
+      await hearDocument(next);
+    }
+  } catch (e) {
+    console.error("[RAG] Hearing recordings and videos:", e.message);
+  } finally {
+    _hearing = false;
+  }
+}
+
+// One recording or video heard and filed. While it is heard, its row says it
+// is still under way (recoverStalledDocuments would otherwise take a long one
+// for stuck).
+async function hearDocument(doc) {
+  const { data: source } = await supabase.from("rag_sources").select("account").eq("id", doc.source_id).single();
+  const { data: profile } = await supabase.from("profiles").select("settings").eq("id", doc.user_id).single();
+  const stillGoing = () => supabase.from("rag_documents").update({ updated_at: new Date().toISOString() }).eq("id", doc.id).then(() => {}, () => {});
+  await supabase.from("rag_documents").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", doc.id);
+  const beat = setInterval(stillGoing, 5 * 60000);
+  try {
+    await modelContext.run((profile && profile.settings) || {}, async () => {
+      console.log(`[RAG] Hearing ${doc.name}`);
+      const media = (await localEmbedder()) ? [] : null;
+      const file = await openFileStream(doc.user_id, doc.origin, doc.file_path, source && source.account);
+      const text = await hearFile(file, doc.name, /^(mp4|m4v|mov|webm)$/.test(doc.file_type), doc.user_id, media);
+      await fileText(doc.id, doc.user_id, doc.name, text, media, { origin: doc.origin, path: doc.file_path });
+    });
+  } catch (e) {
+    // Nothing said in it is its answer for good; anything else is tried again.
+    const tries = /^Nothing is said/.test(e.message) ? HEAR_TRIES : Number(doc.metadata?.hear_tries || 0) + 1;
+    console.error(`[RAG] ${doc.name} not heard: ${e.message}`);
+    await supabase.from("rag_documents").update({ status: "error", error_message: e.message, metadata: { ...(doc.metadata || {}), hear_tries: tries }, updated_at: new Date().toISOString() }).eq("id", doc.id);
+  } finally {
+    clearInterval(beat);
   }
 }
 
@@ -813,7 +926,7 @@ const _readingSources = new Set();
 async function processSource(sourceId, ...rest) {
   if (_readingSources.has(sourceId)) { console.log(`[RAG] Source ${sourceId} is already being read`); return; }
   _readingSources.add(sourceId);
-  try { await readSource(sourceId, ...rest); } finally { _readingSources.delete(sourceId); }
+  try { await readSource(sourceId, ...rest); } finally { _readingSources.delete(sourceId); hearWaiting().catch(() => {}); }
 }
 
 async function readSource(sourceId, userId, origin, folderPath, selectedFiles, account) {
@@ -956,6 +1069,17 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
           totalChunks += count;
           return;
         }
+      }
+
+      // A recording or a video is heard later, while Closedhand is otherwise
+      // idle (hearWaiting below), and found by its name until then. One that
+      // changed since it was heard waits to be heard again.
+      if (HEARD_TYPES.has(typeOf(file))) {
+        if (existing && existing.metadata?.modified !== file.modified) {
+          await supabase.from("rag_chunks").delete().eq("document_id", existing.id);
+          await supabase.from("rag_documents").update({ status: "pending", error_message: null, metadata: { modified: file.modified } }).eq("id", existing.id);
+        }
+        return;
       }
 
       // An old version's passages go (it is read again); its row stays, so
@@ -1115,4 +1239,4 @@ async function recoverStalledDocuments() {
   }
 }
 
-module.exports = { init, processDocument, processSource, scanFolder, fetchFileContent, extractText, chunkText, docOpening, embedBatch, embedSingle, getServiceToken, fetchWithRefresh, recoverStalledDocuments };
+module.exports = { init, processDocument, processSource, scanFolder, fetchFileContent, extractText, chunkText, docOpening, embedBatch, embedSingle, getServiceToken, fetchWithRefresh, recoverStalledDocuments, hearWaiting, hearFile, dueToHear, HEARD_TYPES };

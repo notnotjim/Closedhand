@@ -24,7 +24,7 @@ test('OneDrive has the same four chat tools as Google Drive, offered only with M
 test('the OneDrive tools read files with the one reader',()=>{
  const src=read('lib/tools/handlers.js');
  const readTool=src.slice(src.indexOf('case "onedrive_read": {'),src.indexOf('case "onedrive_send_file": {'));
- assert.match(readTool,/require\("\.\.\/file-reader"\)\.readFile\(await download\(\), meta\.name\)/);
+ assert.match(readTool,/await downloadTo\(dest\);\n\s+content = await require\("\.\.\/item-files"\)\.readBytes\(\{ path: dest \}, \{ name: meta\.name, mime: mime \|\| "" \}, ctx\.activeUserId\)/);
  assert.match(readTool,/content = partOfFile\(content, toolInput\.part\);/, 'a long file comes in parts');
  for(const n of ['onedrive_search','onedrive_list_recent','onedrive_read','onedrive_send_file'])assert.match(src,new RegExp('case "'+n+'": \\{'));
  // A quote in a search must not end Microsoft's search expression early.

@@ -195,6 +195,8 @@ require("./lib/move-idle").registerRestart(ctx.expressApp, () => closeCleanly("r
 require("./lib/dictation").register(ctx.expressApp);
 // Recordings and videos File Search finds, written out the same way (lib/hear-route.js).
 require("./lib/hear-route").register(ctx.expressApp);
+// Every LLM request counts as Closedhand being busy (lib/idle.js).
+require("./lib/model-wire").onRequest(require("./lib/idle").touch);
 // File Search embeds with the local model through the bot (lib/embed-route.js).
 require("./lib/embed-route").register(ctx.expressApp);
 // And ranks its results with the local model the same way (lib/rerank-route.js).

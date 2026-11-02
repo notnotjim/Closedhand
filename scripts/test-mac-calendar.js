@@ -26,7 +26,7 @@ test('events from the calendar store keep their own id, exact times and attendee
     assert.deepEqual(calls[0].slice(1, 3), ['calendar.list', { days_back: 90, days_ahead: 180 }], 'asks Bridge, not the shell');
     assert.equal(e.id, 'ABC@2026-10-09T19:00:00+08:00');
     assert.equal(e.start, '2026-10-09T19:00:00+08:00');
-    assert.equal(e.description, 'Table by the window');
+    assert.equal(e.description, 'Table\nby the window', 'notes whole, as written');
     assert.deepEqual(e.attendees, ['Sam Example']);
   });
 });

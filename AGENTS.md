@@ -9,11 +9,16 @@ Rules for working on this codebase, for anyone doing it, human or agent.
   both (kept byte-identical); everything else communicates through the database.
 - Vanilla HTML/CSS/JS only for the dashboard. No React, no Tailwind, no build step.
 - Everything connected is filed the same way, by `lib/services/usi.js`: whole, in its own words,
-  in pieces the embedder reads in full, with no LLM writing into the index. The files that come with
-  any item (an email's attachments, an event's Drive files, a chat's photos and voice notes) are read
-  by one step, `lib/item-files.js`. A new source keeps its items' files on its cached rows (`files`:
-  key, name, mime, size) and gives `attachmentBytes` in `lib/services/data-access.js` a way to fetch
-  them; it never reads, cuts or indexes files its own way.
+  in pieces the embedder reads in full, with no LLM writing into the index. Every connection meets one
+  contract. It keeps its items on cached rows, each item's own files listed on its row (`files`: key,
+  name, mime, size), and gives `attachmentBytes` in `lib/services/data-access.js` a way to fetch them.
+  An indexed item names the rows it is made of (`rows`), and the index's one entry, `indexItems`,
+  reads their files by the one step, `lib/item-files.js`: documents with the item, large ones soon
+  after, recordings and videos while Closedhand is otherwise idle (`lib/idle.js`), any size. No
+  connection cuts its text, reads files its own way, or makes text of HTML other than by
+  `lib/file-reader.js` `htmlText`, which keeps each link's address beside its words. A link to
+  something elsewhere (a video on a site, a page) stays a link; only a connection's own files are read.
+  `scripts/test-connections-uniform.js` checks.
 
 ## Code Standards
 - Simplicity first. Minimal changes. Don't over-engineer.

@@ -164,8 +164,10 @@ test("routes that take big bodies (pictures to embed, passages to rank, speech) 
   const bot = read("index.js");
   assert.match(bot, /const OWN_BODY = new Set\(\["\/internal\/embed", "\/internal\/rerank", "\/internal\/hear", "\/internal\/dictation"\]\);/);
   assert.match(bot, /ctx\.expressApp\.use\(\(req, res, next\) => \(OWN_BODY\.has\(req\.path\) \? next\(\) : jsonBody\(req, res, next\)\)\);/);
-  for (const [file, route] of [["lib/embed-route.js", "/internal/embed"], ["lib/rerank-route.js", "/internal/rerank"], ["lib/hear-route.js", "/internal/hear"], ["lib/dictation.js", "/internal/dictation"]])
+  for (const [file, route] of [["lib/embed-route.js", "/internal/embed"], ["lib/rerank-route.js", "/internal/rerank"], ["lib/dictation.js", "/internal/dictation"]])
     assert.match(read(file), new RegExp(`app\\.post\\("${route.replace(/\//g, "\\/")}", body,`), `${route} brings its own parser`);
+  // A file to hear is written to disk as it arrives, any size.
+  assert.match(read("lib/hear-route.js"), /await pipeline\(req, fs\.createWriteStream\(file\)\);/, "/internal/hear takes its body as it comes");
 });
 
 test("the sandbox computer's activity asks for automation_runs' real columns, and the policies say what the licence is", () => {

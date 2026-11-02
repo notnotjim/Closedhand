@@ -252,6 +252,40 @@ print(json.dumps({
 
 function hasPython() { try { execFileSync('python3', ['--version']); return true; } catch { return false; } }
 
+test('the sandbox writes speech out in parts as it decodes: a file to its end, a link up to its cap', { skip: !hasPython() }, () => {
+  // av stood in: 0.5 s frames of 16 kHz mono samples, 7 of them (3.5 s).
+  const run = (cap) => JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, sys, tempfile, types, io, contextlib
+class Frame:
+    def __init__(self, n): self.samples = n; self.planes = [bytes(2 * n)]
+class Resampler:
+    def __init__(self, **k): pass
+    def resample(self, frame): return [frame]
+class Container:
+    def __init__(self): self.streams = types.SimpleNamespace(audio=["a"])
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def decode(self, stream):
+        for _ in range(7): yield Frame(8000)
+sys.modules["av"] = types.SimpleNamespace(open=lambda p: Container(), AudioResampler=Resampler)
+spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.OUT = tempfile.mkdtemp(); m.CHUNK_SECONDS = 1; m.AUDIO_CAP = ${cap}
+log = io.StringIO()
+with contextlib.redirect_stdout(log):
+    parts, seconds = m.speech("talk.m4a")
+import os
+print(json.dumps({"parts": parts, "sizes": [os.path.getsize(os.path.join(m.OUT, p)) for p in parts], "seconds": seconds, "log": log.getvalue().splitlines()}))`]).toString());
+  const whole = run(0);
+  assert.deepEqual(whole.parts, ['speech-0.pcm', 'speech-1.pcm', 'speech-2.pcm', 'speech-3.pcm']);
+  assert.deepEqual(whole.sizes, [32000, 32000, 32000, 16000], 'each part written as soon as it is full, the rest at the end');
+  assert.equal(whole.seconds, 3.5, 'to its end');
+  assert.deepEqual(whole.log, ['CLOSEDHAND_PROGRESS speech 1', 'CLOSEDHAND_PROGRESS speech 2', 'CLOSEDHAND_PROGRESS speech 3', 'CLOSEDHAND_PROGRESS speech 4'], 'a line for each, read by the bot as work still going');
+  const capped = run(2);
+  assert.deepEqual(capped.sizes, [32000, 32000]);
+  assert.equal(capped.seconds, 2);
+  assert.match(read('lib/video-sandbox.py'), /time\.time\(\) - os\.path\.getmtime\(full\) > 86400:/, 'a job still being written out is not swept away');
+});
+
 test('the sandbox images and the Mac Workspace install the same video tools', () => {
   assert.match(read('sandbox-image/Dockerfile'), /yt-dlp av\n/);
   assert.match(read('sandbox-image/agent/server.js'), /"yt-dlp", "av"\]/);

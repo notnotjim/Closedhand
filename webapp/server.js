@@ -9975,6 +9975,8 @@ const server = app.listen(PORT, process.env.LISTEN_HOST || undefined, async () =
   // below, so clear them first and re-check periodically.
   ragProcessor.recoverStalledDocuments().catch(() => {});
   setInterval(() => ragProcessor.recoverStalledDocuments().catch(() => {}), 15 * 60 * 1000);
+  // Recordings and videos in File Search, heard while Closedhand is idle.
+  setInterval(() => ragProcessor.hearWaiting().catch(() => {}), 5 * 60 * 1000);
 
   // Resume stuck RAG indexing jobs (process died on previous deploy)
   try {

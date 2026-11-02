@@ -197,10 +197,20 @@ def video_frames(path, duration):
 
 
 def speech(path):
-    """16 kHz mono 16-bit samples, up to AUDIO_CAP seconds, in parts the
-    sandbox can hand over."""
+    """16 kHz mono 16-bit samples, in parts the sandbox can hand over, each
+    written as soon as it is full, so a long recording is never held whole.
+    A link's video is heard up to AUDIO_CAP seconds; a file the bot put here
+    (AUDIO_CAP 0) to its end. Each part is a line in the log, which the bot
+    reads as the work still going."""
     import av
-    parts, pcm, limit = [], bytearray(), AUDIO_CAP * 16000 * 2
+    parts, pcm, total, done = [], bytearray(), 0, False
+    limit = AUDIO_CAP * 16000 * 2 if AUDIO_CAP > 0 else None
+    step = CHUNK_SECONDS * 16000 * 2
+
+    def flush(data):
+        parts.append(write("speech-%d.pcm" % len(parts), bytes(data)))
+        print("CLOSEDHAND_PROGRESS speech %d" % len(parts), flush=True)
+
     with av.open(path) as c:
         if not c.streams.audio:
             return parts, 0
@@ -208,13 +218,19 @@ def speech(path):
         for frame in c.decode(c.streams.audio[0]):
             for f in resampler.resample(frame):
                 pcm += bytes(f.planes[0])[: f.samples * 2]
-            if len(pcm) >= limit:
+            if limit is not None and total + len(pcm) >= limit:
+                del pcm[limit - total:]
+                done = True
+            while len(pcm) >= step:
+                flush(pcm[:step])
+                total += step
+                del pcm[:step]
+            if done:
                 break
-    pcm = pcm[:limit]
-    step = CHUNK_SECONDS * 16000 * 2
-    for i in range(0, len(pcm), step):
-        parts.append(write("speech-%d.pcm" % (i // step), bytes(pcm[i:i + step])))
-    return parts, round(len(pcm) / 32000, 1)
+    if pcm:
+        flush(pcm)
+        total += len(pcm)
+    return parts, round(total / 32000, 1)
 
 
 def download(url):
@@ -297,12 +313,14 @@ def run_download(yt_dlp, opts, url):
 
 
 def sweep():
-    # Parts a crashed run left behind are removed by the next one.
+    # Parts a crashed run left behind are removed by a later one, a day on: a
+    # long recording's parts are still being written out hours after they
+    # were made, and were removed from under it after ten minutes.
     import time
     root = os.path.dirname(OUT)
     for name in os.listdir(root) if os.path.isdir(root) else []:
         full = os.path.join(root, name)
-        if os.path.isdir(full) and time.time() - os.path.getmtime(full) > 600:
+        if os.path.isdir(full) and time.time() - os.path.getmtime(full) > 86400:
             shutil.rmtree(full, ignore_errors=True)
 
 
