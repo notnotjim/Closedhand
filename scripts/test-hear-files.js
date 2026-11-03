@@ -51,7 +51,7 @@ test('a video file goes through the sandbox like a link: frames and what is said
     const started = calls.find(([r, b]) => r === '/exec' && /Popen/.test(b.code))[1].code;
     const script = Buffer.from(/b64decode\("([^"]+)"\)/.exec(started)[1], 'base64').toString();
     const args = JSON.parse(Buffer.from(/b64decode\("([^"]+)"\)/.exec(script)[1], 'base64').toString());
-    assert.deepEqual({ path: args.path, title: args.title, audio_seconds: args.audio_seconds }, { path: write[1].path, title: 'Masai Mara day 2.mp4', audio_seconds: 0 }, 'a file is heard to its end');
+    assert.deepEqual({ path: args.path, title: args.title }, { path: write[1].path, title: 'Masai Mara day 2.mp4' });
     const cleanup = calls.filter(([r, b]) => r === '/exec' && /rmtree/.test(b.code)).pop()[1].code;
     assert.match(cleanup, new RegExp(`\\.closedhand-video/${job}`));
     assert.match(cleanup, new RegExp(`\\.closedhand-video/in-${job}`), 'the copy put on the sandbox goes too');

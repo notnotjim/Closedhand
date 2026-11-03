@@ -14,7 +14,6 @@ import base64, io, json, math, os, re, shutil, subprocess, sys, tempfile
 ARGS = globals().get("ARGS") or {"job": "unset", "url": ""}  # set by lib/video.js; tests import without it
 OUT = os.path.join(os.getcwd(), ".closedhand-video", ARGS["job"])
 MAX_FRAMES = int(ARGS.get("max_frames", 24))
-AUDIO_CAP = int(ARGS.get("audio_seconds", 600))
 VIDEO_BYTES = int(ARGS.get("video_bytes", 0))
 CHUNK_SECONDS = 480  # 16 kHz 16-bit mono: 15 MB, under the sandbox's 20 MB download limit
 
@@ -42,9 +41,52 @@ def problem(message):
         return "private"
     if "unsupported url" in m:
         return "unsupported"
-    if "too long" in m:
-        return "too_long"
+    if "live stream" in m:
+        return "live"
     return "failed"
+
+
+class Several(Exception):
+    """A link to more than one video: a playlist, a channel, a page with
+    several. Which one is the person's to say, so none is guessed at."""
+    def __init__(self, entries, count):
+        super().__init__("several videos")
+        self.videos = [{"title": e.get("title") or "", "url": e.get("url") or e.get("webpage_url") or ""} for e in entries[:12]]
+        self.count = count
+
+
+def one_video(yt_dlp, opts, url):
+    """The one video a link is to. A link with one video in a playlist
+    (YouTube's &list=) is that video; a link to several is not chosen from; a
+    stream still live has no end to watch to. Returns the video's own link."""
+    probe = dict(opts, skip_download=True, extract_flat="in_playlist", playlistend=13)
+    probe.pop("progress_hooks", None)
+    with yt_dlp.YoutubeDL(probe) as y:
+        info = y.extract_info(url, download=False)
+    if info.get("_type") in ("playlist", "multi_video"):
+        entries = [e for e in (info.get("entries") or []) if e]
+        if len(entries) > 1:
+            raise Several(entries, info.get("playlist_count") or len(entries))
+        if not entries:
+            raise RuntimeError("No video in this post")
+        info = entries[0]
+        url = info.get("url") or info.get("webpage_url") or url
+    if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
+        raise RuntimeError("This is a live stream")
+    return url
+
+
+def downloading():
+    """A line in the log every so often while a long video downloads, so the
+    bot knows the work is still going."""
+    import time
+    last = [0.0]
+
+    def hook(d):
+        if time.time() - last[0] > 15:
+            last[0] = time.time()
+            print("CLOSEDHAND_PROGRESS download %d" % int(d.get("downloaded_bytes") or 0), flush=True)
+    return hook
 
 
 def write(name, data):
@@ -168,6 +210,7 @@ def youtube(url):
     opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True}
     if shutil.which("node"):
         opts["js_runtimes"] = {"node": {}}
+    url = one_video(yt_dlp, opts, url)
     with yt_dlp.YoutubeDL(opts) as y:
         info = y.extract_info(url, download=False)
         meta = details(info)
@@ -198,13 +241,11 @@ def video_frames(path, duration):
 
 def speech(path):
     """16 kHz mono 16-bit samples, in parts the sandbox can hand over, each
-    written as soon as it is full, so a long recording is never held whole.
-    A link's video is heard up to AUDIO_CAP seconds; a file the bot put here
-    (AUDIO_CAP 0) to its end. Each part is a line in the log, which the bot
-    reads as the work still going."""
+    written as soon as it is full, so a long recording is never held whole,
+    and heard to its end, a link's video as a file's. Each part is a line in
+    the log, which the bot reads as the work still going."""
     import av
-    parts, pcm, total, done = [], bytearray(), 0, False
-    limit = AUDIO_CAP * 16000 * 2 if AUDIO_CAP > 0 else None
+    parts, pcm = [], bytearray()
     step = CHUNK_SECONDS * 16000 * 2
 
     def flush(data):
@@ -213,34 +254,26 @@ def speech(path):
 
     with av.open(path) as c:
         if not c.streams.audio:
-            return parts, 0
+            return parts
         resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
         for frame in c.decode(c.streams.audio[0]):
             for f in resampler.resample(frame):
                 pcm += bytes(f.planes[0])[: f.samples * 2]
-            if limit is not None and total + len(pcm) >= limit:
-                del pcm[limit - total:]
-                done = True
             while len(pcm) >= step:
                 flush(pcm[:step])
-                total += step
                 del pcm[:step]
-            if done:
-                break
     if pcm:
         flush(pcm)
-        total += len(pcm)
-    return parts, round(total / 32000, 1)
+    return parts
 
 
 def download(url):
     import yt_dlp
     tmp = tempfile.mkdtemp(prefix="closedhand-video-")
     try:
-        opts = {"quiet": True, "noprogress": True, "no_warnings": True, "noplaylist": True, "playlist_items": "1",
+        opts = {"quiet": True, "noprogress": True, "no_warnings": True, "noplaylist": True,
                 "outtmpl": os.path.join(tmp, "v.%(ext)s"), "format": "b[height<=720][ext=mp4]/b[height<=720]/b",
-                "max_filesize": 300 * 1024 * 1024,
-                "match_filter": lambda info, incomplete=False: "too long" if (info.get("duration") or 0) > 3 * 3600 else None}
+                "progress_hooks": [downloading()]}
         try:
             info = run_download(yt_dlp, opts, url)
         except Exception as e:
@@ -280,7 +313,7 @@ def download(url):
                 video = write("video." + path.rsplit(".", 1)[-1].lower(), f.read())
         frames = video_frames(path, duration)
         meta["frame_source"] = "video" if frames else None
-        meta["speech_parts"], meta["speech_seconds"] = speech(path)
+        meta["speech_parts"] = speech(path)
         return meta, frames, video
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -300,12 +333,13 @@ def local(path):
     if VIDEO_BYTES and os.path.getsize(path) <= VIDEO_BYTES and path.rsplit(".", 1)[-1].lower() in ("mp4", "webm", "mov"):
         with open(path, "rb") as f:
             video = write("video." + path.rsplit(".", 1)[-1].lower(), f.read())
-    meta["speech_parts"], meta["speech_seconds"] = speech(path)
+    meta["speech_parts"] = speech(path)
     return meta, frames, video
 
 
 def run_download(yt_dlp, opts, url):
-    with yt_dlp.YoutubeDL(opts) as y:
+    url = one_video(yt_dlp, opts, url)
+    with yt_dlp.YoutubeDL(dict(opts, playlist_items="1")) as y:
         info = y.extract_info(url, download=True)
     if info.get("_type") == "playlist":
         info = next((e for e in info.get("entries") or [] if e), None) or {}
@@ -339,6 +373,9 @@ def main():
         parts = {"meta": write("meta.json", json.dumps(meta).encode()), "frames": write("frames.bin", bytes(blob)) if blob else None,
                  "video": video, "speech": meta.get("speech_parts") or []}
         print("CLOSEDHAND_VIDEO " + json.dumps({"ok": True, "dir": os.path.relpath(OUT, os.getcwd()), "parts": parts}))
+    except Several as e:
+        shutil.rmtree(OUT, ignore_errors=True)
+        print("CLOSEDHAND_VIDEO " + json.dumps({"ok": False, "kind": "several", "videos": e.videos, "count": e.count, "error": "several videos"}))
     except Exception as e:
         shutil.rmtree(OUT, ignore_errors=True)
         message = re.sub(r"\x1b\[[0-9;]*m", "", str(e)).replace("ERROR: ", "")[:400]

@@ -113,6 +113,19 @@ stub('sandbox.js', {
     return { stdout: '' };
   },
   sandboxFileDownload: async (u, p) => { calls.downloads.push(p.split('/').pop()); return { content: PARTS[p.split('/').pop()]().toString('base64') }; },
+  // A link is watched in the background, as a file is: started, then its log
+  // read until the last line comes.
+  sandboxRequest: async (u, method, route, body) => {
+    if (route === '/exec' && body.code.includes('subprocess.Popen')) {
+      const script = Buffer.from(/b64decode\("([^"]+)"\)/.exec(body.code)[1], 'base64').toString();
+      calls.args = JSON.parse(Buffer.from(/b64decode\("([^"]+)"\)/.exec(script)[1], 'base64').toString());
+      calls.exec.push('gather');
+      return { stdout: 'started' };
+    }
+    if (route === '/files/read') return { content: 'CLOSEDHAND_PROGRESS download 1\nCLOSEDHAND_VIDEO ' + JSON.stringify(sandboxReply.out) + '\n' };
+    if (route === '/exec') { calls.exec.push(body.code.includes('rmtree') ? 'cleanup' : 'other'); return { stdout: '' }; }
+    return {};
+  },
 });
 stub('services/listen.js', { transcribe: async (pcm) => { calls.heard.push(pcm.length); return { language: 'en', lines: [{ start: 1, text: 'hello' }] }; } });
 stub('llm.js', { settingsOf: (store) => store.profile.settings });
@@ -252,9 +265,9 @@ print(json.dumps({
 
 function hasPython() { try { execFileSync('python3', ['--version']); return true; } catch { return false; } }
 
-test('the sandbox writes speech out in parts as it decodes: a file to its end, a link up to its cap', { skip: !hasPython() }, () => {
+test('the sandbox writes speech out in parts as it decodes, to its end', { skip: !hasPython() }, () => {
   // av stood in: 0.5 s frames of 16 kHz mono samples, 7 of them (3.5 s).
-  const run = (cap) => JSON.parse(execFileSync('python3', ['-c', `
+  const run = () => JSON.parse(execFileSync('python3', ['-c', `
 import importlib.util, json, sys, tempfile, types, io, contextlib
 class Frame:
     def __init__(self, n): self.samples = n; self.planes = [bytes(2 * n)]
@@ -269,20 +282,16 @@ class Container:
         for _ in range(7): yield Frame(8000)
 sys.modules["av"] = types.SimpleNamespace(open=lambda p: Container(), AudioResampler=Resampler)
 spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-m.OUT = tempfile.mkdtemp(); m.CHUNK_SECONDS = 1; m.AUDIO_CAP = ${cap}
+m.OUT = tempfile.mkdtemp(); m.CHUNK_SECONDS = 1
 log = io.StringIO()
 with contextlib.redirect_stdout(log):
-    parts, seconds = m.speech("talk.m4a")
+    parts = m.speech("talk.m4a")
 import os
-print(json.dumps({"parts": parts, "sizes": [os.path.getsize(os.path.join(m.OUT, p)) for p in parts], "seconds": seconds, "log": log.getvalue().splitlines()}))`]).toString());
-  const whole = run(0);
+print(json.dumps({"parts": parts, "sizes": [os.path.getsize(os.path.join(m.OUT, p)) for p in parts], "log": log.getvalue().splitlines()}))`]).toString());
+  const whole = run();
   assert.deepEqual(whole.parts, ['speech-0.pcm', 'speech-1.pcm', 'speech-2.pcm', 'speech-3.pcm']);
-  assert.deepEqual(whole.sizes, [32000, 32000, 32000, 16000], 'each part written as soon as it is full, the rest at the end');
-  assert.equal(whole.seconds, 3.5, 'to its end');
+  assert.deepEqual(whole.sizes, [32000, 32000, 32000, 16000], 'each part written as soon as it is full, the rest at the end: 3.5 s, to its end');
   assert.deepEqual(whole.log, ['CLOSEDHAND_PROGRESS speech 1', 'CLOSEDHAND_PROGRESS speech 2', 'CLOSEDHAND_PROGRESS speech 3', 'CLOSEDHAND_PROGRESS speech 4'], 'a line for each, read by the bot as work still going');
-  const capped = run(2);
-  assert.deepEqual(capped.sizes, [32000, 32000]);
-  assert.equal(capped.seconds, 2);
   assert.match(read('lib/video-sandbox.py'), /time\.time\(\) - os\.path\.getmtime\(full\) > 86400:/, 'a job still being written out is not swept away');
 });
 
@@ -318,4 +327,57 @@ test('a model whose window is too small gets fewer frames and less transcript un
     assert.equal(images(calls.requests[1].content), 3, 'scaled to a quarter: half the window over what was sent');
     assert.ok(calls.requests[1].content.at(-1).text.length < calls.requests[0].content.at(-1).text.length);
   } finally { wireStub.request = real; }
+});
+
+test('a link to several videos is not guessed at: their titles come back to ask which, and a live stream says so', async () => {
+  reset({ out: { ok: false, kind: 'several', count: 40, videos: [{ title: 'Kettle care, part 1', url: 'https://videos.test/1' }, { title: 'Kettle care, part 2', url: 'https://videos.test/2' }] } });
+  const store = setup({ chat: { model: 'vision-model', cap: { vision: true } }, vision: 'same' });
+  await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'https://videos.test/playlist' }),
+    (e) => e.userFacing && /^This link holds more than 2 videos, so ask which one to watch:\n1\. Kettle care, part 1 \(https:\/\/videos\.test\/1\)\n2\. Kettle care, part 2 \(https:\/\/videos\.test\/2\)$/.test(e.message));
+  assert.deepEqual(calls.exec, ['gather', 'cleanup'], 'its folder is cleared');
+  reset({ out: { ok: false, kind: 'live', error: 'This is a live stream' } });
+  await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'https://videos.test/live' }), (e) => e.userFacing && /^This is a live stream, so there is no end to watch to yet\./.test(e.message));
+});
+
+test('a link is watched whole, however long, and a long transcript is read a part at a time', async () => {
+  const lines = Array.from({ length: 4000 }, (_, i) => ({ start: i * 3, text: `Line ${i} of a long talk about kettles and the people who make them.` }));
+  reset(downloaded({ meta: { duration: 12000, captions: { source: 'written', lines } } }));
+  const store = setup({ chat: { model: 'text-model', cap: { vision: false } }, vision: null });
+  const first = await video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/2' });
+  assert.deepEqual(Object.keys(calls.args).sort(), ['job', 'max_frames', 'url', 'video_bytes', 'youtube'], 'no cap on length or speech');
+  assert.match(first.account, /\[Part 1 of \d+ of what's said\. Call watch_video again with part 2 for what follows\.\]/);
+  assert.doesNotMatch(first.account, /left out for length/);
+  const second = await video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/2', part: 2 });
+  assert.match(second.account, /^Video: https:\/\/vimeo\.com\/2\nTitle: A clip[\s\S]*\[Part 2 of \d+ of what's said/);
+  assert.equal(calls.exec.filter((x) => x === 'gather').length, 1, 'the next part is not watched again');
+  assert.doesNotMatch(read('lib/video-sandbox.py'), /max_filesize|too long|AUDIO_CAP/);
+});
+
+test('the sandbox finds the one video a link is to', { skip: !hasPython() }, () => {
+  const out = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, types
+spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+INFO = {
+    "https://v.test/list": {"_type": "playlist", "playlist_count": 30, "entries": [{"title": "One", "url": "https://v.test/1"}, {"title": "Two", "url": "https://v.test/2"}]},
+    "https://v.test/watch?v=1&list=x": {"_type": "playlist", "entries": [{"title": "One", "url": "https://v.test/1"}]},
+    "https://v.test/live": {"title": "Now", "is_live": True},
+    "https://v.test/2": {"title": "Two"},
+}
+class Y:
+    def __init__(self, opts): self.opts = opts
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def extract_info(self, url, download=False): return INFO[url]
+res = {}
+for url in INFO:
+    try: res[url] = m.one_video(types.SimpleNamespace(YoutubeDL=Y), {}, url)
+    except m.Several as e: res[url] = {"several": e.count, "titles": [v["title"] for v in e.videos]}
+    except Exception as e: res[url] = {"problem": m.problem(str(e))}
+print(json.dumps(res))`]).toString());
+  assert.deepEqual(out, {
+    'https://v.test/list': { several: 30, titles: ['One', 'Two'] },
+    'https://v.test/watch?v=1&list=x': 'https://v.test/1',
+    'https://v.test/live': { problem: 'live' },
+    'https://v.test/2': 'https://v.test/2',
+  });
 });
