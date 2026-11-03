@@ -223,7 +223,7 @@ test('Docker hands an NVIDIA card to Closedhand only where install.sh finds one,
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../Dockerfile'), 'utf8'), /stable-diffusion/, 'the regular image carries none of it');
   const docker = fs.readFileSync(path.join(__dirname, '../Dockerfile.gpu'), 'utf8');
   assert.match(docker, /FROM nvidia\/cuda:12\.6\.3-devel-ubuntu22\.04 AS build/, 'a C library older than the bot image\'s');
-  assert.match(docker, /-DSD_CUDA=ON -DGGML_NATIVE=OFF/, 'for any x86-64 processor');
+  assert.match(docker, /-DSD_CUDA=ON -DGGML_CUDA_NCCL=OFF -DGGML_NATIVE=OFF/, 'for any x86-64 processor, without the multi-card library');
   assert.match(docker, /patchelf --set-rpath '\$ORIGIN'/, 'its CUDA libraries found beside it');
   assert.match(docker, /FROM \$\{BOT_IMAGE\}\nCOPY --from=build \/opt\/stable-diffusion \/opt\/stable-diffusion/);
   const ci = fs.readFileSync(path.join(__dirname, '../.github/workflows/build-selfhost-images.yml'), 'utf8');
