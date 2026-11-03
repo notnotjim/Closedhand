@@ -134,19 +134,31 @@ async function prepare(input, settings) {
       if (connectionId !== "primary") visionCatalog = await wire.listModels(conn).catch(() => []);
       visionCap = policy.capabilities(conn, visionModel, visionCatalog.find(m => m.id === visionModel)?.metadata);
     }
-    if (visionCap.vision === false) throw Object.assign(new Error("This model does not accept images. Choose an image and video model from this provider or another provider, or use the vision language model on this computer."), { visionNeeded: true });
     // An advertised capability is checked against the actual endpoint before saving.
-    const imageReply = await wire.request({ ...conn, capabilities: visionCap }, { model: visionModel, effort: "fast", max_tokens: 1024,
-      messages: [{ role: "user", content: [{ type: "text", text: "What is the main colour in this image? Answer in one word." },
-        { type: "image", source: { type: "base64", media_type: "image/png", data: RED_IMAGE } }] }],
-    }, { signal: AbortSignal.timeout(45000) }).catch(error => { throw Object.assign(unlisted(error, visionCatalog, visionModel), { visionNeeded: true }); });
-    if (!imageReply.content?.some(b => b.type === "text" && /\bred\b/i.test(b.text))) throw Object.assign(new Error("The image check did not pass. Retry, choose another image and video model, or use the vision language model on this computer."), { visionNeeded: true });
-    roles.vision = { connection: connectionId, model: visionModel, capabilities: { ...visionCap, vision: true } };
-    // An image model needs no room for instructions, so a small window only
-    // means fewer frames from a video; the panel says so.
-    const visionWindow = await ollamaWindow(conn, visionModel);
-    if (visionWindow) roles.vision.capabilities.contextWindow = visionWindow.given;
-    if (connectionId === "primary" && visionModel === model) roles.chat.capabilities.vision = true;
+    const readsImages = () => visionCap.vision === false ? Promise.resolve(false)
+      : wire.request({ ...conn, capabilities: visionCap }, { model: visionModel, effort: "fast", max_tokens: 1024,
+        messages: [{ role: "user", content: [{ type: "text", text: "What is the main colour in this image? Answer in one word." },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: RED_IMAGE } }] }],
+      }, { signal: AbortSignal.timeout(45000) }).then(reply => !!reply.content?.some(b => b.type === "text" && /\bred\b/i.test(b.text)));
+    // A primary model that can't read pictures isn't a failed check: they are
+    // described by the vision language model on this computer
+    // (lib/local-models.js), and the check says so. An image model chosen for
+    // the job that can't read them is.
+    let reads = true;
+    if (mode === "same") reads = await readsImages().catch(() => false);
+    else {
+      if (visionCap.vision === false) throw Object.assign(new Error("This model does not accept images. Choose an image and video model from this provider or another provider, or use the vision language model on this computer."), { visionNeeded: true });
+      const ok = await readsImages().catch(error => { throw Object.assign(unlisted(error, visionCatalog, visionModel), { visionNeeded: true }); });
+      if (!ok) throw Object.assign(new Error("The image check did not pass. Retry, choose another image and video model, or use the vision language model on this computer."), { visionNeeded: true });
+    }
+    if (reads) {
+      roles.vision = { connection: connectionId, model: visionModel, capabilities: { ...visionCap, vision: true } };
+      // An image model needs no room for instructions, so a small window only
+      // means fewer frames from a video; the panel says so.
+      const visionWindow = await ollamaWindow(conn, visionModel);
+      if (visionWindow) roles.vision.capabilities.contextWindow = visionWindow.given;
+      if (connectionId === "primary" && visionModel === model) roles.chat.capabilities.vision = true;
+    } else roles.chat.capabilities = { ...roles.chat.capabilities, vision: false };
   }
   // Video is checked with a made-up clip that turns from red to blue, for each
   // model that claims it and each image model whose provider doesn't say:

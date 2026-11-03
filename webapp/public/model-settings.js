@@ -410,7 +410,7 @@
       };
       if (chatCap.vision === true && vision) return ["Sees frames and reads what's said" + narrow(chat), "ok"];
       if (separate) return [visionLabel + " sees frames, and Closedhand writes out what's said" + narrow(vision), "ok"];
-      return ["Reads what's said only, since images are off", ""];
+      return ["The vision language model on this computer describes frames, and Closedhand writes out what's said", "ok"];
     }
     function catalogCaps(key) {
       var id = chosen(key), m = models.find(function (x) { return x.id === id; });
@@ -456,7 +456,7 @@
         if (looksLikeKey(visionId)) row("Images", KEY_AS_MODEL, "fail");
         else row("Images", !visionId ? "Choose an image and video model" : (visionDone ? "Read by " : "") + modelName({ id: visionId }, visionProv) + " via " + (providers[visionProv] || visionProv) + (visionDone ? "" : ", not checked yet"), visionDone ? "ok" : "wait");
       }
-      else row("Images", cap.vision === true ? "Accepts images" : cap.vision === false ? "Text only, choose an image and video model below or use the vision language model on this computer" : "Not checked yet", cap.vision === true ? "ok" : cap.vision === false ? "fail" : "wait");
+      else row("Images", cap.vision === true ? "Accepts images" : cap.vision === false ? "Text only, so the vision language model on this computer describes them" : "Not checked yet", cap.vision === true || cap.vision === false ? "ok" : "wait");
       // How videos are handled follows from what the checked models can do.
       var videoSetup = cfg && (kind === "passed" || kind === "saved") ? cfg
         : kind !== "checking" && !(kind === "failed") && savedChat() && (mode !== "separate" || savedVision()) && mode !== "off" ? saved : null;

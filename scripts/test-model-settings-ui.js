@@ -272,7 +272,7 @@ test('the panel says how videos are handled, from what the checked models can do
     [{ tools: true, vision: true, video: true, videoLinks: true }, { connection: 'primary', model: 'chat', capabilities: { vision: true } }, /^Watches them whole, and opens YouTube links itself$/],
     [{ tools: true, vision: true }, { connection: 'primary', model: 'chat', capabilities: { vision: true } }, /^Sees frames and reads what's said$/],
     [{ tools: true, vision: false }, { connection: 'vision', model: 'grok-4.7', capabilities: { vision: true } }, /^grok-4\.7 via xAI sees frames, and Closedhand writes out what's said$/],
-    [{ tools: true, vision: false }, null, /^Reads what's said only, since images are off$/],
+    [{ tools: true, vision: false }, null, /^The vision language model on this computer describes frames, and Closedhand writes out what's said$/],
   ];
   for (const [chatCap, vision, expected] of cases) {
     const respond = withRoles(chatCap, vision);

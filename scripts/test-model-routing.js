@@ -235,12 +235,18 @@ test("a model chosen in Settings is sent exactly as chosen, suffixes included", 
   assert.match(require("node:fs").readFileSync(require("node:path").join(__dirname, "../lib/llm.js"), "utf8"), /const model = backend === "custom" \? opts\.model : params\.model \|\| opts\.model;/);
   assert.doesNotMatch(require("node:fs").readFileSync(require("node:path").join(__dirname, "../lib/llm.js"), "utf8"), /MODEL_MAP|PLATFORM_PROVIDER|defaultLLMClient/, "no model of Closedhand's own");
 });
-test("image-less setup requires an explicit choice and does not change stored settings", async () => {
+test("a primary model that can't read images passes, with images described on this computer, and stored settings are untouched", async () => {
   mockProvider();
   const settings = { custom_api_key: "old", self_host_config: { EMBED_MODEL: "locked" } };
   const before = JSON.stringify(settings);
-  await assert.rejects(config.prepare({ primary: { provider: "custom", baseUrl: "https://chosen.example/v1", apiKey: "new" }, model: "chat" }, settings), /does not accept images/);
+  const prepared = await config.prepare({ primary: { provider: "custom", baseUrl: "https://chosen.example/v1", apiKey: "new" }, model: "chat" }, settings);
+  assert.equal(prepared.roles.vision, null, "no image model: the vision language model on this computer describes them");
+  assert.equal(prepared.roles.chat.capabilities.vision, false);
   assert.equal(JSON.stringify(settings), before);
+});
+test("an image model chosen for the job that can't read images still fails the check", async () => {
+  mockProvider();
+  await assert.rejects(config.prepare({ primary: { provider: "custom", baseUrl: "https://chosen.example/v1", apiKey: "new" }, model: "chat", visionMode: "separate", visionModel: "chat" }, {}), /does not accept images|image check did not pass/);
 });
 test("one model can serve all roles after a real image check, even when catalog metadata is absent", async () => {
   mockProvider({ models: [{ id: "chat" }] });
