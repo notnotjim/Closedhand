@@ -205,7 +205,7 @@ function install(app, deps) {
   }
   const route = fn => async (req, res) => {
     try { const id = await authorize(req, res); if (!id) return; await fn(req, res, id); }
-    catch (e) { res.status(400).json({ error: e.message || "Could not check the model.", visionNeeded: !!e.visionNeeded }); }
+    catch (e) { res.status(400).json({ error: e.message || "Could not check the model.", visionNeeded: !!e.visionNeeded, checkExpired: !!e.checkExpired }); }
   };
   app.get("/api/model-config", route(async (req, res, id) => {
     const settings = await profile(id);
@@ -252,7 +252,9 @@ function install(app, deps) {
   }));
   app.post("/api/model-config/save", route(async (req, res, id) => {
     const entry = receipts.get(req.body.ticket);
-    if (!entry || entry.id !== id || entry.expires < Date.now()) throw new Error("Check the models again before saving.");
+    // A check is kept for ten minutes, in this process only: an older one, or
+    // one from before a restart, is checked again by the page, then saved.
+    if (!entry || entry.id !== id || entry.expires < Date.now()) throw Object.assign(new Error("Check the models again before saving."), { checkExpired: true });
     // Compared and written under run-here's lock on the model settings, so
     // neither save can overwrite the other (a runner moving port, say).
     const runHere = require("./run-here");

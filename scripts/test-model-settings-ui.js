@@ -95,6 +95,20 @@ test('failed catalogs leave manual model entry available', async () => {
   assert.match(ui.result.textContent, /selected model service/);
   ui.pick('model', '__manual__'); assert.equal(ui.field('model').value, '');
 });
+test('saving after the check has expired, or after a restart, checks again and saves, instead of only saying to check again', async () => {
+  let saves = 0, checks = 0;
+  const ui = await mount(call => call.path === '/models' ? catalog
+    : call.path === '/check' ? (checks++, { ...checked(), ticket: 'ticket-' + checks })
+    : call.path === '/save' ? (++saves === 1 ? { error: 'Check the models again before saving.', checkExpired: true } : { ok: true })
+    : saves > 1 ? { config: checked().config } : { config: null });
+  ui.choose('provider', 'openai'); ui.type('apiKey', 'fixture'); await ui.action('load').onclick(); await tick();
+  ui.choose('visionMode', 'off'); ui.pick('model', 'chat'); await ui.timers();
+  assert.equal(checks, 1);
+  await ui.action('save').onclick(); await tick(); await tick();
+  assert.equal(checks, 2, 'checked again');
+  assert.deepEqual(ui.calls.filter((c) => c.path === '/save').map((c) => c.body.ticket), ['ticket-1', 'ticket-2'], 'then saved with the new check');
+  assert.equal(ui.result.textContent, 'Models updated. New requests use these choices.');
+});
 test('editing a checked connection immediately removes save, and late checks cannot restore it', async () => {
   let finish, delayed = false;
   const ui = await mount(call => call.path === '/models' ? catalog : call.path === '/check' ? (delayed ? new Promise(resolve => { finish = resolve; }) : checked()) : { config: null });

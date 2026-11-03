@@ -261,7 +261,7 @@
           message = ["/models", "/check"].includes(path) ? "Could not connect to the selected model service. Check its URL or your internet connection, then try again."
             : "Could not load your model settings. Try loading them again.";
         }
-        var error = new Error(message); error.visionNeeded = data.visionNeeded; throw error;
+        var error = new Error(message); error.visionNeeded = data.visionNeeded; error.checkExpired = data.checkExpired; throw error;
       }
       return data;
     }
@@ -570,7 +570,15 @@
     root.querySelector('[data-action="load-background"]').onclick = function () { loadModels("background"); };
     root.querySelector('[data-action="recheck"]').onclick = function () { runCheck(); };
     root.querySelector('[data-action="save"]').onclick = function () { if (!ticket) return; perform(async function () {
-      show("Saving models…"); await call("/save", { ticket: ticket });
+      show("Saving models…");
+      try { await call("/save", { ticket: ticket }); } catch (e) {
+        // A check older than ten minutes, or from before Closedhand restarted,
+        // is run again, and the models saved if they still pass.
+        if (!e.checkExpired) throw e;
+        show("Checking the models again…"); await runCheck();
+        if (!ticket) { show(""); return; }
+        show("Saving models…"); await call("/save", { ticket: ticket });
+      }
       field("apiKey").value = ""; field("visionKey").value = ""; field("backgroundKey").value = "";
       invalidate(); clearTimeout(checkTimer); checks++;
       var updated = await call(""); saved = updated.config; renderCurrent(updated);
