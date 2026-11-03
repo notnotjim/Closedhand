@@ -213,10 +213,11 @@ test('the tool is offered only once the model is ready, sends the picture to the
 
 test('Docker hands an NVIDIA card to Closedhand only where install.sh finds one, and the image builds the program for it', () => {
   const gpu = fs.readFileSync(path.join(__dirname, '../docker-compose.gpu.yml'), 'utf8');
-  assert.match(gpu, /driver: nvidia/);
+  assert.match(gpu, /^    gpus: all$/m, 'gpus, which sits beside docker-compose.yml\'s mem_reservation where a deploy reservation can\'t');
+  assert.doesNotMatch(gpu, /deploy:/);
   assert.match(gpu, /NVIDIA_DRIVER_CAPABILITIES: compute,graphics,utility/, 'graphics brings the driver\'s Vulkan');
   const install = fs.readFileSync(path.join(__dirname, '../install.sh'), 'utf8');
-  assert.match(install, /if command -v nvidia-smi >\/dev\/null 2>&1 && docker info 2>\/dev\/null \| grep -qi nvidia/);
+  assert.match(install, /\{ docker info 2>\/dev\/null \| grep -qi nvidia \|\| command -v nvidia-ctk >\/dev\/null 2>&1; \}/, 'the toolkit, registered with Docker or not');
   assert.match(install, /COMPOSE_FILE=docker-compose\.yml:docker-compose\.gpu\.yml/);
   const docker = fs.readFileSync(path.join(__dirname, '../Dockerfile'), 'utf8');
   assert.match(docker, /-DSD_VULKAN=ON -DGGML_NATIVE=OFF/, 'for any x86-64 processor');

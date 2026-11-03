@@ -440,7 +440,11 @@ die() {
 command -v git >/dev/null 2>&1 || fail "git is required. Install it and re-run."
 command -v docker >/dev/null 2>&1 || fail "docker is required. Install Docker (or Docker Desktop) and re-run."
 docker compose version >/dev/null 2>&1 || fail "the docker compose plugin is required (docker compose version failed)."
-docker info >/dev/null 2>&1 || fail "the docker daemon isn't running. Start Docker and re-run."
+if ! docker info >/dev/null 2>&1; then
+  docker info 2>&1 | grep -qi "permission denied" \
+    && fail "this account can't use Docker yet. Run: sudo usermod -aG docker \$USER, sign out and back in, then re-run."
+  fail "the docker daemon isn't running. Start Docker and re-run."
+fi
 
 # --- Reset (only when asked) -------------------------------------------------
 # Deliberately narrow. It removes the containers and volumes belonging to this
@@ -523,9 +527,11 @@ fi
 
 # --- A graphics card, for image generation ------------------------------------
 # A computer with an NVIDIA card and NVIDIA's container toolkit hands the card
-# to Closedhand (docker-compose.gpu.yml), so it can generate images. Docker
-# reads COMPOSE_FILE from .env.
-if command -v nvidia-smi >/dev/null 2>&1 && docker info 2>/dev/null | grep -qi nvidia \
+# to Closedhand (docker-compose.gpu.yml), so it can generate images. The
+# toolkit works whether or not its runtime is registered with Docker (a cloud
+# GPU server's often isn't). Docker reads COMPOSE_FILE from .env.
+if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 \
+   && { docker info 2>/dev/null | grep -qi nvidia || command -v nvidia-ctk >/dev/null 2>&1; } \
    && ! grep -qE '^COMPOSE_FILE=' .env 2>/dev/null; then
   printf 'COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml\n' >> .env
 fi
