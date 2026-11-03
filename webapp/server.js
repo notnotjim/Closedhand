@@ -8135,18 +8135,44 @@ app.get("/api/index/progress", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/index/older-mail - how far back the last year of mail has been read
-// (lib/services/mail-history.js), for the dashboard's sync card. backTo is
-// the mailbox furthest behind.
-app.get("/api/index/older-mail", async (req, res) => {
+// GET /api/index/reading - what Closedhand is reading, for the dashboard's
+// corner. While it first gets to know someone (a connection's first read, the
+// walk back through their mail) it says how far along it is and how far back
+// the mail is complete; after that, only what is new while a sync runs.
+// How far back mail is read, as lib/services/sync-depth.js decides
+// (scripts/test-mail-history.js keeps the two the same).
+const MAIL_YEARS = 1, PERSONAL_MAIL_YEARS = 5;
+const FIRST_READ_MS = 48 * 3600 * 1000;
+app.get("/api/index/reading", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not authenticated" });
   try {
-    const { data } = await supabase.from("mail_coverage").select("complete_since, done").eq("user_id", userId);
-    const reading = (data || []).filter((r) => !r.done && r.complete_since);
-    const backTo = reading.reduce((late, r) => (!late || r.complete_since > late ? r.complete_since : late), null);
-    res.json({ reading: reading.length > 0, backTo });
-  } catch (e) { res.json({ reading: false, backTo: null }); }
+    const now = Date.now(), year = 365 * 86400000;
+    const [progress, coverage] = await Promise.all([
+      supabase.from("index_progress").select("service, status, phase1_done, phase1_total, last_sync, created_at").eq("user_id", userId),
+      supabase.from("mail_coverage").select("source, complete_since, done").eq("user_id", userId),
+    ]);
+    if (progress.error || coverage.error) throw new Error((progress.error || coverage.error).message);
+    // Every part of the first reading, finished ones counted whole, so the
+    // bar never goes back when one of them ends.
+    const parts = [], fresh = [];
+    let reading = false, backTo = null;
+    for (const r of progress.data || []) {
+      const busy = r.status === "indexing" || (r.phase1_total > 0 && r.phase1_done < r.phase1_total);
+      const first = !r.last_sync && r.created_at && now - Date.parse(r.created_at) < FIRST_READ_MS;
+      if (first) { parts.push(busy ? (r.phase1_total ? Math.min(1, r.phase1_done / r.phase1_total) : 0) : 1); reading = reading || busy; }
+      else if (busy) fresh.push({ service: r.service, n: r.phase1_total || 0 });
+    }
+    for (const r of coverage.data || []) {
+      if (r.done || !r.complete_since) { parts.push(1); continue; }
+      const goal = (r.source.endsWith("#personal") ? PERSONAL_MAIL_YEARS : MAIL_YEARS) * year;
+      parts.push(Math.max(0, Math.min(1, (now - Date.parse(r.complete_since)) / goal)));
+      reading = true;
+      if (!backTo || r.complete_since > backTo) backTo = r.complete_since;
+    }
+    const progressMade = parts.length ? parts.reduce((a, b) => a + b, 0) / parts.length : 0;
+    res.json({ first: reading ? { progress: progressMade, backTo } : null, fresh: reading ? [] : fresh });
+  } catch (e) { res.json({ first: null, fresh: [] }); }
 });
 
 // GET /api/rag/browse - browse folders for source selection

@@ -321,11 +321,62 @@ test('a vector is deleted as stale only when its email is gone from the cache, a
   assert.equal((src.match(/const toDelete = await staleVectors\(/g) || []).length, 2);
 });
 
-test('the dashboard says which kind of reading is going on', () => {
+// The dashboard's corner, from /api/index/reading: "Getting to know you" with
+// a line that fills while the first reading goes on, how far back it has got
+// on hover; then, a sync with something new is one faint line. Nothing in it
+// says it reads someone's mail.
+async function reading(tables) {
+  const src = read('webapp/server.js');
+  const at = src.indexOf('const MAIL_YEARS = 1');
+  const end = src.indexOf('\n});\n', src.indexOf('app.get("/api/index/reading"')) + 5;
+  const box = { app: { get: (route, fn) => { box.handler = fn; } }, getUserIdFromRequest: () => 'u1', supabase: fakeDb(tables), Date, Math };
+  require('node:vm').runInNewContext(src.slice(at, end), box);
+  let out;
+  const json = (v) => { out = JSON.parse(JSON.stringify(v)); };
+  await box.handler({}, { json, status: () => ({ json }) });
+  return out;
+}
+const yearsAgo = (y) => new Date(Date.now() - y * 365 * 86400000).toISOString();
+
+test('while Closedhand first gets to know someone, the corner says how far along and how far back', async () => {
+  const out = await reading({
+    index_progress: [{ user_id: 'u1', service: 'email', status: 'indexing', phase1_done: 40, phase1_total: 100, last_sync: null, created_at: new Date().toISOString() }],
+    mail_coverage: [
+      { user_id: 'u1', source: 'gmail', complete_since: yearsAgo(0.5), done: false },
+      { user_id: 'u1', source: 'gmail#personal', complete_since: yearsAgo(1), done: false },
+      { user_id: 'u1', source: 'outlook', complete_since: yearsAgo(1), done: true },
+    ],
+  });
+  assert.ok(Math.abs(out.first.progress - (0.4 + 0.5 + 0.2 + 1) / 4) < 0.01, 'every part counted, a finished one whole');
+  assert.ok(Math.abs(Date.parse(out.first.backTo) - Date.parse(yearsAgo(0.5))) < 60000, 'as far back as all of it is complete');
+  assert.deepEqual(out.fresh, [], 'nothing else beside it');
+});
+
+test('after that, only what is new while a sync runs, and nothing when there is nothing', async () => {
+  const done = [{ user_id: 'u1', source: 'gmail', complete_since: yearsAgo(1), done: true }];
+  const old = '2026-10-01T00:00:00Z';
+  const out = await reading({
+    index_progress: [
+      { user_id: 'u1', service: 'email', status: 'indexing', phase1_done: 0, phase1_total: 1, last_sync: old, created_at: old },
+      { user_id: 'u1', service: 'calendar', status: 'indexed', phase1_done: 3, phase1_total: 3, last_sync: old, created_at: old },
+      { user_id: 'u1', service: 'recall:mcp:x', status: 'error', phase1_done: 0, phase1_total: 0, last_sync: null, created_at: old },
+    ],
+    mail_coverage: done,
+  });
+  assert.deepEqual(out, { first: null, fresh: [{ service: 'email', n: 1 }] });
+  assert.deepEqual(await reading({ index_progress: [], mail_coverage: done }), { first: null, fresh: [] });
+});
+
+test('the corner reads mail as far back as the sync does, and never says it reads anyone\'s mail', () => {
+  const depth = require('../lib/services/sync-depth');
+  const server = read('webapp/server.js');
+  assert.match(server, new RegExp('const MAIL_YEARS = ' + depth.MAIL_DAYS / 365 + ', PERSONAL_MAIL_YEARS = ' + depth.PERSONAL_MAIL_DAYS / 365 + ';'));
   const dash = read('webapp/views/dashboard.html');
-  assert.match(dash, /'<div class="row"><span>Your older mail<\/span><b>back to ' \+ olderTo \+ '<\/b><\/div>'/, 'a row on the first-read card');
-  assert.match(dash, /'Reading your last year of mail, now back to ' \+ olderTo/, 'one quiet line after it');
-  assert.match(dash, /'Reading ' \+ routine\.join\(' and '\) \+ ', so recall stays up to date'/, 'new mail keeps its own line');
-  assert.match(dash, /fetch\('\/api\/index\/older-mail'/);
-  assert.match(read('webapp/server.js'), /app\.get\("\/api\/index\/older-mail"/);
+  const corner = dash.slice(dash.indexOf("/* What Closedhand is reading, kept small"), dash.indexOf('// Logging out is a POST'));
+  assert.match(corner, /<span class="know-label">Getting to know you<\/span>/);
+  assert.match(corner, /'Back to ' \+ monthOf\(first\.backTo\) \+ ' so far'/);
+  assert.match(corner, /return 'Catching up on ' \+ said\.join\(' and '\);/);
+  assert.match(corner, /fetch\('\/api\/index\/reading'/);
+  assert.doesNotMatch(corner, /Reading your|your mail|personal/i);
+  assert.doesNotMatch(dash + server, /older-mail/, 'the endpoint it replaced is gone');
 });
