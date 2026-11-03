@@ -499,6 +499,31 @@ function byRecency(files) {
   files.sort((a, b) => new Date(b.modified || 0) - new Date(a.modified || 0));
 }
 
+// Every file and folder under `root` on a computer listed one folder at a
+// time (the sandbox computer, a Mac), each with where it sits below the
+// chosen folder (rel). Hidden folders and the ones tools make (node_modules)
+// are not the person's files and are left out. A folder that cannot be
+// listed is passed over, never the whole scan, and named in `unlisted` so
+// what was read from it is kept, not taken for gone.
+async function underneath(root, list) {
+  const out = [], queue = [""];
+  out.unlisted = [];
+  while (queue.length) {
+    const rel = queue.shift();
+    let entries;
+    try { entries = await list(rel ? root.replace(/\/$/, "") + "/" + rel : root); }
+    catch (e) { if (!rel) throw e; console.error(`[RAG] Folder ${rel} could not be listed: ${e.message}`); out.unlisted.push(rel); continue; }
+    for (const f of entries) {
+      if (!f.name || f.name.startsWith(".")) continue;
+      const at = rel ? rel + "/" + f.name : f.name;
+      if (f.type === "directory" || f.type === "dir") { if (f.name === "node_modules") continue; queue.push(at); }
+      out.push({ ...f, rel: at });
+    }
+  }
+  byRecency(out);
+  return out;
+}
+
 async function scanFolder(userId, origin, folderPath, opts = {}) {
   // origin says WHICH kind of store (gdrive/onedrive); account (a connection
   // service key) says WHICH account of it. Null account -> primary.
@@ -507,38 +532,57 @@ async function scanFolder(userId, origin, folderPath, opts = {}) {
   if (origin === "cloud") {
     const info = await _getSandboxInfo(userId);
     if (!info) throw new Error("Sandbox computer not active");
-    const result = await _sandboxFetch(info, "POST", "/files/list", { path: folderPath });
-    return (result.files || result || []).map(f => ({ name: f.name, type: f.type, size: f.size, modified: f.modified || f.mtime }));
+    const list = async (at) => {
+      const result = await _sandboxFetch(info, "POST", "/files/list", { path: at });
+      return (result.files || result || []).map(f => ({ name: f.name, type: f.type, size: f.size, modified: f.modified || f.mtime }));
+    };
+    return opts.recursive ? underneath(folderPath, list) : list(folderPath);
   } else if (origin === "bridge") {
-    let files = [];
+    return opts.recursive ? underneath(folderPath, (at) => listMac(userId, at)) : listMac(userId, folderPath);
+  }
+  return scanCloudStore(userId, origin, folderPath, opts, gKey, msKey);
+}
+
+// One folder on the person's Mac, through Bridge. A Mac that cannot be
+// reached throws, never lists as an empty folder: that would read as every
+// file gone.
+async function listMac(userId, folderPath) {
+  let files = [], reached = false, failure = null;
+  try {
+    const result = await _bridgeRequest(userId, "files.list", { path: folderPath }, 15000);
+    const rawFiles = result?.items || result?.files || (Array.isArray(result) ? result : []);
+    files = rawFiles.map(f => ({ name: f.name, type: f.isDirectory || f.type === "directory" ? "directory" : "file", size: f.size || 0, modified: f.modified || f.modifiedDate || f.mtime }));
+    reached = true;
+  } catch (e) { failure = e; /* fall through to ls fallback */ }
+  // Supplement with ls if files.list returned few results
+  if (files.length < 5) {
     try {
-      const result = await _bridgeRequest(userId, "files.list", { path: folderPath }, 15000);
-      const rawFiles = result?.items || result?.files || (Array.isArray(result) ? result : []);
-      files = rawFiles.map(f => ({ name: f.name, type: f.isDirectory || f.type === "directory" ? "directory" : "file", size: f.size || 0, modified: f.modified || f.modifiedDate || f.mtime }));
-    } catch (e) { /* fall through to ls fallback */ }
-    // Supplement with ls if files.list returned few results
-    if (files.length < 5) {
-      try {
-        // The folder's name goes as base64, decoded on the Mac, so a $( ) or a
-        // quote in a name is never read as part of the command.
-        const rel = folderPath.replace(/^~\/?/, "");
-        const lsPath = rel ? `"$HOME/$(printf %s ${Buffer.from(rel, "utf8").toString("base64")} | base64 --decode)"` : `"$HOME"`;
-        const lsResult = await _bridgeRequest(userId, "shell.run", { command: `ls -1p ${lsPath} 2>/dev/null` }, 10000);
-        const lsOut = (lsResult?.result?.stdout || lsResult?.stdout || "").trim();
-        if (lsOut) {
-          const existing = new Set(files.map(f => f.name));
-          for (const line of lsOut.split("\n").filter(Boolean)) {
-            const isDir = line.endsWith("/");
-            const name = isDir ? line.slice(0, -1) : line;
-            if (name && !name.startsWith(".") && !existing.has(name)) {
-              files.push({ name, type: isDir ? "directory" : "file", size: 0, modified: null });
-            }
+      // The folder's name goes as base64, decoded on the Mac, so a $( ) or a
+      // quote in a name is never read as part of the command.
+      const rel = folderPath.replace(/^~\/?/, "");
+      const lsPath = rel ? `"$HOME/$(printf %s ${Buffer.from(rel, "utf8").toString("base64")} | base64 --decode)"` : `"$HOME"`;
+      const lsResult = await _bridgeRequest(userId, "shell.run", { command: `ls -1p ${lsPath} 2>/dev/null` }, 10000);
+      reached = true;
+      const lsOut = (lsResult?.result?.stdout || lsResult?.stdout || "").trim();
+      if (lsOut) {
+        const existing = new Set(files.map(f => f.name));
+        for (const line of lsOut.split("\n").filter(Boolean)) {
+          const isDir = line.endsWith("/");
+          const name = isDir ? line.slice(0, -1) : line;
+          if (name && !name.startsWith(".") && !existing.has(name)) {
+            files.push({ name, type: isDir ? "directory" : "file", size: 0, modified: null });
           }
         }
-      } catch (_) {}
-    }
-    return files;
-  } else if (origin === "gdrive") {
+      }
+    } catch (e) { failure = failure || e; }
+  }
+  if (!reached) throw failure || new Error("The Mac could not be reached");
+  return files;
+}
+
+// Google Drive, OneDrive and Dropbox, listed through their own services.
+async function scanCloudStore(userId, origin, folderPath, opts, gKey, msKey) {
+  if (origin === "gdrive") {
     // Two modes. The folder browser wants one level (folders included) so the
     // user can navigate. Indexing wants everything underneath the chosen
     // folder: a single-level scan meant "index my Drive" indexed only the
@@ -929,7 +973,7 @@ async function processSource(sourceId, ...rest) {
   try { await readSource(sourceId, ...rest); } finally { _readingSources.delete(sourceId); hearWaiting().catch(() => {}); }
 }
 
-async function readSource(sourceId, userId, origin, folderPath, selectedFiles, account) {
+async function readSource(sourceId, userId, origin, folderPath, selectedFiles, account, opts = {}) {
   try {
     // 1. Update source status to indexing
     await supabase.from("rag_sources").update({ status: "indexing", updated_at: new Date().toISOString() }).eq("id", sourceId);
@@ -968,7 +1012,7 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
     const pathOf = (file) => {
       if (origin === "gdrive" || origin === "onedrive") return file.id; // Drive and OneDrive item ids
       if (origin === "dropbox") return file.path || (folderPath === "" ? "" : folderPath) + "/" + file.name; // Full Dropbox path
-      return folderPath.replace(/\/$/, "") + "/" + file.name;
+      return folderPath.replace(/\/$/, "") + "/" + (file.rel || file.name);
     };
     const typeOf = (file) => (origin === "gdrive" && file.mimeType && GOOGLE_DOC_TYPES.includes(file.mimeType))
       ? "pdf" // Google Docs exported as PDF
@@ -1065,6 +1109,9 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       // nonsense it read off shapes, so it is read once more.
       const existing = existingMap[filePath];
       const readWell = !MEDIA_TYPES.has(typeOf(file)) || existing?.metadata?.read_by === PICTURE_READER;
+      // A routine check leaves an unchanged file that could not be read for
+      // Update, rather than fetching it again every time.
+      if (opts.scheduled && existing && existing.metadata?.modified === file.modified && existing.status === "error") return;
       if (existing && existing.metadata?.modified === file.modified && existing.status === "ready" && readWell) {
         const { count } = await supabase.from("rag_chunks").select("id", { count: "exact", head: true }).eq("document_id", existing.id);
         if (count > 0) {
@@ -1101,7 +1148,7 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       }
 
       // Its row, listed by name above: brought up to date to be read.
-      const fields = { name: file.name, file_type: fileType, size_bytes: file.size || buffer.length, status: "pending", metadata: { modified: file.modified, ...(MEDIA_TYPES.has(fileType) ? { read_by: PICTURE_READER } : {}) } };
+      const fields = { name: file.name, file_type: fileType, size_bytes: file.size || buffer.length, status: "pending", metadata: { modified: file.modified, ...(file.mimeType ? { mime: file.mimeType } : {}), ...(MEDIA_TYPES.has(fileType) ? { read_by: PICTURE_READER } : {}) } };
       const { data: doc, error: docErr } = existing
         ? await supabase.from("rag_documents").update(fields).eq("id", existing.id).select("id").single()
         : await supabase.from("rag_documents").insert({ user_id: userId, source_id: sourceId, file_path: filePath, origin, ...fields }).select("id").single();
@@ -1166,8 +1213,12 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       }
     }
 
-    // 6. Remove documents for files no longer in folder
+    // 6. Remove documents for files no longer in folder, never ones in a
+    // folder that could not be listed this time.
+    const root = folderPath.replace(/\/$/, "") + "/";
+    const unlisted = (files.unlisted || []).map((rel) => root + rel + "/");
     for (const [filePath, doc] of Object.entries(existingMap)) {
+      if (unlisted.some((at) => filePath.startsWith(at))) continue;
       if (!processedPaths.has(filePath)) {
         await supabase.from("rag_chunks").delete().eq("document_id", doc.id);
         await supabase.from("rag_documents").delete().eq("id", doc.id);
@@ -1205,11 +1256,14 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
     console.log(`[RAG] Source ${sourceId}: ready (${fileCount} files, ${totalChunks} chunks${failedCount ? `, ${failedCount} failed` : ""})`);
   } catch (e) {
     console.error(`[RAG] processSource failed for ${sourceId}:`, e.message);
-    await supabase.from("rag_sources").update({
+    // A routine check that cannot reach the folder (a Mac asleep, the sandbox
+    // computer off) leaves it as it was.
+    const { error } = await supabase.from("rag_sources").update(opts.scheduled ? { status: "ready", updated_at: new Date().toISOString() } : {
       status: "error",
       error_message: e.message,
       updated_at: new Date().toISOString(),
     }).eq("id", sourceId);
+    if (error) console.error(`[RAG] Source ${sourceId} status not saved: ${error.message}`);
   }
 }
 
@@ -1237,4 +1291,14 @@ async function recoverStalledDocuments() {
   }
 }
 
-module.exports = { init, processDocument, processSource, scanFolder, fetchFileContent, extractText, chunkText, docOpening, embedBatch, embedSingle, getServiceToken, fetchWithRefresh, recoverStalledDocuments, hearWaiting, hearFile, dueToHear, HEARD_TYPES };
+// Every folder checked for new and changed files, one at a time, as
+// connections are synced: only what is new or changed is read.
+async function checkSources() {
+  const { data, error } = await supabase.from("rag_sources").select("id, user_id, origin, path, selected_files, account").in("status", ["ready", "error"]);
+  if (error) { console.error("[RAG] Folders to check could not be read:", error.message); return; }
+  for (const src of data || []) {
+    await processSource(src.id, src.user_id, src.origin, src.path, src.selected_files || null, src.account || null, { scheduled: true });
+  }
+}
+
+module.exports = { init, processDocument, processSource, checkSources, scanFolder, fetchFileContent, extractText, chunkText, docOpening, embedBatch, embedSingle, getServiceToken, fetchWithRefresh, recoverStalledDocuments, hearWaiting, hearFile, dueToHear, HEARD_TYPES };

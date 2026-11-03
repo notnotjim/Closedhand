@@ -10014,6 +10014,8 @@ const server = app.listen(PORT, process.env.LISTEN_HOST || undefined, async () =
   setInterval(() => ragProcessor.recoverStalledDocuments().catch(() => {}), 15 * 60 * 1000);
   // Recordings and videos in File Search, heard while Closedhand is idle.
   setInterval(() => ragProcessor.hearWaiting().catch(() => {}), 5 * 60 * 1000);
+  // Each File Search folder checked for new and changed files every 15 minutes.
+  setInterval(() => ragProcessor.checkSources().catch((e) => console.error("[RAG] Folder check failed:", e.message)), 15 * 60 * 1000);
 
   // Resume stuck RAG indexing jobs (process died on previous deploy)
   try {

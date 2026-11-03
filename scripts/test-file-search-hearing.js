@@ -148,3 +148,37 @@ test("a folder's reading leaves recordings and videos listed by name, and heard 
   assert.match(rag, /finally \{ _readingSources\.delete\(sourceId\); hearWaiting\(\)\.catch\(\(\) => \{\}\); \}/);
   assert.match(read("webapp/server.js"), /setInterval\(\(\) => ragProcessor\.hearWaiting\(\)\.catch\(\(\) => \{\}\), 5 \* 60 \* 1000\);/);
 });
+
+test("a folder on the sandbox computer or a Mac is read all the way down, and a Mac asleep is never taken for an empty folder", async () => {
+  const rag = loadFileSearch({}, { url: "http://127.0.0.1:1" });
+  const tree = {
+    "/workspace/Plans": [{ name: "Brief.pdf", type: "file", modified: "2026-10-01" }, { name: "Site", type: "directory" }, { name: ".git", type: "directory" }, { name: "node_modules", type: "directory" }],
+    "/workspace/Plans/Site": [{ name: "Survey.docx", type: "file", modified: "2026-10-30" }, { name: "Locked", type: "directory" }],
+  };
+  rag.init({
+    getSandboxInfo: async () => ({}),
+    sandboxFetch: async (info, method, route, body) => {
+      if (body.path === "/workspace/Plans/Site/Locked") throw new Error("permission denied");
+      if (!tree[body.path]) throw new Error("listed a folder it should not: " + body.path);
+      return { files: tree[body.path] };
+    },
+    bridgeRequest: async () => { throw new Error("Bridge is not connected"); },
+  });
+  const files = await rag.scanFolder("u1", "cloud", "/workspace/Plans", { recursive: true });
+  assert.deepEqual(files.map((f) => f.rel), ["Site/Survey.docx", "Brief.pdf", "Site", "Site/Locked"], "newest first, each with where it sits, folders by name; hidden and tool folders left out");
+  assert.deepEqual(files.unlisted, ["Site/Locked"], "a folder that could not be listed is named, so what was read from it is kept");
+  assert.deepEqual((await rag.scanFolder("u1", "cloud", "/workspace/Plans")).map((f) => f.name), ["Brief.pdf", "Site", ".git", "node_modules"], "browsing is still one folder");
+  await assert.rejects(rag.scanFolder("u1", "bridge", "~/Documents", { recursive: true }), /Bridge is not connected/, "a Mac asleep fails the scan, never lists as empty");
+  const src = read("webapp/rag-processor.js");
+  assert.match(src, /return folderPath\.replace\(\/\\\/\$\/, ""\) \+ "\/" \+ \(file\.rel \|\| file\.name\);/, "a file underneath is fetched by its own path");
+  assert.match(src, /if \(unlisted\.some\(\(at\) => filePath\.startsWith\(at\)\)\) continue;/);
+});
+
+test("every folder is checked for new and changed files every 15 minutes, and a check that cannot reach it leaves it as it was", () => {
+  const src = read("webapp/rag-processor.js");
+  assert.match(src, /\.in\("status", \["ready", "error"\]\);/);
+  assert.match(src, /await processSource\(src\.id, src\.user_id, src\.origin, src\.path, src\.selected_files \|\| null, src\.account \|\| null, \{ scheduled: true \}\);/);
+  assert.match(src, /if \(opts\.scheduled && existing && existing\.metadata\?\.modified === file\.modified && existing\.status === "error"\) return;/, "a file that could not be read waits for Update");
+  assert.match(src, /update\(opts\.scheduled \? \{ status: "ready", updated_at: new Date\(\)\.toISOString\(\) \} : \{/);
+  assert.match(read("webapp/server.js"), /setInterval\(\(\) => ragProcessor\.checkSources\(\)\.catch\(\(e\) => console\.error\("\[RAG\] Folder check failed:", e\.message\)\), 15 \* 60 \* 1000\);/);
+});

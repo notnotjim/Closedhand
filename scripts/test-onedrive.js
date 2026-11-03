@@ -43,7 +43,7 @@ test('File Search walks every OneDrive subfolder and page, like Google Drive',()
 test('File Search reads every file it lists, of every folder underneath, with no count to stop at', () => {
  const src = read('webapp/rag-processor.js');
  assert.doesNotMatch(src, /MAX_FILES|MAX_DEPTH|CHUNK_BUDGET|skippedForBudget/);
- const drive = src.slice(src.indexOf('} else if (origin === "gdrive") {'), src.indexOf('} else if (origin === "onedrive") {'));
+ const drive = src.slice(src.indexOf('async function scanCloudStore('), src.indexOf('} else if (origin === "onedrive") {'));
  assert.match(drive, /if \(!seen\.has\(f\.id\)\) \{ seen\.add\(f\.id\); queue\.push\(\{ id: f\.id \}\); \}/, 'each folder once');
  const dropbox = src.slice(src.indexOf('} else if (origin === "dropbox") {'), src.indexOf('throw new Error("Unknown origin: "'));
  assert.match(dropbox, /call\("list_folder", \{ path: dropboxPath, recursive: !!opts\.recursive, limit: 2000 \}\)/, 'Dropbox walks its folders');
