@@ -64,7 +64,6 @@ FILES = [
     "webapp/public/fist.png",
     "webapp/public/logo.png",
     "webapp/public/logocircle.png",
-    "webapp/public/logo-full.png",
     "webapp/public/favicon.svg",
     "webapp/public/favicon.ico",
     "desktop/AppIcon.icns",
@@ -314,11 +313,6 @@ def build_brush():
     app.save(out("desktop/AppIcon-art.png"), optimize=True)
     _icns_write(_mac_shape(app), out("desktop/AppIcon.icns"))
     # The link preview is drawn from its page: brand.py build-og.
-    # The old wordmark with the fist above it, in its grey.
-    full = Image.open(os.path.join(orig, "webapp/public/logo-full.png")).convert("RGBA")
-    full.paste((0, 0, 0, 0), (1090, 0, 1332, 267))
-    full.alpha_composite(fit(mask, (242, 267), (193, 191, 192)), (1090, 0))
-    full.save(out("webapp/public/logo-full.png"), optimize=True)
     # The Mac download window, drawn again from its page with the new ink fist.
     _dmg_background(out("desktop/dmg/fist-dark.png"), out("desktop/dmg/background.png"), out("desktop/dmg/background@2x.png"))
     # The installer's fist, painted along the same stroke.
