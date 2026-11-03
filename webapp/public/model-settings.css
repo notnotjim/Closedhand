@@ -11,7 +11,7 @@
 .model-links { display: flex; flex-wrap: wrap; gap: 0.25rem 0.375rem; align-items: baseline; }
 .model-fields .model-link { background: none; border: 0; border-radius: 0; padding: 0; min-height: 0; color: var(--muted); font: inherit; font-size: 0.9375rem; text-decoration: underline; text-underline-offset: 0.1875rem; text-decoration-color: rgba(var(--fg-rgb),0.3); cursor: pointer; justify-self: start; }
 .model-fields .model-link:hover { color: var(--fg); text-decoration-color: rgba(var(--fg-rgb),0.6); }
-.model-result { line-height: 1.6; color: var(--accent); }
+.model-result { line-height: 1.6; color: var(--fg); }
 .model-result:empty { display: none; }
 .model-current { max-width: 47.5rem; padding-bottom: 1.75rem; }
 .model-current[hidden] { display: none; }
@@ -34,6 +34,7 @@
   .model-current .model-role-list dd { margin-bottom: 1rem; }
 }
 .model-result.is-error { color: var(--accent); }
+.model-result.is-done { color: var(--ok); }
 .model-check { padding: 1.5rem; border: 1px solid rgba(var(--fg-rgb),0.4); border-radius: 0.75rem; display: grid; gap: 1.25rem; }
 .model-check h3 { margin: 0; font-family: inherit; font-weight: 600; font-size: 1.125rem; line-height: 1.4; }
 .model-check .model-role-list { margin: 0; }

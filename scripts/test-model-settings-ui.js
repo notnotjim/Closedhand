@@ -108,6 +108,10 @@ test('saving after the check has expired, or after a restart, checks again and s
   assert.equal(checks, 2, 'checked again');
   assert.deepEqual(ui.calls.filter((c) => c.path === '/save').map((c) => c.body.ticket), ['ticket-1', 'ticket-2'], 'then saved with the new check');
   assert.equal(ui.result.textContent, 'Models updated. New requests use these choices.');
+  assert.match(source, /show\("Models updated\. New requests use these choices\.", "done"\)/, 'a save that worked reads as done');
+  const css = fs.readFileSync(require.resolve('../webapp/public/model-settings.css'), 'utf8');
+  assert.match(css, /\.model-result \{ line-height: 1\.6; color: var\(--fg\); \}/, 'progress reads neutral');
+  assert.match(css, /\.model-result\.is-done \{ color: var\(--ok\); \}/, 'done in green, which means working');
 });
 test('editing a checked connection immediately removes save, and late checks cannot restore it', async () => {
   let finish, delayed = false;

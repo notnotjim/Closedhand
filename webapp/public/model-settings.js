@@ -202,7 +202,9 @@
       var images = value("visionProvider") ? imageModels : models.filter(readsImages);
       refreshPicker("visionModel", images, value("visionProvider") || value("provider"));
     }
-    function show(message, error) { result.textContent = message; result.classList.toggle("is-error", !!error); }
+    // Progress reads neutral, an error in the accent, and a save that worked
+    // in green, which means working or in use.
+    function show(message, tone) { result.textContent = message; result.classList.toggle("is-error", tone === "error"); result.classList.toggle("is-done", tone === "done"); }
     function invalidate() { ticket = null; }
     function visibility() {
       var provider = value("provider"), local = provider === "ollama", custom = provider === "custom";
@@ -271,7 +273,7 @@
       root.setAttribute("aria-busy", "true");
       root.querySelectorAll("button,input,select").forEach(function (el) { el.disabled = true; });
       try { await fn(); } catch (e) {
-        show(e.message || "Could not reach Closedhand. Try again.", true);
+        show(e.message || "Could not reach Closedhand. Try again.", "error");
       } finally {
         busy = false; root.removeAttribute("aria-busy");
         root.querySelectorAll("button,input,select").forEach(function (el) { el.disabled = false; });
@@ -293,7 +295,7 @@
       var token = ++loads[kind], vision = kind === "vision", support = kind === "background";
       var retry = root.querySelector('[data-action="' + (kind === "primary" ? "load" : "load-" + kind) + '"]');
       retry.hidden = true;
-      if (!ready(kind)) { if (!quiet) show("Choose a provider and complete its connection details first.", true); return; }
+      if (!ready(kind)) { if (!quiet) show("Choose a provider and complete its connection details first.", "error"); return; }
       if (!quiet) show(vision ? "Loading image and video models…" : support ? "Loading support models…" : "Loading available models…");
       try {
         var body = input(); body.connection = kind;
@@ -314,7 +316,7 @@
         }
       } catch (e) {
         if (token !== loads[kind]) return;
-        show(e.message || "Could not reach Closedhand. Try again.", true);
+        show(e.message || "Could not reach Closedhand. Try again.", "error");
         retry.hidden = false; region("selection").hidden = false;
       }
     }
@@ -591,7 +593,7 @@
       region("editor").querySelector("summary").hidden = false;
       check = { kind: "saved", config: saved }; renderCheck();
       region("default").hidden = !allowDefault;
-      show("Models updated. New requests use these choices."); result.focus();
+      show("Models updated. New requests use these choices.", "done"); result.focus();
       if (onSaved) onSaved();
     }); };
     root.querySelector('[data-action="default"]').onclick = function () { perform(async function () {
