@@ -100,7 +100,7 @@ test("the sandbox browser starts on Google, which a person can still change", ()
   const docker = read("sandbox-image/Dockerfile");
   assert.match(docker, /COPY chrome-policies\.json \/etc\/opt\/chrome\/policies\/recommended\/closedhand\.json/, "Google Chrome, on amd64");
   assert.match(docker, /COPY chrome-policies\.json \/etc\/chromium\/policies\/recommended\/closedhand\.json/, "Debian's Chromium, on arm64, which starts on DuckDuckGo");
-  assert.doesNotMatch(docker, /policies\/managed/, "recommended, never enforced");
+  assert.doesNotMatch(docker, /COPY chrome-policies\.json \/etc\/[^ ]*managed/, "the search engine recommended, never enforced");
   assert.match(page, /var MON_SIGNIN_INTRO = 'Sign in to any website you want it to have persistent access to\.';/);
 });
 
@@ -121,4 +121,18 @@ test("full screen on a phone has a phone browser's bar at the bottom, standing i
   for (const action of ["back", "forward", "reload"]) assert.match(page, new RegExp(`onclick="monBrowser\\('${action}'\\)"`), action);
   assert.match(page, /id="monTabsBtn" aria-label="Tabs"/);
   assert.match(page, /document\.getElementById\('monFullBar'\)\.classList\.add\('mon-own-bar'\);\n\s*var frame = document\.getElementById\('monVncFrame'\);/, "the bar's full height is known before the size is sent");
+});
+
+test("the sandbox browser shows every script and keeps to what Closedhand uses it for", () => {
+  const docker = read("sandbox-image/Dockerfile");
+  assert.match(docker, /fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji/, "Japanese, Chinese, Korean, the other scripts and emoji");
+  assert.match(docker, /COPY chrome-policies-managed\.json \/etc\/opt\/chrome\/policies\/managed\/closedhand\.json/);
+  assert.match(docker, /COPY chrome-policies-managed\.json \/etc\/chromium\/policies\/managed\/closedhand\.json/);
+  const policy = JSON.parse(read("sandbox-image/chrome-policies-managed.json"));
+  for (const kept of ["passwords", "bookmarks", "autofill"]) assert.ok(!policy.SyncTypesListDisabled.includes(kept), kept + " still come with a Google sign-in");
+  for (const left of ["extensions", "typedUrls", "tabs", "payments", "preferences"]) assert.ok(policy.SyncTypesListDisabled.includes(left), left + " do not");
+  assert.deepEqual(policy.ExtensionInstallBlocklist, ["*"]);
+  assert.equal(policy.AutofillCreditCardEnabled, false, "cards come from the Wallet, which asks first");
+  assert.equal(policy.MetricsReportingEnabled, false);
+  assert.match(read("desktop/workspace/guest/Dockerfile"), /FROM \$\{WORKSPACE_IMAGE\}/, "the Mac's Workspace is built on the same image");
 });

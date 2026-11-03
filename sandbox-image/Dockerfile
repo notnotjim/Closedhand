@@ -34,12 +34,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg && \
 # (webapp/public/novnc), so Debian's noVNC pages, with their password
 # sign-in code, are not installed.
 # x11-utils is xdpyinfo, how agent/screen-watch.js asks the display to answer.
+# Noto covers the scripts of the web (Japanese, Chinese and Korean, Arabic,
+# Hebrew, Thai, Indic and the rest) and emoji: without them a Japanese page
+# showed its Latin letters and nothing else.
 # Debian's Chromium (arm64) brings it, Google Chrome (amd64) does not, and
 # without it the display was taken for dead and restarted every 90 seconds.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb x11vnc python3-websockify x11-utils \
     openbox \
     xdotool scrot fonts-liberation dbus-x11 procps \
+    fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 
@@ -55,6 +59,14 @@ COPY openbox-config/rc.xml /etc/xdg/openbox/rc.xml
 # Recommended, not enforced, so a person can still choose another.
 COPY chrome-policies.json /etc/opt/chrome/policies/recommended/closedhand.json
 COPY chrome-policies.json /etc/chromium/policies/recommended/closedhand.json
+# Enforced: a browser for what Closedhand does in it. Signing in to Google
+# brings passwords, bookmarks and autofill; never extensions (they run on every
+# page Closedhand opens, and opened their own sign-in tabs), saved cards (cards
+# come from the Wallet, which asks first), history or open tabs (Closedhand's
+# browsing stays out of the person's Google account), or settings. No usage
+# reports or spell-check sent to Google.
+COPY chrome-policies-managed.json /etc/opt/chrome/policies/managed/closedhand.json
+COPY chrome-policies-managed.json /etc/chromium/policies/managed/closedhand.json
 
 # Chromium launcher
 COPY chromium-launcher.sh /usr/local/bin/chromium-launcher
