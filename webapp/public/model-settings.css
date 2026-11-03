@@ -33,13 +33,13 @@
   .model-current .model-role-list { grid-template-columns: 1fr; gap: 0.375rem; }
   .model-current .model-role-list dd { margin-bottom: 1rem; }
 }
-.model-result.is-error { color: var(--accent); }
+.model-result.is-error { color: var(--danger); }
 .model-result.is-done { color: var(--ok); }
 .model-check { padding: 1.5rem; border: 1px solid rgba(var(--fg-rgb),0.4); border-radius: 0.75rem; display: grid; gap: 1.25rem; }
 .model-check h3 { margin: 0; font-family: inherit; font-weight: 600; font-size: 1.125rem; line-height: 1.4; }
 .model-check .model-role-list { margin: 0; }
 .model-check dd.is-ok::before { content: "\2713\00a0"; color: var(--ok); }
-.model-check dd.is-fail { color: var(--accent); }
+.model-check dd.is-fail { color: var(--danger); }
 .model-check dd.is-fail::before { content: "\2717\00a0"; }
 .model-check dd.is-wait { color: var(--fg); }
 .model-check dd.is-wait::before { content: "\2026\00a0"; }

@@ -118,3 +118,16 @@ test("every page the app serves sizes in rem, so computers get their density fro
   assert.match(read("webapp/report-page.js"), rootSize, "a page Closedhand made, at full size when printed");
   assert.doesNotMatch(files.map(read).join("\n"), /(?:^|[\s}])(?:html|body|:root)\s*\{[^}]*\b(?:zoom|transform)\s*:/, "never zoom or a transform on the page for density");
 });
+
+test("errors and destructive actions are red, a colour of their own, never the accent or yellow", () => {
+  for (const f of ["webapp/public/interface.css", "closedhand-com/public/interface.css"]) {
+    const css = read(f);
+    assert.equal((css.match(/--danger: #[0-9A-F]{6}; --danger-rgb: \d+,\d+,\d+;/g) || []).length, 2, f + ": the red in both themes");
+  }
+  const RULE = /[.#][a-zA-Z0-9_-]*(error|err|danger|destructive|delete|failed|fail|invalid|remove|goal-alert)[a-zA-Z0-9_ .:#>-]*\{[^}]*\}/g;
+  for (const f of ["webapp/public/interface.css", "webapp/public/goals.css", "webapp/public/keep.css", "webapp/public/model-settings.css", "webapp/views/login.html", "webapp/views/setup-code.html", "webapp/views/index.html", "webapp/views/dashboard.html", "webapp/views/setup.html", "closedhand-com/public/site.css"]) {
+    for (const [rule] of read(f).matchAll(RULE)) {
+      assert.doesNotMatch(rule, /color:[^;}]*(var\(--(accent|accent-strong|accent-soft|warn)\)|--(accent|accent-strong|accent-soft)-rgb)/, f + ": " + rule.slice(0, 80));
+    }
+  }
+});

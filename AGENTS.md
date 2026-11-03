@@ -81,7 +81,8 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   "Download Closedhand for Mac", where everything starts.
 - Each colour means one thing. The accent is Closedhand itself, the one main action and a list's
   "+ …" button. Green
-  is working or in use ("Connected", "In use"). Yellow is the person's account needing them.
+  is working or in use ("Connected", "In use"). Yellow is the person's account needing them. Red
+  (`--danger`, never the accent) is something that went wrong or a destructive action.
   Everything else is neutral: tags, counts, sources, dates. Charts use colours that are none
   of these, and money is never red.
 - Show only what someone would act on or needs to know: no counters that read zero, no

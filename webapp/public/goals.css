@@ -83,8 +83,8 @@
 .goal-event.step_done span, .goal-event.achieved span, .goal-event.habit_done span { color: var(--ok-soft); }
 .goal-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.25rem 0 0; }
 .goal-win { border-color: rgba(var(--ok-rgb),0.45); color: var(--ok-soft); background: rgba(var(--ok-rgb),0.06); }
-.goal-remove { margin-left: auto; color: var(--accent-strong); border-color: transparent; background: none; }
-.goal-alert { margin: 0.625rem 0 0; color: var(--warn); font-size: 0.8125rem; }
+.goal-remove { margin-left: auto; color: var(--danger); border-color: transparent; background: none; }
+.goal-alert { margin: 0.625rem 0 0; color: var(--danger); font-size: 0.8125rem; }
 .goal-empty { padding: 1.25rem; border: 1px dashed rgba(var(--fg-rgb),0.18); border-radius: 0.75rem; color: var(--muted); font-size: 0.875rem; line-height: 1.55; }
 .goal-empty p { margin: 0; }
 #goals-cheer { margin: 0 0 0.875rem; padding: 0.75rem 1rem; border-radius: 0.625rem; background: rgba(var(--ok-rgb),0.1); border: 1px solid rgba(var(--ok-rgb),0.35); color: var(--ok-soft); font-size: 0.875rem; }

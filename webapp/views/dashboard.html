@@ -672,7 +672,7 @@
 
     .modal-error {
       font-size: 0.875rem;
-      color: var(--accent);
+      color: var(--danger);
       margin-top: 0.5rem;
       display: none;
     }
@@ -1107,12 +1107,12 @@
       transition: all 0.15s;
     }
     .sched-delete:hover {
-      color: var(--accent);
+      color: var(--danger);
       border-color: rgba(var(--fg-rgb),0.1);
     }
     .sched-delete.confirming {
-      color: var(--accent);
-      border-color: var(--accent);
+      color: var(--danger);
+      border-color: var(--danger);
     }
     #schedules-empty {
       font-size: 0.8125rem;
@@ -1164,7 +1164,7 @@
     .fact-field { display: grid; gap: 0.375rem; font-size: 0.8125rem; color: var(--muted); }
     .fact-field input, .fact-field textarea { padding: 0.5rem 0.625rem; background: var(--bg); border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.5rem; color: var(--fg); font: inherit; font-size: 0.875rem; }
     .fact-field input:disabled { opacity: .7; }
-    .fact-error { margin: 0; font-size: 0.8125rem; color: var(--accent); }
+    .fact-error { margin: 0; font-size: 0.8125rem; color: var(--danger); }
     .fact-hint { margin: -0.25rem 0 0; font-size: 0.75rem; color: var(--muted); }
     .fact-ways { display: flex; align-items: center; gap: 1.25rem; }
     /* The start of something longer (a Context Note, what a file holds): two lines, then an ellipsis. */
@@ -1174,7 +1174,7 @@
       font-weight: 600;
       color: var(--fg);
     }
-    .account-action-title.danger { color: var(--accent); }
+    .account-action-title.danger { color: var(--danger); }
     .account-action-desc {
       font-size: 0.875rem;
       color: var(--muted);
@@ -1237,7 +1237,7 @@
     #always-on .move-progress-box { padding: 0 1rem 1rem; }
     #always-on .move-progress-box[hidden], #always-on .mp-aside { display: none; }
     .account-action-btn-danger {
-      color: var(--accent-strong);
+      color: var(--danger);
       border-color: rgba(var(--fg-rgb),0.1);
     }
     .account-action-btn-danger:hover { background: var(--raised); }
@@ -1259,7 +1259,7 @@
       margin-bottom: 0.75rem;
       line-height: 1.5;
     }
-    .account-confirm-text.danger { color: var(--accent); }
+    .account-confirm-text.danger { color: var(--danger); }
     #delete-account-offline { margin: 0.75rem 0; }
     .confirm-type-input {
       background: var(--raised);
@@ -1311,8 +1311,8 @@
       pointer-events: auto;
     }
     .confirm-go-danger {
-      color: var(--accent-strong);
-      border-color: rgba(var(--accent-strong-rgb),0.5);
+      color: var(--danger);
+      border-color: rgba(var(--danger-rgb),0.5);
     }
 
     /* === Flight Tracking === */
@@ -1485,7 +1485,7 @@
       border-color: rgba(var(--fg-rgb),0.16);
     }
     .agent-btn-delete:hover {
-      color: var(--accent-strong);
+      color: var(--danger);
       border-color: rgba(var(--fg-rgb),0.1);
       background: var(--bg);
     }
@@ -1668,7 +1668,7 @@
       .agent-card .agent-del { margin-left: 0; white-space: nowrap; }
     }
     .agent-step { font-size: 0.75rem; color: var(--muted); padding: 2px 0; font-variant-numeric: tabular-nums; }
-    .agent-step.agent-err { color: var(--accent); }
+    .agent-step.agent-err { color: var(--danger); }
     .agent-report { font-size: 0.7812rem; line-height: 1.55; color: var(--fg); margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid rgba(var(--fg-rgb),0.1); }
     .agent-report b { color: var(--fg); }
     .agent-report-text { white-space: pre-wrap; }
@@ -1836,7 +1836,7 @@
       animation: mc-pulse 2s ease-in-out infinite;
     }
     .mc-status-icon.completed { color: var(--ok); }
-    .mc-status-icon.failed { color: var(--accent); }
+    .mc-status-icon.failed { color: var(--danger); }
     .mc-status-icon.cancelled { color: var(--muted); }
     .mc-status-icon.pending { color: var(--muted); }
 
@@ -1986,10 +1986,10 @@
     .mc-error {
       margin-top: 0.5rem;
       padding: 0.5rem 0.625rem;
-      background: rgba(var(--accent-rgb),0.08);
+      background: rgba(var(--danger-rgb),0.08);
       border-radius: 0.375rem;
       font-size: 0.875rem;
-      color: var(--accent);
+      color: var(--danger);
     }
 
     /* Sandbox Computer CSS moved to index.html */
@@ -2014,7 +2014,7 @@
     .pinned-note-row:hover .note-actions { opacity:1; }
     .note-action-btn { background:none; border:none; color:rgba(var(--fg-rgb),0.6); cursor:pointer; padding:2px 0.375rem; font-size:0.75rem; border-radius:0.25rem; }
     .note-action-btn:hover { background:rgba(var(--fg-rgb),0.08); color:var(--fg); }
-    .note-action-btn.delete:hover { color:var(--accent-strong); }
+    .note-action-btn.delete:hover { color:var(--danger); }
 
     @media (max-width: 768px) {
       .dashboard-container { padding: 0.75rem 1rem; }
@@ -10082,11 +10082,11 @@
       try {
         var r = await fetch('/api/chat-apps/' + app, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keys: keys }) });
         var j = await r.json().catch(function() { return {}; });
-        if (!r.ok) { msg.style.color = 'var(--accent)'; msg.textContent = j.error || 'That did not work.'; btn.disabled = false; return; }
+        if (!r.ok) { msg.style.color = 'var(--danger)'; msg.textContent = j.error || 'That did not work.'; btn.disabled = false; return; }
         closeChatAppSetup();
         if (typeof showToast === 'function') showToast((j.botName || 'The app') + ' is on. Press Connect to pair your account.');
         if (typeof loadStatus === 'function') loadStatus();
-      } catch (e) { msg.style.color = 'var(--accent-strong)'; msg.textContent = 'Could not reach Closedhand.'; btn.disabled = false; }
+      } catch (e) { msg.style.color = 'var(--danger)'; msg.textContent = 'Could not reach Closedhand.'; btn.disabled = false; }
     }
     async function removeChatApp() {
       var app = _chatAppOpen; if (!app) return;
