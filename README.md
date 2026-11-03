@@ -87,7 +87,7 @@ By the time you say hello, Closedhand has already read your inbox and calendar.
 
 ## LLMs
 
-Closedhand is free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does.
+Closedhand is free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, NEAR AI, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does.
 
 If you'd rather not choose, Closedhand Managed Models picks the best LLM for each job, from any provider, and switches when a better one is out. They come with a first month at no charge, once per person, and then carry on with an optional monthly subscription. You can switch to your own LLM provider at any time.
 
@@ -115,7 +115,7 @@ Each Closedhand serves one person. The first person to message it on a chat app 
 
 ## Requirements
 
-The Mac app, or Docker with the compose plugin on amd64 or arm64 (Apple Silicon and ARM servers included). With an LLM provider that also serves an embedding model, such as DeepInfra, OpenAI or Gemini, 2 GB of RAM runs everything. With one that doesn't, such as Anthropic, xAI or Groq, Closedhand downloads a small local embedding model (about 330 MB, once) so recall still works, and up to 500 MB more the first time File Search reads a picture or a recording: plan for 4 GB. On a tight server you can leave out the sandbox computer and stay nearer 2 GB.
+The Mac app, or Docker with the compose plugin on amd64 or arm64 (Apple Silicon and ARM servers included). Closedhand indexes everything you have connected on the computer running it, with its own models: about 1.2 GB downloaded once, and about 1 GB of memory while they work. Plan for 4 GB of RAM; on a tight server you can leave out the sandbox computer and stay nearer 3 GB. Image generation, if you turn it on, needs a Mac with Apple Silicon and 8 GB of memory or more, or an NVIDIA graphics card with 8 GB or more, and downloads about 5 GB once.
 
 ## Architecture
 
