@@ -129,10 +129,10 @@ test("the sandbox browser shows every script and keeps to what Closedhand uses i
   assert.match(docker, /COPY chrome-policies-managed\.json \/etc\/opt\/chrome\/policies\/managed\/closedhand\.json/);
   assert.match(docker, /COPY chrome-policies-managed\.json \/etc\/chromium\/policies\/managed\/closedhand\.json/);
   const policy = JSON.parse(read("sandbox-image/chrome-policies-managed.json"));
-  for (const kept of ["passwords", "bookmarks", "autofill"]) assert.ok(!policy.SyncTypesListDisabled.includes(kept), kept + " still come with a Google sign-in");
-  for (const left of ["extensions", "typedUrls", "tabs", "payments", "preferences"]) assert.ok(policy.SyncTypesListDisabled.includes(left), left + " do not");
-  assert.deepEqual(policy.ExtensionInstallBlocklist, ["*"]);
-  assert.equal(policy.AutofillCreditCardEnabled, false, "cards come from the Wallet, which asks first");
+  for (const kept of ["passwords", "payments", "autofill", "bookmarks"]) assert.ok(!policy.SyncTypesListDisabled.includes(kept), kept + " still come with a Google sign-in: they let Closedhand do more");
+  for (const left of ["extensions", "typedUrls", "tabs", "preferences"]) assert.ok(policy.SyncTypesListDisabled.includes(left), left + " do not");
+  assert.equal(policy.ExtensionInstallBlocklist, undefined, "an extension added here by hand still works");
+  assert.equal(policy.AutofillCreditCardEnabled, undefined, "saved cards fill in");
   assert.equal(policy.MetricsReportingEnabled, false);
   assert.match(read("desktop/workspace/guest/Dockerfile"), /FROM \$\{WORKSPACE_IMAGE\}/, "the Mac's Workspace is built on the same image");
 });

@@ -60,11 +60,13 @@ COPY openbox-config/rc.xml /etc/xdg/openbox/rc.xml
 COPY chrome-policies.json /etc/opt/chrome/policies/recommended/closedhand.json
 COPY chrome-policies.json /etc/chromium/policies/recommended/closedhand.json
 # Enforced: a browser for what Closedhand does in it. Signing in to Google
-# brings passwords, bookmarks and autofill; never extensions (they run on every
-# page Closedhand opens, and opened their own sign-in tabs), saved cards (cards
-# come from the Wallet, which asks first), history or open tabs (Closedhand's
-# browsing stays out of the person's Google account), or settings. No usage
-# reports or spell-check sent to Google.
+# brings everything that lets it do more (passwords, saved cards and
+# addresses, bookmarks), never what it has no use for: the person's other
+# extensions (they run on every page Closedhand opens, and opened their own
+# sign-in tabs; one added here by hand, a password manager say, still works),
+# history and open tabs (Closedhand's browsing stays out of the person's
+# Google account), themes or settings. No usage reports or spell-check sent
+# to Google.
 COPY chrome-policies-managed.json /etc/opt/chrome/policies/managed/closedhand.json
 COPY chrome-policies-managed.json /etc/chromium/policies/managed/closedhand.json
 
