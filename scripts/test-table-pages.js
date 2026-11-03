@@ -61,7 +61,7 @@ test("every change to a table updates its page, and the page lives with the tabl
   assert.match(dash, /escapeHtml\(\(changed \? 'Updated ' : 'Made '\) \+ made\)/);
   const pageHtml = require("../webapp/report-page").pageHtml;
   assert.match(pageHtml({ id: "t1", title: "Packing list", content: "| a |\n|---|\n| b |", dataset_id: "d1", created_at: "2026-11-01T09:00:00Z" }), /<span>Delete this table for good\?<\/span>/, "a table's page says the table goes");
-  assert.match(pageHtml({ id: "p1", title: "Notes", content: "Hi", created_at: "2026-11-01T09:00:00Z" }), /<span>Delete this page for good\? The answer stays in the chat you asked in\.<\/span>/);
+  assert.match(pageHtml({ id: "p1", title: "Notes", content: "Hi", created_at: "2026-11-01T09:00:00Z" }), /<span>Delete this page for good\? Only the page goes, and anything said about it in your chats stays\.<\/span>/);
   const page = require("../webapp/report-page");
   assert.match(page.deletedHtml({ title: "Tennis kit orders", dataset_id: "d1" }), /The table "Tennis kit orders" is gone\./);
   assert.ok(page.hasTables(pages.tableMarkdown({ columns: [{ name: "Item" }] }, [{ data: { Item: "Bag" } }])), "so it downloads as Excel");

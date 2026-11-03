@@ -51,8 +51,8 @@ test("the page shows the report safely, with downloads that say so and a delete 
   assert.match(html, /<div class="bar"><a class="back" href="\/dashboard#pages"><span aria-hidden="true">&larr;<\/span> All pages<\/a><div class="files">[\s\S]*?<a class="manage" href="#delete">Delete<\/a><\/div><\/div>/, "back to Pages, and Delete in the bar as on a project's page");
   assert.match(html, /<div class="confirm" id="delete"><span>[^<]*<\/span><form method="post" action="\/api\/pages\/a1b2c3\/delete"><button type="submit">Delete<\/button><\/form><a class="keep" href="#">Keep it<\/a><\/div>/, "asked first, just under the bar");
   assert.match(html, /\.confirm:not\(:target\) \{ display: none; \}/, "with no script");
-  assert.match(html, /Delete this page for good\? The answer stays in the chat you asked in\./);
-  assert.match(page.deletedHtml(report), /is gone, with its PDF, Word and Excel versions\. The answer is still in the chat you asked in\./);
+  assert.match(html, /Delete this page for good\? Only the page goes, and anything said about it in your chats stays\./);
+  assert.match(page.deletedHtml(report), /is gone, with its PDF, Word and Excel versions\. Anything said about it in your chats is still there\./);
 });
 
 test("the Word document opens and says what the page says", async () => {
