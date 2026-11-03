@@ -1,0 +1,33 @@
+# The bot for a computer with an NVIDIA graphics card: the bot image plus
+# stable-diffusion.cpp built for CUDA, for image generation on the card
+# (lib/image-generation.js). Only such computers download it, through
+# docker-compose.gpu.yml, which install.sh adds where it finds the card.
+#
+# CUDA, not Vulkan: every NVIDIA driver can run CUDA, while a server's
+# headless driver has no Vulkan (tried on a cloud A10, 2026-11-03). Built on
+# Ubuntu 22.04, whose C library is older than the bot image's Debian 12, so
+# the program runs there; pinned to the release the Mac uses. Cards from the
+# RTX 20 series on: compiled for 7.5 (RTX 20, T4), 8.6 (RTX 30, A10, A40) and
+# 8.9 (RTX 40, L4), with 7.5's portable code compiled on first use by newer
+# cards (A100, H100 and later). Built two files at a time, which CI's memory
+# holds.
+ARG BOT_IMAGE=ghcr.io/notnotjim/closedhand-bot:latest
+
+FROM nvidia/cuda:12.6.3-devel-ubuntu22.04 AS build
+ARG SDCPP_REF=master-1043-3be2378
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git cmake build-essential patchelf \
+ && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch "$SDCPP_REF" --recurse-submodules https://github.com/leejet/stable-diffusion.cpp /src \
+ && cmake -S /src -B /build -DSD_CUDA=ON -DGGML_NATIVE=OFF -DCMAKE_BUILD_TYPE=Release "-DCMAKE_CUDA_ARCHITECTURES=75;86-real;89-real" \
+ && cmake --build /build --config Release -j2 --target sd-cli
+# The program and the CUDA libraries it needs, found beside it. The driver's
+# own library (libcuda) comes from the computer, handed in by Docker.
+RUN mkdir -p /opt/stable-diffusion \
+ && cp /build/bin/sd-cli /opt/stable-diffusion/ \
+ && cp -L /usr/local/cuda/lib64/libcudart.so.12 /usr/local/cuda/lib64/libcublas.so.12 /usr/local/cuda/lib64/libcublasLt.so.12 \
+          /usr/lib/x86_64-linux-gnu/libgomp.so.1 /opt/stable-diffusion/ \
+ && cp /src/thirdparty/cutlass/LICENSE.txt /opt/stable-diffusion/cutlass-LICENSE.txt \
+ && patchelf --set-rpath '$ORIGIN' /opt/stable-diffusion/sd-cli
+
+FROM ${BOT_IMAGE}
+COPY --from=build /opt/stable-diffusion /opt/stable-diffusion

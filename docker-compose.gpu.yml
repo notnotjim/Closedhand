@@ -1,11 +1,12 @@
 # Hands this computer's NVIDIA graphics card to Closedhand for image
-# generation (lib/image-generation.js). install.sh adds this file, through
-# COMPOSE_FILE in .env, where it finds the card and NVIDIA's container toolkit.
-# "graphics" brings the driver's Vulkan, which stable-diffusion.cpp runs on.
-# `gpus` rather than deploy.resources: docker-compose.yml's mem_reservation
-# can't sit beside a deploy reservation.
+# generation (lib/image-generation.js), with the bot image that has
+# stable-diffusion.cpp built for CUDA (Dockerfile.gpu). install.sh adds this
+# file, through COMPOSE_FILE in .env, where it finds the card and NVIDIA's
+# container toolkit. `gpus` rather than deploy.resources: docker-compose.yml's
+# mem_reservation can't sit beside a deploy reservation.
 services:
   bot:
+    image: ghcr.io/notnotjim/closedhand-bot-gpu:latest
     gpus: all
     environment:
-      NVIDIA_DRIVER_CAPABILITIES: compute,graphics,utility
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility

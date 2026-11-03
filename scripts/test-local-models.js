@@ -211,17 +211,23 @@ test('the tool is offered only once the model is ready, sends the picture to the
   assert.match(read('lib/model-files.js'), /fetchImpl\(f\.url \|\| `https:\/\/huggingface\.co\//, 'a program from its own address');
 });
 
-test('Docker hands an NVIDIA card to Closedhand only where install.sh finds one, and the image builds the program for it', () => {
+test('Docker hands an NVIDIA card to Closedhand only where install.sh finds one, with the GPU image that has the program built for CUDA', () => {
   const gpu = fs.readFileSync(path.join(__dirname, '../docker-compose.gpu.yml'), 'utf8');
   assert.match(gpu, /^    gpus: all$/m, 'gpus, which sits beside docker-compose.yml\'s mem_reservation where a deploy reservation can\'t');
   assert.doesNotMatch(gpu, /deploy:/);
-  assert.match(gpu, /NVIDIA_DRIVER_CAPABILITIES: compute,graphics,utility/, 'graphics brings the driver\'s Vulkan');
+  assert.match(gpu, /image: ghcr\.io\/notnotjim\/closedhand-bot-gpu:latest/, 'only computers with a card download it');
+  assert.match(gpu, /NVIDIA_DRIVER_CAPABILITIES: compute,utility/, 'CUDA, which every NVIDIA driver runs');
   const install = fs.readFileSync(path.join(__dirname, '../install.sh'), 'utf8');
   assert.match(install, /\{ docker info 2>\/dev\/null \| grep -qi nvidia \|\| command -v nvidia-ctk >\/dev\/null 2>&1; \}/, 'the toolkit, registered with Docker or not');
   assert.match(install, /COMPOSE_FILE=docker-compose\.yml:docker-compose\.gpu\.yml/);
-  const docker = fs.readFileSync(path.join(__dirname, '../Dockerfile'), 'utf8');
-  assert.match(docker, /-DSD_VULKAN=ON -DGGML_NATIVE=OFF/, 'for any x86-64 processor');
-  assert.match(docker, /COPY --from=stable-diffusion \/opt\/stable-diffusion \/opt\/stable-diffusion/);
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../Dockerfile'), 'utf8'), /stable-diffusion/, 'the regular image carries none of it');
+  const docker = fs.readFileSync(path.join(__dirname, '../Dockerfile.gpu'), 'utf8');
+  assert.match(docker, /FROM nvidia\/cuda:12\.6\.3-devel-ubuntu22\.04 AS build/, 'a C library older than the bot image\'s');
+  assert.match(docker, /-DSD_CUDA=ON -DGGML_NATIVE=OFF/, 'for any x86-64 processor');
+  assert.match(docker, /patchelf --set-rpath '\$ORIGIN'/, 'its CUDA libraries found beside it');
+  assert.match(docker, /FROM \$\{BOT_IMAGE\}\nCOPY --from=build \/opt\/stable-diffusion \/opt\/stable-diffusion/);
+  const ci = fs.readFileSync(path.join(__dirname, '../.github/workflows/build-selfhost-images.yml'), 'utf8');
+  assert.match(ci, /BOT_IMAGE=ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/closedhand-bot:\$\{\{ github\.sha \}\}/, 'built on the same commit\'s bot');
   assert.equal(require('../lib/image-generation').BUILT_IN, '/opt/stable-diffusion/sd-cli');
 });
 
