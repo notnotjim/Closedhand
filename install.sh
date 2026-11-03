@@ -521,6 +521,15 @@ else
   step 28 "Settings ready"
 fi
 
+# --- A graphics card, for image generation ------------------------------------
+# A computer with an NVIDIA card and NVIDIA's container toolkit hands the card
+# to Closedhand (docker-compose.gpu.yml), so it can generate images. Docker
+# reads COMPOSE_FILE from .env.
+if command -v nvidia-smi >/dev/null 2>&1 && docker info 2>/dev/null | grep -qi nvidia \
+   && ! grep -qE '^COMPOSE_FILE=' .env 2>/dev/null; then
+  printf 'COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml\n' >> .env
+fi
+
 # --- Secrets, one file each in secrets/ ---------------------------------------
 # The database password, the encryption key and the keys the services share
 # are files in secrets/, a folder only your account can open, and Docker hands

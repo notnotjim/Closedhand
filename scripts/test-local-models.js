@@ -129,9 +129,16 @@ test('image generation is offered on a Mac that can run it, at a size its memory
   try {
     assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 16 }), { eligible: true, needs: null });
     assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 8 }), { eligible: true, needs: null }, 'an 8 GB Mac too');
-    assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 4 }), { eligible: false, needs: 'Image generation needs a Mac with Apple silicon and 8 GB of memory or more. This Mac has 4 GB.' });
+    const needs = 'Image generation needs a Mac with Apple silicon and 8 GB of memory or more, or an NVIDIA graphics card with 8 GB or more.';
+    assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 4 }), { eligible: false, needs: needs + ' This Mac has 4 GB.' });
+    // Docker with an NVIDIA card handed in (docker-compose.gpu.yml) and the program built into the image.
+    assert.deepEqual(im.eligibility({ platform: 'linux', arch: 'x64', gpu: { name: 'RTX 4000', vramGb: 16 }, builtIn: true }), { eligible: true, needs: null });
+    assert.deepEqual(im.eligibility({ platform: 'linux', arch: 'x64', gpu: { name: 'GTX 1060', vramGb: 6 }, builtIn: true }), { eligible: false, needs: needs + " This computer's GTX 1060 has 6 GB." });
+    assert.deepEqual(im.eligibility({ platform: 'linux', arch: 'x64', gpu: null, builtIn: true }), { eligible: false, needs }, 'no card handed in');
+    assert.equal(im.eligibility({ platform: 'linux', arch: 'arm64', gpu: { name: 'RTX 4000', vramGb: 16 }, builtIn: false }).eligible, false, 'no program in this image');
+    assert.deepEqual([im.sizeFor('square', 10, 12), im.sizeFor('square', 16, 12)], [[512, 512], [1024, 1024]], 'a card under 12 GB takes half size');
     assert.deepEqual([im.sizeFor('square', 8), im.sizeFor('landscape', 8), im.sizeFor('square', 16), im.sizeFor('portrait', 32)], [[512, 512], [512, 384], [1024, 1024], [768, 1024]], 'half size under 16 GB');
-    assert.equal(im.eligibility({ platform: 'linux', arch: 'x64', memoryGb: 64 }).eligible, false, 'a server with no Apple graphics');
+    assert.equal(im.eligibility({ platform: 'linux', arch: 'x64', memoryGb: 64, gpu: null }).eligible, false, 'a server with no graphics card');
     assert.equal(im.eligibility({ platform: 'darwin', arch: 'x64', memoryGb: 32 }).eligible, false, 'an Intel Mac');
     const all = im.PARTS.flatMap((p) => p.files);
     assert.ok(all.every((f) => /^[0-9a-f]{64}$/.test(f.sha256) && f.size > 0), 'every file pinned and checked');
@@ -202,6 +209,19 @@ test('the tool is offered only once the model is ready, sends the picture to the
   assert.match(dash, /Turn off and remove the download\? You can turn it on again later\./, 'asks before removing');
   assert.match(read('webapp/server.js'), /app\.post\("\/api\/images", async \(req, res\) => \{/);
   assert.match(read('lib/model-files.js'), /fetchImpl\(f\.url \|\| `https:\/\/huggingface\.co\//, 'a program from its own address');
+});
+
+test('Docker hands an NVIDIA card to Closedhand only where install.sh finds one, and the image builds the program for it', () => {
+  const gpu = fs.readFileSync(path.join(__dirname, '../docker-compose.gpu.yml'), 'utf8');
+  assert.match(gpu, /driver: nvidia/);
+  assert.match(gpu, /NVIDIA_DRIVER_CAPABILITIES: compute,graphics,utility/, 'graphics brings the driver\'s Vulkan');
+  const install = fs.readFileSync(path.join(__dirname, '../install.sh'), 'utf8');
+  assert.match(install, /if command -v nvidia-smi >\/dev\/null 2>&1 && docker info 2>\/dev\/null \| grep -qi nvidia/);
+  assert.match(install, /COMPOSE_FILE=docker-compose\.yml:docker-compose\.gpu\.yml/);
+  const docker = fs.readFileSync(path.join(__dirname, '../Dockerfile'), 'utf8');
+  assert.match(docker, /-DSD_VULKAN=ON -DGGML_NATIVE=OFF/, 'for any x86-64 processor');
+  assert.match(docker, /COPY --from=stable-diffusion \/opt\/stable-diffusion \/opt\/stable-diffusion/);
+  assert.equal(require('../lib/image-generation').BUILT_IN, '/opt/stable-diffusion/sd-cli');
 });
 
 // The vision language model (VLM): Closedhand always sees a picture, whether or not an

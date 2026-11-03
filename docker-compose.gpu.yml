@@ -1,0 +1,15 @@
+# Hands this computer's NVIDIA graphics card to Closedhand for image
+# generation (lib/image-generation.js). install.sh adds this file, through
+# COMPOSE_FILE in .env, where it finds the card and NVIDIA's container toolkit.
+# "graphics" brings the driver's Vulkan, which stable-diffusion.cpp runs on.
+services:
+  bot:
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,graphics,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
