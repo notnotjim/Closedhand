@@ -265,8 +265,9 @@ async function extractTextFromImage(buffer, mimeType, attempt = 0) {
 // --- Text extraction ---
 
 // Read whole by file-reader.js, the one reader, scans and photos of
-// documents included. A picture also gets a description from the image
-// model, when one is chosen, so photos can be found by what they show.
+// documents included. A picture also gets a description, so photos can be
+// found by what they show: from the image model, when one is chosen, and
+// otherwise from the picture reader in the bot.
 // When the image model's account last said it needs payment or more credit:
 // pictures wait this long before it is asked again, so a folder of photos is
 // not a run of refusals.
@@ -296,16 +297,33 @@ async function extractText(buffer, fileType, fileName, userId, media = null) {
       if (Date.now() < _accountWaitsUntil) throw Object.assign(new Error("The image model's account needs payment or more credit."), { allowance: true });
       description = await extractTextFromImage(buffer, IMAGE_MIME[fileType] || "image/jpeg");
     } catch (e) {
-      if (e.allowance) _accountWaitsUntil = Date.now() + ACCOUNT_WAIT_MS;
-      if (!read.text) throw e;
+      // Its account needing payment or more credit: the picture waits, as a
+      // connection's does, rather than being filed without what it shows.
+      if (e.allowance) { _accountWaitsUntil = Date.now() + ACCOUNT_WAIT_MS; throw e; }
+      console.log(`[RAG] Image model couldn't read ${fileName}: ${e.message}`);
     }
   }
+  if (!description) description = await seeInBot(buffer, userId).catch((e) => { console.log(`[RAG] Picture reader: ${e.message}`); return ""; });
   const said = [read.text, description].filter((t) => t && t.trim()).join("\n\n");
   if (media && media.length) media[media.length - 1].label = `(picture) ${said.replace(/\s+/g, " ").slice(0, 300)}`.trim();
   // A picture with neither words nor a description is still found by what it
   // shows, when the model can see it (media above).
-  if (!said && !(media && media.length) && off) throw new Error("Image understanding is off. Choose an image and video model in Settings to read this file.");
+  if (!said && !(media && media.length)) throw new Error("Closedhand couldn't see this picture just now.");
   return said;
+}
+
+// What a picture shows, written by the picture reader in the bot
+// (lib/local-models.js, through lib/hear-route.js). It may still be
+// downloading the first time, so this waits for it.
+async function seeInBot(buffer, userId) {
+  const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
+  const res = await fetch(`${BOT_INTERNAL_URL}/internal/see`, {
+    method: "POST", body: buffer, signal: AbortSignal.timeout(60 * 60000),
+    headers: { "Content-Type": "application/octet-stream", "x-closedhand-token": botToken(userId) },
+  });
+  const seen = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(seen.error || "The picture reader didn't answer.");
+  return seen.text || "";
 }
 
 // What's said in a recording or video, each line with its time, written out
@@ -335,7 +353,8 @@ async function hearFile(file, fileName, video, userId, media = null) {
     const jpeg = Buffer.from(f.jpeg, "base64");
     const words = await require("./file-reader").ocrImage(jpeg).catch(() => null);
     const vision = selectedModel("vision");
-    const shows = (vision === undefined ? DEEPINFRA_API_KEY : vision) ? await extractTextFromImage(jpeg, "image/jpeg").catch(() => "") : "";
+    const shows = ((vision === undefined ? DEEPINFRA_API_KEY : vision) ? await extractTextFromImage(jpeg, "image/jpeg").catch(() => "") : "")
+      || await seeInBot(jpeg, userId).catch(() => "");
     const text = [shows, words && words.trim() && !String(shows).includes(words.trim()) ? `Words on screen: ${words.trim()}` : ""].filter(Boolean).join("\n");
     if (text) seen.push(`[${clock(f.time)}] (on screen) ${text}`);
     if (media && f.vector) media.push({ modality: "frame", time: f.time, vector: f.vector, label: `[${clock(f.time)}] (on screen)${text ? " " + text.replace(/\s+/g, " ").slice(0, 300) : ""}` });

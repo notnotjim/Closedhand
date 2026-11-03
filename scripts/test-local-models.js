@@ -203,3 +203,67 @@ test('the tool is offered only once the model is ready, sends the picture to the
   assert.match(read('webapp/server.js'), /app\.post\("\/api\/images", async \(req, res\) => \{/);
   assert.match(read('lib/model-files.js'), /fetchImpl\(f\.url \|\| `https:\/\/huggingface\.co\//, 'a program from its own address');
 });
+
+// The picture reader: Closedhand always sees a picture, whether or not an
+// image model is chosen, by Florence-2 on the computer running it.
+const withReader = async (see, fn) => {
+  const lm = require('../lib/local-models'), fr = require('../lib/file-reader');
+  const [realSee, realOcr] = [lm.localSeePicture, fr.ocrImage];
+  lm.localSeePicture = see; fr.ocrImage = async () => 'TOTAL 12.50';
+  try { return await fn(); } finally { lm.localSeePicture = realSee; fr.ocrImage = realOcr; }
+};
+const asPerson = (fn) => {
+  const context = require('../lib/context');
+  return context.runWithInheritedContext(() => { context.activeUserStore = { profile: { settings: { model_config: { roles: { vision: null }, connections: {} } } } }; return fn(); });
+};
+
+test('with no image model chosen, a picture is described by the picture reader with its words, and indexing waits behind people', async () => {
+  const usi = require('../lib/services/usi');
+  const asked = [];
+  const pic = [{ mediaType: 'image/jpeg', base64: Buffer.from('a picture').toString('base64') }];
+  await withReader(async (bytes, { urgent }) => { asked.push([String(bytes), urgent]); return 'A receipt on a wooden table.'; }, () => asPerson(async () => {
+    assert.equal(await usi.describeImages(pic, { detailed: true }), 'A receipt on a wooden table.\nWords in it: TOTAL 12.50', 'a chat photo: what it shows and its words');
+    assert.equal(await usi.describeImages(pic, { detailed: true, raise: true, wordsRead: true }), 'A receipt on a wooden table.', 'indexing has read its words already');
+    assert.equal(await usi.describeImages([pic[0], pic[0]]), '1. A receipt on a wooden table.\n\n2. A receipt on a wooden table.', 'several are numbered, and a brief label leaves the words out');
+  }));
+  assert.deepEqual(asked.slice(0, 2), [['a picture', true], ['a picture', false]]);
+});
+
+test('a chat model that cannot see gets what the picture reader sees where no image model is chosen, never "off"', async () => {
+  const { substituteImages } = require('../lib/model-images');
+  const block = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from('a screenshot').toString('base64') } };
+  const out = await withReader(async () => 'A browser window showing a sign-in page.', () =>
+    substituteImages([{ role: 'user', content: [block, { type: 'text', text: 'what is this?' }] }], null, 'u-reader-test'));
+  assert.equal(out[0].content[0].text, '[Description from the picture reader on this computer]\nA browser window showing a sign-in page.\nWords in it: TOTAL 12.50');
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../lib/model-images.js'), 'utf8'), /understanding is off/i);
+});
+
+test('File Search asks the bot to see a picture, the bot answers from the picture reader, and a refused image model makes it wait', async () => {
+  const { Readable } = require('node:stream');
+  const routes = {};
+  require('../lib/hear-route').register({ post: (r, fn) => { routes[r] = fn; }, get: () => {} }, {
+    verifyToken: (t) => (t === 'good' ? 'u1' : null), see: async (bytes) => `seen ${bytes.length} bytes`,
+  });
+  const res = () => { const r = { code: 200, body: null, status(c) { r.code = c; return r; }, json(b) { r.body = b; return r; } }; return r; };
+  const req = (token, chunks) => Object.assign(Readable.from(chunks), { get: () => token });
+  const ok = res(); await routes['/internal/see'](req('good', [Buffer.from('abc'), Buffer.from('de')]), ok);
+  assert.deepEqual(ok.body, { text: 'seen 5 bytes' });
+  const denied = res(); await routes['/internal/see'](req('forged', [Buffer.from('x')]), denied);
+  assert.equal(denied.code, 401);
+  const rag = fs.readFileSync(path.join(__dirname, '../webapp/rag-processor.js'), 'utf8');
+  assert.match(rag, /if \(!description\) description = await seeInBot\(buffer, userId\)/, 'a picture with no description asks the reader');
+  assert.match(rag, /\|\| await seeInBot\(jpeg, userId\)/, "a video's frames too");
+  assert.match(rag, /if \(e\.allowance\) \{ _accountWaitsUntil = Date\.now\(\) \+ ACCOUNT_WAIT_MS; throw e; \}/, 'a refusal for payment waits, words or not');
+});
+
+test('the picture reader is pinned and checked, fetched in the background at start, and shows in the Getting to know you line', () => {
+  const { FLORENCE_2 } = require('../lib/local-models');
+  assert.match(FLORENCE_2.revision, /^[0-9a-f]{40}$/);
+  for (const f of FLORENCE_2.files) { assert.ok(f.size > 0, f.path); assert.match(f.sha256, /^[0-9a-f]{64}$/, f.path); }
+  assert.ok(FLORENCE_2.files.some((f) => f.path === 'onnx/decoder_model_merged_q4.onnx'));
+  const src = fs.readFileSync(path.join(__dirname, '../lib/local-models.js'), 'utf8');
+  assert.match(src, /ensurePictureReader\(\)\.catch/, 'fetched at start, not on first need');
+  assert.match(src, /fetchInBackground\("media", spec/, "the embedder's picture and sound parts follow its text part");
+  const dash = fs.readFileSync(path.join(__dirname, '../webapp/views/dashboard.html'), 'utf8');
+  assert.match(dash, /\['media', 'reader'\]\.forEach/);
+});

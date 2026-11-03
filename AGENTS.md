@@ -170,8 +170,9 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   one live picture of the person's world searched once before the model reads a message, never
   as searching every app or everything connected; that is what it replaces. Don't claim it
   stores links between items (it doesn't), or that no model is involved in indexing (an
-  embedding model turns each item, pictures included, into a vector, and an image model, when
-  one is chosen, describes pictures with no words in them). No language model writes into the index or decides what to fetch: each
+  embedding model turns each item, pictures included, into a vector, and an image model describes
+  what each picture shows: the person's own when one is chosen, otherwise the picture reader on
+  the computer running Closedhand, Florence-2). No language model writes into the index or decides what to fetch: each
   item is kept in its own words. Keep it that way; a step that has an LLM write into the
   index needs a test showing it finds what the index misses without it.
 - The personal URL is required, and enforced: the home page and dashboard send people back to

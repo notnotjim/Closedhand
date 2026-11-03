@@ -10349,9 +10349,11 @@
       return card;
     }
     function render(st, reading) {
-      var parts = [], emb = (st && st.localModels || {}).embedder;
+      var parts = [], models = (st && st.localModels) || {}, emb = models.embedder;
       var first = reading && reading.first;
       if (st && st.memoryMode === 'local' && emb && emb.state === 'downloading') parts.push((emb.pct || 0) / 100);
+      // The embedder's picture and sound parts and the picture reader follow it.
+      ['media', 'reader'].forEach(function (role) { var m = models[role]; if (m && m.state === 'downloading') parts.push((m.pct || 0) / 100); });
       if (first) parts.push(first.progress || 0);
       if (parts.length) {
         var p = Math.round(parts.reduce(function (a, b) { return a + b; }, 0) / parts.length * 100);
