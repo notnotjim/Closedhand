@@ -78,7 +78,7 @@ test("every connection goes through the one step, at the index's one entry", () 
 
 // The file step with its fetching, reading and database stood in. `db` holds
 // data_cache rows by "source/external_id".
-function standIns({ fetch, extract = async (b) => b.toString(), voice, hear, canHear = async () => true }) {
+function standIns({ fetch, extract = async (b) => b.toString(), voice, hear, canHear = async () => true, describe = async () => null }) {
   const stub = (rel, exports) => { const id = require.resolve(path.join("..", "lib", rel)); require.cache[id] = { id, filename: id, loaded: true, exports }; };
   const db = new Map();
   const writes = [];
@@ -87,11 +87,11 @@ function standIns({ fetch, extract = async (b) => b.toString(), voice, hear, can
   let turn = Promise.resolve();
   stub("idle", { during: (fn) => fn(), touch() {}, isIdle: () => quiet.now, LOOK_MS: 5,
     oneAtATime: (fn) => { const run = turn.then(async () => { quiet.hearing++; quiet.most = Math.max(quiet.most, quiet.hearing); try { return await fn(); } finally { quiet.hearing--; } }); turn = run.catch(() => {}); return run; } });
-  stub("video", { hearMedia: hear || (async () => ({})), canHear });
+  stub("video", { hearMedia: hear || (async () => ({})), canHear, clock: (t) => Math.floor(t / 60) + ":" + String(Math.round(t % 60)).padStart(2, "0") });
   stub("../user-store", { UserStore: { load: async () => ({}) } });
   stub("storage", { swapToCloudStore: () => {} });
   stub("services/data-access", { attachmentBytes: fetch });
-  stub("services/usi", { extractAttachmentText: extract });
+  stub("services/usi", { extractAttachmentText: extract, describeHere: describe });
   if (voice) stub("voice", { transcribeAudio: voice });
   const query = () => {
     const q = { where: {}, eq: (k, v) => { q.where[k] = v; return q; }, select: () => q,
@@ -171,13 +171,32 @@ test("a recording the voice note reader cannot open (an MP3) is heard as File Se
     voice: async () => { throw new Error("This kind of voice note can't be written out on this computer yet. Type the message instead."); },
     hear: async (a) => { heard.push([a.name, a.video, a.file ? "disk" : "bytes"]); return { said: { lines: [{ start: 0, text: "Welcome to the show." }] } }; },
   });
-  assert.equal(await files.readBytes(Buffer.from("ID3 not really"), { name: "Episode 4.mp3", mime: "audio/mpeg" }, "u-1"), "Welcome to the show.");
+  const said = "What's said:\n[0:00] Welcome to the show.";
+  assert.equal(await files.readBytes(Buffer.from("ID3 not really"), { name: "Episode 4.mp3", mime: "audio/mpeg" }, "u-1"), said, "with its times, as File Search writes it");
   const dl = require("../lib/download-file");
   const onDisk = dl.tempPath("Ceremony.mov");
   fs.writeFileSync(onDisk, Buffer.concat([Buffer.from([0, 0, 0, 20]), Buffer.from("ftypqt  "), Buffer.alloc(32)]));
-  assert.equal(await files.readBytes({ path: onDisk }, { name: "Ceremony.mov", mime: "" }, "u-1"), "Welcome to the show.", "known to be a video by its own bytes");
+  assert.equal(await files.readBytes({ path: onDisk }, { name: "Ceremony.mov", mime: "" }, "u-1"), said, "known to be a video by its own bytes");
   dl.removeTemp(onDisk);
   assert.deepEqual(heard, [["Episode 4.mp3", false, "bytes"], ["Ceremony.mov", true, "disk"]]);
+});
+
+test("a video from a connection gets what File Search's do: what's said with its times, and six moments on screen described by the VLM with their words", async () => {
+  const asked = [], described = [];
+  standIns({
+    fetch: async () => ({}),
+    hear: async (a) => { asked.push([a.name, a.video, a.frames]); return { said: { lines: [{ start: 0, text: "Welcome, everyone." }, { start: 75, text: "Cut the ribbon." }] }, frames: [{ time: 12, jpeg: Buffer.from("frame one") }, { time: 80, jpeg: Buffer.from("frame two") }] }; },
+    describe: async (images, opts) => { described.push([Buffer.from(images[0].base64, "base64").toString(), opts.background]); return described.length === 1 ? "A stage with a red ribbon across it." : "People clapping beside a cut ribbon."; },
+  });
+  const reader = require("../lib/file-reader");
+  const realOcr = reader.ocrImage;
+  reader.ocrImage = async (jpeg) => (String(jpeg) === "frame one" ? "GRAND OPENING" : null);
+  try {
+    assert.equal(await files.readBytes(Buffer.concat([Buffer.from([0, 0, 0, 20]), Buffer.from("ftypqt  "), Buffer.alloc(32)]), { name: "Opening.mov", mime: "video/quicktime" }, "u-1"),
+      "What's said:\n[0:00] Welcome, everyone.\n[1:15] Cut the ribbon.\n\nWhat's on screen:\n[0:12] (on screen) A stage with a red ribbon across it.\nWords on screen: GRAND OPENING\n[1:20] (on screen) People clapping beside a cut ribbon.");
+  } finally { reader.ocrImage = realOcr; }
+  assert.deepEqual(asked, [["Opening.mov", true, 6]], "six frames, as File Search takes");
+  assert.deepEqual(described, [["frame one", true], ["frame two", true]], "each described in the background");
 });
 
 test("recordings and videos wait while Closedhand is busy, then are heard newest first, one at a time; a large document does not wait", async () => {
@@ -202,5 +221,5 @@ test("recordings and videos wait while Closedhand is busy, then are heard newest
   await settle(() => order.length === 3 && (db.get("outlook/o-1").file_texts || []).length);
   assert.deepEqual(order, ["scan", "newer", "older"], "newest first");
   assert.equal(quiet.most, 1, "one hearing at a time");
-  assert.equal(db.get("outlook/o-2").file_texts[0].text, "said in Site walk.mov");
+  assert.equal(db.get("outlook/o-2").file_texts[0].text, "What's said: [0:00] said in Site walk.mov");
 });
