@@ -267,6 +267,12 @@ async function extractTextFromImage(buffer, mimeType, attempt = 0) {
 // Read whole by file-reader.js, the one reader, scans and photos of
 // documents included. A picture also gets a description from the image
 // model, when one is chosen, so photos can be found by what they show.
+// When the image model's account last said it needs payment or more credit:
+// pictures wait this long before it is asked again, so a folder of photos is
+// not a run of refusals.
+let _accountWaitsUntil = 0;
+const ACCOUNT_WAIT_MS = 15 * 60000;
+
 async function extractText(buffer, fileType, fileName, userId, media = null) {
   const reader = require("./file-reader");
   const read = await reader.readFile(buffer, fileName || "file." + fileType);
@@ -286,7 +292,13 @@ async function extractText(buffer, fileType, fileName, userId, media = null) {
   const off = vision !== undefined && !vision;
   let description = "";
   if (!off && (vision || DEEPINFRA_API_KEY)) {
-    try { description = await extractTextFromImage(buffer, IMAGE_MIME[fileType] || "image/jpeg"); } catch (e) { if (!read.text) throw e; }
+    try {
+      if (Date.now() < _accountWaitsUntil) throw Object.assign(new Error("The image model's account needs payment or more credit."), { allowance: true });
+      description = await extractTextFromImage(buffer, IMAGE_MIME[fileType] || "image/jpeg");
+    } catch (e) {
+      if (e.allowance) _accountWaitsUntil = Date.now() + ACCOUNT_WAIT_MS;
+      if (!read.text) throw e;
+    }
   }
   const said = [read.text, description].filter((t) => t && t.trim()).join("\n\n");
   if (media && media.length) media[media.length - 1].label = `(picture) ${said.replace(/\s+/g, " ").slice(0, 300)}`.trim();
@@ -800,6 +812,13 @@ async function processDocumentWithModels(documentId, userId, fileBuffer, fileNam
     const text = await extractText(fileBuffer, fileType, fileName, userId, media);
     return await fileText(documentId, userId, fileName, text, media, sourceContext);
   } catch (e) {
+    // A model's account needing payment or more credit is not the file's
+    // fault: it waits, pending, and is read on a later check.
+    if (e.allowance) {
+      const { error } = await supabase.from("rag_documents").update({ status: "pending", error_message: null, updated_at: new Date().toISOString() }).eq("id", documentId);
+      if (error) console.error(`[RAG] ${fileName}: could not mark it to wait: ${error.message}`);
+      return { error: e.message, waiting: true };
+    }
     console.error(`[RAG] Processing failed for ${fileName}:`, e.message);
     await supabase.from("rag_documents").update({
       status: "error",

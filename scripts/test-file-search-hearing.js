@@ -182,3 +182,28 @@ test("every folder is checked for new and changed files every 15 minutes, and a 
   assert.match(src, /update\(opts\.scheduled \? \{ status: "ready", updated_at: new Date\(\)\.toISOString\(\) \} : \{/);
   assert.match(read("webapp/server.js"), /setInterval\(\(\) => ragProcessor\.checkSources\(\)\.catch\(\(e\) => console\.error\("\[RAG\] Folder check failed:", e\.message\)\), 15 \* 60 \* 1000\);/);
 });
+
+test("a picture whose model's account needs payment waits to be read, and the next one does not ask again", async () => {
+  const stub = (rel, exports) => { const id = require.resolve(path.join("..", "webapp", rel)); require.cache[id] = { id, filename: id, loaded: true, exports }; };
+  const tables = { profiles: [{ id: "u1", settings: {} }], rag_documents: [{ id: "d1", status: "pending" }, { id: "d2", status: "pending" }], rag_chunks: [] };
+  let asked = 0;
+  stub("db", { supabase: fakeDb(tables) });
+  stub("bot-call", { BOT_INTERNAL_URL: "http://127.0.0.1:1", botToken: () => "t" });
+  stub("model-policy", { getRole: (store, role) => (role === "vision" ? { model: "seeing" } : undefined) });
+  stub("model-wire", { appHeaders: () => ({}), request: async () => { asked++; throw Object.assign(new Error("The model provider returned HTTP 402."), { allowance: true }); } });
+  const realReader = require("../webapp/file-reader");
+  stub("file-reader", { ...realReader, readFile: async () => ({ kind: "image", text: "" }) });
+  delete process.env.EMBED_MODEL;
+  const id = require.resolve("../webapp/rag-processor");
+  delete require.cache[id];
+  const rag = require("../webapp/rag-processor");
+  try {
+    const first = await rag.processDocument("d1", "u1", Buffer.alloc(20 * 1024, 1), "Beach.jpg", "jpg");
+    const second = await rag.processDocument("d2", "u1", Buffer.alloc(20 * 1024, 2), "Harbour.jpg", "jpg");
+    assert.deepEqual([first.waiting, second.waiting], [true, true]);
+    assert.deepEqual(tables.rag_documents.map((d) => [d.status, d.error_message]), [["pending", null], ["pending", null]], "not the files' fault: they wait");
+    assert.equal(asked, 1, "the model is not asked again for a while");
+  } finally {
+    for (const rel of ["db", "bot-call", "model-policy", "model-wire", "file-reader", "rag-processor"]) delete require.cache[require.resolve(path.join("..", "webapp", rel))];
+  }
+});
