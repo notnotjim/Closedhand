@@ -41,7 +41,7 @@ async function mount(respond = () => ({ config: null, runtime: 'docker' })) {
     },
   };
   vm.runInNewContext(source, context); context.window.ClosedHandModels.mount(root); await tick();
-  return { field, calls, result: element('.model-result'), region: name => element('[data-region="' + name + '"]'),
+  return { root, field, calls, result: element('.model-result'), region: name => element('[data-region="' + name + '"]'),
     action: name => element('[data-action="' + name + '"]'),
     picker: name => element('[data-picker="' + name + '"]'),
     choose(name, value) { field(name).value = value; listeners.change({ target: field(name) }); },
@@ -263,14 +263,46 @@ test('a saved key shows by its last four characters, and the field says it is ke
   assert.doesNotMatch(fs.readFileSync(require.resolve('../webapp/public/model-settings.js'), 'utf8'), /leave blank to keep|Paste your key/);
 });
 
+// A primary model that can't see pictures, with no image model: the choice of
+// an image model is offered only then.
+const textOnlySetup = () => { const s = savedSetup(); s.config.roles.chat.capabilities.vision = false; s.config.roles.vision = null; return s; };
 test('while a new image model is chosen, the unchanged primary keeps its checked results', async () => {
-  const ui = await mount((call) => call.path === '' ? savedSetup() : call.path === '/models' ? catalog : { config: null });
+  const ui = await mount((call) => call.path === '' ? textOnlySetup() : call.path === '/models' ? catalog : { config: null });
   await ui.timers();
   ui.choose('visionMode', 'separate'); ui.choose('visionProvider', 'xai'); ui.type('visionKey', 'image-key'); await ui.timers();
   const row = panel(ui);
   assert.equal(row('Tool calls'), 'Works', 'not "Not checked yet" for a primary model that is in use and unchanged');
   assert.equal(row('Images'), 'Choose an image and video model', "not the primary model's own image result");
   assert.equal(ui.region('check-title').textContent, 'Choose an image and video model to check these models', 'the title names what is missing');
+});
+
+test('the image and video choice appears only when the primary model does not see pictures itself', async () => {
+  const seeing = await mount((call) => call.path === '' ? savedSetup() : call.path === '/models' ? catalog : { config: null });
+  await seeing.timers();
+  assert.equal(seeing.region('vision-role').hidden, true, 'a primary model that sees does it all');
+  seeing.choose('visionMode', 'separate');
+  assert.equal(seeing.field('visionMode').value, 'same');
+  assert.equal(seeing.region('vision').hidden, true);
+
+  const blind = await mount((call) => call.path === '' ? textOnlySetup() : call.path === '/models' ? catalog : { config: null });
+  await blind.timers();
+  assert.equal(blind.region('vision-role').hidden, false);
+  assert.equal(blind.field('visionMode').value, 'off', 'the vision language model on this computer, unless another is chosen');
+  assert.equal(blind.root.querySelector('[data-field="visionMode"] option[value="same"]').hidden, true, '"Use the primary model" is not offered');
+});
+
+test('a primary model not known to see is checked as it is, and one found not to see uses the vision language model with nothing more to check', async () => {
+  const unknown = { models: [{ id: 'own-model', capabilities: { tools: true, vision: null } }] };
+  const found = { ticket: 'checked-ticket', config: { connections: { primary: { provider: 'openai' } }, roles: { chat: { model: 'own-model', connection: 'primary', capabilities: { tools: true, vision: false } }, background: { model: 'own-model', connection: 'primary' }, vision: null } } };
+  const ui = await mount((call) => call.path === '/models' ? unknown : call.path === '/check' ? found : { config: null });
+  ui.choose('provider', 'openai'); ui.type('apiKey', 'fixture'); await ui.action('load').onclick(); await tick();
+  ui.pick('model', 'own-model');
+  assert.equal(ui.region('vision-role').hidden, false);
+  assert.equal(ui.field('visionMode').value, 'same', 'not known yet: the check finds out');
+  await ui.timers();
+  assert.equal(ui.calls.filter((c) => c.path === '/check').at(-1).body.visionMode, 'same');
+  assert.equal(ui.field('visionMode').value, 'off');
+  assert.equal(ui.action('save').hidden, false, 'what was checked is what is saved: nothing to check again');
 });
 
 test('an image model whose abilities are unknown is not offered for images, but can still be typed in', async () => {

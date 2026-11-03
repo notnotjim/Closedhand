@@ -42,7 +42,7 @@
       '<label data-region="background-key">API key<input data-field="backgroundKey" type="password" autocomplete="off" spellcheck="false"></label></div>' +
       '<button type="button" data-action="load-background" hidden>Retry loading support models</button>' +
       '<label>Model<select data-picker="backgroundModel"></select></label><label data-manual="backgroundModel" hidden>Model ID<input data-field="backgroundModel" spellcheck="false" placeholder="Enter the provider\'s exact model ID"></label></div>' +
-      '</section><section class="model-role model-fields"><header><h3>Image and video model</h3><p class="model-hint">Understands photos, screenshots and videos you send in chat.</p></header>' +
+      '</section><section class="model-role model-fields" data-region="vision-role"><header><h3>Image and video model</h3><p class="model-hint">Understands photos, screenshots and videos you send in chat.</p></header>' +
       '<label>Model choice<select data-field="visionMode"><option value="same">Use the primary model</option><option value="separate">Choose another image and video model</option><option value="off">Use the vision language model on this computer</option></select></label>' +
       '<div data-region="vision" class="model-fields" hidden><label>Provider<select data-field="visionProvider"><option value="">Use the same provider</option>' + options.replace('<option value="">Choose a provider</option>', '') + '</select></label>' +
       '<div data-region="vision-connection" class="model-fields" hidden><label data-region="vision-address" hidden>Service URL<input type="url" data-field="visionBaseUrl" spellcheck="false"></label>' +
@@ -223,7 +223,7 @@
         : savedKey("primary", provider, value("baseUrl"), value("apiKey")) ? "Your saved key is kept unless you paste a new one."
         : "Paste an API key from this provider to load its models.";
       region("address").hidden = !["custom", "ollama"].includes(value("provider"));
-      region("vision").hidden = value("visionMode") !== "separate";
+      imageChoice();
       region("vision-connection").hidden = !value("visionProvider");
       region("vision-address").hidden = !["custom", "ollama"].includes(value("visionProvider"));
       region("vision-key").hidden = value("visionProvider") === "ollama";
@@ -414,6 +414,26 @@
       if (separate) return [visionLabel + " sees frames, and Closedhand writes out what's said" + narrow(vision), "ok"];
       return ["The vision language model on this computer describes frames, and Closedhand writes out what's said", "ok"];
     }
+    // Whether the primary model sees pictures itself: as the check for these
+    // very choices found, else as its provider lists it; null when unknown.
+    function primarySees() {
+      var chat = ticket && check && check.config ? check.config.roles.chat : null;
+      var cap = chat ? chat.capabilities || {} : savedChat() || catalogCaps("model") || {};
+      return cap.vision === true ? true : cap.vision === false ? false : null;
+    }
+    // The image and video choice appears only when the primary model doesn't
+    // see pictures itself: then it is the vision language model on this
+    // computer or a model the person picks. A primary model that sees does it
+    // all; one not known yet keeps "Use the primary model" until the check
+    // settles it.
+    function imageChoice() {
+      var sees = primarySees(), mode = field("visionMode");
+      region("vision-role").hidden = sees === true;
+      root.querySelector('[data-field="visionMode"] option[value="same"]').hidden = sees === false;
+      if (sees === true && mode.value !== "same") mode.value = "same";
+      if (sees === false && mode.value === "same") mode.value = "off";
+      region("vision").hidden = mode.value !== "separate";
+    }
     function catalogCaps(key) {
       var id = chosen(key), m = models.find(function (x) { return x.id === id; });
       return m ? m.capabilities : null;
@@ -422,6 +442,7 @@
       var panel = region("check"), rows = region("check-rows"), title = region("check-title");
       var save = root.querySelector('[data-action="save"]'), again = root.querySelector('[data-action="recheck"]');
       rows.replaceChildren(); save.hidden = true; again.hidden = true;
+      imageChoice();
       if (!check) { panel.hidden = true; return; }
       panel.hidden = false;
       var kind = check.kind, cfg = check.config || null;
