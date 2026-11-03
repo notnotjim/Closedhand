@@ -159,9 +159,14 @@ test("Connect anything stands apart under the skills, inviting, with Connect as 
   const dash = read("webapp/views/dashboard.html");
   // It had lost its pull, and sat almost on the skills above it.
   assert.match(css, /\.connection-catalogue \.mcp-hero \{margin:3rem 0 0;padding:2\.75rem 0 2rem;border-top:1px solid rgba\(var\(--fg-rgb\),\.08\);text-align:center;\}/);
-  assert.match(css, /\.connection-catalogue \.mcp-pill \{max-width:40rem;margin:0 auto;border:1px solid rgba\(var\(--accent-rgb\),\.24\);[^}]*box-shadow:0 0 2\.5rem rgba\(var\(--accent-rgb\),\.07\);/, "an ember edge, as on the theme switch and the talk button");
-  assert.match(css, /\.connection-catalogue \.mcp-pill\.lit \{animation:ember-pass 1\.6s[^}]*1;\}/, "an ember ring passes round it once");
-  assert.match(css, /prefers-reduced-motion: reduce\) \{\.mcp-connect-btn::before \{transition:none;\} \.connection-catalogue \.mcp-pill\.lit \{animation:none;\}\}/);
+  // Lit only when clicked, it still did not ask for a paste (2026-11-03):
+  // two lights run round its ember edge all the time, and the edge and its
+  // glow brighten on hover and more in use.
+  assert.match(css, /\.connection-catalogue \.mcp-pill:hover \{--edge-lit:\.45;\}\n\.connection-catalogue \.mcp-pill:focus-within \{--edge-lit:1;\}/);
+  assert.match(css, /offset-path:inset\(0 round 1rem\);offset-rotate:auto;offset-distance:12%;animation:edge-run 9s linear infinite;/, "at an even pace round the edge");
+  assert.match(css, /\.connection-catalogue :is\(\.mcp-edge, \.mcp-pill\)::after \{offset-distance:62%;animation-delay:-4\.5s;\}/, "the second light on the far side");
+  assert.match(css, /prefers-reduced-motion: reduce\) \{\.mcp-connect-btn::before \{transition:none;\} \.connection-catalogue :is\(\.mcp-edge, \.mcp-pill\)::before, \.connection-catalogue :is\(\.mcp-edge, \.mcp-pill\)::after \{animation:none;\}\}/, "still, without motion");
+  assert.match(dash, /<div class="mcp-pill">\n\s+<span class="mcp-edge" aria-hidden="true"><\/span>/);
   assert.match(dash, /<button onclick="addMcpConnection\(\)" id="mcp-connect-btn" class="cta mcp-connect-btn unpainted">Connect<\/button>/, "Connect is the brush-stroke main action");
   assert.match(dash, /classList\.toggle\('ready', !!el\.value\.trim\(\)\)/, "its stroke is painted over once there is something to connect");
   assert.match(css, /\.connection-catalogue \.mcp-scan \{display:flex;align-items:center;justify-content:center;gap:0\.375rem;margin:0\.875rem 0 0;color:var\(--muted\);/, "the scan note is a plain line, not a capsule");

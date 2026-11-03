@@ -2282,6 +2282,7 @@
             <h3 class="connect-anything-title">Connect anything</h3>
 
             <div class="mcp-pill">
+              <span class="mcp-edge" aria-hidden="true"></span>
               <div class="mcp-pill-inner">
                 <textarea id="mcp-url-input" rows="1" placeholder="Paste an MCP server, skill or API key" aria-label="MCP server, skill or API key" oninput="mcpGrowInput(this)" onkeydown="mcpInputKey(event)" onpaste="mcpPaste(event)" spellcheck="false"></textarea>
                 <button onclick="addMcpConnection()" id="mcp-connect-btn" class="cta mcp-connect-btn unpainted">Connect</button>
@@ -4103,16 +4104,15 @@
       if (!box || !window.ResizeObserver) return;
       new ResizeObserver(function () { if (box.offsetWidth && box.offsetWidth !== width) { width = box.offsetWidth; mcpGrowInput(box); } }).observe(box);
     })();
-    // The first time the box comes into view an ember ring passes round it and
-    // Connect's brush stroke is painted on.
+    // The first time the box comes into view Connect's brush stroke is painted on.
     (function () {
-      var btn = document.getElementById('mcp-connect-btn'), pill = btn && btn.closest('.mcp-pill');
+      var btn = document.getElementById('mcp-connect-btn');
       if (!btn) return;
       if (!window.IntersectionObserver) return btn.classList.remove('unpainted');
       new IntersectionObserver(function (seen, watch) {
         if (!seen.some(function (e) { return e.isIntersecting; })) return;
         watch.disconnect();
-        setTimeout(function () { pill.classList.add('lit'); btn.classList.remove('unpainted'); }, 300);
+        setTimeout(function () { btn.classList.remove('unpainted'); }, 300);
       }, { threshold: 1 }).observe(btn);
     })();
 
