@@ -206,6 +206,11 @@ test('the tool is offered only once the model is ready, sends the picture to the
 
 // The vision language model (VLM): Closedhand always sees a picture, whether or not an
 // image model is chosen, by Florence-2 on the computer running it.
+// usi.js loads the database client, which these tests don't use (and CI's
+// check job doesn't install). Set up in each test: the image generation
+// tests above clear these from the cache when they finish.
+const stubOnce = (rel, exports) => { const id = require.resolve(path.join('..', rel)); if (!require.cache[id]) require.cache[id] = { id, filename: id, loaded: true, exports }; };
+const noDatabase = () => { stubOnce('user-store', { supabase: {}, UserStore: { load: async () => ({}) } }); stubOnce('lib/db', { supabase: {} }); };
 const withVlm = async (describe, fn) => {
   const lm = require('../lib/local-models'), fr = require('../lib/file-reader');
   const [realSee, realOcr] = [lm.localDescribeImage, fr.ocrImage];
@@ -218,6 +223,7 @@ const asPerson = (fn) => {
 };
 
 test('with no image model chosen, a picture is described by the VLM with its words, and indexing waits behind people', async () => {
+  noDatabase();
   const usi = require('../lib/services/usi');
   const asked = [];
   const pic = [{ mediaType: 'image/jpeg', base64: Buffer.from('a picture').toString('base64') }];
@@ -230,6 +236,7 @@ test('with no image model chosen, a picture is described by the VLM with its wor
 });
 
 test('a chat model that cannot see gets what the VLM sees where no image model is chosen, never "off"', async () => {
+  noDatabase();
   const { substituteImages } = require('../lib/model-images');
   const block = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from('a screenshot').toString('base64') } };
   const out = await withVlm(async () => 'A browser window showing a sign-in page.', () =>
