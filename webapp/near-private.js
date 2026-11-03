@@ -442,10 +442,47 @@ async function checkSignature(st, chatId, model, requestBytes, responseBytes, ev
   if (!crypto.verify(null, Buffer.from(sig.text, "utf8"), ed25519Public(Buffer.from(signer.address, "hex")), sigBytes)) throw new Error("the signature does not verify");
 }
 
+// Which of NEAR AI's models can be proven, for the list people choose from:
+// those whose attestation report names a model enclave. Models NEAR passes on
+// to other companies run outside one ("TEE attestation is not supported for
+// external providers"), and an enclave model whose proof fails is left out
+// too; complete() above would refuse either. Text models NEAR marks ready are
+// asked, eight at a time, once a day per key.
+const PROVEN_FOR_MS = 24 * 3600 * 1000;
+const proven = new Map();
+async function provenModels(conn, models) {
+  const id = crypto.createHash("sha256").update(conn.baseUrl + "|" + String(conn.apiKey || "")).digest("hex");
+  let known = proven.get(id);
+  if (!known || Date.now() - known.at > PROVEN_FOR_MS) { known = { at: Date.now(), ok: new Map() }; proven.set(id, known); }
+  const text = models.filter((m) => {
+    const into = m.metadata?.input_modalities, out = m.metadata?.output_modalities;
+    return (!Array.isArray(into) || into.includes("text")) && (!Array.isArray(out) || out.includes("text")) && m.metadata?.is_ready !== false;
+  });
+  const todo = text.filter((m) => !known.ok.has(m.id));
+  let asked = 0;
+  for (let i = 0; i < todo.length; i += 8) {
+    await Promise.all(todo.slice(i, i + 8).map(async (m) => {
+      try {
+        const res = await fetch(`${conn.baseUrl}/attestation/report?model=${encodeURIComponent(m.id)}&signing_algo=ed25519`,
+          { headers: { Authorization: "Bearer " + conn.apiKey }, signal: AbortSignal.timeout(15000), redirect: "error" });
+        const body = res.ok ? await res.json() : null;
+        if (!res.ok) await res.body?.cancel?.().catch(() => {});
+        known.ok.set(m.id, Array.isArray(body?.model_attestations) && body.model_attestations.length > 0);
+        asked++;
+      } catch { /* not kept: asked again next time */ }
+    }));
+  }
+  if (todo.length && !asked) throw Object.assign(new Error("Could not check which NEAR AI models are private just now. Try again in a minute."), { status: 503 });
+  // Text only, whatever the model can see: what is sent privately is text
+  // (encryptRequest), so pictures go to the image model chosen beside it.
+  return text.filter((m) => known.ok.get(m.id)).map((m) => ({ ...m, metadata: { ...m.metadata, input_modalities: ["text"],
+    architecture: m.metadata.architecture ? { ...m.metadata.architecture, input_modalities: ["text"], inputModalities: ["text"] } : undefined } }));
+}
+
 // Whether a connection goes to NEAR AI: by name, or by its address.
 function isNear(conn) {
   if (conn?.provider === "near") return true;
   try { return new URL(conn?.baseUrl).hostname === "cloud-api.near.ai"; } catch { return false; }
 }
 
-module.exports = { isNear, complete, useDeps, hchacha20, xchachaSeal, xchachaOpen, edToX25519, clientKeys, seal, open, encryptRequest, decryptResponse, replayRtmr3, checkReport, checkEvidence, ACCEPTED_TCB };
+module.exports = { isNear, complete, provenModels, useDeps, hchacha20, xchachaSeal, xchachaOpen, edToX25519, clientKeys, seal, open, encryptRequest, decryptResponse, replayRtmr3, checkReport, checkEvidence, ACCEPTED_TCB };

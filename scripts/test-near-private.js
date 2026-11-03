@@ -202,3 +202,36 @@ test("NEAR AI is a provider like the others: listed, named and found by its addr
   assert.ok(near.isNear({ provider: "near" }) && near.isNear({ provider: "custom", baseUrl: "https://cloud-api.near.ai/v1" }) && !near.isNear({ provider: "deepseek", baseUrl: "https://api.deepseek.com/v1" }));
   assert.match(read("lib/model-wire.js"), /near\.isNear\(conn\) \? await near\.complete\(conn, body, \{ signal \}\)/);
 });
+
+test("only the NEAR AI models whose privacy can be proven are listed, as text-only, asked once a day", async () => {
+  const realFetch = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    const model = decodeURIComponent(String(url).match(/model=([^&]+)/)[1]);
+    asked.push(model);
+    if (model === "vendor/enclave-chat") return { ok: true, json: async () => ({ gateway_attestation: {}, model_attestations: [{}] }) };
+    if (model === "vendor/no-enclave") return { ok: true, json: async () => ({ gateway_attestation: {}, model_attestations: [] }) };
+    return { ok: false, status: 503, body: { cancel: async () => {} } };
+  };
+  try {
+    const conn = { provider: "near", backend: "custom", baseUrl: "https://near.example/v1", apiKey: "invented-key-1" };
+    const list = [
+      { id: "vendor/enclave-chat", metadata: { input_modalities: ["text", "image"], output_modalities: ["text"], architecture: { inputModalities: ["text", "image"] } } },
+      { id: "vendor/no-enclave", metadata: { output_modalities: ["text"] } },
+      { id: "other/external-model", metadata: { output_modalities: ["text"] } },
+      { id: "vendor/makes-pictures", metadata: { output_modalities: ["image"] } },
+      { id: "vendor/hears", metadata: { input_modalities: ["audio"], output_modalities: ["text"] } },
+      { id: "vendor/not-ready", metadata: { output_modalities: ["text"], is_ready: false } },
+    ];
+    const got = await near.provenModels(conn, list);
+    assert.deepEqual(got.map((m) => m.id), ["vendor/enclave-chat"]);
+    assert.deepEqual(got[0].metadata.input_modalities, ["text"], "what is sent privately is text, so pictures go to the image model beside it");
+    assert.deepEqual(got[0].metadata.architecture.inputModalities, ["text"]);
+    assert.deepEqual(asked.sort(), ["other/external-model", "vendor/enclave-chat", "vendor/no-enclave"], "only text models that are ready are asked");
+    await near.provenModels(conn, list);
+    assert.equal(asked.length, 3, "kept for the day");
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    await assert.rejects(near.provenModels({ ...conn, apiKey: "invented-key-2" }, list), /Could not check which NEAR AI models are private/);
+  } finally { globalThis.fetch = realFetch; }
+  assert.match(fs.readFileSync(path.join(__dirname, "../lib/model-wire.js"), "utf8"), /if \(conn\.backend === "custom" && require\("\.\/near-private"\)\.isNear\(conn\)\) return require\("\.\/near-private"\)\.provenModels\(conn, models\);/);
+});

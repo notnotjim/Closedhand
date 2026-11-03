@@ -539,6 +539,8 @@ async function listModels(conn) {
   const data = await response.json();
   const models = (data.data || data.models || []).map(m => ({ id: (m.id || m.name || "").replace(/^models\//, ""), metadata: m })).filter(m => m.id);
   if (conn.provider === "ollama") await describeOllama(conn, models);
+  // NEAR AI: only the models whose privacy can be proven (near-private.js).
+  if (conn.backend === "custom" && require("./near-private").isNear(conn)) return require("./near-private").provenModels(conn, models);
   return models;
 }
 // Ollama's model list says nothing about what each model can do, but its own

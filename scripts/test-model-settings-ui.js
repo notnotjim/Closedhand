@@ -276,19 +276,23 @@ test('while a new image model is chosen, the unchanged primary keeps its checked
   assert.equal(ui.region('check-title').textContent, 'Choose an image and video model to check these models', 'the title names what is missing');
 });
 
-test('the image and video choice appears only when the primary model does not see pictures itself', async () => {
+test('pictures and videos have two choices: the vision language model on this computer, and the primary model if it sees or else another model', async () => {
+  const option = (ui, v) => ui.root.querySelector('[data-field="visionMode"] option[value="' + v + '"]');
   const seeing = await mount((call) => call.path === '' ? savedSetup() : call.path === '/models' ? catalog : { config: null });
   await seeing.timers();
-  assert.equal(seeing.region('vision-role').hidden, true, 'a primary model that sees does it all');
+  assert.equal(option(seeing, 'same').hidden, false);
+  assert.equal(option(seeing, 'separate').hidden, true, 'no other model beside a primary model that sees');
   seeing.choose('visionMode', 'separate');
   assert.equal(seeing.field('visionMode').value, 'same');
+  seeing.choose('visionMode', 'off');
+  assert.equal(seeing.field('visionMode').value, 'off', 'pictures can stay on this computer even so');
   assert.equal(seeing.region('vision').hidden, true);
 
   const blind = await mount((call) => call.path === '' ? textOnlySetup() : call.path === '/models' ? catalog : { config: null });
   await blind.timers();
-  assert.equal(blind.region('vision-role').hidden, false);
   assert.equal(blind.field('visionMode').value, 'off', 'the vision language model on this computer, unless another is chosen');
-  assert.equal(blind.root.querySelector('[data-field="visionMode"] option[value="same"]').hidden, true, '"Use the primary model" is not offered');
+  assert.equal(option(blind, 'same').hidden, true, '"Use the primary model" is not offered');
+  assert.equal(option(blind, 'separate').hidden, false);
 });
 
 test('a primary model not known to see is checked as it is, and one found not to see uses the vision language model with nothing more to check', async () => {
@@ -297,7 +301,6 @@ test('a primary model not known to see is checked as it is, and one found not to
   const ui = await mount((call) => call.path === '/models' ? unknown : call.path === '/check' ? found : { config: null });
   ui.choose('provider', 'openai'); ui.type('apiKey', 'fixture'); await ui.action('load').onclick(); await tick();
   ui.pick('model', 'own-model');
-  assert.equal(ui.region('vision-role').hidden, false);
   assert.equal(ui.field('visionMode').value, 'same', 'not known yet: the check finds out');
   await ui.timers();
   assert.equal(ui.calls.filter((c) => c.path === '/check').at(-1).body.visionMode, 'same');
