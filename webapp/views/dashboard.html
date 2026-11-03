@@ -2246,8 +2246,8 @@
           .wallet-card-row { display:flex; flex-wrap:wrap; align-items:center; gap:0.375rem 0.625rem; padding:0.5rem 0.625rem; background:var(--raised); border:1px solid rgba(var(--fg-rgb),0.16); border-radius:0.625rem; font-size:0.8125rem; color:var(--fg); }
           .wallet-card-row .muted { color:var(--muted); font-size:0.75rem; min-width:0; }
           .wallet-card-row .wallet-row-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:0.375rem 0.625rem; margin-left:auto; }
-          /* The default card and the home address say so in In use's green,
-             where the others offer Make default or Make home. */
+          /* The default card and the default address say so in In use's green,
+             where the others offer Make default. */
           .wallet-card-row .wallet-status { margin-left:auto; font-size:0.8125rem; }
           .wallet-card-row .wallet-status + .wallet-row-actions { margin-left:0; }
           .wallet-card-row select { padding:0.1875rem 0.5rem; background:var(--bg); border:1px solid rgba(var(--fg-rgb),0.16); border-radius:0.375rem; color:var(--fg); font:inherit; font-size:0.75rem; }
@@ -2592,7 +2592,7 @@
                     <label class="wallet-field"><span>Phone (optional)</span><input type="tel" id="wa-phone" autocomplete="tel"></label>
                     <label class="wallet-field"><span>Label (optional)</span><input type="text" id="wa-label" maxlength="40" placeholder="e.g. Home or Work"></label>
                   </div>
-                  <label id="wa-home-wrap" style="display:flex;align-items:center;gap:0.5rem;font-size:0.8125rem;color:var(--fg);cursor:pointer;margin:0.75rem 0 0;"><input type="checkbox" id="wa-home" style="width:0.875rem;height:0.875rem;margin:0;accent-color:var(--accent-strong);"> This is my home address</label>
+                  <label id="wa-home-wrap" style="display:flex;align-items:center;gap:0.5rem;font-size:0.8125rem;color:var(--fg);cursor:pointer;margin:0.75rem 0 0;"><input type="checkbox" id="wa-home" style="width:0.875rem;height:0.875rem;margin:0;accent-color:var(--accent-strong);"> Use this address when a site asks</label>
                   </div>
                   <div id="wa-actions" style="margin-top:0.625rem;display:flex;align-items:center;gap:0.625rem;">
                     <button class="account-action-btn" onclick="saveWalletAddress()">Save address</button>
@@ -5622,14 +5622,14 @@
         // Where orders go, said for the addresses as they are: home only once
         // one is marked home.
         var home = addrs.filter(function (a) { return a.is_home; })[0];
-        var delivery = home ? 'Orders go to ' + escHtml(addressName(home)) + ' unless you ask for another.' : 'None is marked home yet, so Closedhand asks where each order should go.';
+        var delivery = 'Sites that already have your address keep their own. ' + (home ? 'When one asks, Closedhand fills in ' + escHtml(addressName(home)) + '.' : 'None is the default yet, so when one asks, Closedhand asks you which.');
         document.getElementById('wallet-addresses').innerHTML = (addrs.length ? addrs.map(function(a) {
           return '<div class="wallet-card-row" data-id="' + a.id + '">' +
             '<span style="font-weight:600;">' + escHtml(addressName(a)) + '</span>' +
             '<span class="muted">' + escHtml(a.label ? addressLine(a) : addressLine(Object.assign({}, a, { line1: '' }))) + '</span>' +
-            (a.is_home ? '<span class="plan-status on wallet-status">Home</span>' : '') +
+            (a.is_home ? '<span class="plan-status on wallet-status">Default</span>' : '') +
             '<span class="wallet-row-actions">' +
-            (a.is_home ? '' : '<button class="conn-btn conn-btn-manage" onclick="makeHomeAddress(\'' + a.id + '\')">Make home</button>') +
+            (a.is_home ? '' : '<button class="conn-btn conn-btn-manage" onclick="makeDefaultAddress(\'' + a.id + '\')">Make default</button>') +
             '<button class="conn-btn conn-btn-manage" onclick="openAddressForm(\'' + a.id + '\')">Edit</button>' +
             '<button class="conn-btn conn-btn-disconnect" onclick="removeWalletAddress(\'' + a.id + '\', this)">Remove</button>' +
             '</span></div>';
@@ -5764,7 +5764,7 @@
       var home = _walletAddresses.filter(function (a) { return a.is_home; })[0];
       var pick = selected === 'new' ? 'new' : selected || (home ? home.id : _walletAddresses.length ? '' : 'new');
       sel.innerHTML = (pick ? '' : '<option value="" selected disabled>Choose</option>') + _walletAddresses.map(function (a) {
-        return '<option value="' + a.id + '"' + (a.id === pick ? ' selected' : '') + '>' + escHtml(addressName(a) + (a.is_home && !/^home$/i.test(a.label || '') ? ' (home)' : '')) + '</option>';
+        return '<option value="' + a.id + '"' + (a.id === pick ? ' selected' : '') + '>' + escHtml(addressName(a) + (a.is_home ? ' (default)' : '')) + '</option>';
       }).join('') + '<option value="new"' + (pick === 'new' ? ' selected' : '') + '>New address</option>';
       billingChoice();
     }
@@ -5865,7 +5865,7 @@
       showToast(editing ? 'Address saved' : 'Address added');
       loadWallet();
     }
-    async function makeHomeAddress(id) {
+    async function makeDefaultAddress(id) {
       var res = await fetch('/api/wallet/addresses/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_home: true }) });
       if (res.ok) loadWallet(); else showToast('Could not change it', true);
     }

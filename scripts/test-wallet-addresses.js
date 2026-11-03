@@ -94,12 +94,13 @@ test("fill_address types a saved address, says which are saved when the name is 
   const handlers = read("lib/tools/handlers.js");
   assert.match(handlers, /const \{ address, all \} = await wallet\.findAddress\(userId, toolInput\.address\);/);
   assert.match(handlers, /There is no saved address matching "\$\{toolInput\.address\}"\. Saved: \$\{saved\}\./);
-  assert.match(handlers, /The user has not marked a saved address as home\. Saved: \$\{saved\}\. Ask them which one, or where it should go\./);
+  assert.match(handlers, /The user has no default address\. Saved: \$\{saved\}\. Ask them which one, or where it should go\./);
   assert.match(handlers, /if \(action === "fill_card" && !billing\) parsed\.billing_address = "This card has no billing address in the Wallet\. If the page asks for one, ask the user for it and type it with fill/, "a card with no billing address asks, never goes without");
   assert.match(handlers, /The user has no address saved\. Ask them where it should go and type it with fill; they can save it under Wallet in Settings so it is filled in next time\./);
   assert.match(handlers, /wallet\.noteAddressFill\(userId, address\);/);
   const defs = read("lib/tools/definitions.js");
-  assert.match(defs, /fill_address types one of the user's saved addresses into the delivery form on the page already open: 'home' unless the user asked for another saved one by its label/);
+  assert.match(defs, /fill_address types one of the user's saved addresses into the delivery form on the page already open: their default \('home'\) unless the user asked for another saved one by its label/);
+  assert.match(defs, /A site that already has a card or delivery address chosen \(a signed-in account with one saved\) keeps its own: use fill_card or fill_address only where the page asks for one, or the user asked for a particular one from their Wallet\./, "the site's own card and address first");
   assert.match(defs, /address: \{\n\s*type: "string",\n\s*description: "For fill_address: which saved address, as 'home' or its label, e\.g\. 'work'\.",/);
 });
 
@@ -131,9 +132,11 @@ test("Settings adds, changes and removes addresses behind the dashboard's own ch
   assert.match(patch, /if \(!patch\.billing\) return res\.status\(400\)\.json\(\{ error: "Choose the card's billing address\." \}\);/, "nor changed to none");
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, /<div style="font-size:0.8125rem;font-weight:600;color:var\(--fg\);margin-bottom:0.625rem;">Addresses<\/div>/);
-  // Where orders go is said for the addresses as they are, never "home" before one is marked home.
-  assert.doesNotMatch(dash, /Orders go to your home address/);
-  assert.match(dash, /var delivery = home \? 'Orders go to ' \+ escHtml\(addressName\(home\)\) \+ ' unless you ask for another\.' : 'None is marked home yet, so Closedhand asks where each order should go\.';/);
+  // A site that already has the person's address keeps its own; the default
+  // is filled in only when a site asks (2026-11-03).
+  assert.doesNotMatch(dash, /Orders go to/);
+  assert.match(dash, /var delivery = 'Sites that already have your address keep their own\. ' \+ \(home \? 'When one asks, Closedhand fills in ' \+ escHtml\(addressName\(home\)\) \+ '\.' : 'None is the default yet, so when one asks, Closedhand asks you which\.'\);/);
+  assert.match(dash, /> Use this address when a site asks<\/label>/);
   assert.match(dash, /addCard\('Add a card', 'openCardForm\(\)'\);/, "both lists end with the same add tile");
   assert.match(dash, /addCard\('Add an address', 'openAddressForm\(\)'\);/);
   // Always chosen in the card form, among the saved addresses or a new one
@@ -165,9 +168,9 @@ test("Settings adds, changes and removes addresses behind the dashboard's own ch
   assert.doesNotMatch(dash, /wc-postcode|Billing postcode/);
 });
 
-test("the home address and the default card say so where the others offer to be made so, and removing one asks in place of its buttons", () => {
+test("the default address and the default card say so where the others offer to be made so, and removing one asks in place of its buttons", () => {
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /\(a\.is_home \? '<span class="plan-status on wallet-status">Home<\/span>' : ''\) \+\n\s*'<span class="wallet-row-actions">' \+\n\s*\(a\.is_home \? '' : '<button class="conn-btn conn-btn-manage" onclick="makeHomeAddress/);
+  assert.match(dash, /\(a\.is_home \? '<span class="plan-status on wallet-status">Default<\/span>' : ''\) \+\n\s*'<span class="wallet-row-actions">' \+\n\s*\(a\.is_home \? '' : '<button class="conn-btn conn-btn-manage" onclick="makeDefaultAddress\(\\'' \+ a\.id \+ '\\'\)">Make default<\/button>/);
   assert.match(dash, /\(c\.is_default \? '<span class="plan-status on wallet-status">Default<\/span>' : ''\) \+\n\s*'<span class="wallet-row-actions">' \+\n\s*\(c\.is_default \? '' : '<button class="conn-btn conn-btn-manage" onclick="setDefaultCard/);
   assert.doesNotMatch(dash, /' · home'|' · default'/, "no longer a faint word at the end of the line");
   assert.match(dash, /\.wallet-card-row \.wallet-status \{ margin-left:auto; font-size:0\.8125rem; \}/);
