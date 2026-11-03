@@ -137,3 +137,10 @@ test("the sandbox browser shows every script and keeps to what Closedhand uses i
   assert.match(read("desktop/workspace/guest/Dockerfile"), /FROM \$\{WORKSPACE_IMAGE\}/, "the Mac's Workspace is built on the same image");
   for (const launcher of ["sandbox-image/chromium-launcher.sh", "desktop/workspace/guest/browser.sh"]) assert.match(read(launcher), /--no-default-browser-check --disable-default-apps/, launcher + ": none of Chrome's own add-ons");
 });
+
+test("full screen on a computer has a way back beside Esc, and its hint shows inside the full-screen view", () => {
+  const page = read("webapp/views/index.html");
+  assert.match(page, /<button type="button" class="mon-exit-full" id="monExitFull" onclick="document\.exitFullscreen\(\)" title="Exit full screen \(Esc\)" aria-label="Exit full screen">/);
+  assert.match(page, /#monDesktop:fullscreen \.mon-exit-full \{ display:inline-flex; \}/, "only while the view fills the screen");
+  assert.match(page, /hint\.textContent = 'Press Esc to exit full screen';\n\s*desktop\.appendChild\(hint\);/, "outside the full-screen view it was never seen");
+});

@@ -1903,6 +1903,13 @@
   /* Maximize/restore buttons */
   .mon-max-btn { width:1.5rem; height:1.5rem; display:flex; align-items:center; justify-content:center; background:rgba(var(--fg-rgb),0.06); border:1px solid rgba(var(--fg-rgb),0.08); border-radius:0.3125rem; color:rgba(var(--fg-rgb),0.5); cursor:pointer; transition:all 0.12s; flex-shrink:0; }
   .mon-max-btn:hover { background:rgba(var(--fg-rgb),0.12); color:var(--muted); }
+  /* The way back from full screen on a computer, beside Esc: the expand
+     button's arrows turned in, in the corner clear of the browser's own
+     controls, faint until the pointer is on it. */
+  .mon-exit-full { display:none; position:absolute; right:1rem; bottom:1rem; z-index:5; align-items:center; justify-content:center; width:2.5rem; height:2.5rem; padding:0; border:1px solid rgba(var(--fg-rgb),0.16); border-radius:0.625rem; background:rgba(var(--raised-rgb),0.72); color:var(--fg); opacity:0.55; cursor:pointer; -webkit-backdrop-filter:blur(0.375rem); backdrop-filter:blur(0.375rem); transition:opacity .2s, background .2s; }
+  #monDesktop:fullscreen .mon-exit-full { display:inline-flex; }
+  .mon-exit-full:hover, .mon-exit-full:focus-visible { opacity:1; background:rgba(var(--raised-rgb),0.94); }
+  .mon-exit-full:focus-visible { outline:2px solid rgba(var(--accent-strong-rgb),0.6); outline-offset:0.125rem; }
   .mon-wrap { transition:flex 0.3s ease; will-change:width; }
   .mon-wrap.mon-maximized { flex:100 !important; }
   .mon-wrap.mon-hidden { flex:0 !important; overflow:hidden; min-width:0 !important; }
@@ -2387,6 +2394,8 @@
           <div class="mon-signins" id="monSignins" hidden><div class="mon-signins-text"></div><div class="mon-signins-status" role="status"></div><div class="mon-signins-short"><span class="mon-signins-label">Shortcuts</span><div class="mon-signins-sites"></div></div></div>
           <div id="monDesktop" style="display:none;flex:1;position:relative;background:var(--bg);">
             <iframe id="monVncFrame" style="width:100%;height:100%;border:none;" allow="clipboard-read; clipboard-write"></iframe>
+            <!-- Full screen on a computer: the way back, beside Esc. -->
+            <button type="button" class="mon-exit-full" id="monExitFull" onclick="document.exitFullscreen()" title="Exit full screen (Esc)" aria-label="Exit full screen"><svg width="1rem" height="1rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
             <button type="button" class="mon-open-full" id="monOpenFull" onclick="monFullOpen()">Tap to open full screen</button>
             <!-- Full screen: the phone's own browser bar at the bottom, as a
                  phone browser has it. While the screen is phone-shaped,
@@ -6998,12 +7007,13 @@ function jsq(s) {
       } else {
         if (!desktop.requestFullscreen) { monFullOpen(); return; }
         desktop.requestFullscreen().then(function () {
-          // Show exit hint
+          // A moment's hint, inside the full-screen view: anything outside
+          // it is not shown while it fills the screen.
           var hint = document.createElement('div');
           hint.id = 'monFullscreenHint';
-          hint.style.cssText = 'position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);background:rgba(var(--bg-rgb),0.7);color:var(--muted);padding:0.5rem 1rem;border-radius:0.5rem;font-size:0.75rem;z-index:99999;pointer-events:none;transition:opacity 1s;';
+          hint.style.cssText = 'position:absolute;bottom:1.25rem;left:50%;transform:translateX(-50%);background:rgba(var(--bg-rgb),0.7);color:var(--muted);padding:0.5rem 1rem;border-radius:0.5rem;font-size:0.75rem;z-index:5;pointer-events:none;transition:opacity 1s;';
           hint.textContent = 'Press Esc to exit full screen';
-          document.body.appendChild(hint);
+          desktop.appendChild(hint);
           setTimeout(function(){ hint.style.opacity='0'; }, 3000);
           setTimeout(function(){ hint.remove(); }, 4000);
         }).catch(function () { monFullOpen(); });
