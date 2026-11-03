@@ -68,7 +68,7 @@ async function use({ unlessOwn = false } = {}) {
   const key = require("./model-policy").openKey(before.included_api_key);
   const models = before.included_ai?.models;
   if (!key || !models?.chat) throw new Error("This Closedhand has no Managed Models to switch to.");
-  const own = () => unlessOwn && (before.model_config ? !before.model_config.included : !!before.llm_provider);
+  const own = () => unlessOwn && !!before.model_config && !before.model_config.included;
   if (own()) return false;
   const modelConfig = require("./model-config");
   const input = {

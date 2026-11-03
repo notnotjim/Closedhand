@@ -3,25 +3,13 @@ const { randomUUID } = require("crypto");
 const policy = require("./model-policy");
 const wire = require("./model-wire");
 const receipts = new Map();
-function legacyConfig(settings) {
-  const provider = settings.llm_provider;
-  const model = provider === "custom" ? settings.custom_model : settings.byok_models?.default;
-  if (!model) return null;
-  const primary = policy.connection({ provider, baseUrl: settings.custom_base_url,
-    apiKey: policy.openKey(settings[provider === "custom" ? "custom_api_key" : provider + "_api_key"]) });
-  return { version: 1, connections: { primary }, roles: {
-    chat: { connection: "primary", model, capabilities: policy.capabilities(primary, model) },
-    background: { connection: "primary", model: settings.custom_model_fast || settings.byok_models?.fast || model },
-    vision: null,
-  } };
-}
 // The person's own setup, the one the models form shows, changes and takes
 // a saved key from. While Closedhand Managed Models are in use it is the one
 // kept beside them, or none: the form never shows Managed Models' models or
 // offers their key as the person's own.
 function ownConfig(settings) {
   if (settings.model_config?.included) return settings.own_model_config || null;
-  return settings.model_config || legacyConfig(settings);
+  return settings.model_config || null;
 }
 function resolveConnection(input, saved, id) {
   const conn = policy.connection(input);
@@ -210,7 +198,7 @@ function install(app, deps) {
   app.get("/api/model-config", route(async (req, res, id) => {
     const settings = await profile(id);
     const download = (deps.local ? settings.self_host_config?.LOCAL_MODELS_STATUS : null)?.embedder;
-    res.set("Cache-Control", "no-store").json({ config: policy.publicConfig(ownConfig(settings)), legacy: !settings.model_config, allowDefault: !!deps.allowDefault, runtime: deps.local ? (process.env.CLOSEDHAND_DESKTOP ? "desktop" : "docker") : "hosted",
+    res.set("Cache-Control", "no-store").json({ config: policy.publicConfig(ownConfig(settings)), allowDefault: !!deps.allowDefault, runtime: deps.local ? (process.env.CLOSEDHAND_DESKTOP ? "desktop" : "docker") : "hosted",
       activeModels: settings.model_config?.included ? [] : require("./model-summary").modelSummary(settings, deps.readRuntime, !!deps.local),
       localModels: download ? { embedder: { state: download.state, pct: download.pct } } : null });
   }));
@@ -297,6 +285,6 @@ async function sealStoredKeys(supabase, id) {
   return Object.keys(set).length;
 }
 
-module.exports = { install, prepare, withConfig, legacyConfig, ollamaWindow, windowProblem, sealStoredKeys, checkModel, RED_IMAGE };
+module.exports = { install, prepare, withConfig, ollamaWindow, windowProblem, sealStoredKeys, checkModel, RED_IMAGE };
 // Four seconds at 128 pixels square: two red, then two blue (H.264, made with PyAV).
 const CHECK_VIDEO = "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";

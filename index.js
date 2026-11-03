@@ -26,8 +26,6 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("[FATAL] Unhandled rejection:", reason?.message || reason);
 });
 const TelegramBot = require("node-telegram-bot-api");
-const Anthropic = require("@anthropic-ai/sdk");
-const { createLLMClient } = require("./lib/llm");
 const { Client: DiscordClient, GatewayIntentBits, Partials } = require("discord.js");
 
 // Shared context singleton — every module reads/writes state through this
@@ -35,24 +33,14 @@ const ctx = require("./lib/context");
 
 // --- Environment ---
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const xaiApiKey = process.env.XAI_API_KEY;
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const WA_PORT = process.env.PORT || 3000;
 
 // Boot with nothing: the process starts even with no keys configured. Anything
 // unconfigured is skipped here and activated later from first-run setup, rather
-// than exiting. (In the hosted single-tenant build these are always present.)
+// than exiting. The models come from Settings (lib/llm.js).
 
 // --- Create clients ---
-if (xaiApiKey) {
-  ctx.defaultLLMClient = createLLMClient({
-    backend: "xai",
-    apiKey: xaiApiKey,
-  });
-} else {
-  console.log("[setup] No chat model provider configured. Chat stays disabled until one is set up.");
-}
-
 if (TELEGRAM_TOKEN) {
   ctx.bot = require("./lib/follow-on").splitTelegram(require("./lib/telegram-in-app").telegramInApp(new TelegramBot(TELEGRAM_TOKEN, { polling: true })));
 } else {

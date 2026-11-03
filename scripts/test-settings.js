@@ -91,20 +91,17 @@ test("effective model descriptions name selected models and redact credentials",
   ], "with no image model, pictures are described on this computer; recall and its ranking always run here");
   assert.doesNotMatch(JSON.stringify(rows), /PRIVATE|apiKey/);
 });
-test("legacy models reflect active runtime choices without pretending defaults are configured", () => {
-  const values = { DEEPINFRA_API_KEY: "SECRET", LOCAL_EMBED_MODEL_ID: "embed-v3" };
+test("with no models chosen in Settings, no chat or support model is pretended, whatever older fields or keys say", () => {
+  const values = { DEEPINFRA_API_KEY: "SECRET", XAI_API_KEY: "SECRET", LOCAL_EMBED_MODEL_ID: "embed-v3" };
   const rows = modelSummary({ llm_provider: "custom", custom_model: "grok-4.5", custom_base_url: "https://api.x.ai/v1" }, k => values[k], true);
-  assert.equal(rows[0].provider, "xAI");
-  assert.equal(rows[1].model, "deepseek-ai/DeepSeek-V4-Flash");
+  assert.deepEqual(rows.slice(0, 2).map(row => row.model), ["Not enabled", "Not enabled"]);
   assert.equal(rows[2].model, "Florence-2");
   assert.equal(rows[3].model, "embed-v3", "an embedder chosen in the settings file is named");
-  const empty = modelSummary({}, () => undefined);
-  assert.ok(empty.slice(0, 2).every(row => row.model === "Not enabled"), "no chat or support model is pretended");
-  const missingKey = modelSummary({ llm_provider: "anthropic" }, k => k === "XAI_API_KEY" ? "SECRET" : undefined);
-  assert.equal(missingKey[0].model, "grok-4.5");
+  assert.doesNotMatch(JSON.stringify(rows), /SECRET/);
 });
 test("unknown provider summaries do not disclose URL credentials, paths or query strings", () => {
-  const rows = modelSummary({ llm_provider: "custom", custom_model: "model", custom_base_url: "https://user:SECRET@private.example/SECRET?key=SECRET" }, () => undefined);
+  const primary = { provider: "custom", backend: "custom", baseUrl: "https://private.example/SECRET", apiKey: "SECRET" };
+  const rows = modelSummary({ model_config: { connections: { primary }, roles: { chat: { connection: "primary", model: "model" }, background: { connection: "primary", model: "model" }, vision: null } } }, () => undefined);
   assert.equal(rows[0].provider, "private.example");
   assert.doesNotMatch(JSON.stringify(rows), /SECRET/);
 });

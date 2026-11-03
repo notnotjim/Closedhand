@@ -620,7 +620,7 @@
         }
       }
       var vision = saved.roles.vision;
-      field("visionMode").value = !vision ? (data.legacy ? "same" : "off") : vision.connection === "primary" && vision.model === saved.roles.chat.model ? "same" : "separate";
+      field("visionMode").value = !vision ? "off" : vision.connection === "primary" && vision.model === saved.roles.chat.model ? "same" : "separate";
       if (vision) {
         field("visionModel").value = vision.model;
         if (vision.connection === "vision") {
@@ -630,7 +630,6 @@
         }
       }
       refreshPickers(); visibility(); check = { kind: "saved", config: saved }; renderCheck();
-      if (data.legacy) show("The models shown above are active. Check and review your choices here before applying a change.");
       loadModels("primary", true);
       if (vision && vision.connection === "vision") loadModels("vision", true);
       if (background && background.connection === "background") loadModels("background", true);

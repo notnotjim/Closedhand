@@ -95,8 +95,8 @@ test('a secret saved before sealing still reads, and is sealed once at start', a
 
 test('every place that uses a stored key opens it first', () => {
   const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
-  assert.match(read('lib/llm.js'), /for \(const f of \["anthropic_api_key", "openai_api_key", "gemini_api_key", "custom_api_key"\]\) userSettings\[f\] = openKey\(userSettings\[f\]\);/);
-  assert.match(read('webapp/server.js'), /for \(const f of \["anthropic_api_key", "openai_api_key", "gemini_api_key", "custom_api_key"\]\) s\[f\] = openKey\(s\[f\]\);/);
+  // Roles chosen in Settings open their key where the role is used (model-policy getRole).
+  assert.match(read('lib/model-policy.js'), /apiKey: openKey\(conn\.apiKey\)/);
   assert.match(read('lib/outbound-guard.js'), /secrets\.add\(String\(openKey\(c\.apiKey\)\)\)/);
   assert.match(read('webapp/model-config.js'), /conn\.apiKey = policy\.openKey\(previous\.apiKey\);/);
   assert.equal(read('lib/crypto-tokens.js').trim().split('\n').pop(), 'module.exports = require("../crypto-tokens");');

@@ -6,10 +6,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const ctx = require('../lib/context');
 const llm = require('../lib/llm');
-
-const fallback = { messages: { create: async () => ({ content: [] }) } };
 const chosen = {
   model_config: {
     connections: { c1: { provider: 'openai', backend: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test' } },
@@ -19,7 +16,6 @@ const chosen = {
 const store = (over) => ({ userId: 'u1', profile: { id: 'u1', settings: {} }, settingsUnread: false, ...over });
 
 test('unreadable settings stop every model lookup with words the person can read', () => {
-  ctx.defaultLLMClient = fallback;
   const unread = store({ profile: null, settingsUnread: true });
   for (const [name, run] of [
     ['chat', () => llm.getUserLLMClient('u1', unread)],
@@ -32,11 +28,16 @@ test('unreadable settings stop every model lookup with words the person can read
   }
 });
 
-test('readable settings choose exactly as before', () => {
-  ctx.defaultLLMClient = fallback;
+test('readable settings choose the models chosen in Settings, and with none chosen say so', () => {
   assert.equal(llm.getUserLLMClient('u1', store({ profile: { id: 'u1', settings: chosen } })).model, 'gpt-test');
-  const legacy = llm.getUserLLMClient('u1', store());
-  assert.equal(legacy.client, fallback, 'a profile with no model choice still uses the .env provider');
+  for (const [name, run] of [
+    ['chat', () => llm.getUserLLMClient('u1', store())],
+    ['chat model name', () => llm.resolveUserModel('u1', 'default', store())],
+    ['background', () => llm.getInternalClient('u1', store())],
+  ]) {
+    assert.throws(run, (e) => e.userFacing === true && /^Choose a (chat model|model for summaries) in Settings\.$/.test(e.message), name + ': no model of Closedhand\'s own');
+  }
+  assert.equal(llm.chatModelSupportsVision(store()), false);
   assert.equal(llm.getConfiguredRole('chat', undefined), undefined, 'no store at all is not an unreadable one');
 });
 

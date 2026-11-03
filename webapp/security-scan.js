@@ -1,55 +1,7 @@
 // webapp/security-scan.js - AI-powered security assessment for MCPs and skills
 //
-// Uses the platform LLM to analyze MCP tool definitions and skill content
-// for security risks before users connect/install them.
-
-const XAI_API_KEY = process.env.XAI_API_KEY;
-const SCAN_MODEL = process.env.SCAN_MODEL || "grok-4.5";
-
-// A self-host install has no platform key. The host registers a resolver
-// that says which of the install's own models can do the reading:
-// { wire: "openai", url, key, model } or { wire: "anthropic", key, model }.
-let _resolveBackend = null;
-function configureScanBackend(fn) { _resolveBackend = fn; }
-
-async function callFallbackModel(systemPrompt, userContent) {
-  if (!_resolveBackend) return null;
-  let b = null;
-  try { b = await _resolveBackend(); } catch (e) { console.error("[security-scan] backend resolve failed:", e.message); }
-  if (!b || !b.key || !b.model) return null;
-  try {
-    let text = "";
-    if (b.wire === "anthropic") {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": b.key, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model: b.model, max_tokens: 1024, system: systemPrompt, messages: [{ role: "user", content: userContent }] }),
-        signal: AbortSignal.timeout(20000),
-      });
-      if (!resp.ok) { console.error("[security-scan] fallback API error:", resp.status); return null; }
-      const data = await resp.json();
-      text = (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
-    } else {
-      const resp = await fetch(String(b.url).replace(/\/+$/, "") + "/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + b.key },
-        body: JSON.stringify({ model: b.model, max_tokens: 1024, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }], ...(b.extra || {}) }),
-        signal: AbortSignal.timeout(20000),
-      });
-      if (!resp.ok) { console.error("[security-scan] fallback API error:", resp.status); return null; }
-      const data = await resp.json();
-      text = data.choices?.[0]?.message?.content || "";
-    }
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (!parsed.risk_level || !parsed.findings) return null;
-    return parsed;
-  } catch (e) {
-    console.error("[security-scan] fallback error:", e.message);
-    return null;
-  }
-}
+// The person's own LLM reads MCP tool definitions and skill content for
+// security risks before they are connected or added.
 
 // Built-in tool names (for impersonation detection)
 const BUILTIN_TOOLS = [
@@ -80,67 +32,17 @@ const FALLBACK_RESULT = {
 };
 
 async function callScanModel(systemPrompt, userContent, selected) {
-  if (selected !== undefined) {
-    if (!selected) return null;
-    try {
-      const response = await require("./model-wire").request(selected, { model: selected.model, effort: "fast",
-        system: systemPrompt, messages: [{ role: "user", content: userContent }], max_tokens: 4096,
-        tools: [{ name: "report_security_review", description: "Report the security review of the supplied definitions.", input_schema: { type: "object", properties: { risk_level: { type: "string", enum: ["safe", "warning", "blocked"] }, findings: { type: "array", items: { type: "object", properties: { severity: { type: "string", enum: ["critical", "warning", "info"] }, description: { type: "string" } }, required: ["severity", "description"] } }, summary: { type: "string" } }, required: ["risk_level", "findings", "summary"] } }],
-        tool_choice: { type: "tool", name: "report_security_review" } },
-        { signal: AbortSignal.timeout(45000) });
-      const text = response.content?.filter(b => b.type === "text").map(b => b.text).join("") || "";
-      const parsed = response.content?.find(b => b.type === "tool_use" && b.name === "report_security_review")?.input || JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || "null");
-      return ["safe", "warning", "blocked"].includes(parsed?.risk_level) && Array.isArray(parsed.findings) && typeof parsed.summary === "string" && parsed.findings.every(f => f && ["critical", "warning", "info"].includes(f.severity) && typeof f.description === "string") ? parsed : null;
-    } catch (error) { console.log("[security-scan] Selected model unavailable: " + error.message); return null; }
-  }
-  if (!XAI_API_KEY) {
-    const viaOwn = await callFallbackModel(systemPrompt, userContent);
-    if (viaOwn) return viaOwn;
-    console.error("[security-scan] No API key configured");
-    return null;
-  }
-
+  if (!selected) return null;
   try {
-    const resp = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${XAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: SCAN_MODEL,
-        max_tokens: 1024,
-        // Low effort: the scan is pattern-recognition over short tool definitions,
-        // and it must finish inside the timeout or every scan falls back to "warning"
-        reasoning_effort: "low",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!resp.ok) {
-      console.error("[security-scan] API error:", resp.status);
-      return null;
-    }
-
-    const data = await resp.json();
-    const text = data.choices?.[0]?.message?.content || "";
-
-    // Extract JSON from response (may be wrapped in markdown code blocks)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (!parsed.risk_level || !parsed.findings) return null;
-
-    return parsed;
-  } catch (e) {
-    console.error("[security-scan] Error:", e.message);
-    return null;
-  }
+    const response = await require("./model-wire").request(selected, { model: selected.model, effort: "fast",
+      system: systemPrompt, messages: [{ role: "user", content: userContent }], max_tokens: 4096,
+      tools: [{ name: "report_security_review", description: "Report the security review of the supplied definitions.", input_schema: { type: "object", properties: { risk_level: { type: "string", enum: ["safe", "warning", "blocked"] }, findings: { type: "array", items: { type: "object", properties: { severity: { type: "string", enum: ["critical", "warning", "info"] }, description: { type: "string" } }, required: ["severity", "description"] } }, summary: { type: "string" } }, required: ["risk_level", "findings", "summary"] } }],
+      tool_choice: { type: "tool", name: "report_security_review" } },
+      { signal: AbortSignal.timeout(45000) });
+    const text = response.content?.filter(b => b.type === "text").map(b => b.text).join("") || "";
+    const parsed = response.content?.find(b => b.type === "tool_use" && b.name === "report_security_review")?.input || JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || "null");
+    return ["safe", "warning", "blocked"].includes(parsed?.risk_level) && Array.isArray(parsed.findings) && typeof parsed.summary === "string" && parsed.findings.every(f => f && ["critical", "warning", "info"].includes(f.severity) && typeof f.description === "string") ? parsed : null;
+  } catch (error) { console.log("[security-scan] Selected model unavailable: " + error.message); return null; }
 }
 
 async function scanMcpTools(tools, selected) {
@@ -198,4 +100,4 @@ async function scanSkillContent(content, selected) {
   return result || FALLBACK_RESULT;
 }
 
-module.exports = { scanMcpTools, scanSkillContent, configureScanBackend };
+module.exports = { scanMcpTools, scanSkillContent };

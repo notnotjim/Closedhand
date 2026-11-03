@@ -41,21 +41,8 @@ async function getSetupState() {
   const conf = settings.self_host_config || {};
   const envOr = (k) => (process.env[k] !== undefined && process.env[k] !== "" ? process.env[k] : conf[k]);
 
-  // Chat is configured by any env provider key, a DeepInfra key saved in the
-  // wizard, or a provider + key saved through the dashboard's own settings.
-  const model = !!(
-    process.env.DEEPINFRA_API_KEY ||
-    process.env.XAI_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.ANTHROPIC_API_KEY ||
-    process.env.CLAUDE_API_KEY ||
-    process.env.OLLAMA_BASE_URL ||
-    conf.DEEPINFRA_API_KEY ||
-    (settings.llm_provider === "anthropic" && settings.anthropic_api_key) ||
-    (settings.llm_provider === "openai" && settings.openai_api_key) ||
-    (settings.llm_provider === "gemini" && settings.gemini_api_key) ||
-    (settings.llm_provider === "custom" && settings.custom_base_url && settings.custom_model)
-  );
+  // Chat is set up once a chat model is chosen in Models (setup or Settings).
+  const model = !!settings.model_config?.roles?.chat;
 
   // The AI that comes with Closedhand: in use ("ready"), or on its way
   // ("pending") because claiming the personal URL brings it (closedhand.com
@@ -124,9 +111,8 @@ async function getSetupState() {
     // How far each model on this computer has got downloading.
     localModels: conf.LOCAL_MODELS_STATUS || null,
     modelIncluded,
-    chatProvider: settings.model_config?.connections?.primary?.provider || settings.llm_provider || null,
-    chatProviderLabel: settings.model_config ? new URL(settings.model_config.connections.primary.baseUrl).hostname : conf.CHAT_PROVIDER_LABEL ||
-      ({ anthropic: "Anthropic", openai: "OpenAI", gemini: "Google Gemini" })[settings.llm_provider] || null,
+    chatProvider: settings.model_config?.connections?.primary?.provider || null,
+    chatProviderLabel: settings.model_config ? new URL(settings.model_config.connections.primary.baseUrl).hostname : null,
     botUsername: conf.TELEGRAM_BOT_USERNAME || null,
     // The Mac app, rather than Docker: setup says how to keep it running.
     desktop: !!process.env.CLOSEDHAND_DESKTOP,

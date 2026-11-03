@@ -228,13 +228,12 @@ test("Anthropic adaptive and budget models use their own controls", async () => 
   await wire.request(conn, { ...params, model: "claude-sonnet-4-5", effort: "strong" });
   assert.equal(calls[1].body.thinking.budget_tokens, 4095);
 });
-test("native selected IDs are not overwritten by legacy defaults", async () => {
+test("a model chosen in Settings is sent exactly as chosen, suffixes included", async () => {
   const calls = mockProvider();
-  await llm.createLLMClient({ backend: "openai", apiKey: "key" }).messages.create({ ...params, model: "gpt-5.2" });
-  assert.equal(calls[0].body.model, "gpt-5.2");
-  await llm.createLLMClient({ backend: "xai", apiKey: "key" }).messages.create({ ...params, model: "grok-4.5:low" });
-  assert.equal(calls[1].body.model, "grok-4.5");
-  assert.equal(calls[1].body.reasoning_effort, "low");
+  await llm.createLLMClient({ backend: "custom", baseUrl: "https://chosen.example/v1", apiKey: "key", model: "vendor/chat:free" }).messages.create({ ...params, model: "something else" });
+  assert.equal(calls[0].body.model, "vendor/chat:free", "a router's suffix is part of the id, and the chosen model wins");
+  assert.match(require("node:fs").readFileSync(require("node:path").join(__dirname, "../lib/llm.js"), "utf8"), /const model = backend === "custom" \? opts\.model : params\.model \|\| opts\.model;/);
+  assert.doesNotMatch(require("node:fs").readFileSync(require("node:path").join(__dirname, "../lib/llm.js"), "utf8"), /MODEL_MAP|PLATFORM_PROVIDER|defaultLLMClient/, "no model of Closedhand's own");
 });
 test("image-less setup requires an explicit choice and does not change stored settings", async () => {
   mockProvider();
