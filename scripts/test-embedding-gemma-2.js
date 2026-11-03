@@ -158,11 +158,12 @@ test('File Search embeds through the bot, and only with a token', async () => {
   assert.deepEqual(seen.shift(), { quick: true }, 'a search is framed as one, and usi puts it ahead of background work');
   await call('good', { texts: ['a chunk of a file'] });
   assert.deepEqual(seen.shift(), { quick: false }, 'a file\'s chunks wait their turn');
-  const pic = await call('good', { images: [Buffer.from('jpeg bytes').toString('base64')] });
-  assert.deepEqual(pic.body, { vectors: [[0.25]] });
+  const pic = await call('good', Buffer.from('jpeg bytes'));
+  assert.deepEqual(pic.body, { vectors: [[0.25]] }, 'a picture comes as its own bytes, whatever its size');
   assert.deepEqual(seen.shift(), { kind: 'image', bytes: 10 });
+  assert.equal((await call('good', Buffer.alloc(0))).code, 400);
   runner = 'pipeline';
-  assert.equal((await call('good', { images: ['eA=='] })).code, 409, 'only EmbeddingGemma 2 sees pictures');
+  assert.equal((await call('good', Buffer.from('x'))).code, 409, 'only EmbeddingGemma 2 sees pictures');
 });
 
 test('a picture or a sound matched by what it is stays in File Search results, under the line it is dropped', async () => {
@@ -177,7 +178,11 @@ test('a picture or a sound matched by what it is stays in File Search results, u
     { id: 'k3', document_id: 'd3', chunk_index: 0, content: 'Feeding time for the zebras is at noon.', metadata: {}, similarity: 0.52 },
     { id: 'k2', document_id: 'd2', chunk_index: 0, content: 'IMG_2042.jpg (picture)', metadata: { modality: 'image' }, similarity: 0.62 },
   ], error: null } : { data: [], error: null };
-  const rerank = async (q, docs) => docs.map((d) => ({ ...d, _rerank_score: /picture/.test(d.content) ? 0.0001 : 0.3 }));
+  // The real reranker, with a cross-encoder that, like the real one, can make
+  // nothing of a picture's label: its floor keeps the picture (reranker.js).
+  const rr = require('../webapp/reranker');
+  rr.setLocalScorer(async (q, texts) => texts.map((t) => (/picture/.test(t) ? 0.0001 : 0.3)));
+  const rerank = rr.rerank;
   const { results, no_strong_matches } = await docSearch({ supabase: db, embed: async () => [1], rerank }).searchDocuments('u1', 'a zebra');
   assert.deepEqual(results.map((r) => r.document_name), ['Zoo trip notes.pdf', 'IMG_2041.jpg']);
   assert.equal(results[1].low_confidence, false, 'the reranker cannot see the picture, so its low score does not count');
@@ -239,4 +244,17 @@ test('a file part keeps the heading it was embedded with, so a backfilled one is
   const rag = read('webapp/rag-processor.js');
   assert.match(rag, /metadata: \{ source_file: fileName, chunk_of: chunks\.length, \.\.\.\(residency === "zero" \? \{\} : \{ head: head\.trimEnd\(\) \}\), \.\.\.\(sourceContext \|\| \{\}\) \},/);
   assert.match(read('lib/embed-backfill.js'), /if \(!c\) return \(r\.metadata && r\.metadata\.head \? r\.metadata\.head \+ "\\n" : ""\) \+ String\(r\.content \|\| ""\);/);
+});
+
+test('a picture of any size is decoded and shrunk before the models read it; one that cannot be decoded goes as it came', async () => {
+  const sharp = require('sharp');
+  const { pictureForModels } = require('../lib/local-models');
+  const big = await sharp({ create: { width: 4000, height: 3000, channels: 3, background: { r: 20, g: 120, b: 200 } } }).tiff({ compression: 'none' }).toBuffer();
+  const out = await pictureForModels(big);
+  const m = await sharp(out).metadata();
+  assert.deepEqual([m.format, m.width, m.height], ['jpeg', 1536, 1152]);
+  assert.ok(out.length < big.length / 100, 'a fraction of the size');
+  const junk = Buffer.from('not a picture');
+  assert.equal(await pictureForModels(junk), junk);
+  assert.match(fs.readFileSync(path.join(__dirname, '../webapp/rag-processor.js'), 'utf8'), /body: image,\n\s*headers: \{ "Content-Type": "application\/octet-stream"/, 'File Search sends a picture as its own bytes');
 });

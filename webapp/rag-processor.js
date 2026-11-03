@@ -230,10 +230,10 @@ async function mediaRows(media, { documentId, userId, fileName, residency, after
       if (/ftyp(heic|heix|hevc|mif1|msf1|avif)/.test(image.toString("latin1", 4, 12))) image = (await require("./file-reader").toJpeg(image)) || image;
       try {
         const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
+        // Its own bytes, whatever its size: the bot shrinks it for the model.
         const res = await fetch(`${BOT_INTERNAL_URL}/internal/embed`, {
-          method: "POST", signal: AbortSignal.timeout(300000),
-          headers: { "Content-Type": "application/json", "x-closedhand-token": botToken("file-search") },
-          body: JSON.stringify({ images: [image.toString("base64")] }),
+          method: "POST", signal: AbortSignal.timeout(300000), body: image,
+          headers: { "Content-Type": "application/octet-stream", "x-closedhand-token": botToken("file-search") },
         });
         const out = await res.json().catch(() => ({}));
         vector = res.ok && Array.isArray(out.vectors) ? out.vectors[0] : null;
