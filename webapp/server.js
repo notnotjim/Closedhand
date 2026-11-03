@@ -8211,6 +8211,27 @@ const _docSearch = docSearch({
   rerank: (q, docs, topK) => require("./reranker").rerank(q, docs, topK),
 });
 
+// POST /api/images { on } - Settings' "Making images". The bot fetches the
+// image model in the background (lib/image-making.js); how far it has got is
+// in /api/setup/status, localModels.images.
+app.post("/api/images", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Not authenticated" });
+  try {
+    const r = await fetch(`${BOT_INTERNAL_URL}/internal/images`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-closedhand-token": botToken(userId) },
+      body: JSON.stringify({ on: !!(req.body && req.body.on) }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json({ error: j.error || "Closedhand couldn't change this just now. Try again in a minute." });
+    res.json(j);
+  } catch (e) {
+    res.status(503).json({ error: "Closedhand couldn't change this just now. Try again in a minute." });
+  }
+});
+
 // A Google Doc, Sheet or Slides has no extension in its name, so its kind
 // goes with each result for the page to draw it by.
 async function withKinds(userId, results) {

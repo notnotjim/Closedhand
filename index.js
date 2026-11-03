@@ -201,6 +201,8 @@ require("./lib/model-wire").onRequest(require("./lib/idle").touch);
 require("./lib/embed-route").register(ctx.expressApp);
 // And ranks its results with the local model the same way (lib/rerank-route.js).
 require("./lib/rerank-route").register(ctx.expressApp);
+// Pictures made on this computer, turned on from Settings (lib/image-making.js).
+require("./lib/image-making").register(ctx.expressApp);
 
 // Keepalive: prevent Railway container sleep, warm DB connection
 setInterval(async () => {

@@ -2712,6 +2712,18 @@
             </div>
           </div>
 
+          <!-- Making images: on the computer running Closedhand, with nothing
+               sent anywhere (lib/image-making.js). Greyed out, saying what it
+               needs, where the computer can't; turned on, it downloads in the
+               background on the same thin line as Getting to know you. -->
+          <div class="settings-group" id="images-group">
+            <div class="settings-group-header">
+              <h2>Making images</h2>
+              <p class="section-desc">Closedhand makes pictures on this computer, with nothing sent anywhere</p>
+            </div>
+            <div class="images-body" id="images-body"></div>
+          </div>
+
           <!-- The Closedhand account, its plan and subscription, usage, Always on
                and clearing data have one home, My Account. -->
           <div class="my-account-way"><a class="deep" href="#account" onclick="openMyAccount(); return false;">My Account</a></div>
@@ -10233,6 +10245,68 @@
   .know.fresh.shown { opacity: 0.85; }
   @media (prefers-reduced-motion: reduce) { .know, .know-tip, .know-fill { transition: none; } .know-fill::after { animation: none; } }
 </style>
+<style>
+  .images-body { padding:0.75rem 1rem; display:grid; gap:0.625rem; font-size:0.8125rem; color:var(--muted); }
+  .images-body p { margin:0; }
+  .images-body .images-ways { display:flex; flex-wrap:wrap; align-items:center; gap:0.375rem 0.75rem; }
+  .images-body .know-track { margin-top:0; max-width:20rem; }
+  .images-body.unavailable button { opacity:0.45; cursor:not-allowed; }
+</style>
+<script>
+  // Settings' "Making images", from the image entry of the local models'
+  // status (/api/setup/status), refreshed while it downloads.
+  (function () {
+    var body = document.getElementById('images-body');
+    if (!body) return;
+    var asking = false, timer = null;
+    function render(st) {
+      var im = (st && st.localModels || {}).images || null;
+      if (!im) { document.getElementById('images-group').hidden = true; return; }
+      document.getElementById('images-group').hidden = false;
+      var size = im.total_gb ? im.total_gb + ' GB' : 'about 5 GB';
+      body.className = 'images-body' + (im.eligible ? '' : ' unavailable');
+      if (!im.eligible) {
+        body.innerHTML = '<p>' + escHtml(im.needs || '') + '</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" disabled>Turn on</button></div>';
+      } else if (im.state === 'ready') {
+        body.innerHTML = '<div class="images-ways"><span class="plan-status on">Ready</span><span>Ask for a picture in any chat.</span></div>'
+          + '<div class="images-ways" id="images-off-ways"><button type="button" class="conn-btn conn-btn-disconnect" onclick="imagesAskOff()">Turn off</button></div>';
+      } else if (im.state === 'downloading') {
+        var p = Math.max(1, im.pct || 0);
+        body.innerHTML = '<p>Downloading, ' + p + '%. You can keep using Closedhand, and it will say in chat when it can make images.</p>'
+          + '<span class="know-track"><span class="know-fill" style="width:' + p + '%"></span></span>';
+      } else if (im.state === 'error') {
+        body.innerHTML = '<p>The download stopped before it finished. It carries on from where it got to.</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" onclick="imagesSwitch(true, this)">Try again</button></div>';
+      } else {
+        body.innerHTML = '<p>Turning it on downloads ' + size + ' in the background.</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" onclick="imagesSwitch(true, this)">Turn on</button></div>';
+      }
+      clearTimeout(timer);
+      if (im.state === 'downloading') timer = setTimeout(load, 4000);
+    }
+    function load() {
+      fetch('/api/setup/status', { headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; }).then(render).catch(function () {});
+    }
+    // Turning off removes the download, so it asks first, in place of its button.
+    window.imagesAskOff = function () {
+      var ways = document.getElementById('images-off-ways');
+      if (!ways) return;
+      ways.innerHTML = '<span>Turn off and remove the download? You can turn it on again later.</span>'
+        + '<button type="button" class="conn-btn conn-btn-disconnect" onclick="imagesSwitch(false, this)">Turn off</button>'
+        + '<button type="button" class="quiet-link" onclick="document.dispatchEvent(new Event(\'images-reload\'))">Keep it</button>';
+    };
+    window.imagesSwitch = function (on, button) {
+      if (asking) return;
+      asking = true;
+      if (button) button.disabled = true;
+      fetch('/api/images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: on }) })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) { if (!res.ok) showToast(res.j.error || 'Closedhand couldn\'t change this just now.'); })
+        .catch(function () { showToast('Closedhand couldn\'t change this just now.'); })
+        .then(function () { asking = false; load(); });
+    };
+    document.addEventListener('images-reload', load);
+    load();
+  })();
+</script>
 <script>
   // What Closedhand is reading, from /api/index/reading and, on its first
   // run, the recall model's download. Nothing shows when there is nothing to

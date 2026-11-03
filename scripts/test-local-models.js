@@ -88,3 +88,116 @@ test('an Ollama image model with a small window still passes, with its window re
   assert.equal(cfg.roles.vision.capabilities.contextWindow, 4096);
   assert.match(fs.readFileSync(path.join(__dirname, '../webapp/public/model-settings.js'), 'utf8'), /Ollama gives it " \+ w\.toLocaleString\("en-US"\) \+ " tokens, so only a few frames fit; raise its context length for more"/);
 });
+
+// Pictures made on the person's own computer (lib/image-making.js), with
+// stand-ins for the downloads, the database and the program itself.
+function loadImageMaking({ platform = 'darwin', arch = 'arm64', memoryGb = 16 } = {}) {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'images-'));
+  const conf = {}, said = [], have = new Set();
+  const stub = (rel, exports) => { const id = require.resolve(path.join('..', rel)); require.cache[id] = { id, filename: id, loaded: true, exports }; };
+  stub('lib/local-models', { MODELS_DIR: dir });
+  stub('lib/config', { getConf: async (k) => conf[k], setConf: async (o) => { Object.assign(conf, JSON.parse(JSON.stringify(o))); } });
+  stub('lib/model-files', {
+    missing: (d, model, set) => set.filter((f) => !have.has(model.repo + '/' + f.path)),
+    ensureFiles: async (d, model, set, onProgress) => { for (const f of set) { if (have.has(model.repo + '/' + f.path)) continue; onProgress({ file: f.path, loaded: f.size, total: f.size }); have.add(model.repo + '/' + f.path); } },
+  });
+  stub('lib/admin', { ensureAdmin: async () => 'u1' });
+  stub('user-store', { UserStore: { load: async () => ({}) } });
+  stub('lib/db', { supabase: { from: () => ({ select: () => ({ eq: async () => ({ data: [{ platform: 'web', platform_user_id: 'u1' }] }) }) }) } });
+  stub('lib/proactive', { deliverUnprompted: async (u, s, links, textFor) => { said.push(await textFor(links[0])); return true; } });
+  stub('lib/idle', { during: (fn) => fn() });
+  const id = require.resolve('../lib/image-making');
+  delete require.cache[id];
+  const im = require('../lib/image-making');
+  const real = { platform: process.platform, arch: process.arch, totalmem: os.totalmem };
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+  Object.defineProperty(process, 'arch', { value: arch, configurable: true });
+  os.totalmem = () => memoryGb * 2 ** 30;
+  const restore = () => {
+    Object.defineProperty(process, 'platform', { value: real.platform, configurable: true });
+    Object.defineProperty(process, 'arch', { value: real.arch, configurable: true });
+    os.totalmem = real.totalmem;
+    for (const rel of ['lib/local-models', 'lib/config', 'lib/model-files', 'lib/admin', 'user-store', 'lib/db', 'lib/proactive', 'lib/idle', 'lib/image-making']) delete require.cache[require.resolve(path.join('..', rel))];
+    fs.rmSync(dir, { recursive: true, force: true });
+  };
+  return { im, conf, said, dir, restore };
+}
+
+test('making images is offered on a Mac that can run it, and says what it needs elsewhere', () => {
+  const { im, restore } = loadImageMaking();
+  try {
+    assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 16 }), { eligible: true, needs: null });
+    assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 8 }), { eligible: false, needs: 'Making images needs a Mac with Apple silicon and 16 GB of memory or more. This Mac has 8 GB.' });
+    assert.equal(im.eligibility({ platform: 'linux', arch: 'x64', memoryGb: 64 }).eligible, false, 'a server with no Apple graphics');
+    assert.equal(im.eligibility({ platform: 'darwin', arch: 'x64', memoryGb: 32 }).eligible, false, 'an Intel Mac');
+    const all = im.PARTS.flatMap((p) => p.files);
+    assert.ok(all.every((f) => /^[0-9a-f]{64}$/.test(f.sha256) && f.size > 0), 'every file pinned and checked');
+    assert.equal(Math.round(im.TOTAL_BYTES / 1e9 * 10) / 10, 5.2);
+  } finally { restore(); }
+});
+
+test('turned on, it downloads in the background with how far it has got, then says once in chat that it is ready', async () => {
+  const { im, conf, said, dir, restore } = loadImageMaking();
+  try {
+    const bin = path.join(dir, 'image-making', im.PARTS[0].repo, 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, 'sd-cli'), '');
+    await im.boot();
+    assert.equal(conf.LOCAL_MODELS_STATUS.images.state, 'off');
+    assert.equal(conf.LOCAL_MODELS_STATUS.images.total_gb, 5.2);
+    await im.turnOn();
+    const status = conf.LOCAL_MODELS_STATUS.images;
+    assert.deepEqual([status.state, status.pct, status.wanted], ['ready', 100, true]);
+    assert.equal(im.ready(), true);
+    assert.deepEqual(said, ["I can make images now, right here on this computer, with nothing sent anywhere. Describe one and I'll make it."]);
+  } finally { restore(); }
+});
+
+test('a picture is made by the program on this computer from the pinned model files, one at a time', async () => {
+  const { im, dir, restore } = loadImageMaking();
+  try {
+    const bin = path.join(dir, 'image-making', im.PARTS[0].repo, 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    const log = path.join(dir, 'args.txt');
+    fs.writeFileSync(path.join(bin, 'sd-cli'), `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(log)}\nwhile [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then printf 'PNGDATA' > "$2"; fi; shift; done\n`, { mode: 0o755 });
+    await im.turnOn();
+    const png = await im.make('A red kettle on a windowsill', { width: 1000, height: 700, seed: 7 });
+    assert.equal(png.toString(), 'PNGDATA');
+    const args = fs.readFileSync(log, 'utf8').trim().split('\n');
+    const after = (flag) => args[args.indexOf(flag) + 1];
+    assert.equal(after('-p'), 'A red kettle on a windowsill');
+    assert.deepEqual([after('-W'), after('-H'), after('--steps'), after('--cfg-scale'), after('-s')], ['1008', '704', '4', '1.0', '7'], 'sizes in steps of 16, four steps as the distilled model takes');
+    assert.match(after('--diffusion-model'), /FLUX\.2-klein-4B-GGUF\/flux-2-klein-4b-Q4_0\.gguf$/);
+    assert.match(after('--llm'), /Qwen3-4B-Q4_K_M\.gguf$/);
+    assert.match(after('--vae'), /vae\/diffusion_pytorch_model\.safetensors$/);
+    assert.ok(args.includes('--mmap'), 'the model mapped, not copied into memory');
+  } finally { restore(); }
+});
+
+test('the switch refuses a computer that cannot make images, saying why', async () => {
+  const { im, restore } = loadImageMaking({ platform: 'linux', arch: 'x64', memoryGb: 64 });
+  try {
+    let handler;
+    im.register({ post: (route, fn) => { handler = fn; } }, { verifyToken: () => true });
+    let code = 200, body;
+    await handler({ get: () => 't', body: { on: true } }, { status: (c) => { code = c; return { json: (b) => { body = b; } }; }, json: (b) => { body = b; } });
+    assert.equal(code, 409);
+    assert.match(body.error, /^Making images needs a Mac with Apple silicon/);
+  } finally { restore(); }
+});
+
+test('the tool is offered only once the model is ready, sends the picture to the chat, and Settings shows each state', () => {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  assert.match(read('lib/engine.js'), /if \(g === "images" && !require\("\.\/image-making"\)\.ready\(\)\) return false;/);
+  const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'make_image');
+  assert.deepEqual(def.groups, ['images']);
+  assert.ok(!def.core, 'listed, not carried in full on every message');
+  assert.match(read('lib/tools/handlers.js'), /const png = await require\("\.\.\/image-making"\)\.make\(toolInput\.prompt, \{ width, height \}\);\n\s*await sendDocument\(chatId, png, "image\.png", "image\/png"\);/);
+  const dash = read('webapp/views/dashboard.html');
+  assert.match(dash, /<h2>Making images<\/h2>/);
+  assert.match(dash, /if \(!im\.eligible\) \{\n\s*body\.innerHTML = '<p>' \+ escHtml\(im\.needs \|\| ''\) \+ '<\/p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" disabled>Turn on<\/button><\/div>';/, 'greyed out, saying what it needs');
+  assert.match(dash, /Turn off and remove the download\? You can turn it on again later\./, 'asks before removing');
+  assert.match(read('webapp/server.js'), /app\.post\("\/api\/images", async \(req, res\) => \{/);
+  assert.match(read('lib/model-files.js'), /fetchImpl\(f\.url \|\| `https:\/\/huggingface\.co\//, 'a program from its own address');
+});
