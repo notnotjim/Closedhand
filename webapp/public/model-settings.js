@@ -2,7 +2,7 @@
 (function () {
   var providers = {
     anthropic: "Anthropic", deepinfra: "DeepInfra", deepseek: "DeepSeek", gemini: "Google Gemini",
-    groq: "Groq", moonshot: "Moonshot", openai: "OpenAI", openrouter: "OpenRouter", xai: "xAI",
+    groq: "Groq", moonshot: "Moonshot", near: "NEAR AI", openai: "OpenAI", openrouter: "OpenRouter", xai: "xAI",
     ollama: "Ollama (local models)", custom: "Other compatible service"
   };
   // What each role does, behind the "i" beside its name, in the saved list

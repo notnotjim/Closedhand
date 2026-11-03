@@ -15,8 +15,9 @@ const COMPANIES = {
   "generativelanguage.googleapis.com": "Google AI Studio", "api.x.ai": "xAI", "api.mistral.ai": "Mistral",
   "api.groq.com": "Groq", "api.together.xyz": "Together", "api.fireworks.ai": "Fireworks",
   "api.cerebras.ai": "Cerebras", "api.moonshot.ai": "Moonshot AI", "api.z.ai": "Z.AI", "api.deepinfra.com": "DeepInfra",
+  "cloud-api.near.ai": "NEAR AI",
   deepseek: "DeepSeek", openai: "OpenAI", anthropic: "Anthropic", gemini: "Google AI Studio", xai: "xAI",
-  groq: "Groq", moonshot: "Moonshot AI", deepinfra: "DeepInfra",
+  groq: "Groq", moonshot: "Moonshot AI", deepinfra: "DeepInfra", near: "NEAR AI",
 };
 // An LLM on the person's own computer (Ollama, or any address on it) has no
 // charge per token.

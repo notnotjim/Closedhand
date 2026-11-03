@@ -49,6 +49,7 @@ const PAIRS = [
   { name: "run-pdf", copies: ["lib/run-pdf.js", "webapp/run-pdf.js"] },
   { name: "model-policy", copies: ["lib/model-policy.js", "webapp/model-policy.js"] },
   { name: "model-wire", copies: ["lib/model-wire.js", "webapp/model-wire.js"] },
+  { name: "near-private", copies: ["lib/near-private.js", "webapp/near-private.js"] },
   { name: "included-ai", copies: ["lib/included-ai.js", "webapp/included-ai.js"] },
   { name: "shopify-auth", copies: ["lib/shopify-auth.js", "webapp/shopify-auth.js"] },
   { name: "flight-time", copies: ["lib/flight-time.js", "webapp/public/flight-time.js"] },

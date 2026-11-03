@@ -12,6 +12,7 @@
     "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@mozilla/readability": "0.6.0",
+    "@phala/dcap-qvl": "0.7.1",
     "@supabase/supabase-js": "^2.97.0",
     "@tesseract.js-data/eng": "1.0.0",
     "@whiskeysockets/baileys": "^7.0.0-rc14",

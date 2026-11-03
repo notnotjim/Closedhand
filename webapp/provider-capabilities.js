@@ -62,6 +62,15 @@ const PROVIDERS = {
     // only by hand: nothing here picks a newer model by itself.
     chat: { prefer: [/^deepseek\/deepseek-v4\.1-flash$/], fallback: "deepseek/deepseek-v4.1-flash" },
   },
+  near: {
+    label: "NEAR AI",
+    base: "https://cloud-api.near.ai/v1",
+    auth: "bearer",
+    // Models run in attested enclaves, and Closedhand proves, encrypts and
+    // checks every request end to end (near-private.js). One exact model,
+    // chosen by hand: DeepSeek V4.1 Flash with its refusals removed.
+    chat: { prefer: [/^deepseek-ai\/DeepSeek-V4\.1-Flash-1017-abliterated$/], fallback: "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated" },
+  },
   moonshot: {
     label: "Moonshot",
     base: "https://api.moonshot.ai/v1",

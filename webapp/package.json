@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "@phala/dcap-qvl": "0.7.1",
     "@supabase/supabase-js": "^2.49.1",
     "@tesseract.js-data/eng": "1.0.0",
     "adm-zip": "^0.6.1",

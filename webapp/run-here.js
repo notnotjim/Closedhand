@@ -30,7 +30,7 @@ const OPENROUTER_MODELS = "https://openrouter.ai/api/v1/models";
 const DAY = 24 * 3600 * 1000;
 const JOB_NAMES = ["chat", "background", "vision"];
 const PROVIDER_NAMES = { anthropic: "Anthropic", deepinfra: "DeepInfra", deepseek: "DeepSeek", gemini: "Google Gemini", groq: "Groq",
-  moonshot: "Moonshot", openai: "OpenAI", openrouter: "OpenRouter", xai: "xAI", ollama: "Ollama", custom: "your provider" };
+  moonshot: "Moonshot", near: "NEAR AI", openai: "OpenAI", openrouter: "OpenRouter", xai: "xAI", ollama: "Ollama", custom: "your provider" };
 // Where a GGUF may come from: the model's makers, or quantizers whose
 // versions the llama.cpp community relies on. Anyone can publish one, and
 // its file runs with access to the person's mail, so nobody else's is used.
