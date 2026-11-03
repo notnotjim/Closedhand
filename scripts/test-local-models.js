@@ -297,3 +297,7 @@ test('the VLM is pinned and checked, fetched in the background at start, and sho
   const dash = fs.readFileSync(path.join(__dirname, '../webapp/views/dashboard.html'), 'utf8');
   assert.match(dash, /\['media', 'vlm'\]\.forEach/);
 });
+
+test('a video file sent in chat always gets its frames, which a chat model that cannot see gets described', () => {
+  assert.match(fs.readFileSync(path.join(__dirname, '../lib/engine.js'), 'utf8'), /video: !!fileData\.isVideo, frames: fileData\.isVideo \? 8 : 0 \}/);
+});

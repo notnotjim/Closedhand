@@ -227,7 +227,7 @@ test('File Search, the web chat and saved files all hear recordings and videos',
   assert.match(read('index.js'), /require\("\.\/lib\/hear-route"\)\.register\(ctx\.expressApp\);/);
   const engine = read('lib/engine.js');
   assert.match(engine, /\} else if \(fileData\.isAudio \|\| fileData\.isVideo\) \{\n\s*\/\/ Heard the way a video link is/);
-  assert.match(engine, /frames: fileData\.isVideo && chatSeesImages \? 8 : 0/, 'frames only for a chat model that can see them');
+  assert.match(engine, /frames: fileData\.isVideo \? 8 : 0/, 'frames for every video: a chat model that cannot see gets them described');
   assert.match(read('lib/attachments.js'), /require\("\.\/video"\)\.hearMedia\(\{ userId, buffer, name: att\.fileName, video: read\.kind === "video" \}\)/);
   const script = read('lib/video-sandbox.py');
   assert.match(script, /def local\(path\):/);

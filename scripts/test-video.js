@@ -96,6 +96,10 @@ test('a model whose provider does not say is given the clip too, so an omni mode
 
 // --- lib/video.js with the sandbox, the models and speech to text stood in for ---
 const calls = { exec: [], downloads: [], requests: [], heard: [] };
+// The vision language model on this computer, stood in for: every frame it
+// is shown is a red ball on grass.
+const usiPath = require.resolve('../lib/services/usi');
+require.cache[usiPath] = { id: usiPath, filename: usiPath, loaded: true, exports: { describeHere: async () => 'A red ball on grass.' } };
 let sandboxReply = null, failWhole = false;
 const PARTS = {
   'meta.json': () => Buffer.from(JSON.stringify(sandboxReply.meta)),
@@ -206,13 +210,14 @@ test('YouTube without a link-opening model uses captions and preview frames, nev
   assert.match(script, /meta, frames, video = \(local\(ARGS\["path"\]\) if ARGS\.get\("path"\) else youtube\(ARGS\["url"\]\) if ARGS\.get\("youtube"\)\n\s*else download\(ARGS\["url"\]\)\)/);
 });
 
-test('with images off, what is said is read directly, with no extra model call', async () => {
+test('with no model that sees, frames are described on this computer and read with what is said, with no extra model call', async () => {
   reset(downloaded({ meta: { captions: { source: 'written', lines: [{ start: 3, text: 'the words' }] } } }));
   const store = setup({ chat: { model: 'text-model', cap: { vision: false } }, vision: null });
   const r = await video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/1' });
-  assert.equal(r.method, "what's said only");
+  assert.equal(r.method, "frames described on this computer and what's said");
   assert.equal(calls.requests.length, 0);
-  assert.match(r.account, /\[0:03\] the words/);
+  assert.match(r.account, /What's on screen, described on this computer:\n\[0:01\] A red ball on grass\.\n\[0:05\] A red ball on grass\./);
+  assert.match(r.account, /\[0:03\] the words/, 'and everything said');
 });
 
 test('a site that wants a sign-in says so plainly, and private addresses are refused', async () => {
