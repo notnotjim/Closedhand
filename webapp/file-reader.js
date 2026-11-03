@@ -526,10 +526,19 @@ async function tesseractWorker() {
       errorHandler: () => {},
     });
   }
-  // Let the engine go after a quiet minute; it holds memory while it waits.
+  return _worker;
+}
+// Let the engine go after a quiet minute; it holds memory while it waits. The
+// minute starts when a page is done, never while one is read: an engine let go
+// mid-page leaves that page's read waiting for good, and every read after it
+// queued behind (a Drive folder stopped at a zip of large pictures). A page
+// still unread after ten minutes is given up and its engine let go, so the
+// reads after it go on.
+const PAGE_MS = 10 * 60000;
+function restLater() {
+  clearTimeout(_idle);
   _idle = setTimeout(() => { const w = _worker; _worker = null; if (w) w.terminate().catch(() => {}); }, 60000);
   _idle.unref?.();
-  return _worker;
 }
 // Tesseract reads any shape as letters: a photo of a car in a garden came back
 // as lines of "TRYST ANAT TOE a PR SE", and that text was then searched and
@@ -548,7 +557,16 @@ function sureText(data) {
 }
 async function tesseract(file) {
   const worker = await tesseractWorker();
-  return sureText((await worker.recognize(file, {}, { text: true, blocks: true })).data);
+  let late;
+  const over = new Promise((_, reject) => {
+    late = setTimeout(() => {
+      if (_worker === worker) _worker = null;
+      worker.terminate().catch(() => {});
+      reject(new Error("This page took too long to read."));
+    }, PAGE_MS);
+  });
+  try { return sureText((await Promise.race([worker.recognize(file, {}, { text: true, blocks: true }), over])).data); }
+  finally { clearTimeout(late); restLater(); }
 }
 
 // HEIC (iPhone photos) and AVIF as JPEG, for OCR here and for models that

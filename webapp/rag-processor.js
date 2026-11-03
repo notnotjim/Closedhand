@@ -749,7 +749,9 @@ async function processDocument(documentId, userId, fileBuffer, fileName, fileTyp
 async function processDocumentWithModels(documentId, userId, fileBuffer, fileName, fileType, sourceContext = null) {
   try {
     // Update status to processing
-    await supabase.from("rag_documents").update({ status: "processing" }).eq("id", documentId);
+    // With the time it began: the stall sweep takes a read whose row is older
+    // than 20 minutes for one cut off, and marked reads under way as failed.
+    await supabase.from("rag_documents").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", documentId);
 
     // 1. Extract text
     console.log(`[RAG] Extracting text from ${fileName} (${fileType})`);

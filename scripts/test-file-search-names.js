@@ -111,7 +111,7 @@ test("Tesseract keeps only lines it is sure of: a photo's shapes read as letters
   assert.equal(sureText(data), "CERTIFICATE OF INCORPORATION\nHarbor Labs Ltd, 2024/123456/07");
   assert.equal(sureText({ text: "plain", blocks: null }), "plain", "a Tesseract that gives no lines keeps its text");
   const reader = read("lib/file-reader.js");
-  assert.match(reader, /return sureText\(\(await worker\.recognize\(file, \{\}, \{ text: true, blocks: true \}\)\)\.data\);/);
+  assert.match(reader, /return sureText\(\(await Promise\.race\(\[worker\.recognize\(file, \{\}, \{ text: true, blocks: true \}\), over\]\)\)\.data\);/);
   const rag = read("webapp/rag-processor.js");
   assert.match(rag, /const readWell = !MEDIA_TYPES\.has\(typeOf\(file\)\) \|\| existing\?\.metadata\?\.read_by === PICTURE_READER;/, "pictures read the old way are read again, once");
 });
