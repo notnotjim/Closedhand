@@ -239,6 +239,8 @@ async function main() {
   away.start();
   // A report the person sent, said once when it is fixed (lib/bug-reports.js).
   require("./lib/bug-reports").start();
+  // A line whenever memory reaches a new high, with what was running then.
+  require("./lib/memory-watch").start();
   // Pages archived three months ago are deleted (lib/page-expiry.js).
   require("./lib/page-expiry").start();
   // Files sent to Closedhand go 90 days on, fetched working copies a day on.

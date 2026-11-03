@@ -53,6 +53,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 ENV npm_config_cache=/data/storage/cache/npm \
     UV_CACHE_DIR=/data/storage/cache/uv \
     UV_PYTHON_INSTALL_DIR=/data/storage/cache/uv-python
+# Two malloc pools, not glibc's eight per core: the model runtime, sharp and
+# OCR run on dozens of threads, and each thread's pool kept the memory it once
+# needed (59 pools held 744 MB on a 32-core server).
+ENV MALLOC_ARENA_MAX=2
 
 # App source (see .dockerignore for exclusions).
 COPY . .

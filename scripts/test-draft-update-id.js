@@ -148,3 +148,20 @@ test('every mailbox has the same three draft tools, and each send asks first', (
   assert.match(sync, /draft_id: draft \? msg\.id : null,\n\s*version: draft \? msg\.changeKey \|\| null : null,/);
   assert.match(sync, /if \(!draftData\.failed && !draftData\["@odata\.nextLink"\]\) await reconcileDeletedDrafts\(userId, sourceTag,/);
 });
+
+test('a sync fetches a draft only when it is new or saved without its draft id: saving a draft again gives it a new message id', async () => {
+  const sync = fs.readFileSync(path.join(__dirname, '..', 'lib', 'services', 'data-sync.js'), 'utf8');
+  assert.match(sync, /const newIds = allIds\.filter\(id => !cachedIds\.has\(id\) \|\| undrafted\.has\(id\)\);/);
+  assert.doesNotMatch(sync, /!cachedIds\.has\(id\) \|\| draftIds\.has\(id\)/, 'every draft was fetched again each cycle');
+  const a = sync.indexOf('async function draftsWithoutDraftId(');
+  const vm = require('node:vm');
+  const rows = [{ external_id: 'm1', draft_id: 'r1' }, { external_id: 'm2', draft_id: null }];
+  const supabase = { from: () => { let ids = []; let needsDraft = false; const q = {
+    select: () => q, eq: () => q, in: (_, v) => { ids = v; return q; }, not: (col) => { needsDraft = col === 'data->>draft_id'; return q; },
+    then: (r) => r({ data: rows.filter((x) => ids.includes(x.external_id) && (!needsDraft || x.draft_id)).map((x) => ({ external_id: x.external_id })), error: null }),
+  }; return q; } };
+  const box = { supabase, Set };
+  vm.runInNewContext(sync.slice(a, sync.indexOf('\n}\n', a) + 2) + '\nthis.f = draftsWithoutDraftId;', box);
+  assert.deepEqual([...await box.f('u', 'gmail', ['m1', 'm2'])], ['m2'], 'only the one saved before draft ids were kept');
+  assert.deepEqual([...await box.f('u', 'gmail', [])], []);
+});
