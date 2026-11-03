@@ -247,14 +247,36 @@ test('a file part keeps the heading it was embedded with, so a backfilled one is
 });
 
 test('a picture of any size is decoded and shrunk before the models read it; one that cannot be decoded goes as it came', async () => {
-  const sharp = require('sharp');
-  const { pictureForModels } = require('../lib/local-models');
-  const big = await sharp({ create: { width: 4000, height: 3000, channels: 3, background: { r: 20, g: 120, b: 200 } } }).tiff({ compression: 'none' }).toBuffer();
-  const out = await pictureForModels(big);
-  const m = await sharp(out).metadata();
-  assert.deepEqual([m.format, m.width, m.height], ['jpeg', 1536, 1152]);
-  assert.ok(out.length < big.length / 100, 'a fraction of the size');
-  const junk = Buffer.from('not a picture');
-  assert.equal(await pictureForModels(junk), junk);
+  // sharp stood in for at the loader: CI's checks install no packages.
+  const Module = require('module');
+  const realLoad = Module._load;
+  const calls = [];
+  let fails = false;
+  const fakeSharp = (input, options) => {
+    calls.push(['open', input.length, options]);
+    if (fails) throw new Error('Input buffer contains unsupported image format');
+    const chain = {
+      rotate() { calls.push(['rotate']); return chain; },
+      resize(o) { calls.push(['resize', o]); return chain; },
+      jpeg(o) { calls.push(['jpeg', o]); return chain; },
+      toBuffer: async () => Buffer.from('small jpeg'),
+    };
+    return chain;
+  };
+  Module._load = function (request, ...rest) { return request === 'sharp' ? fakeSharp : realLoad.call(this, request, ...rest); };
+  try {
+    const { pictureForModels } = require('../lib/local-models');
+    const big = Buffer.alloc(40 * 1024 * 1024, 7);
+    assert.equal(String(await pictureForModels(big)), 'small jpeg');
+    assert.deepEqual(calls, [
+      ['open', big.length, { unlimited: true, limitInputPixels: false, failOn: 'none' }],
+      ['rotate'],
+      ['resize', { width: 1536, height: 1536, fit: 'inside', withoutEnlargement: true }],
+      ['jpeg', { quality: 90 }],
+    ], 'any size, turned upright, shrunk to fit 1536, as a JPEG');
+    fails = true;
+    const junk = Buffer.from('not a picture');
+    assert.equal(await pictureForModels(junk), junk, 'goes as it came');
+  } finally { Module._load = realLoad; }
   assert.match(fs.readFileSync(path.join(__dirname, '../webapp/rag-processor.js'), 'utf8'), /body: image,\n\s*headers: \{ "Content-Type": "application\/octet-stream"/, 'File Search sends a picture as its own bytes');
 });

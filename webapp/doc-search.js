@@ -249,10 +249,9 @@ function docSearch({ supabase, embed, rerank }) {
       results = judged.map(r => ({ ...r, content: r._chunk_content }));
     } catch (e) { /* unranked, in RRF order; the collapse and cap still apply */ }
 
-    // A picture or a sound that matched by what it is counts as clearly about
-    // the query, whatever the reranker made of its label. Ties keep the vector
-    // arm's order, which is by cosine.
-    results = results.map(r => r._media && r._rerank_score !== undefined ? { ...r, _rerank_score: Math.max(r._rerank_score, RELEVANT) } : r);
+    // A picture or a sound that matched by what it is (_media) is scored as
+    // clearly about the query by the reranker itself (reranker.js), whatever
+    // it made of its label.
 
     // A result is a document, not a chunk. Retrieval works on chunks because
     // that is the unit that gets embedded, but a person searching a library is
@@ -347,4 +346,6 @@ function docSearch({ supabase, embed, rerank }) {
   return { searchDocuments, searchNames };
 }
 
-module.exports = { docSearch };
+// MEDIA_MATCH and RELEVANT are the index of connections' rules too
+// (services/usi.js) and the reranker's floor for a picture or a sound.
+module.exports = { docSearch, MEDIA_MATCH, RELEVANT };

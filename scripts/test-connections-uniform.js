@@ -191,3 +191,106 @@ test("a picture from any connection keeps its words and what it shows, written b
     for (const m of ["lib/file-reader", "lib/model-jobs", "lib/local-models"]) delete require.cache[require.resolve(path.join("..", m))];
   }
 });
+
+// The index's own table, as the indexing pass and search use it.
+function fakeIndex(searchRows = []) {
+  const tables = { data_vectors: [], index_progress: [] };
+  let nextId = 1;
+  return {
+    tables,
+    rpc: async (name) => ({ data: name === "search_data_vectors" ? searchRows : [], error: null }),
+    from(table) {
+      const rows = tables[table] || (tables[table] = []);
+      const filters = [];
+      let op = null, payload = null, conflict = null, one = false;
+      const q = {
+        select() { return q; }, order() { return q; }, limit() { return q; },
+        eq(k, v) { filters.push((r) => String(r[k]) === String(v)); return q; },
+        in(k, vs) { filters.push((r) => vs.map(String).includes(String(r[k]))); return q; },
+        gt(k, v) { filters.push((r) => r[k] > v); return q; },
+        single() { one = true; return q; }, maybeSingle() { one = true; return q; },
+        upsert(p, o) { op = "upsert"; payload = Array.isArray(p) ? p : [p]; conflict = String(o?.onConflict || "id").split(","); return q; },
+        update(p) { op = "update"; payload = p; return q; },
+        delete() { op = "delete"; return q; },
+        then(resolve, reject) {
+          const match = (r) => filters.every((f) => f(r));
+          let data = null;
+          if (op === "upsert") {
+            const out = payload.map((p) => {
+              const at = rows.findIndex((r) => conflict.every((c) => String(r[c]) === String(p[c])));
+              const row = { ...(at >= 0 ? rows[at] : { id: nextId++ }), ...JSON.parse(JSON.stringify(p)) };
+              if (at >= 0) rows[at] = row; else rows.push(row);
+              return row;
+            });
+            data = one ? out[0] : out;
+          } else if (op === "update") rows.filter(match).forEach((r) => Object.assign(r, JSON.parse(JSON.stringify(payload))));
+          else if (op === "delete") { const keep = rows.filter((r) => !match(r)); rows.splice(0, rows.length, ...keep); }
+          else { const hit = rows.filter(match); data = one ? hit[0] || null : hit; }
+          return Promise.resolve({ data, error: null }).then(resolve, reject);
+        },
+      };
+      return q;
+    },
+  };
+}
+const unitVector = (n) => Array.from({ length: 1536 }, (_, i) => (i === n ? 1 : 0));
+function indexStandIns(db, embedded) {
+  stub("user-store", { supabase: db, UserStore: { load: async () => ({}) } });
+  stub("lib/db", { supabase: db });
+  stub("lib/idle", { during: (fn) => fn(), touch() {}, isIdle: () => true, oneAtATime: (fn) => fn(), LOOK_MS: 5 });
+  stub("lib/model-jobs", { withSettings: (u, fn) => fn(), role: () => null, complete: async () => null });
+  stub("lib/local-models", { localEmbed: async (texts) => { embedded.push(...texts); return texts.map(() => unitVector(0)); } });
+  for (const m of ["lib/item-files", "lib/services/usi"]) delete require.cache[require.resolve(path.join("..", m))];
+  return require("../lib/services/usi");
+}
+const restore = () => { for (const m of ["lib/model-jobs", "lib/local-models", "lib/idle", "lib/services/usi"]) delete require.cache[require.resolve(path.join("..", m))]; };
+
+test("a connection's pictures, video frames and sound are pieces of their item with the vectors kept for them, as File Search's are", async () => {
+  const db = fakeIndex(), embedded = [];
+  const usi = indexStandIns(db, embedded);
+  try {
+    const item = { external_id: "mail-7", head: "Email: Photos from the street", text: "Photos from the street. A few from the walk.",
+      files: [{ name: "Shopfront.jpg", text: "LARKSPUR BAKERY open 7 till 3", media: [{ modality: "image", vector: [0.6, 0.8], label: "(picture) LARKSPUR BAKERY open 7 till 3" }] }] };
+    await usi.indexItems("u1", "gmail", "email", [item], { scoped: true });
+    const pieces = db.tables.data_vectors.filter((r) => r.piece_of);
+    const picture = pieces.find((r) => r.source_metadata.modality);
+    assert.equal(picture.content, "[File Shopfront.jpg] (picture) LARKSPUR BAKERY open 7 till 3");
+    assert.equal(picture.source_metadata.modality, "image");
+    const v = JSON.parse(picture.embedding);
+    assert.deepEqual([v.length, v[0], v[1], v[2]], [1536, 0.6, 0.8, 0], "its kept vector, at the index's length");
+    assert.equal(embedded.length, 2, "only the item's first piece and the file's words are embedded, never the picture again");
+    assert.ok(embedded.every((t) => !/\(picture\)/.test(t)));
+    // An item without vectors keeps the hash it had before they were kept.
+    const crypto = require("crypto");
+    const plain = { ...item, external_id: "mail-8", files: [{ name: "Plan.pdf", text: "The plan" }] };
+    await usi.indexItems("u1", "gmail", "email", [plain], { scoped: true });
+    assert.equal(plain._content_hash, crypto.createHash("sha256").update(plain.text + JSON.stringify([["Plan.pdf", 8]])).digest("hex"));
+  } finally { restore(); }
+});
+
+test("search finds a connection's picture by what it shows only over File Search's line, and marks it for the reranker", async () => {
+  const { MEDIA_MATCH } = require("../lib/services/doc-search");
+  const piece = (item, n, content, similarity, meta = {}) => ({ service: "gmail", item_type: "email", external_id: `${item}#${n}`, content, similarity,
+    enrichment_level: "basic", source_metadata: { _piece_of: item, _piece: n, ...meta } });
+  const db = fakeIndex([
+    piece("mail-1", 2, "[File Zebra.jpg] (picture) An animal in a field.", MEDIA_MATCH + 0.04, { modality: "image" }),
+    { service: "gmail", item_type: "email", external_id: "mail-3", content: "Zoo trip on Saturday", similarity: 0.5, enrichment_level: "basic", source_metadata: {} },
+    piece("mail-2", 3, "[File Owl.jpg] (picture) A bird on a branch.", MEDIA_MATCH - 0.03, { modality: "image" }),
+  ]);
+  const usi = indexStandIns(db, []);
+  try {
+    const { results } = await usi.search("u1", "a zebra", { queryEmbedding: unitVector(0) });
+    assert.deepEqual(results.map((r) => [r.id, !!r._media]), [["mail-1", true], ["mail-3", false]], "the owl under the line is dropped");
+  } finally { restore(); }
+});
+
+test("the reranker scores a picture or a sound that matched by what it is as clearly about the query, whatever it made of the label", async () => {
+  const { RELEVANT } = require("../lib/services/doc-search");
+  const rr = require("../webapp/reranker");
+  rr.setLocalScorer(async (q, texts) => texts.map((t) => (/\(picture\)/.test(t) ? 0.0001 : 0.3)));
+  const ranked = await rr.rerank("a zebra", [
+    { content: "Zoo trip on Saturday" }, { content: "(picture) An animal in a field.", _media: true }, { content: "(picture) A logo." },
+  ], 3);
+  assert.deepEqual(ranked.map((r) => [r.content, r._rerank_score]),
+    [["Zoo trip on Saturday", 0.3], ["(picture) An animal in a field.", RELEVANT], ["(picture) A logo.", 0.0001]]);
+});

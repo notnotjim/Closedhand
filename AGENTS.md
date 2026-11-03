@@ -14,7 +14,9 @@ Rules for working on this codebase, for anyone doing it, human or agent.
   name, mime, size), and gives `attachmentBytes` in `lib/services/data-access.js` a way to fetch them.
   An indexed item names the rows it is made of (`rows`), and the index's one entry, `indexItems`,
   reads their files by the one step, `lib/item-files.js`: documents with the item, large ones soon
-  after, recordings and videos while Closedhand is otherwise idle (`lib/idle.js`), any size. No
+  after, recordings and videos while Closedhand is otherwise idle (`lib/idle.js`), any size. A
+  picture, a video's frames and its stretches of sound also become vectors of what they are, pieces
+  of their item, as File Search's do, found under the same line (`doc-search.js` MEDIA_MATCH). No
   connection cuts its text, reads files its own way, or makes text of HTML other than by
   `lib/file-reader.js` `htmlText`, which keeps each link's address beside its words. A link to
   something elsewhere (a video on a site, a page) stays a link; only a connection's own files are read.

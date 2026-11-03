@@ -64,7 +64,7 @@ test("every connection goes through the one step, at the index's one entry", () 
   assert.match(access, /const got = await attachmentBytes\(userId, params\);/, "the tool and the index fetch alike");
   const itemFiles = read("lib/item-files.js");
   assert.match(itemFiles, /const said = await require\("\.\/voice"\)\.transcribeAudio\(input, \{ userId, here: true \}\)/, "indexing writes voice notes out on this computer");
-  assert.match(itemFiles, /return \(await require\("\.\/services\/usi"\)\.extractAttachmentText\(bytes, file\.name, \{ maxChars: Infinity \}\)\) \|\| "";/, "whole");
+  assert.match(itemFiles, /const text = \(await require\("\.\/services\/usi"\)\.extractAttachmentText\(bytes, file\.name, \{ maxChars: Infinity \}\)\) \|\| "";/, "whole");
   // Google and Microsoft hand back a file's bytes whole.
   for (const f of ["lib/services/google.js", "lib/services/microsoft.js"]) {
     assert.match(read(f), /resolve\(\{ raw: bytes, _binary: true \}\)/, f);
@@ -78,7 +78,7 @@ test("every connection goes through the one step, at the index's one entry", () 
 
 // The file step with its fetching, reading and database stood in. `db` holds
 // data_cache rows by "source/external_id".
-function standIns({ fetch, extract = async (b) => b.toString(), voice, hear, canHear = async () => true, describe = async () => null }) {
+function standIns({ fetch, extract = async (b) => b.toString(), voice, hear, canHear = async () => true, describe = async () => null, embedder = "pipeline", embedPicture = async () => [0.123456, -0.5, 0, 0] }) {
   const stub = (rel, exports) => { const id = require.resolve(path.join("..", "lib", rel)); require.cache[id] = { id, filename: id, loaded: true, exports }; };
   const db = new Map();
   const writes = [];
@@ -92,6 +92,8 @@ function standIns({ fetch, extract = async (b) => b.toString(), voice, hear, can
   stub("storage", { swapToCloudStore: () => {} });
   stub("services/data-access", { attachmentBytes: fetch });
   stub("services/usi", { extractAttachmentText: extract, describeHere: describe });
+  // Never the real models: EmbeddingGemma 2 only where a test says so.
+  stub("local-models", { embedderSpec: () => ({ runner: embedder }), localEmbedMedia: embedPicture });
   if (voice) stub("voice", { transcribeAudio: voice });
   const query = () => {
     const q = { where: {}, eq: (k, v) => { q.where[k] = v; return q; }, select: () => q,
@@ -197,6 +199,70 @@ test("a video from a connection gets what File Search's do: what's said with its
   } finally { reader.ocrImage = realOcr; }
   assert.deepEqual(asked, [["Opening.mov", true, 6]], "six frames, as File Search takes");
   assert.deepEqual(described, [["frame one", true], ["frame two", true]], "each described in the background");
+});
+
+// A JPEG's first bytes, so the one reader knows it for a picture.
+const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(60 * 1024, 1)]);
+
+test("a picture from a connection keeps a vector of what it shows, as File Search's do; a voice note keeps its words; without EmbeddingGemma 2 no vector is kept", async () => {
+  const embedded = [];
+  standIns({ fetch: async () => ({}), extract: async () => "LARKSPUR BAKERY. A bakery front on a narrow street.", embedder: "eg2",
+    embedPicture: async (kind, bytes) => { embedded.push([kind, bytes.length]); return [0.123456, -0.5, 0, 0]; },
+    voice: async () => "call me back" });
+  const media = [];
+  assert.equal(await files.readBytes(JPEG, { name: "Shopfront.jpg", mime: "image/jpeg" }, "u-1", media), "LARKSPUR BAKERY. A bakery front on a narrow street.");
+  assert.deepEqual(media, [{ modality: "image", vector: [0.123456, -0.5, 0, 0], label: "(picture) LARKSPUR BAKERY. A bakery front on a narrow street." }]);
+  assert.deepEqual(embedded, [["image", JPEG.length]]);
+  const note = [];
+  assert.equal(await files.readBytes(Buffer.from("OggS voice"), { name: "voice.ogg", mime: "audio/ogg" }, "u-1", note), "call me back");
+  assert.deepEqual(note, [], "a voice note keeps its words only");
+  standIns({ fetch: async () => ({}), extract: async () => "LARKSPUR BAKERY", embedPicture: async () => { throw new Error("not this embedder"); } });
+  const none = [];
+  await files.readBytes(JPEG, { name: "Shopfront.jpg", mime: "image/jpeg" }, "u-1", none);
+  assert.deepEqual(none, [], "only EmbeddingGemma 2 embeds a picture");
+});
+
+test("a video from a connection keeps its frames and its stretches of sound as vectors, labelled as File Search labels them", async () => {
+  const asked = [];
+  standIns({ fetch: async () => ({}), embedder: "eg2",
+    hear: async (a) => { asked.push(a.vectors); return { said: { lines: [{ start: 0, text: "Welcome, everyone." }, { start: 75, text: "Cut the ribbon." }] },
+      frames: [{ time: 12, jpeg: Buffer.from("frame one"), vector: [0.1, 0.2] }], sound: [{ start: 0, end: 30, vector: [0.3] }, { start: 60, end: 90, vector: [0.4] }] }; },
+    describe: async () => "A stage with a red ribbon across it." });
+  const reader = require("../lib/file-reader");
+  const realOcr = reader.ocrImage;
+  reader.ocrImage = async () => null;
+  const media = [];
+  try { await files.readBytes(Buffer.concat([Buffer.from([0, 0, 0, 20]), Buffer.from("ftypqt  "), Buffer.alloc(32)]), { name: "Opening.mov", mime: "video/quicktime" }, "u-1", media); }
+  finally { reader.ocrImage = realOcr; }
+  assert.deepEqual(asked, [true], "heard with its vectors");
+  assert.deepEqual(media, [
+    { modality: "frame", time: 12, vector: [0.1, 0.2], label: "[0:12] (on screen) A stage with a red ribbon across it." },
+    { modality: "sound", start: 0, end: 30, vector: [0.3], label: "[0:00–0:30] (sound) Welcome, everyone." },
+    { modality: "sound", start: 60, end: 90, vector: [0.4], label: "[1:00–1:30] (sound) Cut the ribbon." },
+  ]);
+});
+
+test("a picture read before its vectors were kept is read once more, and never again for it", async () => {
+  let fetches = 0;
+  const { db } = standIns({ embedder: "eg2", extract: async () => "LARKSPUR BAKERY",
+    fetch: async () => { fetches++; return { buffer: JPEG, filename: "Shopfront.jpg" }; } });
+  const data = { id: "m-7", attachments: [{ filename: "Shopfront.jpg", mimeType: "image/jpeg", size: 60 * 1024, attachmentId: "p1" }],
+    file_texts: [{ key: "p1", name: "Shopfront.jpg", text: "LARKSPUR BAKERY" }] };
+  db.set("gmail/m-7", data);
+  const row = () => ({ source: "gmail", external_id: "m-7", data: JSON.parse(JSON.stringify(db.get("gmail/m-7"))) });
+  assert.equal(files.unread(row()).length, 1, "read before vectors were kept");
+  await files.readFor("u-1", [row()]);
+  const kept = db.get("gmail/m-7").file_texts[0];
+  assert.deepEqual(kept.media, [{ modality: "image", vector: [0.1235, -0.5], label: "(picture) LARKSPUR BAKERY" }], "four decimals, no trailing zeros");
+  assert.deepEqual(files.textsOf(db.get("gmail/m-7"))[0].media, kept.media, "and the index is given them");
+  await files.readFor("u-1", [row()]);
+  assert.equal(fetches, 1, "never read again for it");
+  db.set("gmail/m-8", { ...data, id: "m-8" });
+  standIns({ fetch: async () => { fetches++; return {}; } });
+  assert.equal(files.unread({ source: "gmail", external_id: "m-8", data: { ...data, id: "m-8" } }).length, 0, "nor read again where no vector can be made");
+  const doc = { id: "m-9", attachments: [{ filename: "Plan.pdf", size: 9000, attachmentId: "d1" }], file_texts: [{ key: "d1", name: "Plan.pdf", text: "The plan" }] };
+  standIns({ embedder: "eg2", fetch: async () => ({}) });
+  assert.equal(files.unread({ source: "gmail", external_id: "m-9", data: doc }).length, 0, "a document is not read again");
 });
 
 test("recordings and videos wait while Closedhand is busy, then are heard newest first, one at a time; a large document does not wait", async () => {

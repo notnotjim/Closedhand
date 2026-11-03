@@ -254,8 +254,8 @@ test('mail is indexed from its own words and never summarised, and a year of it 
   assert.ok(pass.indexOf("writeFirst(") < pass.indexOf("for (const x of later)"), "first pieces before the rest");
   assert.match(pass, /const rest = x\.item\.bulk \? \[\] : x\.body\.slice\(1\)\.map/, "bulk mail by its first piece");
   assert.match(pass, /for \(const file of x\.item\.files \|\| \[\]\) \{/);
-  assert.match(pass, /if \(vecs\.some\(\(v\) => !v\)\) continue;/, 'whole or not at all');
-  assert.match(usi, /piece_of: firstId, source_metadata: \{ \.\.\.meta, _piece_of: item\.external_id, _piece: k \+ 1 \}/);
+  assert.match(pass, /if \(rest\.some\(\(r\) => !r\.vector\)\) continue;/, 'whole or not at all');
+  assert.match(usi, /piece_of: firstId, source_metadata: \{ \.\.\.meta, \.\.\.\(r\.meta \|\| \{\}\), _piece_of: item\.external_id, _piece: k \+ 1 \}/);
   assert.match(usi, /if \(!complete\) return true;\n\s*const \{ error: hashErr \} = await supabase\.from\("data_vectors"\)\.update\(\{ source_metadata: \{ \.\.\.meta, _pieces: rest\.length \+ 1, _content_hash: item\._content_hash \} \}\)/, 'the hash last');
   // Bulk mail, the same for every mailbox, and no stored body cut short.
   const { emailRecord } = require('../lib/services/email-record');
