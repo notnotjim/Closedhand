@@ -8211,8 +8211,8 @@ const _docSearch = docSearch({
   rerank: (q, docs, topK) => require("./reranker").rerank(q, docs, topK),
 });
 
-// POST /api/images { on } - Settings' "Making images". The bot fetches the
-// image model in the background (lib/image-making.js); how far it has got is
+// POST /api/images { on } - Settings' "Image generation". The bot fetches the
+// image model in the background (lib/image-generation.js); how far it has got is
 // in /api/setup/status, localModels.images.
 app.post("/api/images", async (req, res) => {
   const userId = getUserIdFromRequest(req);

@@ -89,7 +89,7 @@ test('an Ollama image model with a small window still passes, with its window re
   assert.match(fs.readFileSync(path.join(__dirname, '../webapp/public/model-settings.js'), 'utf8'), /Ollama gives it " \+ w\.toLocaleString\("en-US"\) \+ " tokens, so only a few frames fit; raise its context length for more"/);
 });
 
-// Pictures made on the person's own computer (lib/image-making.js), with
+// Pictures made on the person's own computer (lib/image-generation.js), with
 // stand-ins for the downloads, the database and the program itself.
 function loadImageMaking({ platform = 'darwin', arch = 'arm64', memoryGb = 16 } = {}) {
   const os = require('node:os');
@@ -107,9 +107,9 @@ function loadImageMaking({ platform = 'darwin', arch = 'arm64', memoryGb = 16 } 
   stub('lib/db', { supabase: { from: () => ({ select: () => ({ eq: async () => ({ data: [{ platform: 'web', platform_user_id: 'u1' }] }) }) }) } });
   stub('lib/proactive', { deliverUnprompted: async (u, s, links, textFor) => { said.push(await textFor(links[0])); return true; } });
   stub('lib/idle', { during: (fn) => fn() });
-  const id = require.resolve('../lib/image-making');
+  const id = require.resolve('../lib/image-generation');
   delete require.cache[id];
-  const im = require('../lib/image-making');
+  const im = require('../lib/image-generation');
   const real = { platform: process.platform, arch: process.arch, totalmem: os.totalmem };
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
   Object.defineProperty(process, 'arch', { value: arch, configurable: true });
@@ -118,17 +118,19 @@ function loadImageMaking({ platform = 'darwin', arch = 'arm64', memoryGb = 16 } 
     Object.defineProperty(process, 'platform', { value: real.platform, configurable: true });
     Object.defineProperty(process, 'arch', { value: real.arch, configurable: true });
     os.totalmem = real.totalmem;
-    for (const rel of ['lib/local-models', 'lib/config', 'lib/model-files', 'lib/admin', 'user-store', 'lib/db', 'lib/proactive', 'lib/idle', 'lib/image-making']) delete require.cache[require.resolve(path.join('..', rel))];
+    for (const rel of ['lib/local-models', 'lib/config', 'lib/model-files', 'lib/admin', 'user-store', 'lib/db', 'lib/proactive', 'lib/idle', 'lib/image-generation']) delete require.cache[require.resolve(path.join('..', rel))];
     fs.rmSync(dir, { recursive: true, force: true });
   };
   return { im, conf, said, dir, restore };
 }
 
-test('making images is offered on a Mac that can run it, and says what it needs elsewhere', () => {
+test('image generation is offered on a Mac that can run it, at a size its memory suits, and says what it needs elsewhere', () => {
   const { im, restore } = loadImageMaking();
   try {
     assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 16 }), { eligible: true, needs: null });
-    assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 8 }), { eligible: false, needs: 'Making images needs a Mac with Apple silicon and 16 GB of memory or more. This Mac has 8 GB.' });
+    assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 8 }), { eligible: true, needs: null }, 'an 8 GB Mac too');
+    assert.deepEqual(im.eligibility({ platform: 'darwin', arch: 'arm64', memoryGb: 4 }), { eligible: false, needs: 'Image generation needs a Mac with Apple silicon and 8 GB of memory or more. This Mac has 4 GB.' });
+    assert.deepEqual([im.sizeFor('square', 8), im.sizeFor('landscape', 8), im.sizeFor('square', 16), im.sizeFor('portrait', 32)], [[512, 512], [512, 384], [1024, 1024], [768, 1024]], 'half size under 16 GB');
     assert.equal(im.eligibility({ platform: 'linux', arch: 'x64', memoryGb: 64 }).eligible, false, 'a server with no Apple graphics');
     assert.equal(im.eligibility({ platform: 'darwin', arch: 'x64', memoryGb: 32 }).eligible, false, 'an Intel Mac');
     const all = im.PARTS.flatMap((p) => p.files);
@@ -140,7 +142,7 @@ test('making images is offered on a Mac that can run it, and says what it needs 
 test('turned on, it downloads in the background with how far it has got, then says once in chat that it is ready', async () => {
   const { im, conf, said, dir, restore } = loadImageMaking();
   try {
-    const bin = path.join(dir, 'image-making', im.PARTS[0].repo, 'bin');
+    const bin = path.join(dir, 'image-generation', im.PARTS[0].repo, 'bin');
     fs.mkdirSync(bin, { recursive: true });
     fs.writeFileSync(path.join(bin, 'sd-cli'), '');
     await im.boot();
@@ -150,19 +152,19 @@ test('turned on, it downloads in the background with how far it has got, then sa
     const status = conf.LOCAL_MODELS_STATUS.images;
     assert.deepEqual([status.state, status.pct, status.wanted], ['ready', 100, true]);
     assert.equal(im.ready(), true);
-    assert.deepEqual(said, ["I can make images now, right here on this computer, with nothing sent anywhere. Describe one and I'll make it."]);
+    assert.deepEqual(said, ["Image generation is ready. I generate images right here on this computer, with nothing sent anywhere: describe one and I'll make it."]);
   } finally { restore(); }
 });
 
-test('a picture is made by the program on this computer from the pinned model files, one at a time', async () => {
+test('an image is generated by the program on this computer from the pinned model files, one at a time', async () => {
   const { im, dir, restore } = loadImageMaking();
   try {
-    const bin = path.join(dir, 'image-making', im.PARTS[0].repo, 'bin');
+    const bin = path.join(dir, 'image-generation', im.PARTS[0].repo, 'bin');
     fs.mkdirSync(bin, { recursive: true });
     const log = path.join(dir, 'args.txt');
     fs.writeFileSync(path.join(bin, 'sd-cli'), `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(log)}\nwhile [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then printf 'PNGDATA' > "$2"; fi; shift; done\n`, { mode: 0o755 });
     await im.turnOn();
-    const png = await im.make('A red kettle on a windowsill', { width: 1000, height: 700, seed: 7 });
+    const png = await im.generate('A red kettle on a windowsill', { width: 1000, height: 700, seed: 7 });
     assert.equal(png.toString(), 'PNGDATA');
     const args = fs.readFileSync(log, 'utf8').trim().split('\n');
     const after = (flag) => args[args.indexOf(flag) + 1];
@@ -175,7 +177,7 @@ test('a picture is made by the program on this computer from the pinned model fi
   } finally { restore(); }
 });
 
-test('the switch refuses a computer that cannot make images, saying why', async () => {
+test('the switch refuses a computer that cannot generate images, saying why', async () => {
   const { im, restore } = loadImageMaking({ platform: 'linux', arch: 'x64', memoryGb: 64 });
   try {
     let handler;
@@ -183,19 +185,19 @@ test('the switch refuses a computer that cannot make images, saying why', async 
     let code = 200, body;
     await handler({ get: () => 't', body: { on: true } }, { status: (c) => { code = c; return { json: (b) => { body = b; } }; }, json: (b) => { body = b; } });
     assert.equal(code, 409);
-    assert.match(body.error, /^Making images needs a Mac with Apple silicon/);
+    assert.match(body.error, /^Image generation needs a Mac with Apple silicon/);
   } finally { restore(); }
 });
 
 test('the tool is offered only once the model is ready, sends the picture to the chat, and Settings shows each state', () => {
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-  assert.match(read('lib/engine.js'), /if \(g === "images" && !require\("\.\/image-making"\)\.ready\(\)\) return false;/);
-  const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'make_image');
+  assert.match(read('lib/engine.js'), /if \(g === "images" && !require\("\.\/image-generation"\)\.ready\(\)\) return false;/);
+  const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'generate_image');
   assert.deepEqual(def.groups, ['images']);
   assert.ok(!def.core, 'listed, not carried in full on every message');
-  assert.match(read('lib/tools/handlers.js'), /const png = await require\("\.\.\/image-making"\)\.make\(toolInput\.prompt, \{ width, height \}\);\n\s*await sendDocument\(chatId, png, "image\.png", "image\/png"\);/);
+  assert.match(read('lib/tools/handlers.js'), /const png = await require\("\.\.\/image-generation"\)\.generate\(toolInput\.prompt, \{ shape: toolInput\.shape \}\);\n\s*await sendDocument\(chatId, png, "image\.png", "image\/png"\);/);
   const dash = read('webapp/views/dashboard.html');
-  assert.match(dash, /<h2>Making images<\/h2>/);
+  assert.match(dash, /<h2>Image generation<\/h2>/);
   assert.match(dash, /if \(!im\.eligible\) \{\n\s*body\.innerHTML = '<p>' \+ escHtml\(im\.needs \|\| ''\) \+ '<\/p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" disabled>Turn on<\/button><\/div>';/, 'greyed out, saying what it needs');
   assert.match(dash, /Turn off and remove the download\? You can turn it on again later\./, 'asks before removing');
   assert.match(read('webapp/server.js'), /app\.post\("\/api\/images", async \(req, res\) => \{/);

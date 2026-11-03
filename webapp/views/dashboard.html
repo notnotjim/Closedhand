@@ -2712,14 +2712,14 @@
             </div>
           </div>
 
-          <!-- Making images: on the computer running Closedhand, with nothing
-               sent anywhere (lib/image-making.js). Greyed out, saying what it
+          <!-- Image generation: on the computer running Closedhand, with nothing
+               sent anywhere (lib/image-generation.js). Greyed out, saying what it
                needs, where the computer can't; turned on, it downloads in the
                background on the same thin line as Getting to know you. -->
           <div class="settings-group" id="images-group">
             <div class="settings-group-header">
-              <h2>Making images</h2>
-              <p class="section-desc">Closedhand makes pictures on this computer, with nothing sent anywhere</p>
+              <h2>Image generation</h2>
+              <p class="section-desc">Closedhand generates images on this computer, with nothing sent anywhere</p>
             </div>
             <div class="images-body" id="images-body"></div>
           </div>
@@ -10253,7 +10253,7 @@
   .images-body.unavailable button { opacity:0.45; cursor:not-allowed; }
 </style>
 <script>
-  // Settings' "Making images", from the image entry of the local models'
+  // Settings' "Image generation", from the image entry of the local models'
   // status (/api/setup/status), refreshed while it downloads.
   (function () {
     var body = document.getElementById('images-body');
@@ -10272,7 +10272,7 @@
           + '<div class="images-ways" id="images-off-ways"><button type="button" class="conn-btn conn-btn-disconnect" onclick="imagesAskOff()">Turn off</button></div>';
       } else if (im.state === 'downloading') {
         var p = Math.max(1, im.pct || 0);
-        body.innerHTML = '<p>Downloading, ' + p + '%. You can keep using Closedhand, and it will say in chat when it can make images.</p>'
+        body.innerHTML = '<p>Downloading, ' + p + '%. You can keep using Closedhand, and it will say in chat when image generation is ready.</p>'
           + '<span class="know-track"><span class="know-fill" style="width:' + p + '%"></span></span>';
       } else if (im.state === 'error') {
         body.innerHTML = '<p>The download stopped before it finished. It carries on from where it got to.</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" onclick="imagesSwitch(true, this)">Try again</button></div>';

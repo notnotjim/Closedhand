@@ -178,6 +178,9 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   setup until it is claimed. The only way past without one is closedhand.com being unable to
   give one out right now, so an outage never locks anyone out of their own Closedhand.
 - It's chat-based. Don't call anything "voice control".
+- A feature goes by the name people already know it by (image generation, speech to text, web
+  search), never a homemade paraphrase of it ("making images"): a new name makes people wonder
+  whether it is something else.
 - Key positioning phrase: "recalls by meaning, not just keywords" (Context Brain / File
   Search copy). Reuse it, don't invent variants. The "just" is load-bearing: retrieval
   has been hybrid since August 2026, meaning and exact words fused, so the old phrasing
