@@ -493,14 +493,10 @@ async function embedSingle(text) {
 
 // --- Folder scanning ---
 
-// Listing is cheap, indexing is not. Scan wide, then order by recency so the
-// indexing budget is spent on the files most likely to be searched for;
-// anything cut is the oldest, which is a defensible thing to lose.
-function byRecency(files, origin, max) {
+// Every file is listed and read, the newest first, so what is most likely
+// to be searched for is found soonest.
+function byRecency(files) {
   files.sort((a, b) => new Date(b.modified || 0) - new Date(a.modified || 0));
-  if (files.length >= max) {
-    console.log(`[RAG] ${origin} scan hit the ${max}-file listing cap. Raise RAG_MAX_FILES to scan more.`);
-  }
 }
 
 async function scanFolder(userId, origin, folderPath, opts = {}) {
@@ -548,8 +544,6 @@ async function scanFolder(userId, origin, folderPath, opts = {}) {
     // folder: a single-level scan meant "index my Drive" indexed only the
     // files sitting loose in the root and silently ignored every subfolder.
     // Both modes paginate; the old 200-item single page truncated big folders.
-    const MAX_FILES = parseInt(process.env.RAG_MAX_FILES || "2000", 10);
-    const MAX_DEPTH = 8;
     const listPage = async (parentId, pageToken) => {
       const q = encodeURIComponent("'" + parentId + "' in parents and trashed = false");
       const fields = encodeURIComponent("nextPageToken,files(id,name,mimeType,modifiedTime,size)");
@@ -568,10 +562,11 @@ async function scanFolder(userId, origin, folderPath, opts = {}) {
       mimeType: f.mimeType,
     });
 
-    const out = [];
-    const queue = [{ id: folderPath || "root", depth: 0 }];
+    // Every folder underneath, each once: a folder can have more than one parent.
+    const out = [], seen = new Set([folderPath || "root"]);
+    const queue = [{ id: folderPath || "root" }];
     while (queue.length > 0) {
-      const { id, depth } = queue.shift();
+      const { id } = queue.shift();
       let pageToken = null;
       do {
         const data = await listPage(id, pageToken);
@@ -580,24 +575,20 @@ async function scanFolder(userId, origin, folderPath, opts = {}) {
           if (entry.type === "directory") {
             out.push(entry); // the browser shows folders; indexing lists them by name
             if (!opts.recursive) continue;
-            if (depth < MAX_DEPTH) queue.push({ id: f.id, depth: depth + 1 });
+            if (!seen.has(f.id)) { seen.add(f.id); queue.push({ id: f.id }); }
             continue;
           }
           out.push(entry);
         }
         pageToken = data.nextPageToken;
-        if (out.length >= MAX_FILES) break;
       } while (pageToken);
       if (!opts.recursive) break; // browser: this folder only
-      if (out.length >= MAX_FILES) break;
     }
-    if (opts.recursive) byRecency(out, origin, MAX_FILES);
+    if (opts.recursive) byRecency(out);
     return out;
   } else if (origin === "onedrive") {
     // The same two modes as Google Drive, following Microsoft's pages. The
     // browser navigates by path; indexing walks subfolders by their ids.
-    const MAX_FILES = parseInt(process.env.RAG_MAX_FILES || "2000", 10);
-    const MAX_DEPTH = 8;
     const GRAPH = "https://graph.microsoft.com/v1.0/me/drive";
     const select = "?$select=id,name,size,lastModifiedDateTime,file,folder&$top=200";
     const folderP = folderPath || "/";
@@ -612,10 +603,10 @@ async function scanFolder(userId, origin, folderPath, opts = {}) {
       id: f.id,
     });
 
-    const out = [];
-    const queue = [{ url: first, depth: 0 }];
+    const out = [], seen = new Set();
+    const queue = [{ url: first }];
     while (queue.length > 0) {
-      const { url, depth } = queue.shift();
+      const { url } = queue.shift();
       let next = url;
       do {
         const resp = await fetchWithRefresh(userId, msKey, next);
@@ -626,36 +617,40 @@ async function scanFolder(userId, origin, folderPath, opts = {}) {
           if (entry.type === "directory") {
             out.push(entry);
             if (!opts.recursive) continue;
-            if (depth < MAX_DEPTH) queue.push({ url: GRAPH + "/items/" + encodeURIComponent(f.id) + "/children" + select, depth: depth + 1 });
+            if (!seen.has(f.id)) { seen.add(f.id); queue.push({ url: GRAPH + "/items/" + encodeURIComponent(f.id) + "/children" + select }); }
             continue;
           }
           out.push(entry);
         }
         next = data["@odata.nextLink"];
-        if (out.length >= MAX_FILES) break;
       } while (next);
       if (!opts.recursive) break;
-      if (out.length >= MAX_FILES) break;
     }
-    if (opts.recursive) byRecency(out, origin, MAX_FILES);
+    if (opts.recursive) byRecency(out);
     return out;
   } else if (origin === "dropbox") {
     const dropboxPath = folderPath || "";
     const token = await getServiceToken(userId, "dropbox");
-    const resp = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
+    // Every page, and for indexing every folder underneath, as Drive's.
+    const call = (route, body) => fetch("https://api.dropboxapi.com/2/files/" + route, {
       method: "POST",
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-      body: JSON.stringify({ path: dropboxPath, limit: 200 }),
+      body: JSON.stringify(body),
     });
-    if (!resp.ok) throw new Error("Dropbox API error: " + resp.status);
-    const data = await resp.json();
-    return (data.entries || []).map(f => ({
-      name: f.name,
-      type: f[".tag"] === "folder" ? "directory" : "file",
-      size: f.size || 0,
-      modified: f.server_modified || null,
-      id: f.id,
-    }));
+    const out = [];
+    let resp = await call("list_folder", { path: dropboxPath, recursive: !!opts.recursive, limit: 2000 });
+    for (;;) {
+      if (!resp.ok) throw new Error("Dropbox API error: " + resp.status);
+      const data = await resp.json();
+      for (const f of data.entries || []) {
+        if (f[".tag"] === "deleted" || (opts.recursive && f.path_lower === dropboxPath.toLowerCase())) continue;
+        out.push({ name: f.name, type: f[".tag"] === "folder" ? "directory" : "file", size: f.size || 0, modified: f.server_modified || null, id: f.id, path: f.path_display });
+      }
+      if (!data.has_more) break;
+      resp = await call("list_folder/continue", { cursor: data.cursor });
+    }
+    if (opts.recursive) byRecency(out);
+    return out;
   }
   throw new Error("Unknown origin: " + origin);
 }
@@ -972,7 +967,7 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
     // Where each file is, as the index records it.
     const pathOf = (file) => {
       if (origin === "gdrive" || origin === "onedrive") return file.id; // Drive and OneDrive item ids
-      if (origin === "dropbox") return (folderPath === "" ? "" : folderPath) + "/" + file.name; // Full Dropbox path
+      if (origin === "dropbox") return file.path || (folderPath === "" ? "" : folderPath) + "/" + file.name; // Full Dropbox path
       return folderPath.replace(/\/$/, "") + "/" + file.name;
     };
     const typeOf = (file) => (origin === "gdrive" && file.mimeType && GOOGLE_DOC_TYPES.includes(file.mimeType))
@@ -1036,13 +1031,6 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
     const processedPaths = new Set();
 
     // 5. Process each supported file
-    // Indexing budget, counted in CHUNKS because that is the unit that costs
-    // time and money (one embedding each). A file count would be meaningless: a
-    // folder of photos and a folder of long PDFs differ ~50x in cost for the
-    // same number of files. Files are processed newest-first, so if the budget
-    // runs out the oldest wait, still pending, for the next scan.
-    const CHUNK_BUDGET = parseInt(process.env.RAG_CHUNK_BUDGET || "12000", 10);
-    let skippedForBudget = 0;
     let processed = 0;
     const retryQueue = [];
 
@@ -1151,7 +1139,6 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       while (true) {
         const i = fileCursor++;
         if (i >= items.length) return;
-        if (totalChunks >= CHUNK_BUDGET) { skippedForBudget++; continue; }
         try {
           await indexOne(items[i]);
         } catch (e) {
@@ -1165,7 +1152,6 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
 
     // Second pass over transient failures
     for (const item of retryQueue) {
-      if (totalChunks >= CHUNK_BUDGET) break;
       try {
         console.log(`[RAG] Retrying ${item.file.name}`);
         const buf = await fetchFileContent(userId, origin, item.filePath, account);
@@ -1200,13 +1186,9 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
     const { count: failedCount } = await supabase.from("rag_documents")
       .select("id", { count: "exact", head: true }).eq("source_id", sourceId).eq("status", "error");
 
-    // Never truncate silently: whether the budget stopped us or individual
-    // files failed to parse, say so where the user can see it rather than
-    // letting a partial index look complete.
+    // Files that failed to read are said where the person can see them, so a
+    // partial index never looks complete.
     const notes = [];
-    if (skippedForBudget > 0) {
-      notes.push(`Indexing budget reached (${totalChunks} chunks). ${skippedForBudget} older file(s) not indexed.`);
-    }
     if (failedCount > 0) {
       notes.push(`${failedCount} file${failedCount === 1 ? "" : "s"} couldn't be read, so File Search can't find ${failedCount === 1 ? "it" : "them"} yet.`);
     }
@@ -1220,7 +1202,7 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       updated_at: new Date().toISOString(),
     }).eq("id", sourceId);
 
-    console.log(`[RAG] Source ${sourceId}: ready (${fileCount} files, ${totalChunks} chunks${failedCount ? `, ${failedCount} failed` : ""}${skippedForBudget ? `, ${skippedForBudget} skipped for budget` : ""})`);
+    console.log(`[RAG] Source ${sourceId}: ready (${fileCount} files, ${totalChunks} chunks${failedCount ? `, ${failedCount} failed` : ""})`);
   } catch (e) {
     console.error(`[RAG] processSource failed for ${sourceId}:`, e.message);
     await supabase.from("rag_sources").update({

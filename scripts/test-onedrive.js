@@ -37,5 +37,16 @@ test('File Search walks every OneDrive subfolder and page, like Google Drive',()
  assert.match(branch,/data\["@odata\.nextLink"\]/);
  assert.match(branch,/"\/items\/" \+ encodeURIComponent\(f\.id\) \+ "\/children"/);
  assert.match(branch,/split\("\/"\)\.map\(encodeURIComponent\)/);
- assert.match(branch,/if \(opts\.recursive\) byRecency\(out, origin, MAX_FILES\)/);
+ assert.match(branch,/if \(opts\.recursive\) byRecency\(out\)/);
+});
+
+test('File Search reads every file it lists, of every folder underneath, with no count to stop at', () => {
+ const src = read('webapp/rag-processor.js');
+ assert.doesNotMatch(src, /MAX_FILES|MAX_DEPTH|CHUNK_BUDGET|skippedForBudget/);
+ const drive = src.slice(src.indexOf('} else if (origin === "gdrive") {'), src.indexOf('} else if (origin === "onedrive") {'));
+ assert.match(drive, /if \(!seen\.has\(f\.id\)\) \{ seen\.add\(f\.id\); queue\.push\(\{ id: f\.id \}\); \}/, 'each folder once');
+ const dropbox = src.slice(src.indexOf('} else if (origin === "dropbox") {'), src.indexOf('throw new Error("Unknown origin: "'));
+ assert.match(dropbox, /call\("list_folder", \{ path: dropboxPath, recursive: !!opts\.recursive, limit: 2000 \}\)/, 'Dropbox walks its folders');
+ assert.match(dropbox, /resp = await call\("list_folder\/continue", \{ cursor: data\.cursor \}\);/, 'and every page');
+ assert.match(src, /if \(origin === "dropbox"\) return file\.path \|\|/, 'a file underneath kept by its own path');
 });

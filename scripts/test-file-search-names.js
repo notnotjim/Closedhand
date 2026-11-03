@@ -192,7 +192,7 @@ test("a source's note about files it couldn't read names the Update button and s
   assert.doesNotMatch(rag + page, /Re-index to retry/);
   assert.match(rag, /couldn't be read, so File Search can't find/);
   assert.match(rag, /error_message: "Reading it was cut off\. Update reads it again\." \}/);
-  const sources = page.slice(page.indexOf("Completion notes (budget reached"), page.indexOf("rag-source-actions"));
+  const sources = page.slice(page.indexOf("Completion notes (files that failed to read)"), page.indexOf("rag-source-actions"));
   assert.doesNotMatch(sources, /accent-rgb/);
 });
 

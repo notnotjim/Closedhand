@@ -5558,7 +5558,7 @@ async function ragLoadSources() {
           s.origin === 'dropbox' ? 'Dropbox' + (s.path === '' ? '' : s.path) :
           s.path) + '</div>'
         + '<div class="rag-source-meta">' + stats + '</div>'
-        // Completion notes (budget reached, files that failed to parse) surface
+        // Completion notes (files that failed to read) surface
         // here rather than leaving a partial index looking complete
         + (s.status !== 'indexing' && s.error_message
             ? '<div class="rag-source-meta">' + escapeHtml(s.error_message) + '</div>'
