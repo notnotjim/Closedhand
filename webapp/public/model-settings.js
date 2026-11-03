@@ -10,7 +10,7 @@
   var tips = {
     "Primary model": "Handles your conversations, reasoning and tasks.",
     "Support model": "Does routine work like naming conversations and writing summaries.",
-    "Image and video model": "Understands photos, screenshots and videos you send.",
+    "Image and video model": "Understands photos, screenshots and videos you send in chat.",
     "Recall": "Recalls by meaning, not just keywords, across your files, past chats and everything you connect.",
     "Search ranking": "Puts the closest matches first. Stays the same when you change your primary model."
   };
@@ -42,8 +42,8 @@
       '<label data-region="background-key">API key<input data-field="backgroundKey" type="password" autocomplete="off" spellcheck="false"></label></div>' +
       '<button type="button" data-action="load-background" hidden>Retry loading support models</button>' +
       '<label>Model<select data-picker="backgroundModel"></select></label><label data-manual="backgroundModel" hidden>Model ID<input data-field="backgroundModel" spellcheck="false" placeholder="Enter the provider\'s exact model ID"></label></div>' +
-      '</section><section class="model-role model-fields"><header><h3>Image and video model</h3><p class="model-hint">Understands photos, screenshots and videos you send.</p></header>' +
-      '<label>Model choice<select data-field="visionMode"><option value="same">Use the primary model</option><option value="separate">Choose another image and video model</option><option value="off">Continue without image understanding</option></select></label>' +
+      '</section><section class="model-role model-fields"><header><h3>Image and video model</h3><p class="model-hint">Understands photos, screenshots and videos you send in chat.</p></header>' +
+      '<label>Model choice<select data-field="visionMode"><option value="same">Use the primary model</option><option value="separate">Choose another image and video model</option><option value="off">Use the vision language model on this computer</option></select></label>' +
       '<div data-region="vision" class="model-fields" hidden><label>Provider<select data-field="visionProvider"><option value="">Use the same provider</option>' + options.replace('<option value="">Choose a provider</option>', '') + '</select></label>' +
       '<div data-region="vision-connection" class="model-fields" hidden><label data-region="vision-address" hidden>Service URL<input type="url" data-field="visionBaseUrl" spellcheck="false"></label>' +
       '<label data-region="vision-key">API key<input data-field="visionKey" type="password" autocomplete="off" spellcheck="false"></label></div>' +
@@ -442,7 +442,7 @@
       // A separately chosen image model is named, so its failure isn't read as the primary model's.
       var visionId = chosen("visionModel"), visionProv = value("visionProvider") || chatProvider;
       if (kind === "failed" && check.visionNeeded) row("Images", (mode === "separate" && visionId && !looksLikeKey(visionId) ? modelName({ id: visionId }, visionProv) + " via " + (providers[visionProv] || visionProv) + ": " : "") + check.error, "fail");
-      else if (mode === "off" || ((kind === "passed" || kind === "saved") && !vision)) row("Images", "Off");
+      else if (mode === "off" || ((kind === "passed" || kind === "saved") && !vision)) row("Images", "Described by the vision language model on this computer", "ok");
       else if (kind === "passed" || kind === "saved") {
         var same = vision.connection === "primary" && vision.model === chat.model;
         row("Images", same ? "Accepts images" : "Read by " + modelName({ id: vision.model }, cfg.connections[vision.connection].provider) + " via " + providerLabel(cfg.connections[vision.connection]), "ok");
@@ -452,7 +452,7 @@
         if (looksLikeKey(visionId)) row("Images", KEY_AS_MODEL, "fail");
         else row("Images", !visionId ? "Choose an image and video model" : (visionDone ? "Read by " : "") + modelName({ id: visionId }, visionProv) + " via " + (providers[visionProv] || visionProv) + (visionDone ? "" : ", not checked yet"), visionDone ? "ok" : "wait");
       }
-      else row("Images", cap.vision === true ? "Accepts images" : cap.vision === false ? "Text only, choose an image and video model below or turn images off" : "Not checked yet", cap.vision === true ? "ok" : cap.vision === false ? "fail" : "wait");
+      else row("Images", cap.vision === true ? "Accepts images" : cap.vision === false ? "Text only, choose an image and video model below or use the vision language model on this computer" : "Not checked yet", cap.vision === true ? "ok" : cap.vision === false ? "fail" : "wait");
       // How videos are handled follows from what the checked models can do.
       var videoSetup = cfg && (kind === "passed" || kind === "saved") ? cfg
         : kind !== "checking" && !(kind === "failed") && savedChat() && (mode !== "separate" || savedVision()) && mode !== "off" ? saved : null;

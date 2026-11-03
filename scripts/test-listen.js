@@ -91,6 +91,31 @@ test('voice notes are written out on this computer', async () => {
   }
 });
 
+test("a connected speech service writes out voice notes sent in chat, never ones being indexed", async () => {
+  const listenPath = require.resolve('../lib/services/listen');
+  const audioPath = require.resolve('../lib/speech/audio');
+  const connPath = require.resolve('../lib/voice-connections');
+  const real = require(listenPath);
+  require(audioPath);
+  const realAudio = require.cache[audioPath].exports;
+  const realConn = require.cache[connPath];
+  const asked = [];
+  require.cache[listenPath].exports = { ...real, transcribe: async () => ({ language: 'en', lines: [], text: 'heard here' }) };
+  require.cache[audioPath].exports = { ...realAudio, oggOpusSamples: () => new Float32Array(16000) };
+  require.cache[connPath] = { id: connPath, filename: connPath, loaded: true, exports: { hear: async () => { asked.push('service'); return 'heard by the service'; } } };
+  delete require.cache[require.resolve('../lib/voice')];
+  try {
+    const { transcribeAudio } = require('../lib/voice');
+    assert.equal(await transcribeAudio(Buffer.from('OggS....'), { userId: 'u1' }), 'heard by the service');
+    assert.equal(await transcribeAudio(Buffer.from('OggS....'), { userId: 'u1', here: true }), 'heard here');
+    assert.deepEqual(asked, ['service'], 'the service is asked only for the chat');
+  } finally {
+    require.cache[listenPath].exports = real; require.cache[audioPath].exports = realAudio;
+    if (realConn) require.cache[connPath] = realConn; else delete require.cache[connPath];
+    delete require.cache[require.resolve('../lib/voice')];
+  }
+});
+
 test('a voice note or the mic skips line times, which only a video needs, and voice asks for that', async () => {
   const asked = [];
   const worker = fakeWorker((msg) => { asked.push(msg.timestamps); return { type: 'done', language: 'en', lines: [], text: 'back by six' }; });

@@ -63,7 +63,7 @@ test("every connection goes through the one step, at the index's one entry", () 
   assert.match(access, /async function attachmentBytes\(userId, params\) \{/);
   assert.match(access, /const got = await attachmentBytes\(userId, params\);/, "the tool and the index fetch alike");
   const itemFiles = read("lib/item-files.js");
-  assert.match(itemFiles, /const said = await require\("\.\/voice"\)\.transcribeAudio\(input, \{ userId \}\)/);
+  assert.match(itemFiles, /const said = await require\("\.\/voice"\)\.transcribeAudio\(input, \{ userId, here: true \}\)/, "indexing writes voice notes out on this computer");
   assert.match(itemFiles, /return \(await require\("\.\/services\/usi"\)\.extractAttachmentText\(bytes, file\.name, \{ maxChars: Infinity \}\)\) \|\| "";/, "whole");
   // Google and Microsoft hand back a file's bytes whole.
   for (const f of ["lib/services/google.js", "lib/services/microsoft.js"]) {

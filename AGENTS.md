@@ -172,7 +172,9 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   stores links between items (it doesn't), or that no model is involved in indexing (an
   embedding model turns each item, pictures included, into a vector, and a vision language model
   (VLM) on the computer running Closedhand, Florence-2, describes what each picture shows; the
-  person's chosen image model is for chat only, so indexing never sends a picture anywhere). No language model writes into the index or decides what to fetch: each
+  person's chosen image model is for chat only). Indexing happens entirely on the computer
+  running Closedhand, so copy may say nothing leaves it to be indexed; keep it that way: reading,
+  speech to text, picture descriptions and embeddings for the index never go to a provider. No language model writes into the index or decides what to fetch: each
   item is kept in its own words. Keep it that way; a step that has an LLM write into the
   index needs a test showing it finds what the index misses without it.
 - The personal URL is required, and enforced: the home page and dashboard send people back to
