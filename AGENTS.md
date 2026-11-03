@@ -72,10 +72,13 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   and no centred section headings.
 - Buttons come in three tiers. The main action (the brush-underlined `.cta`) appears once per
   screen at most, for the thing the person most likely came to do. Secondary actions are
-  outlined neutral buttons; anything lesser is a text link. A destructive action is red text
+  outlined neutral buttons, but one: the "+ …" button that adds to a list of records
+  (`goals-new`) is outlined and tinted in the accent, the same on every list. Anything lesser is
+  a text link. A destructive action is red text
   in whichever tier it sits and always asks first. No filled buttons, but one: closedhand.com's
   "Download Closedhand for Mac", where everything starts.
-- Each colour means one thing. The accent is Closedhand itself and the one main action. Green
+- Each colour means one thing. The accent is Closedhand itself, the one main action and a list's
+  "+ …" button. Green
   is working or in use ("Connected", "In use"). Yellow is the person's account needing them.
   Everything else is neutral: tags, counts, sources, dates. Charts use colours that are none
   of these, and money is never red.
