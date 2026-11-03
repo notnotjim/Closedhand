@@ -234,6 +234,17 @@ const savedSetup = () => ({ config: { version: 1,
     background: { connection: 'primary', model: 'chat' }, vision: { connection: 'primary', model: 'chat', capabilities: { vision: true } } } }, runtime: 'docker' });
 const panel = (ui) => { const rows = ui.region('check-rows').children.map((n) => n.textContent); return (label) => rows[rows.indexOf(label) + 1]; };
 
+test('a saved key shows by its last four characters, and the field says it is kept until a new one is pasted', async () => {
+  const withEnd = () => { const s = savedSetup(); s.config.connections.primary.keyEnd = '7f3a'; return s; };
+  const ui = await mount((call) => call.path === '' ? withEnd() : call.path === '/models' ? catalog : { config: null });
+  await ui.timers();
+  assert.equal(ui.field('apiKey').placeholder, '••••••••••••7f3a');
+  assert.equal(ui.region('connection-help').textContent, 'Your saved key is kept unless you paste a new one.');
+  ui.type('apiKey', 'new-key'); await ui.timers();
+  assert.equal(ui.region('connection-help').textContent, 'Paste an API key from this provider to load its models.', 'a pasted key replaces it');
+  assert.doesNotMatch(fs.readFileSync(require.resolve('../webapp/public/model-settings.js'), 'utf8'), /leave blank to keep|Paste your key/);
+});
+
 test('while a new image model is chosen, the unchanged primary keeps its checked results', async () => {
   const ui = await mount((call) => call.path === '' ? savedSetup() : call.path === '/models' ? catalog : { config: null });
   await ui.timers();

@@ -218,6 +218,7 @@
           : runtime === "desktop" ? "This URL reaches Ollama on this Mac. Change it if Ollama runs elsewhere."
           : "Enter the URL where Closedhand can reach Ollama. If Closedhand runs on a rented server, it cannot reach your computer through localhost."
         : custom ? "Enter the service URL and an API key if the service requires one."
+        : savedKey("primary", provider, value("baseUrl"), value("apiKey")) ? "Your saved key is kept unless you paste a new one."
         : "Paste an API key from this provider to load its models.";
       region("address").hidden = !["custom", "ollama"].includes(value("provider"));
       region("vision").hidden = value("visionMode") !== "separate";
@@ -229,6 +230,9 @@
       region("background-address").hidden = !["custom", "ollama"].includes(value("backgroundProvider"));
       region("background-key").hidden = value("backgroundProvider") === "ollama";
     }
+    // A saved key shows by its last four characters, as key settings usually
+    // show one; an empty field keeps it.
+    function keyPlaceholder(conn) { return conn?.hasKey ? "••••••••••••" + (conn.keyEnd || "") : "Paste the API key from this provider"; }
     function savedKey(kind, provider, baseUrl, apiKey) {
       var prior = saved?.connections?.[kind];
       return !apiKey && !!prior?.hasKey && prior.provider === provider && (prior.baseUrl || "") === baseUrl;
@@ -477,6 +481,7 @@
       loadTimers[kind] = setTimeout(function () { loadModels(kind); }, 700);
     }
     function connectionInput(kind) {
+      visibility();
       var current = JSON.stringify(input()[kind]);
       // A paste fires input, then change on blur. Do not erase or reload the
       // same connection twice, including while its first request is pending.
@@ -567,13 +572,14 @@
     root.querySelector('[data-action="save"]').onclick = function () { if (!ticket) return; perform(async function () {
       show("Saving models…"); await call("/save", { ticket: ticket });
       field("apiKey").value = ""; field("visionKey").value = ""; field("backgroundKey").value = "";
-      field("backgroundKey").placeholder = "Saved key, leave blank to keep it";
-      field("visionKey").placeholder = "Saved key, leave blank to keep it"; invalidate(); clearTimeout(checkTimer); checks++;
+      invalidate(); clearTimeout(checkTimer); checks++;
       var updated = await call(""); saved = updated.config; renderCurrent(updated);
+      field("backgroundKey").placeholder = keyPlaceholder(saved.connections.background);
+      field("visionKey").placeholder = keyPlaceholder(saved.connections.vision);
       field("baseUrl").value = saved.connections.primary.baseUrl || "";
       field("visionBaseUrl").value = saved.connections.vision?.baseUrl || "";
       field("backgroundBaseUrl").value = saved.connections.background?.baseUrl || "";
-      field("apiKey").placeholder = saved.connections.primary.hasKey ? "Saved key, leave blank to keep it" : "Paste the API key from this provider";
+      field("apiKey").placeholder = keyPlaceholder(saved.connections.primary);
       region("editor").querySelector("summary").hidden = false;
       check = { kind: "saved", config: saved }; renderCheck();
       region("default").hidden = !allowDefault;
@@ -605,7 +611,7 @@
       if (!saved) { refreshPickers(); visibility(); if (data.allowDefault) show("Closedhand's hosted models are active. You can connect your own models here."); return; }
       var primary = saved.connections.primary;
       field("provider").value = primary.provider; field("baseUrl").value = primary.baseUrl;
-      field("apiKey").placeholder = primary.hasKey ? "Saved key, leave blank to keep it" : "Paste your key";
+      field("apiKey").placeholder = keyPlaceholder(primary);
       region("selection").hidden = false;
       field("model").value = saved.roles.chat.model;
       field("backgroundModel").value = saved.roles.background?.model || "";
@@ -616,7 +622,7 @@
         if (background.connection === "background") {
           field("backgroundProvider").value = saved.connections.background.provider;
           field("backgroundBaseUrl").value = saved.connections.background.baseUrl;
-          field("backgroundKey").placeholder = "Saved key, leave blank to keep it";
+          field("backgroundKey").placeholder = keyPlaceholder(saved.connections.background);
         }
       }
       var vision = saved.roles.vision;
@@ -626,7 +632,7 @@
         if (vision.connection === "vision") {
           field("visionProvider").value = saved.connections.vision.provider;
           field("visionBaseUrl").value = saved.connections.vision.baseUrl;
-          field("visionKey").placeholder = "Saved key, leave blank to keep it";
+          field("visionKey").placeholder = keyPlaceholder(saved.connections.vision);
         }
       }
       refreshPickers(); visibility(); check = { kind: "saved", config: saved }; renderCheck();

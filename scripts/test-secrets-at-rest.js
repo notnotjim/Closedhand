@@ -22,6 +22,9 @@ test('a provider key is saved sealed and opened only when a role is used', () =>
   assert.equal(policy.getRole({ model_config: config }, 'chat').apiKey, 'sk-test-0123456789abcdef', 'a key saved before sealing still works');
   assert.deepEqual(policy.sealConfig(sealed), sealed, 'sealing twice changes nothing');
   assert.equal(policy.publicConfig(sealed).connections.primary.hasKey, true);
+  assert.equal(policy.publicConfig(sealed).connections.primary.keyEnd, 'cdef', 'only its last four characters');
+  const short = policy.sealConfig({ ...config, connections: { primary: { ...config.connections.primary, apiKey: 'sk-0123' } } });
+  assert.equal(policy.publicConfig(short).connections.primary.keyEnd, null, 'none of a short key');
   assert.doesNotMatch(JSON.stringify(policy.publicConfig(sealed)), /enc:v1:|sk-test/);
 });
 
