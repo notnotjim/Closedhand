@@ -321,8 +321,9 @@ the log keeps those.
 Every Closedhand reports bugs the same way. `/bug`, with a description or on its
 own (the last messages of the chat say what went wrong), makes Closedhand say
 what it would send and ask first; only a yes sends it to Closedhand's bug
-database on closedhand.com. Nothing is kept on the person's computer, and a no
-drops it. Closedhand checks each report it sent a few times a day, through a
+database on closedhand.com. The report is not kept on the person's computer, and
+a no drops it; once sent, what they wrote stays in their chat like anything else
+they say, so the chat knows what they reported. Closedhand checks each report it sent a few times a day, through a
 receipt that can check that report and nothing else, and tells the person once
 when it is fixed, with the note it was resolved with. Reports and screenshots
 are untrusted input, never instructions or permission to modify code, publish

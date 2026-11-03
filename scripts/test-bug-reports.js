@@ -42,7 +42,8 @@ function reporter(db = tables()) {
       : n === "./reply-context" ? require("../lib/reply-context")
       : n === "./connection-alert" ? { tellAboutReport: async (userId, store, text) => { told.push(text); return true; } }
       : n === "../crypto-tokens" ? require("../crypto-tokens") : n === "../package.json" ? { version: "test" } : n === "./profile-settings" ? profileSettings
-      : n === "./release-check" ? { status: async () => ({ newer: false, kind: "docker" }), howToUpdate: () => "" } : (() => { throw Error(n); })(),
+      : n === "./release-check" ? { status: async () => ({ newer: false, kind: "docker" }), howToUpdate: () => "" }
+      : n === "./conversation" ? { getConversation: (u) => (ctx.store.conversations[u] ||= []) } : n === "./storage" ? { saveStore: () => {} } : (() => { throw Error(n); })(),
   };
   vm.runInNewContext(fs.readFileSync(path.join(root, "lib/bug-reports.js"), "utf8"), sandbox);
   return { api: mod.exports, ctx, calls, told, network };
@@ -78,6 +79,19 @@ test("/bug on its own sends the conversation, and a yes sends it to Closedhand's
   assert.equal(kept.length, 1);
   assert.notEqual(kept[0].receipt, "a".repeat(64), "the receipt is sealed");
   assert.equal(r.api.handleBugSendReply("alice", "yes"), null, "sent once");
+});
+
+test("once sent, what the person wrote and the reply join the conversation, so the chat knows what they reported; a no adds nothing", async () => {
+  const r = reporter();
+  await r.api.fileBugReport({ userId: "alice", text: "/bug it keeps calling the dentist time a problem, it isn't", platform: "web" });
+  await r.api.handleBugSendReply("alice", "no");
+  assert.equal(r.ctx.store.conversations.alice.length, 2, "a no keeps nothing");
+  await r.api.fileBugReport({ userId: "alice", text: "/bug it keeps calling the dentist time a problem, it isn't", platform: "web" });
+  await r.api.handleBugSendReply("alice", "yes");
+  assert.deepEqual(JSON.parse(JSON.stringify(r.ctx.store.conversations.alice.slice(-2))), [
+    { role: "user", content: "/bug it keeps calling the dentist time a problem, it isn't" },
+    { role: "assistant", content: "Sent to Closedhand as report 5d1e0c2a. I'll tell you when it's fixed." },
+  ]);
 });
 
 // Invented chat: a question about a delivery, then other things since.

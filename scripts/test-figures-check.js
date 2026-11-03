@@ -43,6 +43,8 @@ test('only the sentence proved wrong is replaced', async () => {
 test('it runs only on answers that compare figures, before the answer is sent', () => {
   assert.equal(fc.worthChecking(wrong), true);
   assert.equal(fc.worthChecking('Your flight leaves at 11:55.'), false);
+  assert.equal(fc.worthChecking('Added: Mon 9 Nov, 11:00 (to 16:00); Tue 10 Nov, 13:00; Wed 11 Nov, 10:30. Your calendar shows UTC+8, so it reads behind Seoul.'), false, 'times, dates and zones say when, not how much');
+  assert.equal(fc.worthChecking('On 3 Nov you spent £40 and £25, more than the £60 in October.'), true, 'a sum on a date is still checked');
   const engine = fs.readFileSync(path.join(__dirname, '..', 'lib', 'engine.js'), 'utf8');
   const at = engine.indexOf('figures.worthChecking(finalText)');
   assert.ok(at > 0 && at < engine.indexOf('finalText = require("./follow-on").withBreaks(finalText);'));
