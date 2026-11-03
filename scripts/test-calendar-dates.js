@@ -70,3 +70,30 @@ test("an event time without an offset is where the user is, never the calendar's
   assert.equal((handlers.match(/outlookEventFields\(toolInput\)/g) || []).length, 2);
   assert.doesNotMatch(handlers, /new Date\(toolInput\.(start|end)\)\.toISOString\(\)/, "no event time read by the server's clock");
 });
+
+test("the calendar search finds the dates asked about however many events are saved, an event with no start kept included", async () => {
+  const vm = require("node:vm");
+  const src = read("lib/services/data-sync.js");
+  const at = src.indexOf("async function queryCacheCalendar");
+  const fnSrc = src.slice(at, src.indexOf("\n}\n", at) + 2);
+  // 1,200 saved events, one a day from January 2023, and an Outlook all-day
+  // one with no start kept (received_at null) inside the dates asked about.
+  const day = (n) => new Date(Date.parse("2023-01-01T09:00:00Z") + n * 86400000).toISOString();
+  const rows = Array.from({ length: 1200 }, (_, n) => ({ source: "gcal", synced_at: new Date().toISOString(), received_at: day(n), data: { summary: "Event " + n, start: day(n), end: day(n) } }));
+  rows.push({ source: "outlook_cal", synced_at: new Date().toISOString(), received_at: null, data: { summary: "Team day", start: "2026-04-14", end: "2026-04-15", date: "" } });
+  // Stands in for the database, applying the query as Postgres would.
+  const supabase = { from: () => { let list = rows; const q = {
+    select: () => q, eq: () => q,
+    or: (dsl) => { const lte = dsl.match(/received_at\.lte\.([^,]+)/)[1]; list = list.filter((r) => r.received_at === null ? /received_at\.is\.null/.test(dsl) : r.received_at <= lte); return q; },
+    order: (col, { ascending, nullsFirst }) => { list = [...list].sort((a, b) => (nullsFirst ? -1 : 1) * ((a[col] === null) - (b[col] === null)) || (ascending ? 1 : -1) * String(a[col]).localeCompare(String(b[col]))); return q; },
+    limit: async (n) => ({ data: list.slice(0, n), error: null }),
+  }; return q; } };
+  const box = { supabase, console: { log() {}, error() {} }, Date, isNaN, String, require: (n) => n === "../calendar-dates" ? dates : (() => { throw Error(n); })(), CALENDAR_COPY_FRESH_MS: 60000 };
+  vm.runInNewContext(fnSrc + "\nthis.f = queryCacheCalendar;", box);
+  // Event 1199 starts 2026-04-14; read oldest first with a cap of 1,000 it was never seen.
+  const got = await box.f("u", "2026-04-13T00:00:00Z", "2026-04-16T00:00:00Z");
+  assert.ok(got.events.some((e) => e.summary === "Event 1199"), "the newest event, past the first 1,000");
+  assert.ok(got.events.some((e) => e.summary === "Team day"), "an event with no start kept is still read");
+  const starts = got.events.filter((e) => e.summary.startsWith("Event")).map((e) => e.start);
+  assert.deepEqual(starts, [...starts].sort(), "oldest first, as before");
+});
