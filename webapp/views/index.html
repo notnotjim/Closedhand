@@ -5849,7 +5849,7 @@ function ragPassage(text, words) {
 // The file-type drawing for a row with no picture to show.
 function ragTypeIcon(idx) {
   var r = (_ragSearchResults || []).find(function (x) { return x._origIdx === idx; }) || {};
-  return window.monIcon(r.document_name || '', r.file_type === 'folder', 36);
+  return window.monIcon(r.document_name || '', r.file_type === 'folder', 36, r.mime);
 }
 
 function ragShowMore() {
@@ -6094,22 +6094,27 @@ function jsq(s) {
   var _monSplit = parseFloat(localStorage.getItem('mon-split') || '65');
   var _syncedPaths = new Set();
 
-  // File type icons
-  function monIcon(name, isDir, size) {
+  // File type icons. A Google Doc, Sheet or Slides is told by its kind (mime),
+  // having no extension.
+  var GOOGLE_KINDS = { 'application/vnd.google-apps.document': 'DOC', 'application/vnd.google-apps.spreadsheet': 'SHEET', 'application/vnd.google-apps.presentation': 'SLIDES' };
+  function monIcon(name, isDir, size, mime) {
     var s = size || 48;
     if (isDir) return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 56 56"><path d="M6 14h18l4-6h22a4 4 0 014 4v32a4 4 0 01-4 4H6a4 4 0 01-4-4V18a4 4 0 014-4z" fill="var(--slate)" opacity="0.9"/><path d="M4 20h48v24a4 4 0 01-4 4H8a4 4 0 01-4-4V20z" fill="var(--slate)"/></svg>';
     var ext = (name||'').split('.').pop().toLowerCase();
     // One neutral for every kind, told apart by its label: the accent is
     // Closedhand's own colour, not a file type's.
-    var c = 'var(--slate)', t = '';
-    if (ext==='pdf') t='PDF';
-    else if (['html','htm'].includes(ext)) t='</\>';
-    else if (ext==='md') t='MD';
-    else if (['js','ts','py','rb','go','rs','c','cpp','java','css','sh','jsx','tsx'].includes(ext)) t='{ }';
-    else if (['csv','xls','xlsx'].includes(ext)) t='CSV';
-    else if (['zip','tar','gz','7z','rar'].includes(ext)) t='ZIP';
-    else if (['doc','docx','txt','rtf'].includes(ext)) t='DOC';
-    return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 56 56"><path d="M12 4h22l12 12v32a4 4 0 01-4 4H12a4 4 0 01-4-4V8a4 4 0 014-4z" fill="'+c+'" opacity="0.85"/><path d="M34 4v8a4 4 0 004 4h8" fill="'+c+'" opacity="0.65"/>'+(t?'<text x="28" y="36" text-anchor="middle" fill="white" font-size="11" font-weight="600" font-family="system-ui">'+t+'</text>':'')+'</svg>';
+    var c = 'var(--slate)', t = GOOGLE_KINDS[mime] || extLabel(ext);
+    return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 56 56"><path d="M12 4h22l12 12v32a4 4 0 01-4 4H12a4 4 0 01-4-4V8a4 4 0 014-4z" fill="'+c+'" opacity="0.85"/><path d="M34 4v8a4 4 0 004 4h8" fill="'+c+'" opacity="0.65"/>'+(t?'<text x="28" y="36" text-anchor="middle" fill="white" font-size="'+(t.length>4?8.5:11)+'" font-weight="600" font-family="system-ui">'+t+'</text>':'')+'</svg>';
+  }
+  function extLabel(ext) {
+    if (ext==='pdf') return 'PDF';
+    if (['html','htm'].includes(ext)) return '</\>';
+    if (ext==='md') return 'MD';
+    if (['js','ts','py','rb','go','rs','c','cpp','java','css','sh','jsx','tsx'].includes(ext)) return '{ }';
+    if (['csv','xls','xlsx'].includes(ext)) return 'CSV';
+    if (['zip','tar','gz','7z','rar'].includes(ext)) return 'ZIP';
+    if (['doc','docx','txt','rtf'].includes(ext)) return 'DOC';
+    return '';
   }
   function monImgIcon(name, fullPath, size, side) {
     var s = size || 48;
@@ -6159,7 +6164,7 @@ function jsq(s) {
     var html='';for(var i=0;i<files.length;i++){var f=files[i],isDir=f.type==='directory',fp=(side==='cloud'?_monCloudPath:_monLocalPath).replace(/\/$/,'')+'/'+f.name;
       var ext=(f.name||'').split('.').pop().toLowerCase();
       var isImg=!isDir&&['jpg','jpeg','png','gif','webp'].includes(ext);
-      var icon=isImg?monImgIcon(f.name,fp,null,side):monIcon(f.name,isDir);
+      var icon=isImg?monImgIcon(f.name,fp,null,side):monIcon(f.name,isDir,null,f.mimeType);
       var isSynced = side==='local'&&_syncedPaths.has(fp);
       html+='<div class="mon-tile'+(isSynced?' mon-synced':'')+'" draggable="true" data-name="'+escapeHtml(String(f.name))+'" data-path="'+escapeHtml(String(fp))+'" ondragstart="monDragStart(event,\''+side+'\',\''+jsq(fp)+'\')"';
       if(isDir){
@@ -6197,7 +6202,7 @@ function jsq(s) {
       html+='>';
       if(isDir)html+='<span class="mon-row-disc" onclick="event.stopPropagation();monUnfurl(this,\''+side+'\',\''+esc+'\')"><svg width="0.625rem" height="0.625rem" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l10 7-10 7z"/></svg></span>';
       else html+='<span style="width:0.875rem;flex-shrink:0"></span>';
-      html+=monIcon(f.name,isDir,20)+'<span class="mon-row-name">'+escapeHtml(f.name);
+      html+=monIcon(f.name,isDir,20,f.mimeType)+'<span class="mon-row-name">'+escapeHtml(f.name);
       if(side==='local'&&_syncingPaths.has(fp))html+='<span class="mon-sync-badge" title="Syncing…"><span class="mon-spin" style="width:0.75rem;height:0.75rem;border-width:1.5px;"></span></span>';
       else if(side==='local'&&_syncedPaths.has(fp))html+='<span class="mon-sync-badge" title="Online"><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="rgba(var(--ok-rgb),0.7)" stroke="none"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg></span>';
       if(side==='cloud'&&fp.indexOf('/workspace/synced/')===0)html+='<span class="mon-synced-from" title="Synced from local">&#8597; synced</span>';
@@ -6738,7 +6743,7 @@ function jsq(s) {
         html += '>';
         if (isDir) html += '<span class="mon-row-disc" onclick="event.stopPropagation();monUnfurl(this,\'' + side + '\',\'' + esc + '\')"><svg width="0.625rem" height="0.625rem" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l10 7-10 7z"/></svg></span>';
         else html += '<span style="width:0.875rem;flex-shrink:0"></span>';
-        html += monIcon(f.name, isDir, 16) + '<span class="mon-row-name" style="font-size:0.75rem;">' + escapeHtml(f.name) + '</span>';
+        html += monIcon(f.name, isDir, 16, f.mimeType) + '<span class="mon-row-name" style="font-size:0.75rem;">' + escapeHtml(f.name) + '</span>';
         html += '<span class="mon-row-meta">' + (isDir ? '' : monFmtSize(f.size)) + '</span>';
         html += '</div>';
         html += '<div class="mon-row-children" style="display:none" data-path="' + escapeHtml(String(fp)) + '" data-side="' + side + '"></div>';
@@ -7317,7 +7322,7 @@ function jsq(s) {
       var parentAttr = _monSearchJsAttr(parent);
       var ext = (f.name||'').split('.').pop().toLowerCase();
       var isImg = !isDir && ['jpg','jpeg','png','gif','webp'].indexOf(ext) !== -1;
-      var icon = isImg ? monImgIcon(f.name, fp, null, side) : monIcon(f.name, isDir);
+      var icon = isImg ? monImgIcon(f.name, fp, null, side) : monIcon(f.name, isDir, null, f.mimeType);
       var isSynced = side === 'local' && _syncedPaths.has(fp);
       var isSyncing = _syncingPaths.has(fp);
       html += '<div class="mon-tile'+(isSynced?' mon-synced':'')+'" draggable="true"';
@@ -7362,7 +7367,7 @@ function jsq(s) {
       html += ' oncontextmenu="monCtx(event,\''+fpAttr+'\',\''+side+'\','+(isDir?'true':'false')+')"';
       html += '>';
       html += '<span style="width:0.875rem;flex-shrink:0"></span>';
-      html += monIcon(f.name, isDir, 20);
+      html += monIcon(f.name, isDir, 20, f.mimeType);
       html += '<span class="mon-row-name">'+escapeHtml(f.name);
       if (isSyncing) html += '<span class="mon-sync-badge" title="Syncing…"><span class="mon-spin" style="width:0.75rem;height:0.75rem;border-width:1.5px;"></span></span>';
       else if (isSynced) html += '<span class="mon-sync-badge" title="Online"><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="rgba(var(--ok-rgb),0.7)" stroke="none"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg></span>';

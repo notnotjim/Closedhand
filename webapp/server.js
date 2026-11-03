@@ -8211,6 +8211,17 @@ const _docSearch = docSearch({
   rerank: (q, docs, topK) => require("./reranker").rerank(q, docs, topK),
 });
 
+// A Google Doc, Sheet or Slides has no extension in its name, so its kind
+// goes with each result for the page to draw it by.
+async function withKinds(userId, results) {
+  const ids = (results || []).map((r) => r.document_id).filter(Boolean);
+  if (!ids.length) return results;
+  const { data, error } = await supabase.from("rag_documents").select("id, metadata").eq("user_id", userId).in("id", ids);
+  if (error) return results;
+  const mime = new Map((data || []).map((d) => [d.id, d.metadata && d.metadata.mime]));
+  return results.map((r) => (mime.get(r.document_id) ? { ...r, mime: mime.get(r.document_id) } : r));
+}
+
 // GET /api/rag/search?q=... -- hybrid search over the indexed library
 app.get("/api/rag/search", async (req, res) => {
   const userId = getUserIdFromRequest(req);
@@ -8220,7 +8231,7 @@ app.get("/api/rag/search", async (req, res) => {
   // names=1: the quick look while the person is still typing, names only.
   if (req.query.names === "1") {
     if (query.length < 2) return res.json({ results: [] });
-    try { return res.json(await _docSearch.searchNames(userId, query)); }
+    try { const named = await _docSearch.searchNames(userId, query); return res.json({ ...named, results: await withKinds(userId, named.results) }); }
     catch (err) { return res.status(500).json({ error: err.message }); }
   }
   if (query.length < 3) return res.status(400).json({ error: "Query too short (min 3 chars)" });
@@ -8228,7 +8239,7 @@ app.get("/api/rag/search", async (req, res) => {
   try {
     const found = await _docSearch.searchDocuments(userId, query);
     if (found.error) { console.error("RAG search error:", found.error); return res.status(503).json({ error: "File Search isn't available right now. Try again in a minute." }); }
-    res.json({ results: found.results, no_strong_matches: found.no_strong_matches });
+    res.json({ results: await withKinds(userId, found.results), no_strong_matches: found.no_strong_matches });
   } catch (err) {
     console.error("RAG search error:", err.message);
     res.status(500).json({ error: err.message });

@@ -86,7 +86,7 @@ test("File Search's page searches as the person types, names first, with no Find
   assert.match(page, /if \(seq !== _ragSeq\) return;/, "an older answer never replaces a newer one");
   assert.match(page, /if \(origin === 'gdrive' && filePath && fileType === 'folder'\) return 'https:\/\/drive\.google\.com\/drive\/folders\/'/);
   const server = read("webapp/server.js");
-  assert.match(server, /if \(req\.query\.names === "1"\) \{\n\s*if \(query\.length < 2\) return res\.json\(\{ results: \[\] \}\);\n\s*try \{ return res\.json\(await _docSearch\.searchNames\(userId, query\)\); \}/);
+  assert.match(server, /if \(req\.query\.names === "1"\) \{\n\s*if \(query\.length < 2\) return res\.json\(\{ results: \[\] \}\);\n\s*try \{ const named = await _docSearch\.searchNames\(userId, query\); return res\.json\(\{ \.\.\.named, results: await withKinds\(userId, named\.results\) \}\); \}/);
   const body = (f) => read(f).split("\n").slice(1).join("\n"); // each copy names itself on its first line
   assert.equal(body("lib/services/doc-search.js"), body("webapp/doc-search.js"), "the bot and the dashboard search alike");
 });
@@ -182,7 +182,7 @@ test("the sandbox computer's activity asks for automation_runs' real columns, an
 test("File Search's rows draw their file type with the Computers tab's icons, which it can reach, in the one neutral", () => {
   const page = read("webapp/views/index.html");
   assert.match(page, /window\.monIcon = monIcon;/, "the icon is reachable outside the file manager");
-  assert.match(page, /return window\.monIcon\(r\.document_name \|\| '', r\.file_type === 'folder', 36\);/);
+  assert.match(page, /return window\.monIcon\(r\.document_name \|\| '', r\.file_type === 'folder', 36, r\.mime\);/);
   const icon = page.slice(page.indexOf("  function monIcon(name, isDir, size) {"), page.indexOf("  function monImgIcon("));
   assert.doesNotMatch(icon, /var\(--accent\)/, "a file type is never drawn in Closedhand's own colour");
 });
@@ -220,4 +220,17 @@ test("a file's parts are embedded headed by its name and opening, with no LLM", 
     "ASSURED SHORTHOLD TENANCY AGREEMENT This agreement is made between Example Lettings and the Tenant for 1 Sample Row.");
   assert.equal(docOpening("x".repeat(500)).length, 200);
   assert.doesNotMatch(read("webapp/model-summary.js"), /Document summaries/, "no model listed for a step that is gone");
+});
+
+test("a Google Doc, Sheet or Slides shows as one, though its name has no extension", () => {
+  const page = read("webapp/views/index.html");
+  assert.match(page, /var GOOGLE_KINDS = \{ 'application\/vnd\.google-apps\.document': 'DOC', 'application\/vnd\.google-apps\.spreadsheet': 'SHEET', 'application\/vnd\.google-apps\.presentation': 'SLIDES' \};/);
+  assert.match(page, /var c = 'var\(--slate\)', t = GOOGLE_KINDS\[mime\] \|\| extLabel\(ext\);/);
+  assert.match(page, /return window\.monIcon\(r\.document_name \|\| '', r\.file_type === 'folder', 36, r\.mime\);/, "in search results");
+  assert.match(page, /monIcon\(f\.name,isDir,null,f\.mimeType\)/, "and in a Drive's folders");
+  const rag = read("webapp/rag-processor.js");
+  assert.match(rag, /status: "pending", metadata: \{ modified: file\.modified, \.\.\.\(file\.mimeType \? \{ mime: file\.mimeType \} : \{\}\) \} \}\);/, "its kind kept on its row");
+  assert.match(rag, /if \(!had \|\| !file\.mimeType \|\| !file\.mimeType\.startsWith\("application\/vnd\.google-apps\."\) \|\| \(had\.metadata && had\.metadata\.mime\)\) continue;/, "and on one listed before");
+  const server = read("webapp/server.js");
+  assert.equal((server.match(/await withKinds\(userId, /g) || []).length, 2, "both searches carry it");
 });

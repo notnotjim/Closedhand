@@ -1009,7 +1009,16 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
     const newRows = [];
     for (const file of supported) {
       if (!existingMap[pathOf(file)]) newRows.push({ user_id: userId, source_id: sourceId, name: file.name, file_type: typeOf(file), size_bytes: file.size || 0,
-        file_path: pathOf(file), origin, status: "pending", metadata: { modified: file.modified } });
+        file_path: pathOf(file), origin, status: "pending", metadata: { modified: file.modified, ...(file.mimeType ? { mime: file.mimeType } : {}) } });
+    }
+    // A Google Doc, Sheet or Slides keeps its kind on its row, as it has no
+    // extension to be told by; one listed before rows kept it is given it now.
+    for (const file of supported) {
+      const had = existingMap[pathOf(file)];
+      if (!had || !file.mimeType || !file.mimeType.startsWith("application/vnd.google-apps.") || (had.metadata && had.metadata.mime)) continue;
+      const metadata = { ...(had.metadata || {}), mime: file.mimeType };
+      const { error } = await supabase.from("rag_documents").update({ metadata }).eq("id", had.id);
+      if (error) console.error("[RAG] Keeping a Google file's kind:", error.message); else had.metadata = metadata;
     }
     for (const file of listedOnly) {
       if (existingMap[pathOf(file)]) continue;
