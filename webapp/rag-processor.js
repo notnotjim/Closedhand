@@ -267,7 +267,7 @@ async function extractTextFromImage(buffer, mimeType, attempt = 0) {
 // Read whole by file-reader.js, the one reader, scans and photos of
 // documents included. A picture also gets a description, so photos can be
 // found by what they show: from the image model, when one is chosen, and
-// otherwise from the picture reader in the bot.
+// otherwise from the VLM in the bot.
 // When the image model's account last said it needs payment or more credit:
 // pictures wait this long before it is asked again, so a folder of photos is
 // not a run of refusals.
@@ -303,7 +303,7 @@ async function extractText(buffer, fileType, fileName, userId, media = null) {
       console.log(`[RAG] Image model couldn't read ${fileName}: ${e.message}`);
     }
   }
-  if (!description) description = await seeInBot(buffer, userId).catch((e) => { console.log(`[RAG] Picture reader: ${e.message}`); return ""; });
+  if (!description) description = await describeInBot(buffer, userId).catch((e) => { console.log(`[RAG] VLM: ${e.message}`); return ""; });
   const said = [read.text, description].filter((t) => t && t.trim()).join("\n\n");
   if (media && media.length) media[media.length - 1].label = `(picture) ${said.replace(/\s+/g, " ").slice(0, 300)}`.trim();
   // A picture with neither words nor a description is still found by what it
@@ -312,17 +312,17 @@ async function extractText(buffer, fileType, fileName, userId, media = null) {
   return said;
 }
 
-// What a picture shows, written by the picture reader in the bot
+// What a picture shows, written by the VLM in the bot
 // (lib/local-models.js, through lib/hear-route.js). It may still be
 // downloading the first time, so this waits for it.
-async function seeInBot(buffer, userId) {
+async function describeInBot(buffer, userId) {
   const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
-  const res = await fetch(`${BOT_INTERNAL_URL}/internal/see`, {
+  const res = await fetch(`${BOT_INTERNAL_URL}/internal/describe-image`, {
     method: "POST", body: buffer, signal: AbortSignal.timeout(60 * 60000),
     headers: { "Content-Type": "application/octet-stream", "x-closedhand-token": botToken(userId) },
   });
   const seen = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(seen.error || "The picture reader didn't answer.");
+  if (!res.ok) throw new Error(seen.error || "The vision language model didn't answer.");
   return seen.text || "";
 }
 
@@ -354,7 +354,7 @@ async function hearFile(file, fileName, video, userId, media = null) {
     const words = await require("./file-reader").ocrImage(jpeg).catch(() => null);
     const vision = selectedModel("vision");
     const shows = ((vision === undefined ? DEEPINFRA_API_KEY : vision) ? await extractTextFromImage(jpeg, "image/jpeg").catch(() => "") : "")
-      || await seeInBot(jpeg, userId).catch(() => "");
+      || await describeInBot(jpeg, userId).catch(() => "");
     const text = [shows, words && words.trim() && !String(shows).includes(words.trim()) ? `Words on screen: ${words.trim()}` : ""].filter(Boolean).join("\n");
     if (text) seen.push(`[${clock(f.time)}] (on screen) ${text}`);
     if (media && f.vector) media.push({ modality: "frame", time: f.time, vector: f.vector, label: `[${clock(f.time)}] (on screen)${text ? " " + text.replace(/\s+/g, " ").slice(0, 300) : ""}` });
