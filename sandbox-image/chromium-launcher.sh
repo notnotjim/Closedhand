@@ -23,10 +23,12 @@ rm -f /workspace/.chromium-profile/SingletonLock \
       /workspace/.chromium-profile/SingletonCookie 2>/dev/null || true
 
 # --test-type suppresses the "--no-sandbox is unsupported" infobar
-# (the container is the isolation layer; Chrome's own sandbox can't run here)
+# (the container is the isolation layer; Chrome's own sandbox can't run here).
+# --disable-default-apps: none of Chrome's add-ons it would install itself, a
+# lighter browser for what Closedhand does in it.
 exec "$CHROME" \
     --user-data-dir=/workspace/.chromium-profile \
     --remote-debugging-port=9222 \
-    --no-first-run --no-default-browser-check \
+    --no-first-run --no-default-browser-check --disable-default-apps \
     --test-type \
     --no-sandbox --disable-dev-shm-usage "$@"

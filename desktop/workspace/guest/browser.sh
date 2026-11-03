@@ -9,5 +9,5 @@ for arg in "$@"; do
     args+=("$arg")
 done
 exec /usr/bin/chromium --user-data-dir=/workspace/.chromium-profile \
-    --remote-debugging-port=9222 --no-first-run --no-default-browser-check \
+    --remote-debugging-port=9222 --no-first-run --no-default-browser-check --disable-default-apps \
     --password-store=basic --restore-last-session "${args[@]}"

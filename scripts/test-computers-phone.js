@@ -135,4 +135,5 @@ test("the sandbox browser shows every script and keeps to what Closedhand uses i
   assert.equal(policy.AutofillCreditCardEnabled, undefined, "saved cards fill in");
   assert.equal(policy.MetricsReportingEnabled, false);
   assert.match(read("desktop/workspace/guest/Dockerfile"), /FROM \$\{WORKSPACE_IMAGE\}/, "the Mac's Workspace is built on the same image");
+  for (const launcher of ["sandbox-image/chromium-launcher.sh", "desktop/workspace/guest/browser.sh"]) assert.match(read(launcher), /--no-default-browser-check --disable-default-apps/, launcher + ": none of Chrome's own add-ons");
 });
