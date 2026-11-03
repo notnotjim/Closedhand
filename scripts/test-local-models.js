@@ -229,7 +229,7 @@ test('with no image model chosen, a picture is described by the VLM with its wor
   const pic = [{ mediaType: 'image/jpeg', base64: Buffer.from('a picture').toString('base64') }];
   await withVlm(async (bytes, { urgent }) => { asked.push([String(bytes), urgent]); return 'A receipt on a wooden table.'; }, () => asPerson(async () => {
     assert.equal(await usi.describeImages(pic, { detailed: true }), 'A receipt on a wooden table.\nWords in it: TOTAL 12.50', 'a chat photo: what it shows and its words');
-    assert.equal(await usi.describeImages(pic, { detailed: true, raise: true, wordsRead: true }), 'A receipt on a wooden table.', 'indexing has read its words already');
+    assert.equal(await usi.describeImages(pic, { detailed: true, background: true, wordsRead: true }), 'A receipt on a wooden table.', 'indexing has read its words already');
     assert.equal(await usi.describeImages([pic[0], pic[0]]), '1. A receipt on a wooden table.\n\n2. A receipt on a wooden table.', 'several are numbered, and a brief label leaves the words out');
   }));
   assert.deepEqual(asked.slice(0, 2), [['a picture', true], ['a picture', false]]);
@@ -245,7 +245,7 @@ test('a chat model that cannot see gets what the VLM sees where no image model i
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../lib/model-images.js'), 'utf8'), /understanding is off/i);
 });
 
-test('File Search asks the bot to see a picture, the bot answers from the VLM, and a refused image model makes it wait', async () => {
+test('the bot describes a picture for File Search by the VLM, for the web app only', async () => {
   const { Readable } = require('node:stream');
   const routes = {};
   require('../lib/hear-route').register({ post: (r, fn) => { routes[r] = fn; }, get: () => {} }, {
@@ -257,10 +257,6 @@ test('File Search asks the bot to see a picture, the bot answers from the VLM, a
   assert.deepEqual(ok.body, { text: 'seen 5 bytes' });
   const denied = res(); await routes['/internal/describe-image'](req('forged', [Buffer.from('x')]), denied);
   assert.equal(denied.code, 401);
-  const rag = fs.readFileSync(path.join(__dirname, '../webapp/rag-processor.js'), 'utf8');
-  assert.match(rag, /if \(!description\) description = await describeInBot\(buffer, userId\)/, 'a picture with no description asks the reader');
-  assert.match(rag, /\|\| await describeInBot\(jpeg, userId\)/, "a video's frames too");
-  assert.match(rag, /if \(e\.allowance\) \{ _accountWaitsUntil = Date\.now\(\) \+ ACCOUNT_WAIT_MS; throw e; \}/, 'a refusal for payment waits, words or not');
 });
 
 test('the VLM is pinned and checked, fetched in the background at start, and shows in the Getting to know you line', () => {

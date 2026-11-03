@@ -183,27 +183,27 @@ test("every folder is checked for new and changed files every 15 minutes, and a 
   assert.match(read("webapp/server.js"), /setInterval\(\(\) => ragProcessor\.checkSources\(\)\.catch\(\(e\) => console\.error\("\[RAG\] Folder check failed:", e\.message\)\), 15 \* 60 \* 1000\);/);
 });
 
-test("a picture whose model's account needs payment waits to be read, and the next one does not ask again", async () => {
+test("File Search keeps a picture's words and what it shows, written by the VLM in the bot, and never asks an image model", async () => {
   const stub = (rel, exports) => { const id = require.resolve(path.join("..", "webapp", rel)); require.cache[id] = { id, filename: id, loaded: true, exports }; };
-  const tables = { profiles: [{ id: "u1", settings: {} }], rag_documents: [{ id: "d1", status: "pending" }, { id: "d2", status: "pending" }], rag_chunks: [] };
   let asked = 0;
-  stub("db", { supabase: fakeDb(tables) });
-  stub("bot-call", { BOT_INTERNAL_URL: "http://127.0.0.1:1", botToken: () => "t" });
-  stub("model-policy", { getRole: (store, role) => (role === "vision" ? { model: "seeing" } : undefined) });
-  stub("model-wire", { appHeaders: () => ({}), request: async () => { asked++; throw Object.assign(new Error("The model provider returned HTTP 402."), { allowance: true }); } });
+  const sent = [];
+  stub("db", { supabase: fakeDb({}) });
+  stub("bot-call", { BOT_INTERNAL_URL: "http://bot.test", botToken: (u) => "token-for-" + u });
+  stub("model-wire", { appHeaders: () => ({}), request: async () => { asked++; return {}; } });
   const realReader = require("../webapp/file-reader");
-  stub("file-reader", { ...realReader, readFile: async () => ({ kind: "image", text: "" }) });
-  delete process.env.EMBED_MODEL;
+  stub("file-reader", { ...realReader, readFile: async () => ({ kind: "image", text: "HARBOUR CAFE" }) });
+  const realFetch = global.fetch;
+  global.fetch = async (url, opts) => { sent.push([url, opts.body.length, opts.headers["x-closedhand-token"]]); return { ok: true, json: async () => ({ text: "Boats moored beside a cafe at dusk." }) }; };
   const id = require.resolve("../webapp/rag-processor");
   delete require.cache[id];
   const rag = require("../webapp/rag-processor");
   try {
-    const first = await rag.processDocument("d1", "u1", Buffer.alloc(20 * 1024, 1), "Beach.jpg", "jpg");
-    const second = await rag.processDocument("d2", "u1", Buffer.alloc(20 * 1024, 2), "Harbour.jpg", "jpg");
-    assert.deepEqual([first.waiting, second.waiting], [true, true]);
-    assert.deepEqual(tables.rag_documents.map((d) => [d.status, d.error_message]), [["pending", null], ["pending", null]], "not the files' fault: they wait");
-    assert.equal(asked, 1, "the model is not asked again for a while");
+    assert.equal(await rag.extractText(Buffer.alloc(20 * 1024, 1), "jpg", "Harbour.jpg", "u1", null), "HARBOUR CAFE\n\nBoats moored beside a cafe at dusk.");
+    assert.deepEqual(sent, [["http://bot.test/internal/describe-image", 20 * 1024, "token-for-u1"]]);
+    assert.equal(asked, 0);
+    assert.doesNotMatch(read("webapp/rag-processor.js"), /selectedModel\("vision"\)|allowance/, "no image model and no waiting on one's account");
   } finally {
-    for (const rel of ["db", "bot-call", "model-policy", "model-wire", "file-reader", "rag-processor"]) delete require.cache[require.resolve(path.join("..", "webapp", rel))];
+    global.fetch = realFetch;
+    for (const rel of ["db", "bot-call", "model-wire", "file-reader", "rag-processor"]) delete require.cache[require.resolve(path.join("..", "webapp", rel))];
   }
 });

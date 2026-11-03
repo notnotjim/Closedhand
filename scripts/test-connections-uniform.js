@@ -164,32 +164,30 @@ test("how far back each kind of connection is read is decided the same way, in o
   assert.doesNotMatch(read("lib/services/recall-protocol.js"), /Page limit reached|Collection limit reached/, "a connected app is read on, not cut off");
 });
 
-test("a picture from any connection keeps its words and what it shows, and waits while the image model's account needs payment", async () => {
+test("a picture from any connection keeps its words and what it shows, written by the VLM on this computer even when an image model is chosen", async () => {
   const rows = [{ user_id: "u1", source: "gmail", external_id: "m7", data: { id: "m7", attachments: [{ filename: "Shopfront.jpg", size: 40 * 1024, attachmentId: "p1" }] } }];
   const db = fakeDb(rows);
-  let refuse = false, asked = 0;
+  let asked = 0;
+  const seen = [];
   stub("user-store", { supabase: db, UserStore: { load: async () => ({}) } });
   stub("lib/db", { supabase: db });
   stub("lib/storage", { swapToCloudStore: () => {} });
   stub("lib/idle", { during: (fn) => fn(), touch() {}, isIdle: () => true, oneAtATime: (fn) => fn(), LOOK_MS: 5 });
   stub("lib/services/data-access", { attachmentBytes: async () => ({ buffer: Buffer.alloc(40 * 1024, 7), filename: "Shopfront.jpg" }) });
   stub("lib/file-reader", { ...require("../lib/file-reader"), kindOf: () => "image", readFile: async () => ({ kind: "image", text: "LARKSPUR BAKERY open 7 till 3" }) });
-  stub("lib/model-jobs", {
-    role: (name) => (name === "vision" ? { model: "seeing" } : undefined),
-    complete: async () => { asked++; if (refuse) throw Object.assign(new Error("The provider says this account needs payment or more credit."), { allowance: true }); return "A bakery front on a narrow street, loaves in the window."; },
-  });
+  stub("lib/model-jobs", { role: (name) => (name === "vision" ? { model: "seeing" } : undefined), complete: async () => { asked++; return "from the image model"; } });
+  stub("lib/local-models", { localDescribeImage: async (bytes, { urgent }) => { seen.push([bytes.length, urgent]); return "A bakery front on a narrow street, loaves in the window."; } });
   for (const m of ["lib/item-files", "lib/services/usi"]) delete require.cache[require.resolve(path.join("..", m))];
   const usi = require("../lib/services/usi");
   try {
-    assert.equal(await usi.extractAttachmentText(Buffer.alloc(40 * 1024, 7), "Shopfront.jpg", { maxChars: Infinity }),
-      "LARKSPUR BAKERY open 7 till 3\n\nA bakery front on a narrow street, loaves in the window.", "its sign and its street");
-    refuse = true;
+    const both = "LARKSPUR BAKERY open 7 till 3\n\nA bakery front on a narrow street, loaves in the window.";
+    assert.equal(await usi.extractAttachmentText(Buffer.alloc(40 * 1024, 7), "Shopfront.jpg", { maxChars: Infinity }), both, "its sign and its street");
     const item = { external_id: "mail-7", text: "Photos from the street", rows: [{ source: "gmail", external_id: "m7" }] };
     await usi._withRowFiles("u1", [item]);
-    const kept = rows[0].data.file_texts[0];
-    assert.deepEqual([kept.text, kept.tries], [null, 0], "not filed without what it shows, and the try is not counted");
-    assert.equal(asked, 2, "every picture is asked about, with no count a day");
+    assert.equal(rows[0].data.file_texts[0].text, both.replace(/\s+/g, " "));
+    assert.equal(asked, 0, "indexing never sends a picture to the image model");
+    assert.deepEqual(seen, [[40 * 1024, false], [40 * 1024, false]], "every picture, behind anyone waiting on one");
   } finally {
-    for (const m of ["lib/file-reader", "lib/model-jobs"]) delete require.cache[require.resolve(path.join("..", m))];
+    for (const m of ["lib/file-reader", "lib/model-jobs", "lib/local-models"]) delete require.cache[require.resolve(path.join("..", m))];
   }
 });

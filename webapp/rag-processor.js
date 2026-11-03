@@ -2,16 +2,6 @@
 // Extracts text, chunks, embeds via Qwen3-Embedding (DeepInfra), stores in Supabase pgvector
 
 const path = require("path");
-const modelContext = new (require("async_hooks").AsyncLocalStorage)();
-function selectedModel(role) { return require("./model-policy").getRole(modelContext.getStore(), role); }
-async function modelJob(role, content) {
-  const pick = selectedModel(role);
-  if (!pick) return null;
-  const response = await llmSlot(() => require("./model-wire").request(pick, {
-    model: pick.model, effort: "fast", max_tokens: 1024, messages: [{ role: "user", content }],
-  }, { signal: AbortSignal.timeout(90000) }));
-  return response.content?.filter(b => b.type === "text").map(b => b.text).join("\n") || null;
-}
 const { supabase } = require("./db");
 
 const DEEPINFRA_API_KEY = process.env.DEEPINFRA_API_KEY;
@@ -23,9 +13,6 @@ const EMBED_URL = process.env.EMBED_API_URL || "https://api.deepinfra.com/v1/ope
 // still works if the EMBED_MODEL env override is ever lost. Changing this model
 // requires a full re-index of rag_chunks, it is not a hot swap.
 const EMBED_MODEL = process.env.EMBED_MODEL || "Qwen/Qwen3-Embedding-4B";
-const CHAT_URL = process.env.ENRICH_API_URL || "https://api.deepinfra.com/v1/openai/chat/completions";
-// Same summariser as passive recall (data_vectors) for consistency and cost.
-const VISION_MODEL = process.env.VISION_MODEL || "Qwen/Qwen3-VL-30B-A3B-Instruct";
 const EMBED_DIMS = 1536; // Matryoshka truncation from native 4096
 // Parts small enough that the embedder reads each whole, its heading (file
 // name and opening, up to 250 characters) included: at most 750 characters
@@ -34,26 +21,6 @@ const EMBED_DIMS = 1536; // Matryoshka truncation from native 4096
 const CHUNK_SIZE = 750;
 const CHUNK_OVERLAP = 150;
 const EMBED_BATCH_SIZE = 32;
-
-// One global ceiling on in-flight provider calls. Files are indexed in
-// parallel and each file reads its pictures in parallel, so without a shared
-// limit the two multiply into a burst that earns 429s, and 429s cost both
-// time and budget (attempts are metered). Every vision and embedding request
-// passes through here.
-const LLM_CONCURRENCY = parseInt(process.env.RAG_LLM_CONCURRENCY || "12", 10);
-let _llmActive = 0;
-const _llmWaiters = [];
-async function llmSlot(fn) {
-  if (_llmActive >= LLM_CONCURRENCY) await new Promise(resolve => _llmWaiters.push(resolve));
-  _llmActive++;
-  try {
-    return await fn();
-  } finally {
-    _llmActive--;
-    const next = _llmWaiters.shift();
-    if (next) next();
-  }
-}
 
 // Dependency injection for sandbox/bridge access
 let _getSandboxInfo, _sandboxFetch, _bridgeRequest;
@@ -170,109 +137,12 @@ const MEDIA_TYPES = new Set(["jpg", "jpeg", "png", "webp", "gif", "tif", "tiff",
 // one at a time while Closedhand is otherwise idle (hearWaiting below).
 const HEARD_TYPES = new Set(["mp3", "m4a", "wav", "aac", "flac", "ogg", "oga", "opus", "aiff", "mp4", "m4v", "mov", "webm"]);
 
-const IMAGE_MIME = {
-  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
-  webp: "image/webp", gif: "image/gif", tiff: "image/tiff", bmp: "image/bmp",
-};
-
-/**
- * Shrink an image before sending it to the vision model. A modern phone photo
- * is ~24MP / 4MB, which becomes ~5MB of base64 on the wire and takes the model
- * a very long time to process, for no benefit: descriptions and text
- * transcription work fine from ~1400px. Optional dependency, so if sharp is
- * unavailable in the deploy we fall back to the original rather than failing.
- */
-async function downscaleImage(buffer, maxEdge = 1400) {
-  try {
-    const sharp = require("sharp");
-    const out = await sharp(buffer, { failOn: "none" })
-      .rotate() // honour EXIF orientation
-      .resize({ width: maxEdge, height: maxEdge, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 82 })
-      .toBuffer();
-    return { buffer: out, mimeType: "image/jpeg" };
-  } catch (e) {
-    return null;
-  }
-}
-
-async function extractTextFromImage(buffer, mimeType, attempt = 0) {
-  if (selectedModel("vision") !== undefined) {
-    if (!selectedModel("vision")) throw new Error("Image understanding is off. Choose an image and video model in Settings to read this file.");
-    const scaled = await downscaleImage(buffer);
-    return modelJob("vision", [
-      { type: "image", source: { type: "base64", media_type: scaled?.mimeType || mimeType, data: (scaled?.buffer || buffer).toString("base64") } },
-      { type: "text", text: "Transcribe the visible text and describe what this image shows." },
-    ]);
-  }
-  if (!DEEPINFRA_API_KEY) throw new Error("No DEEPINFRA_API_KEY for image OCR");
-
-  // Smaller image on the retry: if the first pass timed out, the most likely
-  // cause is size, so shrink harder rather than repeating the same request.
-  const maxEdge = attempt === 0 ? 1400 : 900;
-  const shrunk = await downscaleImage(buffer, maxEdge);
-  const sendBuf = shrunk ? shrunk.buffer : buffer;
-  const sendMime = shrunk ? shrunk.mimeType : mimeType;
-  if (shrunk) {
-    console.log(`[RAG] Image downscaled for vision: ${(buffer.length / 1048576).toFixed(1)}MB -> ${(sendBuf.length / 1048576).toFixed(2)}MB`);
-  }
-
-  try {
-    const resp = await llmSlot(() => fetch(CHAT_URL, {
-      method: "POST",
-      // Hard timeout: without it, one hung vision call stalls the whole source
-      // indexing loop forever and every later file in the folder never indexes.
-      signal: AbortSignal.timeout(90000),
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${DEEPINFRA_API_KEY}`, ...appHeaders(CHAT_URL) },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image_url", image_url: { url: `data:${sendMime};base64,${sendBuf.toString("base64")}` } },
-            // Focused rather than "exhaustive": generation length drives most
-            // of the latency, and search only needs what someone would type.
-            // People get explicit physical detail because that is how photos
-            // actually get searched for ("blue eyes", "red dress", "the guy
-            // with the beard"). A description that omits an attribute makes
-            // that attribute unsearchable, however good the embedding is.
-            { type: "text", text: "Describe this image for search. Cover: any visible text (transcribe it exactly); each person's hair colour and style, eye colour if visible, approximate age, clothing and what they are doing; notable objects with their colours; the setting and occasion. Around 130 words, concrete and specific. Output only the description." },
-          ],
-        }],
-        max_tokens: 700,
-        temperature: 0.1,
-      }),
-    }));
-
-    if (!resp.ok) throw new Error(`Vision OCR failed: ${resp.status}`);
-    const data = await resp.json();
-    let text = data.choices?.[0]?.message?.content || "";
-    // Strip <think> tags from Qwen responses
-    text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    if (!text && attempt === 0) return extractTextFromImage(buffer, mimeType, 1);
-    return text;
-  } catch (e) {
-    // Timeouts and provider blips are transient: one retry at a smaller size
-    // rather than dropping the image from the index permanently.
-    if (attempt === 0) {
-      console.log(`[RAG] Vision attempt failed (${e.message}), retrying smaller`);
-      return extractTextFromImage(buffer, mimeType, 1);
-    }
-    throw e;
-  }
-}
-
 // --- Text extraction ---
 
 // Read whole by file-reader.js, the one reader, scans and photos of
 // documents included. A picture also gets a description, so photos can be
-// found by what they show: from the image model, when one is chosen, and
-// otherwise from the VLM in the bot.
-// When the image model's account last said it needs payment or more credit:
-// pictures wait this long before it is asked again, so a folder of photos is
-// not a run of refusals.
-let _accountWaitsUntil = 0;
-const ACCOUNT_WAIT_MS = 15 * 60000;
+// found by what they show, written by the VLM in the bot: indexing never
+// sends a picture anywhere, whatever image model is chosen for chat.
 
 async function extractText(buffer, fileType, fileName, userId, media = null) {
   const reader = require("./file-reader");
@@ -289,21 +159,7 @@ async function extractText(buffer, fileType, fileName, userId, media = null) {
     if (!read.text && read.error) throw new Error(read.note);
     return read.text;
   }
-  const vision = selectedModel("vision");
-  const off = vision !== undefined && !vision;
-  let description = "";
-  if (!off && (vision || DEEPINFRA_API_KEY)) {
-    try {
-      if (Date.now() < _accountWaitsUntil) throw Object.assign(new Error("The image model's account needs payment or more credit."), { allowance: true });
-      description = await extractTextFromImage(buffer, IMAGE_MIME[fileType] || "image/jpeg");
-    } catch (e) {
-      // Its account needing payment or more credit: the picture waits, as a
-      // connection's does, rather than being filed without what it shows.
-      if (e.allowance) { _accountWaitsUntil = Date.now() + ACCOUNT_WAIT_MS; throw e; }
-      console.log(`[RAG] Image model couldn't read ${fileName}: ${e.message}`);
-    }
-  }
-  if (!description) description = await describeInBot(buffer, userId).catch((e) => { console.log(`[RAG] VLM: ${e.message}`); return ""; });
+  const description = await describeInBot(buffer, userId).catch((e) => { console.log(`[RAG] VLM: ${e.message}`); return ""; });
   const said = [read.text, description].filter((t) => t && t.trim()).join("\n\n");
   if (media && media.length) media[media.length - 1].label = `(picture) ${said.replace(/\s+/g, " ").slice(0, 300)}`.trim();
   // A picture with neither words nor a description is still found by what it
@@ -312,9 +168,9 @@ async function extractText(buffer, fileType, fileName, userId, media = null) {
   return said;
 }
 
-// What a picture shows, written by the VLM in the bot
-// (lib/local-models.js, through lib/hear-route.js). It may still be
-// downloading the first time, so this waits for it.
+// What a picture shows, written by the VLM in the bot (lib/local-models.js,
+// through lib/hear-route.js). It may still be downloading the first time, so
+// this waits for it.
 async function describeInBot(buffer, userId) {
   const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
   const res = await fetch(`${BOT_INTERNAL_URL}/internal/describe-image`, {
@@ -352,9 +208,7 @@ async function hearFile(file, fileName, video, userId, media = null) {
   for (const f of heard.frames || []) {
     const jpeg = Buffer.from(f.jpeg, "base64");
     const words = await require("./file-reader").ocrImage(jpeg).catch(() => null);
-    const vision = selectedModel("vision");
-    const shows = ((vision === undefined ? DEEPINFRA_API_KEY : vision) ? await extractTextFromImage(jpeg, "image/jpeg").catch(() => "") : "")
-      || await describeInBot(jpeg, userId).catch(() => "");
+    const shows = await describeInBot(jpeg, userId).catch(() => "");
     const text = [shows, words && words.trim() && !String(shows).includes(words.trim()) ? `Words on screen: ${words.trim()}` : ""].filter(Boolean).join("\n");
     if (text) seen.push(`[${clock(f.time)}] (on screen) ${text}`);
     if (media && f.vector) media.push({ modality: "frame", time: f.time, vector: f.vector, label: `[${clock(f.time)}] (on screen)${text ? " " + text.replace(/\s+/g, " ").slice(0, 300) : ""}` });
@@ -812,11 +666,6 @@ async function openFileStream(userId, origin, filePath, account) {
 // --- Main processing pipeline ---
 
 async function processDocument(documentId, userId, fileBuffer, fileName, fileType, sourceContext = null) {
-  const { data, error } = await supabase.from("profiles").select("settings").eq("id", userId).single();
-  if (error || !data) throw new Error("Could not load model settings for this document.");
-  return modelContext.run(data.settings || {}, () => processDocumentWithModels(documentId, userId, fileBuffer, fileName, fileType, sourceContext));
-}
-async function processDocumentWithModels(documentId, userId, fileBuffer, fileName, fileType, sourceContext = null) {
   try {
     // Update status to processing
     // With the time it began: the stall sweep takes a read whose row is older
@@ -831,13 +680,6 @@ async function processDocumentWithModels(documentId, userId, fileBuffer, fileNam
     const text = await extractText(fileBuffer, fileType, fileName, userId, media);
     return await fileText(documentId, userId, fileName, text, media, sourceContext);
   } catch (e) {
-    // A model's account needing payment or more credit is not the file's
-    // fault: it waits, pending, and is read on a later check.
-    if (e.allowance) {
-      const { error } = await supabase.from("rag_documents").update({ status: "pending", error_message: null, updated_at: new Date().toISOString() }).eq("id", documentId);
-      if (error) console.error(`[RAG] ${fileName}: could not mark it to wait: ${error.message}`);
-      return { error: e.message, waiting: true };
-    }
     console.error(`[RAG] Processing failed for ${fileName}:`, e.message);
     await supabase.from("rag_documents").update({
       status: "error",
@@ -974,20 +816,17 @@ async function hearWaiting() {
 // for stuck).
 async function hearDocument(doc) {
   const { data: source } = await supabase.from("rag_sources").select("account").eq("id", doc.source_id).single();
-  const { data: profile } = await supabase.from("profiles").select("settings").eq("id", doc.user_id).single();
   const kept = (what) => ({ error }) => { if (error) console.error(`[RAG] ${doc.name}: could not keep ${what}: ${error.message}`); };
   const stillGoing = () => supabase.from("rag_documents").update({ updated_at: new Date().toISOString() }).eq("id", doc.id).then(kept("that it is still being heard")).catch(() => {});
   const { error: markErr } = await supabase.from("rag_documents").update({ status: "processing", updated_at: new Date().toISOString() }).eq("id", doc.id);
   if (markErr) console.error(`[RAG] ${doc.name}: could not keep that it is being heard: ${markErr.message}`);
   const beat = setInterval(stillGoing, 5 * 60000);
   try {
-    await modelContext.run((profile && profile.settings) || {}, async () => {
-      console.log(`[RAG] Hearing ${doc.name}`);
-      const media = (await localEmbedder()) ? [] : null;
-      const file = await openFileStream(doc.user_id, doc.origin, doc.file_path, source && source.account);
-      const text = await hearFile(file, doc.name, /^(mp4|m4v|mov|webm)$/.test(doc.file_type), doc.user_id, media);
-      await fileText(doc.id, doc.user_id, doc.name, text, media, { origin: doc.origin, path: doc.file_path });
-    });
+    console.log(`[RAG] Hearing ${doc.name}`);
+    const media = (await localEmbedder()) ? [] : null;
+    const file = await openFileStream(doc.user_id, doc.origin, doc.file_path, source && source.account);
+    const text = await hearFile(file, doc.name, /^(mp4|m4v|mov|webm)$/.test(doc.file_type), doc.user_id, media);
+    await fileText(doc.id, doc.user_id, doc.name, text, media, { origin: doc.origin, path: doc.file_path });
   } catch (e) {
     // Nothing said in it is its answer for good; anything else is tried again.
     const tries = /^Nothing is said/.test(e.message) ? HEAR_TRIES : Number(doc.metadata?.hear_tries || 0) + 1;
@@ -1215,9 +1054,8 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       }
     };
 
-    // Files in parallel. Each file also reads its own pictures in parallel,
-    // so the shared llmSlot ceiling keeps the product of the two bounded
-    // rather than letting 4 files x 8 pictures become a 32-call burst.
+    // Files in parallel. Their pictures are described one at a time by the
+    // VLM in the bot, whose model calls queue, so they never come as a burst.
     const FILE_CONCURRENCY = parseInt(process.env.RAG_FILE_CONCURRENCY || "4", 10);
     let fileCursor = 0;
     const fileWorker = async () => {
