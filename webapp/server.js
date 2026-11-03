@@ -1362,14 +1362,12 @@ phoneAccess.boot();
 
 // The MCP and skill security scan reads with the platform's model on the
 // hosted product. A self-host install has no such key, so it reads with the
-// install's own: the internal machinery model the setup page derived, the
-// enrichment model, or the chat key itself.
+// install's own: the internal machinery model the setup page derived, or the
+// chat key itself.
 configureScanBackend(async () => {
   const { getConf } = require("./config");
   const url = await getConf("INTERNAL_LLM_URL"), model = await getConf("INTERNAL_LLM_MODEL"), key = await getConf("INTERNAL_LLM_API_KEY");
   if (url && model && key) return { wire: "openai", url, key, model };
-  const eu = await getConf("ENRICH_API_URL"), em = await getConf("ENRICH_MODEL"), ek = await getConf("ENRICH_API_KEY");
-  if (eu && em && ek && !/^local:/.test(em)) return { wire: "openai", url: eu, key: ek, model: em };
   const { data: profile } = await supabase.from("profiles").select("settings").eq("id", getAdminUserId()).single();
   const s = { ...((profile && profile.settings) || {}) };
   const { openKey } = require("./model-policy");
@@ -1527,42 +1525,6 @@ app.post("/api/setup/detect", async (req, res) => {
 // same key. Chat-only providers get an honest by-name answer instead.
 app.post("/api/setup/provider", (req, res) => {
   res.status(409).json({ error: "Reload setup to check and apply the complete model setup." });
-});
-
-// Memory on DeepInfra: for installs whose chat provider can't serve
-// embeddings. Before anything is indexed this SWITCHES the embedder for free;
-// after first index the local embedder is locked (switching would need the
-// full re-index that ships as a Settings action later).
-app.post("/api/setup/memory-key", async (req, res) => {
-  try {
-    if (!(await requireSetupAccess(req, res))) return;
-    const apiKey = String((req.body || {}).apiKey || "").trim();
-    if (!apiKey) return res.status(400).json({ error: "Paste a DeepInfra API key" });
-    const r = await fetch("https://api.deepinfra.com/v1/openai/models", {
-      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(10000),
-    });
-    if (!r.ok) return res.status(400).json({ error: `DeepInfra rejected that key (${r.status})` });
-
-    const patch = { DEEPINFRA_API_KEY: apiKey };
-    const currentEmbed = process.env.EMBED_MODEL || (await getRuntimeConf("EMBED_MODEL"));
-    if (String(currentEmbed || "").startsWith("local:")) {
-      const { data: dv } = await supabase.from("data_vectors").select("id").limit(1);
-      const { data: rc } = await supabase.from("rag_chunks").select("id").limit(1);
-      if ((dv && dv.length) || (rc && rc.length)) {
-        return res.status(400).json({ error: "Your data is already indexed with the local embedding model; switching now means re-indexing everything, which lands as a Settings action. The key was not saved." });
-      }
-      // Nothing indexed yet: the switch is free. Hosted defaults take over
-      // (embeddings, reranker, vision on DeepInfra).
-      patch.EMBED_MODEL = "Qwen/Qwen3-Embedding-4B";
-      patch.EMBED_API_URL = "https://api.deepinfra.com/v1/openai/embeddings";
-      patch.EMBED_API_KEY = apiKey;
-      patch.RERANK_MODEL = null;
-    }
-    await setRuntimeConf(patch);
-    res.json({ success: true, switched: !!patch.EMBED_MODEL });
-  } catch (e) {
-    res.status(500).json({ error: "could not reach DeepInfra" });
-  }
 });
 
 // QR codes for the setup wizard. The server chooses every URL it encodes, so
@@ -7168,21 +7130,6 @@ require("./model-config").install(app, {
   local: true,
   readRuntime: key => process.env[key],
   authorize: authorizeModels,
-  ensureMemory: async () => {
-    if (!mcpClient.isSelfHost()) return;
-    const embed = process.env.EMBED_MODEL || await getRuntimeConf("EMBED_MODEL");
-    const key = process.env.EMBED_API_KEY || await getRuntimeConf("EMBED_API_KEY") || process.env.DEEPINFRA_API_KEY || await getRuntimeConf("DEEPINFRA_API_KEY");
-    if (!embed && !key) await setRuntimeConf({ EMBED_MODEL: "local:embeddinggemma-2", RERANK_MODEL: "local:jina-reranker-v1-turbo" });
-  },
-  memorySummary: async () => {
-    const embed = process.env.EMBED_MODEL || await getRuntimeConf("EMBED_MODEL");
-    const endpoint = process.env.EMBED_API_URL || await getRuntimeConf("EMBED_API_URL");
-    const key = process.env.DEEPINFRA_API_KEY || await getRuntimeConf("DEEPINFRA_API_KEY");
-    // A row in the model check, beside the models chosen there.
-    if (!embed && !key) return { value: "Closedhand’s local embedding model", local: true };
-    if (endpoint) return { value: "Keeps its current model, at " + new URL(endpoint).hostname, local: false };
-    return key ? { value: "Keeps its current model, on DeepInfra", local: false } : { value: "Keeps its current local embedding model", local: true };
-  },
 });
 
 app.get("/api/api-key", async (req, res) => {

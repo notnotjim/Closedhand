@@ -302,7 +302,7 @@ test("fast jobs ask the runner's model not to think, and other parts name it pla
   assert.deepEqual(policy.effortOptions(cap, "default"), {});
   assert.match(read("lib/engine.js"), /if \(pick\?\.provider === "here"\) return `\$\{pick\.model\} on the computer running Closedhand`;/);
   assert.match(read("lib/web-search.js"), /if \(conn\?\.provider === "here"\) conn = conn\.fallback \|\| null;/);
-  assert.match(read("webapp/model-summary.js"), /provider: "On the computer running Closedhand"/);
+  assert.match(read("webapp/model-summary.js"), /const HERE = "On the computer running Closedhand";[\s\S]*if \(pick\?\.provider === "here"\) return rows\.push\(\{ label, model: pick\.model, provider: HERE \}\);/);
 });
 
 test("the words people see", () => {

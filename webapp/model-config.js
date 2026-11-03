@@ -197,7 +197,7 @@ function withConfig(settings, config) {
   return next;
 }
 function install(app, deps) {
-  const { supabase, authorize, ensureMemory } = deps;
+  const { supabase, authorize } = deps;
   async function profile(id) {
     const { data, error } = await supabase.from("profiles").select("settings").eq("id", id).single();
     if (error || !data) throw new Error("Could not load model settings.");
@@ -248,7 +248,7 @@ function install(app, deps) {
     const ticket = randomUUID();
     receipts.set(ticket, { id, config, previous: JSON.stringify(settings.model_config || null), expires: Date.now() + 10 * 60000 });
     res.set("Cache-Control", "no-store").json({ ticket, config: policy.publicConfig(config),
-      memory: await deps.memorySummary?.() || { value: "Keeps its current model", local: false } });
+      memory: { value: "Closedhand’s local embedding model", local: true } });
   }));
   app.post("/api/model-config/save", route(async (req, res, id) => {
     const entry = receipts.get(req.body.ticket);
@@ -257,13 +257,8 @@ function install(app, deps) {
     // neither save can overwrite the other (a runner moving port, say).
     const runHere = require("./run-here");
     await runHere.editConfig(async () => {
-      let settings = await profile(id);
+      const settings = await profile(id);
       if (entry.previous !== JSON.stringify(settings.model_config || null)) throw new Error("The models changed in another session. Check again before saving.");
-      if (ensureMemory) {
-        await ensureMemory();
-        settings = await profile(id);
-        if (entry.previous !== JSON.stringify(settings.model_config || null)) throw new Error("The models changed in another session. Check again before saving.");
-      }
       // Only the model keys that change are written (settings-patch.js). A job
       // run on the computer running Closedhand stays there when its provider
       // pick is unchanged (run-here.js carryOver); a runner nothing uses any

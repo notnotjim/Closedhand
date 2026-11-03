@@ -262,19 +262,16 @@ async function main() {
   // Reply drafts Closedhand made on its own go after 24 hours if untouched (lib/prepared-drafts.js).
   require("./lib/prepared-drafts").start();
   await startPulse();
-  // Warm the runtime-config cache before anything reads it synchronously.
-  // getConfCached returns undefined on a cold cache, so an unwarmed read of
-  // EMBED_MODEL fell through to the hosted default with no key, and the
-  // indexer quietly decided embeddings were not configured: a self-host
-  // install synced mail and calendar into the cache and never indexed a
-  // single row, while the wizard reported memory as on.
-  try { await require("./lib/config").getConf("EMBED_MODEL"); } catch (_) {}
+  // Warm the runtime-config cache before anything reads it synchronously:
+  // getConfCached returns undefined on a cold cache, and the embedder's
+  // choice (LOCAL_EMBED_MODEL_ID) is read that way as indexing starts.
+  try { await require("./lib/config").getConf("LOCAL_EMBED_MODEL_ID"); } catch (_) {}
   startDataSync();
   require("./lib/services/wa-digest").startWhatsAppDigest();
   // Projects follow what comes in from the people in them (lib/projects.js).
   require("./lib/projects").startFollowing();
   require("./lib/sandbox").startSandboxJanitor();
-  require("./lib/local-models").preloadIfConfigured();
+  require("./lib/local-models").preload();
   // Gives any row of the index without a vector its vector.
   require("./lib/embed-backfill").start();
 

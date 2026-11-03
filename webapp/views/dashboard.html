@@ -10351,7 +10351,7 @@
     function render(st, reading) {
       var parts = [], models = (st && st.localModels) || {}, emb = models.embedder;
       var first = reading && reading.first;
-      if (st && st.memoryMode === 'local' && emb && emb.state === 'downloading') parts.push((emb.pct || 0) / 100);
+      if (emb && emb.state === 'downloading') parts.push((emb.pct || 0) / 100);
       // The embedder's picture and sound parts and the VLM follow it.
       ['media', 'vlm'].forEach(function (role) { var m = models[role]; if (m && m.state === 'downloading') parts.push((m.pct || 0) / 100); });
       if (first) parts.push(first.progress || 0);

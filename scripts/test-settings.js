@@ -79,23 +79,27 @@ test("effective model descriptions name selected models and redact credentials",
   const settings = { model_config: { connections: { primary: conn }, roles: {
     chat: { connection: "primary", model: "main" }, background: { connection: "primary", model: "small" }, vision: null,
   } } };
-  const rows = modelSummary(settings, k => ({ EMBED_MODEL: "local:recall", RERANK_MODEL: "local:ranking" })[k], true);
+  const rows = modelSummary(settings, () => undefined, true);
   assert.equal(rows[0].model, "main");
   assert.equal(rows[1].model, "small");
   assert.equal(rows[0].provider, "DeepInfra");
-  assert.equal(rows[2].model, "Not enabled");
-  assert.equal(rows[3].provider, "On your computer");
+  const here = "On the computer running Closedhand";
+  assert.deepEqual(rows.slice(2), [
+    { label: "Images", model: "Florence-2", provider: here },
+    { label: "Recall", model: "EmbeddingGemma 2", provider: here },
+    { label: "Search ranking", model: "Jina Reranker v1 Turbo", provider: here },
+  ], "with no image model, pictures are described on this computer; recall and its ranking always run here");
   assert.doesNotMatch(JSON.stringify(rows), /PRIVATE|apiKey/);
 });
 test("legacy models reflect active runtime choices without pretending defaults are configured", () => {
-  const values = { DEEPINFRA_API_KEY: "SECRET", VISION_MODEL: "image-v2", EMBED_MODEL: "embed-v3" };
+  const values = { DEEPINFRA_API_KEY: "SECRET", LOCAL_EMBED_MODEL_ID: "embed-v3" };
   const rows = modelSummary({ llm_provider: "custom", custom_model: "grok-4.5", custom_base_url: "https://api.x.ai/v1" }, k => values[k], true);
   assert.equal(rows[0].provider, "xAI");
   assert.equal(rows[1].model, "deepseek-ai/DeepSeek-V4-Flash");
-  assert.equal(rows[2].model, "image-v2");
-  assert.equal(rows[3].model, "embed-v3");
+  assert.equal(rows[2].model, "Florence-2");
+  assert.equal(rows[3].model, "embed-v3", "an embedder chosen in the settings file is named");
   const empty = modelSummary({}, () => undefined);
-  assert.ok(empty.every(row => row.model === "Not enabled"));
+  assert.ok(empty.slice(0, 2).every(row => row.model === "Not enabled"), "no chat or support model is pretended");
   const missingKey = modelSummary({ llm_provider: "anthropic" }, k => k === "XAI_API_KEY" ? "SECRET" : undefined);
   assert.equal(missingKey[0].model, "grok-4.5");
 });

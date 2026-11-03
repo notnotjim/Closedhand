@@ -497,13 +497,6 @@
             <div class="memory-note" id="memory-note">
               <p><strong id="memory-note-title">About recall.</strong> <span id="memory-note-lead"></span></p>
               <div class="dl-bar" id="dl-bar" hidden><div class="dl-fill" id="dl-fill"></div></div>
-              <form id="memory-form">
-                <div class="field">
-                  <label for="memory-key">DeepInfra API key</label><input type="password" id="memory-key" autocomplete="off" spellcheck="false" placeholder="DeepInfra API key for recall">
-                </div>
-                <button class="save-btn" type="submit" id="memory-btn">Enable recall</button>
-                <p class="form-msg" id="memory-msg"></p>
-              </form>
             </div>
 
         </div>
@@ -970,13 +963,6 @@
       });
   });
 
-  // --- Memory (embeddings) form -------------------------------------------
-  $("#memory-form").addEventListener("submit", function (ev) {
-    ev.preventDefault();
-    postJSON("/api/setup/memory-key", "POST", { apiKey: $("#memory-key").value.trim() }, $("#memory-msg"), null,
-      function () { return "Recall is on. It starts reading with your first connected service."; });
-  });
-
   // --- Closedhand Managed Models ------------------------------------------------
   // Shown while it is in use or on its way with the personal URL, with the
   // person's own LLM provider one click away.
@@ -1178,20 +1164,17 @@
       $("#tg-link").setAttribute("href", "https://t.me/" + state.botUsername + "?start=hello");
     }
 
-    // Setup only shows recall when something is happening or needs attention.
+    // Setup only shows recall while its embedding model downloads, or if it could not.
     var modelDone = state.steps.some(function (s) { return s.key === "model" && s.done; });
     var emb = (state.localModels || {}).embedder;
-    var downloading = modelDone && state.memoryMode === "local" && emb && emb.state === "downloading";
-    var failed = modelDone && state.memoryMode === "local" && emb && emb.state === "error";
-    var missing = modelDone && state.memoryMode !== "local" && !state.memory;
+    var downloading = modelDone && emb && emb.state === "downloading";
+    var failed = modelDone && emb && emb.state === "error";
     $("#memory-note-title").textContent = "Recall";
     $("#memory-note-lead").textContent = downloading ? "Downloading the embedding model: " + (emb.pct || 0) + "%. You can continue setup."
-      : failed ? "The embedding model could not finish downloading. Closedhand will retry when syncing."
-      : missing ? "Recall needs a model to find things by meaning across your files, past chats and everything you connect. Add a DeepInfra key to enable it; chat works without it." : "";
+      : failed ? "The embedding model could not finish downloading. Closedhand will retry when syncing." : "";
     $("#dl-bar").hidden = !downloading;
     if (downloading) $("#dl-fill").style.width = Math.max(2, Math.min(100, emb.pct || 0)) + "%";
-    $("#memory-form").hidden = !missing;
-    $("#memory-note").classList.toggle("is-on", !!(downloading || failed || missing));
+    $("#memory-note").classList.toggle("is-on", !!(downloading || failed));
 
     $("#done-count").textContent = String(doneCount);
     $("#total-count").textContent = String(steps.length);

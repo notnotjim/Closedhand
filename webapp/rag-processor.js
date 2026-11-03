@@ -1,19 +1,9 @@
 // webapp/rag-processor.js -- RAG document processing pipeline
-// Extracts text, chunks, embeds via Qwen3-Embedding (DeepInfra), stores in Supabase pgvector
+// Extracts text, chunks, embeds with the local embedding model in the bot,
+// stores in Supabase pgvector
 
 const path = require("path");
 const { supabase } = require("./db");
-
-const DEEPINFRA_API_KEY = process.env.DEEPINFRA_API_KEY;
-const { appHeaders } = require("./model-wire");
-const EMBED_URL = process.env.EMBED_API_URL || "https://api.deepinfra.com/v1/openai/embeddings";
-// File Search's live rag_chunks were indexed with Qwen3-Embedding-4B. The query
-// path must use the SAME model or every cosine collapses to ~0 (different models
-// live in incompatible vector spaces). Default matches the data so File Search
-// still works if the EMBED_MODEL env override is ever lost. Changing this model
-// requires a full re-index of rag_chunks, it is not a hot swap.
-const EMBED_MODEL = process.env.EMBED_MODEL || "Qwen/Qwen3-Embedding-4B";
-const EMBED_DIMS = 1536; // Matryoshka truncation from native 4096
 // Parts small enough that the embedder reads each whole, its heading (file
 // name and opening, up to 250 characters) included: at most 750 characters
 // and the 150 carried over from the part before, inside the 1,200 a local
@@ -319,52 +309,22 @@ function chunkText(text) {
 
 // Is this Closedhand's embedder the local one? Then the bot embeds, since
 // the model runs there (lib/embed-route.js).
-async function localEmbedder() {
-  const model = process.env.EMBED_MODEL || (await require("./config").getConf("EMBED_MODEL").catch(() => null));
-  return String(model || "").startsWith("local:");
-}
-
-/** Embed a batch of texts: with the local model through the bot, or Qwen3-Embedding on DeepInfra. */
+/** Embed a batch of texts with the local embedding model, through the bot. */
 async function embedBatch(texts, opts = {}) {
   if (texts.length === 0) return [];
-  if (await localEmbedder()) {
-    // An answer that is not there is not a failure: a chunk saved without a
-    // vector is given one by the bot's backfill (lib/embed-backfill.js).
-    try {
-      const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
-      const res = await fetch(`${BOT_INTERNAL_URL}/internal/embed`, {
-        method: "POST", signal: AbortSignal.timeout(opts.query ? 15000 : 10 * 60000),
-        headers: { "Content-Type": "application/json", "x-closedhand-token": botToken("file-search") },
-        body: JSON.stringify({ texts: texts.map((t) => String(t || "").substring(0, 8000)), query: !!opts.query }),
-      });
-      const out = await res.json().catch(() => ({}));
-      return res.ok && Array.isArray(out.vectors) ? out.vectors : [];
-    } catch (e) {
-      console.log(`[RAG] Local embed through the bot failed: ${e.message}`);
-      return [];
-    }
-  }
-  if (!DEEPINFRA_API_KEY) return [];
+  // An answer that is not there is not a failure: a chunk saved without a
+  // vector is given one by the bot's backfill (lib/embed-backfill.js).
   try {
-    const resp = await fetch(EMBED_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${DEEPINFRA_API_KEY}`, ...appHeaders(EMBED_URL) },
-      body: JSON.stringify({ model: EMBED_MODEL, input: texts.map(t => t.substring(0, 8000)), encoding_format: "float" }),
+    const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
+    const res = await fetch(`${BOT_INTERNAL_URL}/internal/embed`, {
+      method: "POST", signal: AbortSignal.timeout(opts.query ? 15000 : 10 * 60000),
+      headers: { "Content-Type": "application/json", "x-closedhand-token": botToken("file-search") },
+      body: JSON.stringify({ texts: texts.map((t) => String(t || "").substring(0, 8000)), query: !!opts.query }),
     });
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => "");
-      throw new Error(`Embed error ${resp.status}: ${errText.substring(0, 200)}`);
-    }
-    const data = await resp.json();
-    const sorted = (data.data || []).sort((a, b) => a.index - b.index);
-    // Matryoshka truncation to EMBED_DIMS + L2 normalize
-    return sorted.map(d => {
-      const truncated = d.embedding.slice(0, EMBED_DIMS);
-      const norm = Math.sqrt(truncated.reduce((sum, v) => sum + v * v, 0)) || 1;
-      return truncated.map(v => v / norm);
-    });
+    const out = await res.json().catch(() => ({}));
+    return res.ok && Array.isArray(out.vectors) ? out.vectors : [];
   } catch (e) {
-    console.log(`[RAG] Embed batch failed: ${e.message}`);
+    console.log(`[RAG] Local embed through the bot failed: ${e.message}`);
     return [];
   }
 }
@@ -676,7 +636,7 @@ async function processDocument(documentId, userId, fileBuffer, fileName, fileTyp
     console.log(`[RAG] Extracting text from ${fileName} (${fileType})`);
     // Pictures, stretches of sound and video frames, embedded by what they
     // are (EmbeddingGemma 2, in the bot), go in beside the text's chunks.
-    const media = (await localEmbedder()) ? [] : null;
+    const media = [];
     const text = await extractText(fileBuffer, fileType, fileName, userId, media);
     return await fileText(documentId, userId, fileName, text, media, sourceContext);
   } catch (e) {
@@ -823,7 +783,7 @@ async function hearDocument(doc) {
   const beat = setInterval(stillGoing, 5 * 60000);
   try {
     console.log(`[RAG] Hearing ${doc.name}`);
-    const media = (await localEmbedder()) ? [] : null;
+    const media = [];
     const file = await openFileStream(doc.user_id, doc.origin, doc.file_path, source && source.account);
     const text = await hearFile(file, doc.name, /^(mp4|m4v|mov|webm)$/.test(doc.file_type), doc.user_id, media);
     await fileText(doc.id, doc.user_id, doc.name, text, media, { origin: doc.origin, path: doc.file_path });

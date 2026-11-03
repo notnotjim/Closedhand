@@ -7,13 +7,13 @@ function nodes() {
  const map = new Map();
  return selector => { if (!map.has(selector)) { const n = { textContent:'',style:{},hidden:false,classes:{} }; n.classList={toggle:(k,v)=>n.classes[k]=v};map.set(selector,n); }return map.get(selector); };
 }
-test('recall is quiet when idle or ready, and only displays progress, errors or missing configuration inside models', () => {
+test('recall is quiet when idle or ready, and only displays its download or an error inside models', () => {
  const code=html.slice(html.indexOf('    // Setup only shows recall'),html.indexOf('    $("#done-count")'));
- for(const status of ['idle','ready','downloading','error','missing']) {
-  const $=nodes(), state={steps:[{key:'model',done:true}],memory:status!=='missing',memoryMode:status==='missing'?'off':'local',localModels:{embedder:{state:status,pct:42}}};
+ assert.doesNotMatch(html,/memory-form|DeepInfra API key/,'no key to ask for: recall runs on this computer');
+ for(const status of ['idle','ready','downloading','error']) {
+  const $=nodes(), state={steps:[{key:'model',done:true}],localModels:{embedder:{state:status,pct:42}}};
   vm.runInNewContext(code,{$,state});
-  assert.equal($('#memory-note').classes['is-on'],['downloading','error','missing'].includes(status));
-  assert.equal($('#memory-form').hidden,status!=='missing');
+  assert.equal($('#memory-note').classes['is-on'],['downloading','error'].includes(status));
   assert.equal($('#dl-bar').hidden,status!=='downloading');
   if(status==='downloading')assert.match($('#memory-note-lead').textContent,/42%/);
  }

@@ -144,11 +144,11 @@ test('every row without a vector gets one: Pinned Facts and Context Notes first,
 function res() { const r = { code: 200, body: null, status(c) { r.code = c; return r; }, json(b) { r.body = b; return r; } }; return r; }
 
 test('File Search embeds through the bot, and only with a token', async () => {
-  let handler, local = true, runner = 'eg2';
+  let handler, runner = 'eg2';
   const seen = [];
   require('../lib/embed-route').register({ post: (route, body, fn) => { if (route === '/internal/embed') handler = fn; } }, {
     verifyToken: (t) => (t === 'good' ? 'file-search' : null), body: () => {},
-    usi: { isLocalEmbed: () => local, embedBatch: async (texts, opts) => { seen.push(opts); return texts.map(() => [0.5]); } },
+    usi: { embedBatch: async (texts, opts) => { seen.push(opts); return texts.map(() => [0.5]); } },
     localModels: { embedderSpec: () => ({ runner }), localEmbedMedia: async (kind, data) => { seen.push({ kind, bytes: data.length }); return [0.25]; } },
   });
   const call = async (token, body) => { const r = res(); await handler({ get: () => token, body }, r); return r; };
@@ -163,8 +163,6 @@ test('File Search embeds through the bot, and only with a token', async () => {
   assert.deepEqual(seen.shift(), { kind: 'image', bytes: 10 });
   runner = 'pipeline';
   assert.equal((await call('good', { images: ['eA=='] })).code, 409, 'only EmbeddingGemma 2 sees pictures');
-  local = false;
-  assert.equal((await call('good', { texts: ['x'] })).code, 409, 'a hosted embedder is not answered from here');
 });
 
 test('a picture or a sound matched by what it is stays in File Search results, under the line it is dropped', async () => {
@@ -226,14 +224,15 @@ test('with EmbeddingGemma 2 a video file comes back with its frames and its soun
 
 test('File Search uses the local model through the bot and keeps pictures and sounds as their own chunks', () => {
   const rag = read('webapp/rag-processor.js');
-  assert.match(rag, /if \(await localEmbedder\(\)\) \{[\s\S]{0,400}fetch\(`\$\{BOT_INTERNAL_URL\}\/internal\/embed`/);
+  assert.match(rag, /async function embedBatch\(texts, opts = \{\}\) \{[\s\S]{0,400}fetch\(`\$\{BOT_INTERNAL_URL\}\/internal\/embed`/);
+  assert.doesNotMatch(rag, /deepinfra|EMBED_API_URL/i, 'no hosted embedder');
   assert.match(rag, /async function embedSingle\(text\) \{\n\s*if \(!text\) return null;\n\s*const results = await embedBatch\(\[text\], \{ query: true \}\);/);
   assert.match(rag, /allEmbeddings\.push\(\.\.\.\(embeddings\.length === batch\.length \? embeddings : batch\.map\(\(\) => undefined\)\)\)/, 'chunks and vectors stay in step');
   assert.match(rag, /if \(!vector\) continue;/, 'a picture or sound chunk is stored only with its vector');
   assert.match(rag, /chunk_count: rows\.length,/);
   assert.match(read('index.js'), /require\("\.\/lib\/embed-route"\)\.register\(ctx\.expressApp\);/);
   assert.match(read('index.js'), /require\("\.\/lib\/embed-backfill"\)\.start\(\);/);
-  assert.match(read('webapp/server.js'), /EMBED_MODEL: "local:embeddinggemma-2"/, 'new installs start on EmbeddingGemma 2');
+  assert.match(read('lib/local-models.js'), /function preload\(\) \{\n  setTimeout\(\(\) => \{\n    ensureLocalEmbedder\(\)/, 'every Closedhand starts EmbeddingGemma 2 at boot');
 });
 
 test('a file part keeps the heading it was embedded with, so a backfilled one is embedded the same; never under zero residency', () => {

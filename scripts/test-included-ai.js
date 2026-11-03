@@ -311,11 +311,10 @@ test("when the AI account refuses, the chat says so in fixed words instead of 's
   const { appHeaders } = require(path.join(root, "lib/model-wire"));
   assert.deepEqual(appHeaders("https://openrouter.ai/api/v1/embeddings"), { "HTTP-Referer": "https://closedhand.com", "X-Title": "Closedhand" });
   assert.deepEqual(appHeaders("https://api.deepinfra.com/v1/openai/embeddings"), {});
+  // Recall and File Search call no provider of their own: their models run on
+  // the computer, and the person's go through model-wire, which names Closedhand.
   for (const f of ["lib/services/usi.js", "webapp/rag-processor.js"]) {
-    const src = fs.readFileSync(path.join(root, f), "utf8");
-    const calls = src.match(/"Authorization": `Bearer \$\{(?:machineryKey\(\)|embedKey\(\)|DEEPINFRA_API_KEY)\}`[^}]*\}/g) || [];
-    assert.ok(calls.length >= 1, f);
-    for (const c of calls) assert.match(c, /\.\.\.appHeaders\(/, f + ": " + c);
+    assert.doesNotMatch(fs.readFileSync(path.join(root, f), "utf8"), /"Authorization": `Bearer/, f);
   }
   assert.match(fs.readFileSync(path.join(root, "lib/provider-search.js"), "utf8"), /\.\.\.headers, \.\.\.appHeaders\(url\)/);
 });

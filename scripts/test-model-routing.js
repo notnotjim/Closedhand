@@ -304,8 +304,7 @@ test("a save receipt belongs to one user and preserves unrelated settings", asyn
       settings = next;
       return { data: [{ patch_profile_settings: settings }], error: null };
     } };
-  config.install(app, { supabase: db, authorize: async req => req.user, allowDefault: true,
-    ensureMemory: async () => { settings.self_host_config.INITIALIZED = true; } });
+  config.install(app, { supabase: db, authorize: async req => req.user, allowDefault: true });
   async function invoke(path, user, body) {
     const res = { code: 200, status(n) { this.code = n; return this; }, set() { return this; }, json(data) { this.data = data; return this; } };
     await routes["POST /api/model-config/" + path]({ user, body }, res); return res;
@@ -318,7 +317,6 @@ test("a save receipt belongs to one user and preserves unrelated settings", asyn
   assert.equal(saved.code, 200);
   assert.equal(settings.marker, "preserve");
   assert.equal(settings.self_host_config.EMBED_MODEL, "locked");
-  assert.equal(settings.self_host_config.INITIALIZED, true);
   const replay = await invoke("save", "u1", { ticket: checked.data.ticket });
   assert.equal(replay.code, 400);
   assert.equal((await invoke("default", "u1", {})).code, 200);

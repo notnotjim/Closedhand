@@ -208,7 +208,7 @@ test('idle is nothing running and nothing for two minutes; long hearings wait th
 test('chat turns, syncs, indexing, File Search and LLM calls count as Closedhand being busy', () => {
   assert.match(read('lib/user-mutex.js'), /runWithInheritedContext\(\(\) => require\("\.\/idle"\)\.during\(fn\)\)/);
   assert.match(read('lib/services/usi.js'), /return require\("\.\.\/idle"\)\.during\(\(\) => postSyncIndexPass\(userId\)\);/);
-  assert.match(read('lib/services/usi.js'), /if \(!hasEmbedConfig\(\) \|\| texts\.length === 0\) return \[\];\n  require\("\.\.\/idle"\)\.touch\(\);/);
+  assert.match(read('lib/services/usi.js'), /if \(texts\.length === 0\) return \[\];\n  require\("\.\.\/idle"\)\.touch\(\);/);
   assert.match(read('lib/services/data-sync.js'), /return require\("\.\.\/idle"\)\.during\(\(\) => syncUserDataNow\(userId, mode\)\);/);
   assert.match(read('lib/services/mail-history.js'), /return require\("\.\.\/idle"\)\.during\(\(\) => readAccount\(args\)\);/);
   assert.match(read('lib/services/wa-digest.js'), /return require\("\.\.\/idle"\)\.during\(digestAll\);/);

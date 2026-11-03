@@ -47,7 +47,7 @@ test("a file is read once; one that could not be fetched is tried again, less of
 
 test("every connection goes through the one step, at the index's one entry", () => {
   const usi = read("lib/services/usi.js");
-  assert.match(usi, /async function indexItems\(userId, service, itemType, items, opts = \{\}\) \{\n  if \(!items\?\.length \|\| !hasEmbedConfig\(\)\) return \{ indexed: 0 \};\n  await withRowFiles\(userId, items\);/, "any connection's items");
+  assert.match(usi, /async function indexItems\(userId, service, itemType, items, opts = \{\}\) \{\n  if \(!items\?\.length\) return \{ indexed: 0 \};\n  await withRowFiles\(userId, items\);/, "any connection's items");
   assert.doesNotMatch(usi, /readFor\(userId, (rows|dedupedEmails|dedupedEvents)/, "no connection reads its files its own way");
   assert.equal((usi.match(/        rows: \[e\],/g) || []).length, 2, "an email and an event name their own row");
   assert.match(usi, /const fHead = \(`File: \$\{String\(file\.name\)\.slice\(0, 60\)\}\\n` \+ head\)\.slice\(0, 290\);/, "each piece of a file headed by its name and what it came with");

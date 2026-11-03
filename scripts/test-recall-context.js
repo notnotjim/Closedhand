@@ -119,13 +119,12 @@ test("explicit File Search still ranks and returns a ready document", async () =
 
 test("the reranker can score a lone candidate when recall needs a relevance decision", async () => {
   let scored = 0;
-  const box = { module: { exports: {} }, process: { env: { RERANK_MODEL: "local:fixture" } }, console,
-    require: name => {
-      if (name === "../config") return { getConfCached() {} };
-      if (name === "../local-models") return { localRerankScores: async () => { scored++; return [0.8]; } };
-      throw new Error(`Unexpected dependency ${name}`);
-    },
+  const load = name => {
+    if (name === "../local-models") return { localRerankScores: async () => { scored++; return [0.8]; } };
+    throw new Error(`Unexpected dependency ${name}`);
   };
+  load.resolve = name => name;
+  const box = { module: { exports: {} }, process: { env: {} }, console, require: load };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../lib/services/reranker.js"), "utf8"), box);
   const ranked = await box.module.exports.rerank("boarding pass", [{ content: "boarding pass" }], 1, { scoreSingleton: true });
   assert.equal(scored, 1);

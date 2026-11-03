@@ -382,6 +382,6 @@ test("a new port that can't be saved keeps the old one and counts as a failed st
 test("the Settings save compares and writes under run-here's lock on the model settings", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "webapp/model-config.js"), "utf8");
   const save = src.slice(src.indexOf('app.post("/api/model-config/save"'));
-  assert.match(save, /await runHere\.editConfig\(async \(\) => \{\n\s*let settings = await profile\(id\);\n\s*if \(entry\.previous !== JSON\.stringify/);
+  assert.match(save, /await runHere\.editConfig\(async \(\) => \{\n\s*const settings = await profile\(id\);\n\s*if \(entry\.previous !== JSON\.stringify/);
   assert.ok(save.indexOf("patchSettings(supabase, id") < save.indexOf("receipts.delete"), "written inside the lock, before the ticket goes");
 });
