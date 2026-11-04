@@ -70,3 +70,18 @@ test("a fact's subject is a name alone, however it was given", () => {
   assert.match(read("webapp/server.js"), /subject = require\("\.\/own-name"\)\.subjectName\(subject\);/);
   assert.match(read("webapp/views/dashboard.html"), /return String\(n\.subject \|\| ''\)\.replace\(\/\\s\*\\\(\[\^\)\]\*\\\)\\s\*\$\/, ''\)\.trim\(\) \|\| key\.replace/, "and shown so on the dashboard, older facts too");
 });
+
+test("the assistant is never someone to ask about, by its name or the one they gave it, and a quoted message is not theirs", async () => {
+  const asked = [];
+  const ask = async (content) => { asked.push(content); return '{"ask": "Closedhand"}'; };
+  const reply = `[replying to Closedhand's message: "Right, and that matters: Rowan agreed in principle."]\nDid I offer him fixed instalments? But not tied to sales?`;
+  assert.equal(await a.whoToAsk({ store: store(), message: reply, ask }), null, "the quote's label and words are not what they wrote");
+  assert.equal(asked.length, 0, "and no question goes to their LLM");
+  assert.equal(await a.whoToAsk({ store: store(), message: "Thanks Closedhand, that helps", ask }), null, "nor its name in their own words");
+  const named = { facts, profile: { settings: { asked_who: [], bot_name: "Juno Max" } } };
+  assert.equal(await a.whoToAsk({ store: named, message: "Can Juno check this", ask }), null, "nor the name they gave it");
+  assert.deepEqual(a.ownNames(named), ["closedhand", "juno max", "juno", "max"]);
+  await a.whoToAsk({ store: named, message: "Is Bea coming?", ask: async (content) => { asked.push(content); return '{"ask": "Bea"}'; } });
+  assert.match(asked.at(-1), /their personal assistant, Closedhand, which they call Juno Max:/, "the check is told who the assistant is");
+  assert.match(read("lib/pulse.js"), /facts\.unknownPerson\([^\n]*require\("\.\/ask-who"\)\.ownNames\(store\)/, "Pulse leaves its names out too");
+});

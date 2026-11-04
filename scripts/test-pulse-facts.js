@@ -133,7 +133,7 @@ test("who of the people a message is from no Pinned Fact names, asked about once
   assert.equal(f.unknownPerson([{ type: "email", data: { from: "Ana <ana@example.test>" } }], known), null, "chats only");
   // The writer is told, and when what it would say rests on who they are or
   // where they live (one narrow question to their LLM), it asks first.
-  assert.match(pulse, /const askWho = facts\.unknownPerson\(numbered\.filter\(\(r, i\) => r && r\.type === "message" && cited\.has\(i \+ 1\)\), store\.facts, settings\.asked_who\);/);
+  assert.match(pulse, /const askWho = facts\.unknownPerson\(numbered\.filter\(\(r, i\) => r && r\.type === "message" && cited\.has\(i \+ 1\)\), store\.facts, \[\.\.\.\(settings\.asked_who \|\| \[\]\), \.\.\.require\("\.\/ask-who"\)\.ownNames\(store\)\]\);/);
   assert.match(pulse, /if \(askWho\) chatText \+= `\\n\\nNOT KNOWN TO CLOSEDHAND: who \$\{askWho\} is to \$\{userName\}, and where they live\. Never assume either/);
   assert.match(pulse, /Would anything you would tell \$\{userName\} here depend on who \$\{askWho\} is to \$\{userName\} or where \$\{askWho\} lives/);
   assert.match(pulse, /await deliver\(`\$\{said \? `\$\{askWho\} wrote: "\$\{said\}"\\n\\n` : ""\}Before I say anything about it: who's \$\{askWho\} to you, and where do they live\? Tell me once and I'll remember, so I get things like this right\.`\);/);
