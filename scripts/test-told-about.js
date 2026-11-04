@@ -103,11 +103,14 @@ test("the word search filters by source, type and 'everything but mail' inside t
 
 test("recall's word search gives every kind of item a share, so mail with a name cannot push out the chat that was asked about", async () => {
   const calls = [];
-  const db = { rpc: async (name, args) => { calls.push(args); return { data: [], error: null }; }, from: () => ({}) };
+  const row = (type, id) => ({ external_id: id, source: type === "email" ? "gmail" : "whatsapp", type, data: { text: "Rowan" }, rank: 0.5 });
+  const rows = [row("email", "e1"), row("email", "e2"), row("email", "e3"), row("message", "m1"), row("message", "m2")];
+  const db = { rpc: async (name, args) => { calls.push(args); return { data: name === "search_data_cache_lexical" ? rows : [], error: null }; }, from: () => ({}) };
   const usi = load("lib/services/usi.js", { "../../user-store": { supabase: db } });
-  await usi.search("u1", "what did Rowan say", { maxResults: 20, queryEmbedding: null });
+  const found = await usi.search("u1", "what did Rowan say", { maxResults: 20, queryEmbedding: null });
   const lexical = calls.find((a) => a.query_tokens);
   assert.ok(lexical, "the word search ran");
   assert.equal(lexical.per_type, 10);
   assert.equal(lexical.filter_type, null);
+  assert.deepEqual(found.results.map((r) => r.id), ["e1", "m1", "e2", "m2", "e3"], "each kind's best in turn, so fusion cannot cut every chat");
 });
