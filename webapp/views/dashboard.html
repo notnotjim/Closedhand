@@ -7026,8 +7026,10 @@
         .then(function() { loadUserRules(); });
     };
 
-    window.deleteRule = function(id, btn) {
-      var item = btn.parentElement;
+    // Deleting asks first, like everything that can't be taken back.
+    window.deleteRule = async function(id, btn) {
+      var item = btn.closest('.preference-row');
+      if (!(await askFirst(item || btn, { text: 'Delete this preference?', yes: 'Delete' }))) return;
       if (item) { item.style.opacity = '0.2'; item.style.pointerEvents = 'none'; }
       fetch('/api/rules/' + id, { method: 'DELETE' })
         .then(function() { loadUserRules(); });

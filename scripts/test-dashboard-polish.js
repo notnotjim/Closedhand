@@ -150,3 +150,7 @@ test("one confetti and no milestones or hidden modes", () => {
   assert.match(page, /window\.confetti\(\{ particleCount: 90, angle: 90, spread: 65, origin: \{ x: 0\.5, y: 0\.7 \}, colors: \[col\('--accent'\), col\('--accent'\), col\('--warn'\), col\('--accent'\), col\('--slate'\), col\('--accent'\)\], disableForReducedMotion: true \}\);/, "the web chat's matches the dashboard's");
   assert.equal((page.match(/window\.confetti\(/g) || []).length, 1);
 });
+
+test('deleting a preference asks first, as every delete does', () => {
+  assert.match(dash, /window\.deleteRule = async function\(id, btn\) \{\n\s*var item = btn\.closest\('\.preference-row'\);\n\s*if \(!\(await askFirst\(item \|\| btn, \{ text: 'Delete this preference\?', yes: 'Delete' \}\)\)\) return;/);
+});
