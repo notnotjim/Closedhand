@@ -4825,19 +4825,6 @@
       document.querySelectorAll("#pulse-level .seg-btn").forEach(btn => {
         btn.classList.toggle("active", btn.dataset.level === pulseState.proactiveLevel);
       });
-      var badge = document.getElementById('pulse-status-badge');
-      if (badge) {
-        var level = pulseState.proactiveLevel || 'off';
-        var label = level.charAt(0).toUpperCase() + level.slice(1);
-        badge.textContent = label;
-        if (level === 'off') {
-          badge.style.background = 'rgba(var(--fg-rgb),0.05)';
-          badge.style.color = 'rgba(var(--fg-rgb),0.52)';
-        } else {
-          badge.style.background = 'rgba(var(--accent-strong-rgb),0.1)';
-          badge.style.color = 'var(--accent)';
-        }
-      }
     }
 
     function renderPlatformPills(platforms) {

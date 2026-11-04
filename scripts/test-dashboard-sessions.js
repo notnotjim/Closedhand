@@ -167,7 +167,7 @@ test('the dashboard starts, checks and ends sessions through this module', () =>
   const logout = server.slice(server.indexOf('app.post("/logout"'), server.indexOf('app.get("/logout"'));
   assert.match(logout, /await dashboardSessions\.end\(readCookie\(req, browserAccess\.sessionName\(req\)\)\)/);
   assert.match(logout, /sessionCookie\(req, "", 0\)/);
-  const setPw = server.slice(server.indexOf('app.post("/api/setup/password"'), server.indexOf('app.post("/api/setup/detect"'));
+  const setPw = server.slice(server.indexOf('app.post("/api/setup/password"'), server.indexOf('app.get("/api/setup/qr"'));
   assert.match(setPw, /await dashboardSessions\.endAll\(\);\n(\s*\/\/.*\n)*\s*await startAdminSession\(req, res, fromElsewhere\(req\) \? \{ kind: signInCode\.KIND \} : undefined\);/);
   const login = server.slice(server.indexOf('app.post("/api/login"'), server.indexOf('// --- Reach the dashboard from your phone'));
   assert.match(login, /await startAdminSession\(req, res\);/);
@@ -232,7 +232,7 @@ test('through the personal URL, 100 wrong passwords an hour from all addresses t
 
 test('a dashboard password has at least 8 characters, on the setup page and on the server', () => {
   const server = fs.readFileSync(path.join(__dirname, '..', 'webapp/server.js'), 'utf8');
-  const route = server.slice(server.indexOf('app.post("/api/setup/password"'), server.indexOf('app.post("/api/setup/detect"'));
+  const route = server.slice(server.indexOf('app.post("/api/setup/password"'), server.indexOf('app.get("/api/setup/qr"'));
   assert.match(route, /if \(pw\.length < 8\) return res\.status\(400\)\.json\(\{ error: "Use at least 8 characters\." \}\);/);
   const setup = fs.readFileSync(path.join(__dirname, '..', 'webapp/views/setup.html'), 'utf8');
   assert.match(setup, /id="pw-input" autocomplete="new-password" minlength="8" required/);

@@ -13,7 +13,6 @@ const server = fs.readFileSync(path.join(__dirname, "..", "webapp", "server.js")
 
 const PUBLIC = new Set([
   "/api/setup/qr",        // a QR picture of a t.me link
-  "/api/setup/provider",  // always refuses
   "/api/login",           // signing in
   "/api/login/code",      // its second step, which needs the challenge a right password made
   "/api/telegram/session",// Telegram's own signed proof

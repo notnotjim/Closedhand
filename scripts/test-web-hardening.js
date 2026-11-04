@@ -135,7 +135,7 @@ test('the setup code: only the exact code, a pass that cannot be forged or outli
 });
 
 test('replacing the dashboard password takes the current one, under the same lockout', () => {
-  const route = server.slice(server.indexOf('app.post("/api/setup/password"'), server.indexOf('app.post("/api/setup/detect"'));
+  const route = server.slice(server.indexOf('app.post("/api/setup/password"'), server.indexOf('app.get("/api/setup/qr"'));
   assert.ok(route.indexOf('checkDashboardPassword(String((req.body || {}).current') < route.indexOf('DASHBOARD_PASSWORD_HASH: hashPassword(pw)'));
   assert.match(route, /if \(lockedOut\(ip, req\)\) return res\.status\(429\)/);
   assert.match(route, /noteWrongPassword\(ip, req\);/);

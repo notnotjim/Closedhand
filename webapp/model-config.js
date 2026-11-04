@@ -210,19 +210,9 @@ function install(app, deps) {
   app.get("/api/model-config", route(async (req, res, id) => {
     const settings = await profile(id);
     const download = (deps.local ? settings.self_host_config?.LOCAL_MODELS_STATUS : null)?.embedder;
-    res.set("Cache-Control", "no-store").json({ config: policy.publicConfig(ownConfig(settings)), allowDefault: !!deps.allowDefault, runtime: deps.local ? (process.env.CLOSEDHAND_DESKTOP ? "desktop" : "docker") : "hosted",
+    res.set("Cache-Control", "no-store").json({ config: policy.publicConfig(ownConfig(settings)), runtime: deps.local ? (process.env.CLOSEDHAND_DESKTOP ? "desktop" : "docker") : "hosted",
       activeModels: settings.model_config?.included ? [] : require("./model-summary").modelSummary(settings, deps.readRuntime, !!deps.local),
       localModels: download ? { embedder: { state: download.state, pct: download.pct } } : null });
-  }));
-  app.post("/api/model-config/default", route(async (req, res, id) => {
-    if (!deps.allowDefault) return res.status(400).json({ error: "There is no default model here. Connect a model provider for Closedhand to use." });
-    await profile(id);
-    try {
-      await require("./settings-patch").patchSettings(supabase, id, { unset: ["model_config", "llm_provider", "anthropic_api_key", "openai_api_key", "gemini_api_key", "custom_api_key", "custom_base_url", "custom_model", "custom_model_fast", "byok_models"] });
-    } catch (_) {
-      throw new Error("Could not change the models. Your previous setup is still active.");
-    }
-    res.json({ success: true });
   }));
   app.post("/api/model-config/models", route(async (req, res, id) => {
     const settings = await profile(id);

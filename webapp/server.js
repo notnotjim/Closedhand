@@ -1420,87 +1420,6 @@ app.post("/api/setup/password", async (req, res) => {
   }
 });
 
-// Whose key is this? The same models call that verifies a key also answers
-// which provider it belongs to: probe every keyed provider in parallel and the
-// one that accepts it wins. A prefix hint (sk-ant-, gsk_, xai-, AIza) only
-// orders the result when more than one accepts, never substitutes for the probe.
-app.post("/api/setup/detect", async (req, res) => {
-  const caps = require("./provider-capabilities");
-  try {
-    if (!(await requireSetupAccess(req, res))) return;
-    const apiKey = String((req.body || {}).apiKey || "").trim();
-    if (apiKey.length < 8) return res.json({ detected: false });
-    const candidates = ["anthropic", "openai", "groq", "xai", "gemini", "deepinfra", "deepseek", "openrouter", "moonshot"].filter((p) => caps.PROVIDERS[p]);
-    const hint =
-      apiKey.startsWith("sk-ant-") ? "anthropic" :
-      apiKey.startsWith("gsk_") ? "groq" :
-      apiKey.startsWith("xai-") ? "xai" :
-      apiKey.startsWith("AIza") ? "gemini" :
-      apiKey.startsWith("sk-or-") && caps.PROVIDERS.openrouter ? "openrouter" :
-      null;
-
-    // Per-provider probe: the models list (capabilities + verification), then
-    // the key-truth check (dedicated endpoint or one-token chat). Statuses are
-    // kept so a failure can be REPORTED, not left a mystery.
-    async function probeProvider(prov) {
-      let modelsStatus = null;
-      try {
-        const ids = await caps.listModels(prov, { apiKey });
-        // A public model list (OpenRouter, DeepInfra) succeeds with any key at
-        // all; only a call the key must authenticate says whose it is. A
-        // DeepSeek key was once claimed by OpenRouter this way.
-        if (!caps.PROVIDERS[prov].publicModels) return { prov, ids, ok: true };
-        const v = await caps.verifyChatKey(prov, { apiKey });
-        return { prov, ids, ok: v.valid, keyStatus: v.status };
-      } catch (e2) { modelsStatus = e2.status ?? 0; }
-      const v = await caps.verifyChatKey(prov, { apiKey });
-      return { prov, ids: [], ok: v.valid, modelsStatus, keyStatus: v.status };
-    }
-
-    // Prefix-hinted keys check their provider first and alone: the common case
-    // answers in well under a second instead of fanning out to six providers.
-    let winner = null;
-    let hintResult = null;
-    if (hint) {
-      hintResult = await probeProvider(hint);
-      if (hintResult.ok) winner = hintResult;
-    }
-    if (!winner) {
-      const rest = candidates.filter((c) => c !== hint);
-      const probes = await Promise.allSettled(rest.map(probeProvider));
-      const hits = probes.filter((r) => r.status === "fulfilled").map((r) => r.value).filter((h) => h.ok);
-      winner = hits[0] || null;
-    }
-    if (!winner) {
-      // Say what the hinted provider actually answered; that is the difference
-      // between a debuggable state and "it just doesn't work".
-      return res.json({
-        detected: false,
-        hint: hint || null,
-        hintLabel: hint ? caps.PROVIDERS[hint].label : null,
-        hintStatuses: hintResult ? { models: hintResult.modelsStatus, key: hintResult.keyStatus } : null,
-      });
-    }
-    const p = caps.PROVIDERS[winner.prov];
-    res.json({
-      detected: true,
-      provider: winner.prov,
-      label: p.label,
-      chatModel: caps.pickModel(p.chat, winner.ids) || null,
-    });
-  } catch (e) {
-    res.status(500).json({ error: "detection failed" });
-  }
-});
-
-// One endpoint for every provider: verify the key against the provider's LIVE
-// model list, save the chat config, and for complete providers derive the
-// memory machinery (embeddings, enrichment, vision, internal chores) from the
-// same key. Chat-only providers get an honest by-name answer instead.
-app.post("/api/setup/provider", (req, res) => {
-  res.status(409).json({ error: "Reload setup to check and apply the complete model setup." });
-});
-
 // QR codes for the setup wizard. The server chooses every URL it encodes, so
 // this can never be pointed at an arbitrary target. Telegram has no API to
 // create a bot (and one token can only be polled by one server, so a shared
@@ -2128,9 +2047,9 @@ app.get("/api/included-ai", async (req, res) => {
     const inUse = included.inUse(settings);
     // The person's own LLM providers by name, each their models use once: the
     // ones in use, or the ones kept beside Managed Models while they are.
-    const { PROVIDERS } = require("./provider-capabilities");
+    const { PROVIDERS } = require("./provider-names");
     const ownConnections = Object.values((inUse ? settings.own_model_config : settings.model_config)?.connections || {});
-    const own = [...new Set(ownConnections.map((c) => PROVIDERS[c?.provider]?.label).filter(Boolean))];
+    const own = [...new Set(ownConnections.map((c) => PROVIDERS[c?.provider]).filter(Boolean))];
     // The subscription's price, as closedhand.com shows it, for what resuming would charge.
     res.json({ state: inUse ? "in-use" : "available", plan: settings.included_ai?.plan || null, price: settings.included_ai?.prices?.plus || null, ownKept: !!settings.own_model_config?.connections, own });
   } catch (e) {
@@ -3118,11 +3037,11 @@ app.post("/api/mcps", connectMcpHandler);
 function aiProviderNamed(name) {
   const want = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!want) return null;
-  for (const [id, p] of Object.entries(require("./provider-capabilities").PROVIDERS)) {
-    const label = String(p.label || "").toLowerCase();
+  for (const [id, known] of Object.entries(require("./provider-names").PROVIDERS)) {
+    const label = known.toLowerCase();
     const forms = [id, label, label.replace(/\(.*\)/, ""), (label.match(/\(([^)]*)\)/) || [])[1]]
       .filter(Boolean).map((f) => f.replace(/[^a-z0-9]/g, ""));
-    if (forms.includes(want)) return { provider: id, label: p.label };
+    if (forms.includes(want)) return { provider: id, label: known };
   }
   return null;
 }

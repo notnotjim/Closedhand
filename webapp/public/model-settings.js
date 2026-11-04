@@ -54,10 +54,8 @@
       '<section class="model-check" data-region="check" hidden aria-live="polite"><h3 data-region="check-title"></h3><dl class="model-role-list" data-region="check-rows"></dl>' +
       '<button type="button" data-action="recheck" hidden>Check again</button><button type="button" data-action="save" hidden>Use these models</button></section>' +
       '<div class="model-result" role="status" aria-live="polite" tabindex="-1"></div><button type="button" data-action="reload" hidden>Retry loading settings</button>' +
-      '<details data-region="default" hidden><summary>Return to the hosted models</summary><div class="model-fields">' +
-      '<p>This removes your own model connections from Closedhand. Conversations, summaries and images will use the hosted service\'s models. Context Brain and File Search keep their existing recall provider.</p>' +
-      '<button type="button" data-action="default">Use the hosted models</button></div></details></div></details>';
-    var saved = null, ticket = null, models = [], imageModels = [], supportModels = [], busy = false, allowDefault = false;
+      '</div></details>';
+    var saved = null, ticket = null, models = [], imageModels = [], supportModels = [], busy = false;
     var loads = { primary: 0, vision: 0, background: 0 }, runtime = "", initialized = false;
     var check = null, checkTimer = null, checks = 0;
     var loadTimers = { primary: null, vision: null, background: null }, connectionValues = { primary: null, vision: null, background: null };
@@ -613,20 +611,7 @@
       field("apiKey").placeholder = keyPlaceholder(saved.connections.primary);
       region("editor").querySelector("summary").hidden = false;
       check = { kind: "saved", config: saved }; renderCheck();
-      region("default").hidden = !allowDefault;
       show("Models updated. New requests use these choices.", "done"); result.focus();
-      if (onSaved) onSaved();
-    }); };
-    root.querySelector('[data-action="default"]').onclick = function () { perform(async function () {
-      clearTimeout(loadTimers.primary); clearTimeout(loadTimers.vision); clearTimeout(loadTimers.background);
-      await call("/default", {}); saved = null; invalidate(); renderCurrent(await call(""));
-      root.querySelectorAll("input").forEach(function (el) { el.value = ""; });
-      field("provider").value = ""; field("visionProvider").value = ""; field("visionMode").value = "same";
-      field("backgroundProvider").value = ""; field("backgroundMode").value = "same";
-      region("selection").hidden = true; loads.primary++; loads.vision++; loads.background++; models = []; imageModels = []; supportModels = []; refreshPickers(); visibility();
-      clearTimeout(checkTimer); checks++; check = null; renderCheck();
-      region("default").hidden = true;
-      show("Closedhand's hosted models are active."); result.focus();
       if (onSaved) onSaved();
     }); };
     async function initialize() {
@@ -634,12 +619,10 @@
       root.querySelector('[data-action="reload"]').hidden = true;
       try { await perform(async function () {
       var data = await call(""); show(""); initialized = true; runtime = data.runtime || ""; saved = data.config; renderCurrent(data);
-      region("editor").open = !saved && !data.allowDefault;
+      region("editor").open = !saved;
       // "Change models" only makes sense once there are models to change.
-      region("editor").querySelector("summary").hidden = !saved && !data.allowDefault;
-      allowDefault = !!data.allowDefault;
-      region("default").hidden = !allowDefault || !saved;
-      if (!saved) { refreshPickers(); visibility(); if (data.allowDefault) show("Closedhand's hosted models are active. You can connect your own models here."); return; }
+      region("editor").querySelector("summary").hidden = !saved;
+      if (!saved) { refreshPickers(); visibility(); return; }
       var primary = saved.connections.primary;
       field("provider").value = primary.provider; field("baseUrl").value = primary.baseUrl;
       field("apiKey").placeholder = keyPlaceholder(primary);
