@@ -1,0 +1,93 @@
+// One conversation, whole wherever it is opened (lib/one-chat.js). Each app
+// showed only what passed through it, so a question asked on WhatsApp was
+// missing from the web chat and carrying on elsewhere meant carrying on half
+// blind. Invented people and messages throughout.
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const Module = require("node:module");
+
+const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+// The module reaches the web chat and WhatsApp as it sends, so the stand-ins
+// stay in place until the test ends.
+function load(stubs, t) {
+  const full = require.resolve("../lib/one-chat");
+  delete require.cache[full];
+  const real = Module._load;
+  Module._load = function (request, parent, isMain) {
+    if (Object.prototype.hasOwnProperty.call(stubs, request)) return stubs[request];
+    return real.call(this, request, parent, isMain);
+  };
+  t.after(() => { Module._load = real; delete require.cache[full]; });
+  return require(full);
+}
+const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+
+test("a bot app's first reply after a switch says where the person left off; nothing when they stay, or it was long ago", () => {
+  const { pickUpLine } = require("../lib/one-chat");
+  const chat = (via, ts, content = "Can you find the Harbour Hall booking form?") => [
+    { role: "user", content: "earlier", via: "telegram", ts: ago(30) },
+    { role: "assistant", content: "Sure", via: "telegram", ts: ago(30) },
+    { role: "user", content, via, ts },
+    { role: "assistant", content: "Found it.", via, ts },
+  ];
+  assert.equal(pickUpLine(chat("web", ago(1)), "telegram"), 'Carrying on from the web chat, where you said: "Can you find the Harbour Hall booking form?"');
+  assert.equal(pickUpLine(chat("whatsapp_linked", ago(1)), "slack"), 'Carrying on from WhatsApp, where you said: "Can you find the Harbour Hall booking form?"');
+  assert.equal(pickUpLine(chat("telegram", ago(1)), "telegram"), "", "same app: the chat shows it already");
+  assert.equal(pickUpLine(chat("telegram", ago(1)), "web"), "", "the web chat shows everything, so never");
+  assert.equal(pickUpLine(chat("telegram", ago(1)), "whatsapp_linked"), "", "nor WhatsApp linked to their account, which gets every turn");
+  assert.equal(pickUpLine(chat("web", ago(13)), "telegram"), "", "a day-old topic is not carried on");
+  assert.equal(pickUpLine([{ role: "user", content: "untagged", ts: ago(1) }], "telegram"), "", "older messages say no app");
+  const quoted = pickUpLine(chat("web", ago(1), "[replying to Closedhand's message: \"Found two forms\"]\nthe second one"), "telegram");
+  assert.equal(quoted, 'Carrying on from the web chat, where you said: "the second one"', "their words, not the message they replied to");
+  const long = pickUpLine(chat("web", ago(1), "word ".repeat(40)), "telegram");
+  assert.ok(long.length < 150 && long.endsWith('…"'), long);
+});
+
+test("a turn's messages carry the app; the other apps get the turn: the web chat live, WhatsApp in the person's own chat", async (t) => {
+  const web = [], wa = [];
+  const oneChat = load({
+    "./web-chat-ws": { hasWebChatConnection: () => true, sendToUser: (userId, msg) => web.push(msg) },
+    "./platforms/whatsapp-linked": { selfChat: () => "447700900001@s.whatsapp.net", mirrorPersonToSelf: async (x) => wa.push(["me", x]), sendLinkedMessage: async (jid, x) => wa.push(["closedhand", x]) },
+  }, t);
+  const before = { role: "user", content: "old" };
+  const conv = [before, { role: "user", content: "new" }, { role: "assistant", content: "reply" }];
+  assert.equal(oneChat.tag(conv, new Set([before]), "telegram"), 2);
+  assert.equal(before.via, undefined, "what was there before keeps what it had");
+  assert.deepEqual(conv.slice(1).map((m) => m.via), ["telegram", "telegram"]);
+
+  await oneChat.after({ userId: "u1", via: "telegram", said: "Is the boiler service booked?", reply: "Yes, Tuesday 9:00." });
+  assert.deepEqual(web.pop(), { type: "elsewhere", project: null, messages: [{ role: "user", content: "Is the boiler service booked?", via: "telegram" }, { role: "assistant", content: "Yes, Tuesday 9:00.", via: "telegram" }] });
+  assert.deepEqual(wa.splice(0), [["me", "Is the boiler service booked?"], ["closedhand", "Yes, Tuesday 9:00."]], "their words as theirs, the reply as Closedhand's");
+
+  await oneChat.after({ userId: "u1", via: "web", said: "And the gas check?", reply: "Booked for Friday." });
+  assert.equal(web.length, 0, "a web turn is in the web chat already");
+  assert.equal(wa.length, 2);
+  wa.splice(0);
+  await oneChat.after({ userId: "u1", via: "whatsapp_linked", said: "Thanks", reply: "Any time." });
+  assert.equal(wa.length, 0, "a WhatsApp turn is in WhatsApp already");
+  assert.equal(web.length, 1);
+  await oneChat.after({ userId: "u1", via: "telegram", said: "", reply: "", fileData: { mimeType: "image/jpeg" } });
+  assert.deepEqual(wa.splice(0), [["me", "(a photo)"]], "a photo on its own is said to be one");
+  await oneChat.after({ userId: "u1", via: "telegram", said: "📦 any news?", reply: "📦 It left the depot.", project: { id: "p1", emoji: "📦" } });
+  assert.deepEqual(web.pop().project, { id: "p1", emoji: "📦" }, "a project's turn goes to that project's conversation");
+});
+
+test("the turn's hook, proactive messages and the web chat page", () => {
+  const engine = read("lib/engine.js");
+  assert.match(engine, /const before = new Set\(conversation\);\n\s*const pickUp = oneChat\.pickUpLine\(conversation, platform\);/);
+  assert.match(engine, /oneChat\.after\(\{ userId, via: platform, said: userMessage, reply, fileData, project: project \? project\.project : null \}\)/);
+  assert.match(engine, /return pickUp && typeof reply === "string" && reply\.trim\(\) \? `\$\{pickUp\}\\n\\n\$\{reply\}` : reply;/, "the line goes only to the bot app, never into the conversation");
+  const messaging = read("lib/messaging.js");
+  assert.match(messaging, /if \(userId && !\(ctx\.currentAsk && ctx\.currentAsk\[userId\]\)\) \{\n\s*try \{ require\("\.\/one-chat"\)\.sentElsewhere\(/, "a proactive message shows in the web chat; a turn's own sends do not show twice");
+  const wa = read("lib/platforms/whatsapp-linked.js");
+  assert.match(wa, /const id = require\("@whiskeysockets\/baileys"\)\.generateMessageIDV2\(_sock\.user\?\.id\);\n\s*_sentIds\.add\(id\);/, "a mirrored message is never answered, even if its echo comes first");
+  assert.match(read("lib/pulse.js"), /via = via \|\| t\.platform;/);
+  assert.match(read("lib/task-delivery.js"), /sentText = sent; sentVia = dest\.platform;/);
+  const page = read("webapp/views/index.html");
+  assert.match(page, /if \(msg\.type === 'elsewhere'\) \{ showElsewhere\(msg\); return; \}/);
+  assert.match(page, /where\.textContent = 'on ' \+ VIA_NAMES\[via\];/);
+  assert.match(page, /var firstOfVisit = !hasMessages && !_openProject;\n\s*enterChatMode\(\);\n\s*if \(firstOfVisit\) loadEarlier\(\);/, "typing from the opening screen carries the conversation on");
+  assert.match(page, /addMessage\(msg\.content, msg\.role === 'user' \? 'user' : 'bot', null, msg\.ts \|\| null, msg\.via \|\| null\);/, "history says which app too");
+});

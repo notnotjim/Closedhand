@@ -3620,6 +3620,8 @@
           if (msg.type === 'agent_progress') { agentLiveLine(msg); return; }
           // Conversation history was cleared (/clear, lib/clear-command.js): what is shown goes too.
           if (msg.type === 'cleared') { messagesEl.querySelectorAll('.message').forEach(function(m) { m.remove(); }); loadActivityFeed(); return; }
+          // A turn or a message in another app: shown here too, live.
+          if (msg.type === 'elsewhere') { showElsewhere(msg); return; }
           // A reply ends the wait; progress while this tab waits restarts the timer.
           if (msg.type === 'message' || msg.type === 'stream_end' || msg.type === 'file') { _awaitingReply = false; disarmResponseWatchdog(); }
           else if (_awaitingReply) armResponseWatchdog();
@@ -3743,7 +3745,9 @@
     }
 
     lastUserMessage = text;
+    var firstOfVisit = !hasMessages && !_openProject;
     enterChatMode();
+    if (firstOfVisit) loadEarlier();
     // A reply shows the message it answers at its top, as it will from history.
     if (_replyTo) displayText = '[replying to ' + (_replyTo.who === 'closedhand' ? "Closedhand's message" : 'your own message') + ': "' + _replyTo.text.replace(/"\]/g, '" ]') + '"]\n' + displayText;
     addMessage(displayText, 'user', pendingFiles.length > 0 ? pendingFiles : null);
@@ -3833,7 +3837,7 @@
     return d.toLocaleDateString('en-GB', opts);
   }
   // The row under a message that shows on hover: when it was said, and copy.
-  function attachMsgTools(div, text, ts, live) {
+  function attachMsgTools(div, text, ts, live, via) {
     var tools = document.createElement('div');
     tools.className = 'msg-tools';
     var copy = document.createElement('button');
@@ -3867,6 +3871,13 @@
     when.textContent = label;
     if (ts && !isNaN(Date.parse(ts))) { when.title = new Date(ts).toLocaleString('en-GB'); when.setAttribute('data-ts', ts); }
     if (label) tools.appendChild(when);
+    // Said or sent in another app: which, beside when (one chat everywhere).
+    if (via && typeof VIA_NAMES !== 'undefined' && VIA_NAMES[via]) {
+      var where = document.createElement('span');
+      where.className = 'msg-time msg-via';
+      where.textContent = 'on ' + VIA_NAMES[via];
+      tools.appendChild(where);
+    }
     div.appendChild(tools);
   }
   // A label written once said "just now" for ever; keep them current.
@@ -4020,17 +4031,17 @@
     });
   })();
 
-  function addMessage(text, role, fileInfo, ts) {
+  function addMessage(text, role, fileInfo, ts, via) {
     var parts = role === 'bot' && typeof text === 'string' ? followOnParts(text) : [text];
-    if (parts.length < 2) { addOneMessage(text, role, fileInfo, ts, text); return; }
+    if (parts.length < 2) { addOneMessage(text, role, fileInfo, ts, text, via); return; }
     var live = ts === undefined;
     parts.forEach(function (part, i) {
-      if (!live || i === 0) addOneMessage(part, role, null, ts, text);
-      else setTimeout(function () { addOneMessage(part, role, null, ts, text); }, i * 900);
+      if (!live || i === 0) addOneMessage(part, role, null, ts, text, via);
+      else setTimeout(function () { addOneMessage(part, role, null, ts, text, via); }, i * 900);
     });
   }
 
-  function addOneMessage(text, role, fileInfo, ts, raw) {
+  function addOneMessage(text, role, fileInfo, ts, raw, via) {
     var div = document.createElement('div');
     div.className = 'message ' + role;
     // The text as sent, whole: what catching up after a tab switch matches on.
@@ -4068,7 +4079,7 @@
       }
     }
     // A live message is stamped now; history passes its own stamp, or null when it has none.
-    attachMsgTools(div, typeof text === 'string' ? text : '', ts === undefined ? new Date().toISOString() : ts, ts === undefined);
+    attachMsgTools(div, typeof text === 'string' ? text : '', ts === undefined ? new Date().toISOString() : ts, ts === undefined, via);
     messagesEl.insertBefore(div, typingEl);
     scrollToBottom();
   }
@@ -4337,7 +4348,7 @@
         if (conv && conv.project) { _openProject = conv.project; input.setAttribute('placeholder', composerPlaceholder()); projectHead(); }
         if (conv && conv.messages) {
           shownInThread(conv.messages).forEach(function(msg) {
-            addMessage(msg.content, msg.role === 'user' ? 'user' : 'bot', null, msg.ts || null);
+            addMessage(msg.content, msg.role === 'user' ? 'user' : 'bot', null, msg.ts || null, msg.via || null);
           });
         }
         [300, 600, 1000].forEach(function(ms) { setTimeout(scrollToBottom, ms); });
@@ -4367,6 +4378,43 @@
   // message shown here, matched on the text as sent. Matching on what the
   // page displays never worked, since that also holds the time label and the
   // formatting, so nothing missed was ever caught up.
+  // One chat in every app (lib/one-chat.js). The names of the apps a
+  // message can come from; the web chat is this one, so it needs none.
+  var VIA_NAMES = { whatsapp_linked: 'WhatsApp', whatsapp: 'WhatsApp', telegram: 'Telegram', slack: 'Slack', discord: 'Discord', line: 'LINE' };
+  // Shown already: the same words, just above.
+  function shownJustNow(content, role) {
+    var shown = messagesEl.querySelectorAll('.message.' + role);
+    for (var i = shown.length - 1; i >= 0 && i >= shown.length - 6; i--) if (shown[i]._raw === content) return true;
+    return false;
+  }
+  // A turn in another app, or a message Closedhand sent there, arrives as it
+  // happens, in the conversation it belongs to.
+  function showElsewhere(msg) {
+    if (!hasMessages) return;
+    var project = msg.project && msg.project.id ? msg.project.id : null;
+    if (project !== (_openProject ? _openProject.id : null)) return;
+    (msg.messages || []).forEach(function (m) {
+      var role = m.role === 'user' ? 'user' : 'bot';
+      if (!m.content || shownJustNow(m.content, role)) return;
+      addMessage(m.content, role, null, undefined, m.via);
+    });
+  }
+  // Starting to type from the opening screen carries on the one conversation:
+  // what was said lately, in any app, comes in above.
+  function loadEarlier() {
+    fetch('/api/conversation').then(function (r) { return r.ok ? r.json() : null; }).then(function (conv) {
+      if (!conv || !conv.messages || _openProject) return;
+      var first = messagesEl.querySelector('.message');
+      var shown = [].map.call(messagesEl.querySelectorAll('.message'), function (el) { return el._raw; });
+      var earlier = shownInThread(conv.messages).slice(-30).filter(function (m) { return shown.indexOf(m.content) === -1; });
+      var before = messagesEl.querySelectorAll('.message').length;
+      earlier.forEach(function (m) { addMessage(m.content, m.role === 'user' ? 'user' : 'bot', null, m.ts || null, m.via || null); });
+      var all = messagesEl.querySelectorAll('.message');
+      for (var i = before; i < all.length; i++) if (first) messagesEl.insertBefore(all[i], first);
+      scrollToBottom();
+    }).catch(function () {});
+  }
+
   function missedSince(history, lastShown) {
     if (!lastShown) return [];
     for (var i = history.length - 1; i >= 0; i--) {

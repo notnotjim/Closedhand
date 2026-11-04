@@ -63,8 +63,8 @@ test("the web chat shows the parts as separate messages", () => {
   const box = {};
   vm.runInNewContext(page.slice(start, page.indexOf("\n  }\n", start) + 4) + "\nthis.f = followOnParts;", box);
   assert.deepEqual([...box.f(reply)], parts(reply), "the same split as the server");
-  assert.match(page, /if \(!live \|\| i === 0\) addOneMessage\(part, role, null, ts, text\);/);
-  assert.match(page, /else setTimeout\(function \(\) \{ addOneMessage\(part, role, null, ts, text\); \}, i \* 900\);/, "a beat apart when live");
+  assert.match(page, /if \(!live \|\| i === 0\) addOneMessage\(part, role, null, ts, text, via\);/);
+  assert.match(page, /else setTimeout\(function \(\) \{ addOneMessage\(part, role, null, ts, text, via\); \}, i \* 900\);/, "a beat apart when live");
 });
 
 test("the model is told: the answer in chat at the question's size, answer first, parts past a screen, pages only as an extra", () => {

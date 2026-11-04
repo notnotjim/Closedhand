@@ -258,5 +258,5 @@ test("completed task delivery leads with the answer and remains idempotent", asy
   assert.equal(h.sends[0][2], "The flight leaves at 20:00.");
   assert.equal(h.calls.length, 0);
   assert.equal(h.db.tables.agent_tasks[0].delivery_status, "sent");
-  assert.equal(JSON.stringify(h.store.conversations), JSON.stringify([{ role: "assistant", content: "The flight leaves at 20:00." }]), "the conversation holds what was sent, once");
+  assert.equal(JSON.stringify(h.store.conversations), JSON.stringify([{ role: "assistant", content: "The flight leaves at 20:00.", via: "telegram" }]), "the conversation holds what was sent, once, and where it went");
 });

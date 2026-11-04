@@ -57,7 +57,7 @@ test("each turn is shown what Closedhand's recent unprompted messages were about
 test("Pulse keeps what a sent nudge was about with it, and the turn context and routines carry it the same way", () => {
   const pulse = read("lib/pulse.js");
   assert.match(pulse, /const deliver = async \(text, about = \[\]\)/);
-  assert.match(pulse, /getConversation\(userId\)\.push\(\{ role: "assistant", content: text, \.\.\.\(about\.length \? \{ about \} : \{\}\) \}\)/);
+  assert.match(pulse, /getConversation\(userId\)\.push\(\{ role: "assistant", content: text, \.\.\.\(via \? \{ via \} : \{\}\), \.\.\.\(about\.length \? \{ about \} : \{\}\) \}\)/);
   assert.match(pulse, /\(\{ source: r\.source, id: r\.external_id, text: watches\.itemText\(r, userTz\)/, "each cited item in its own words, with its id");
   assert.ok(pulse.indexOf("const about = ") < pulse.indexOf("await deliver(text, about);"), "worked out before it is sent");
   const engine = read("lib/engine.js");
@@ -66,7 +66,7 @@ test("Pulse keeps what a sent nudge was about with it, and the turn context and 
   const delivery = read("lib/task-delivery.js");
   assert.match(delivery, /row\.triggered_by === "event" && row\.input_context/, "a routine set off by something arriving keeps that item");
   assert.match(read("lib/watches.js"), /This arrived \(\$\{row\.source\} item \$\{row\.external_id\}\)/, "named by its id");
-  assert.match(delivery, /content: sentText, \.\.\.\(about \? \{ about \} : \{\}\)/);
+  assert.match(delivery, /content: sentText, \.\.\.\(sentVia \? \{ via: sentVia \} : \{\}\), \.\.\.\(about \? \{ about \} : \{\}\)/);
 });
 
 test("Closedhand's own fields on a saved turn never reach a provider", async () => {

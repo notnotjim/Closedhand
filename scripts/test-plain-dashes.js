@@ -48,7 +48,7 @@ test("every way Closedhand writes to the person goes through it", () => {
   assert.match(engine, /finalText = require\("\.\/plain-dashes"\)\.noEmDashes\(marked\.text\);\n\s*conversation\.push\(\{ role: "assistant", content: finalText \}\);/, "right before the reply is kept and sent");
   assert.match(engine, /const wrapText = require\("\.\/plain-dashes"\)\.noEmDashes\(/, "the summary of a reply that ran out of time");
   assert.match(read("lib/engine.js"), /return require\("\.\/plain-dashes"\)\.noEmDashes\(line \|\|/, "the hand-over note");
-  assert.match(read("lib/messaging.js"), /async function sendToPlatform\(platform, chatId, message\) \{\n  message = require\("\.\/plain-dashes"\)\.noEmDashes\(message\);/, "background answers, reminders and notices");
+  assert.match(read("lib/messaging.js"), /async function sendToPlatformOnly\(platform, chatId, message\) \{\n  message = require\("\.\/plain-dashes"\)\.noEmDashes\(message\);/, "background answers, reminders and notices");
   assert.match(read("lib/tools/handlers.js"), /const title = noEmDashes\([\s\S]{0,80}const content = noEmDashes\(/, "reports");
   assert.match(read("lib/response-presentation.js"), /Never write the emdash \(the long dash\), in anything/);
   assert.doesNotMatch(read("lib/plain-dashes.js"), new RegExp(EM), "the rule's own code holds none either");

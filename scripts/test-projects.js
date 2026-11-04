@@ -367,7 +367,7 @@ test("the pass after a turn: a project message updates that project only; any ot
 test("the engine, tools and claims check use projects", () => {
   const engine = read("lib/engine.js");
   assert.match(engine, /const marked = projects\.markReply\(userId, finalText\);\n[\s\S]{0,200}?finalText = require\("\.\/plain-dashes"\)\.noEmDashes\(marked\.text\);\n\s*conversation\.push\(\{ role: "assistant", content: finalText \}\);/);
-  assert.match(engine, /const project = await projects\.openTurn\(userId, userMessage, \{ projectId: opts\.project \|\| null \}\)[\s\S]{0,1000}return await ask\(userId, userMessage, fileData, chatId, false, turnOpts\);\n\s*\} finally \{\n\s*if \(project\) await project\.close\(\)/);
+  assert.match(engine, /const project = await projects\.openTurn\(userId, userMessage, \{ projectId: opts\.project \|\| null \}\)[\s\S]{0,1600}const reply = await ask\(userId, userMessage, fileData, chatId, false, turnOpts\);[\s\S]{0,800}\n\s*\} finally \{\n\s*if \(project\) await project\.close\(\)/);
   assert.match(engine, /const filedId = marked\.projectId;/);
   assert.match(engine, /if \(attachmentId && filed && filed\.how !== "offer"\) \{\n\s*const many = imageSet && imageSet\.length > 1;\n\s*projects\.addFiles\(userId, filed\.id,/);
   assert.match(engine, /if \(tool\.coreWithProjects\) return projects\.hasProjects\(ctx\.activeUserId\);/);
