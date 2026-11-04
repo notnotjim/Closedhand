@@ -12,6 +12,8 @@ html { font-size: 100%; }
    is set on <html> before anything is drawn (theme.js), from the Appearance
    the person picked in Settings. */
 :root {
+  /* Scrollbars, checkboxes and pickers drawn dark to match. */
+  color-scheme: dark;
   --fg: #EFE6D6; --fg-rgb: 239,230,214;
   --bg: #100E0D; --bg-rgb: 16,14,13;
   --raised: #1A1817; --raised-rgb: 26,24,23;

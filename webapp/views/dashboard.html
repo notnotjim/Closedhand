@@ -305,8 +305,7 @@
     .name-row { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
     .name-row label { font-size: 0.9375rem; color: var(--fg); }
     .name-row input { flex: 0 1 13.75rem; min-width: 8.75rem; padding: 0.4375rem 0.625rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.5rem; color: var(--fg); font: inherit; font-size: 0.9375rem; }
-    .name-row button { padding: 0.375rem 0.875rem; background: none; border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.5rem; color: var(--fg); font: inherit; font-size: 0.75rem; cursor: pointer; }
-    .booking-moved { margin-left: 0.375rem; padding: 1px 0.375rem; border-radius: 0.375rem; background: rgba(var(--accent-rgb),0.14); color: var(--accent-soft); font-size: 0.625rem; }
+        .booking-moved { margin-left: 0.375rem; padding: 1px 0.375rem; border-radius: 0.375rem; background: rgba(var(--accent-rgb),0.14); color: var(--accent-soft); font-size: 0.625rem; }
     /* Something here stopped working: a red mark where the tick goes, and a
        red dot on the tab. */
     .int-card .int-badge.problem { display: inline-flex; align-items: center; justify-content: center; width: 1.125rem; height: 1.125rem; border-radius: 50%; background: var(--accent); color: #FFF; font-size: 0.75rem; font-weight: 700; line-height: 1; }
@@ -1211,7 +1210,7 @@
     .included-ai-confirm { margin: 0.25rem 0 0.5rem; padding: 0.75rem 0.875rem; border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.625rem; background: rgba(var(--fg-rgb),0.03); }
     .included-ai-confirm[hidden] { display: none; }
     .included-ai-confirm-ways { display: flex; align-items: center; gap: 1.25rem; margin-top: 0.5rem; }
-    .plan-status { font-size: 0.875rem; font-weight: 500; }
+    .plan-status { font-size: 0.875rem; font-weight: 500; white-space: nowrap; }
     .plan-status.on { color: var(--ok); }
     .plan-status.cancelled { color: var(--muted); }
     .plan-status.over { color: var(--muted); }
@@ -1324,7 +1323,7 @@
     }
     .flights-date-header {
       font-size: 0.875rem; font-weight: 600; color: rgba(var(--fg-rgb),0.85);
-      margin: 1rem 0 0.5rem; padding: 0 0.25rem;
+      margin: 1rem 0 0.5rem;
     }
     .flights-date-header:first-child { margin-top: 0.5rem; }
     .flights-away { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
@@ -1585,7 +1584,6 @@
       color: rgba(var(--fg-rgb),0.6);
       letter-spacing: 0.8px;
       margin: 1rem 0 0.5rem;
-      padding: 0 0.25rem;
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -1660,12 +1658,14 @@
     .agent-card { cursor: pointer; }
     .agent-del { background: none; border: 1px solid rgba(var(--fg-rgb),0.16); color: var(--muted); cursor: pointer; font-size: 0.8125rem; padding: 0.1875rem 0.625rem; border-radius: 0.375rem; margin-left: 0.5rem; transition: all 0.12s; }
     .agent-del:hover { color: var(--accent); border-color: rgba(var(--fg-rgb),0.4); }
-    .agent-card .agent-detail { display: none; margin-top: 0.625rem; border-top: 1px solid var(--raised); padding-top: 0.5rem; }
+    /* An open card's trail keeps the card's inset, under a line like a team's. */
+    .agent-card .agent-detail { display: none; margin: -0.375rem 1.25rem 1.125rem; border-top: 1px solid rgba(var(--fg-rgb),0.1); padding-top: 0.625rem; }
     .agent-card.open .agent-detail { display: block; }
     @media (max-width: 600px) {
       .agent-card .auto-card-header { flex-wrap: wrap; }
       .agent-card .auto-card-name { flex: 1 0 100%; white-space: normal; overflow-wrap: anywhere; }
       .agent-card .agent-del { margin-left: 0; white-space: nowrap; }
+      .agent-card :is(.agent-detail, .team-members, .team-lead) { margin-left: 1rem; margin-right: 1rem; }
     }
     .agent-step { font-size: 0.75rem; color: var(--muted); padding: 2px 0; font-variant-numeric: tabular-nums; }
     .agent-step.agent-err { color: var(--danger); }
@@ -1679,7 +1679,7 @@
     /* Archived: a heading row like the list's own, closed until wanted. */
     /* Specific enough to beat the dashboard's general button padding and size,
        so it lines up with the headings above it exactly. */
-    #auto-active-list .archive-row, #pages-list .archive-row, #past-section .archive-row { width: 100%; background: none; border: 0; padding: 0 0.25rem; font-size: 0.8125rem; cursor: pointer; font-family: inherit; text-align: left; }
+    #auto-active-list .archive-row, #pages-list .archive-row, #past-section .archive-row { width: 100%; background: none; border: 0; padding: 0; font-size: 0.8125rem; cursor: pointer; font-family: inherit; text-align: left; }
     .archive-row:hover, .archive-row:focus-visible { color: var(--fg); }
     .archive-row .count { font-weight: 500; letter-spacing: 0; }
     .archive-row .chevron-down { width: 0.375rem; height: 0.375rem; margin: -0.1875rem 2px 0; }
@@ -2001,17 +2001,27 @@
        facts read as one block. */
     .pinned-note-row { display:flex; align-items:flex-start; gap:0.625rem; padding:0.625rem 0.75rem; border-left:0.1875rem solid rgba(var(--fg-rgb),0.2); border-radius:0.375rem; background:rgba(var(--fg-rgb),0.035); cursor:pointer; transition:background 0.15s; }
     .pinned-note-row:hover { background:rgba(var(--fg-rgb),0.07); }
-    .pinned-note-list { display:grid; grid-template-columns:1fr; gap:0.375rem; margin-bottom:0.75rem; }
+    .pinned-note-list { display:grid; grid-template-columns:minmax(0, 1fr); gap:0.375rem; margin-bottom:0.75rem; }
     .pinned-note-key { font-size:0.8125rem; color:var(--fg); font-weight:500; }
     .pinned-note-val { font-size:0.75rem; color:var(--muted); margin-top:2px; line-height:1.4; }
     .pinned-note-meta { font-size:0.6875rem; color:rgba(var(--fg-rgb),0.6); margin-top:0.1875rem; }
     /* In All: which of the two kinds each part is, above its own headings. */
-    .memory-group-label { font-size:0.9375rem; font-weight:600; color:var(--fg); padding:0.25rem 0.25rem 0; margin-top:1.625rem; }
+    .memory-group-label { font-size:0.9375rem; font-weight:600; color:var(--fg); padding:0.25rem 0 0; margin-top:1.625rem; }
     .memory-group-label:first-child { margin-top:0; }
-    .memory-section-label { font-size:0.75rem; color:rgba(var(--fg-rgb),0.5); text-transform:none; font-weight:600; padding:0.75rem 0.25rem 0.375rem; margin-top:1rem; }
+    .memory-section-label { font-size:0.75rem; color:rgba(var(--fg-rgb),0.5); text-transform:none; font-weight:600; padding:0.75rem 0 0.375rem; margin-top:1rem; }
     .memory-section-label:first-child { margin-top:0; }
     .note-actions { display:flex; gap:0.25rem; margin-left:auto; flex-shrink:0; opacity:0; transition:opacity 0.15s; }
-    .pinned-note-row:hover .note-actions { opacity:1; }
+    .pinned-note-row:hover .note-actions, .pinned-note-row:focus-within .note-actions { opacity:1; }
+    /* No hover on a touch screen: Delete is always there. */
+    @media (hover: none) { .note-actions { opacity:1; } }
+    .pinned-note-label { flex:0 0 11.25rem; font-size:0.75rem; color:var(--muted); font-weight:600; }
+    .pinned-note-value { flex:1; min-width:0; font-size:0.8125rem; color:var(--fg); overflow-wrap:anywhere; }
+    /* On a phone the label goes above what it labels. */
+    @media (max-width: 600px) {
+      .pinned-note-row { flex-wrap:wrap; }
+      .pinned-note-label { flex:1 1 calc(100% - 3rem); }
+      .pinned-note-value { flex-basis:100%; order:3; }
+    }
     .note-action-btn { background:none; border:none; color:rgba(var(--fg-rgb),0.6); cursor:pointer; padding:2px 0.375rem; font-size:0.75rem; border-radius:0.25rem; }
     .note-action-btn:hover { background:rgba(var(--fg-rgb),0.08); color:var(--fg); }
     .note-action-btn.delete:hover { color:var(--danger); }
@@ -2202,6 +2212,7 @@
           /* A furled card: the header is a button, the chevron turns when open. */
           .furl-handle { display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid rgba(var(--fg-rgb),0.06); color:inherit; font:inherit; cursor:pointer; }
           .furl-handle h2 { display:flex; align-items:center; gap:0.5rem; }
+          .furl-handle.sub-furl { padding:0.5rem 0; }
           .furl-handle .furl-chev { color:var(--muted); transition:transform 0.2s ease; flex:none; }
           .furl-handle[aria-expanded="true"] .furl-chev { transform:rotate(180deg); }
           .furl-handle:hover .furl-chev { color:var(--fg); }
@@ -2351,7 +2362,7 @@
           <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from, or the one you picked.</p>
           <p class="section-desc" id="auto-active-empty">Nothing right now. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on. To pick the team yourself, start one with + New agent.</p>
           <div id="auto-active-list"></div>
-          <p id="auto-active-error" class="auto-card-meta" role="status" hidden>Could not refresh what is working now. Please try again shortly.</p>
+          <p id="auto-active-error" class="section-desc" role="status" hidden>Could not refresh what is working now. Please try again shortly.</p>
           <!-- Teams: routines with agents of their own, one card each. -->
           <div class="agents-head teams-head"><div class="mc-section-label">Teams</div><button type="button" class="goals-new" onclick="openNewTeam()">+ New team</button></div>
           <p class="section-desc">Agents that work together on one job. Closedhand coordinates each team and sends you one answer.</p>
@@ -2359,7 +2370,7 @@
           <div class="mc-section-label" style="margin-top:1.5rem;">Routines</div>
           <p class="section-desc">What Closedhand does on its own, on a timetable or when something happens.</p>
           <div id="auto-saved-list"></div>
-          <p id="auto-saved-error" class="auto-card-meta" role="status" hidden>Could not load your routines. Please try again shortly.</p>
+          <p id="auto-saved-error" class="section-desc" role="status" hidden>Could not load your routines. Please try again shortly.</p>
           <!-- With no routines yet: real routines to start from, only for what is connected -->
           <div id="auto-empty" style="display:none;">
             <p class="section-desc">Start from one of these, or make your own.</p>
@@ -2416,7 +2427,7 @@
         <div style="padding-top:1rem;">
           <p class="goals-intro">When an answer needs more room or visuals than a chat message allows, Closedhand lays it out as a page that only you can open or download.<br>Each project has its own page too, kept up to date as it goes, opened from its card under Projects.</p>
           <div id="pages-list"></div>
-          <p id="pages-error" class="auto-card-meta" role="status" hidden>Could not load your pages. Please try again shortly.</p>
+          <p id="pages-error" class="section-desc" role="status" hidden>Could not load your pages. Please try again shortly.</p>
         </div>
       </div>
 
@@ -2644,7 +2655,7 @@
               <div class="name-row">
                 <label for="preferred-name">Closedhand calls you</label>
                 <input type="text" id="preferred-name" maxlength="40" autocomplete="given-name" placeholder="Your name">
-                <button type="button" id="preferred-name-save" onclick="savePreferredName()">Save</button>
+                <button type="button" id="preferred-name-save" class="account-action-btn" onclick="savePreferredName()">Save</button>
               </div>
               <div id="rules-list" style="display:flex;flex-direction:column;gap:0.375rem;">
                 <div style="font-size:0.8125rem;color:rgba(var(--fg-rgb),0.6);">Loading…</div>
@@ -2748,7 +2759,7 @@
             <span id="context-gauge" style="font-size:0.6875rem;color:rgba(var(--fg-rgb),0.6);margin-left:auto;align-self:center;"></span>
           </div>
           <div id="brain-graph" style="display:none;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.1);border-radius:0.75rem;min-height:26.25rem;max-height:50vh;overflow:hidden;"></div>
-          <div id="brain-list" style="max-height:60vh;overflow-y:auto;"></div>
+          <div id="brain-list"></div>
           <div id="brain-panel" style="display:none;background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.12);border-radius:0.75rem;padding:1rem;margin:0.5rem 0 0.75rem;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
               <h3 id="brain-panel-title" style="margin:0;font-size:1rem;color:var(--fg);"></h3>
@@ -5632,14 +5643,14 @@
             '<button class="conn-btn conn-btn-manage" onclick="openAddressForm(\'' + a.id + '\')">Edit</button>' +
             '<button class="conn-btn conn-btn-disconnect" onclick="removeWalletAddress(\'' + a.id + '\', this)">Remove</button>' +
             '</span></div>';
-        }).join('') + '<div style="font-size:0.8125rem;color:var(--muted);">' + delivery + '</div>' : '<div style="font-size:0.8125rem;color:var(--muted);">No addresses yet. Until you add one, Closedhand asks where an order should go, unless the site already knows.</div>') + addCard('Add an address', 'openAddressForm()');
+        }).join('') + '<div style="font-size:0.8125rem;color:var(--muted);margin-top:0.25rem;">' + delivery + '</div>' : '<div style="font-size:0.8125rem;color:var(--muted);">No addresses yet. Until you add one, Closedhand asks where an order should go, unless the site already knows.</div>') + addCard('Add an address', 'openAddressForm()');
         if (document.getElementById('wallet-add').style.display === 'block') fillBilling(document.getElementById('wc-billing').value);
         if (_editingCard) placeUnder(document.getElementById('wallet-add'), document.getElementById('wallet-cards'), _editingCard);
         if (_editingAddress) placeUnder(document.getElementById('wallet-addr-form'), document.getElementById('wallet-addresses'), _editingAddress);
         var led = w.ledger || [];
         document.getElementById('wallet-ledger').innerHTML = led.length ? led.slice(0, 15).map(function(r) {
           var when = new Date(r.created_at);
-          var st = { completed: 'var(--ok)', auto: 'var(--ok)', approved: 'var(--ok)', asked: 'rgba(var(--fg-rgb),0.64)', declined: 'var(--warn)', refused: 'var(--accent)', failed: 'var(--accent)' }[r.status] || 'rgba(var(--fg-rgb),0.64)';
+          var st = { completed: 'var(--ok)', auto: 'var(--ok)', approved: 'var(--ok)', asked: 'rgba(var(--fg-rgb),0.64)', declined: 'rgba(var(--fg-rgb),0.64)', refused: 'var(--danger)', failed: 'var(--danger)' }[r.status] || 'rgba(var(--fg-rgb),0.64)';
           var label = { completed: 'paid', auto: 'paid without asking', approved: 'approved', asked: 'asked, no answer', declined: 'you said no', refused: 'blocked by your rules', failed: 'failed' }[r.status] || r.status;
           return '<div style="display:flex;gap:0.625rem;align-items:baseline;"><span style="color:var(--muted);min-width:5.5rem;">' + when.toLocaleDateString() + ' ' + when.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</span><span style="color:var(--fg);">' + escHtml(r.amount_text || (r.amount != null ? money(r.amount, r.currency) : '?')) + '</span><span>' + escHtml(r.merchant || r.host || '') + '</span><span style="color:' + st + ';">' + label + '</span>' + (r.source === 'agent' ? '<span class="muted">task</span>' : '') + '</div>';
         }).join('') : '<div style="color:var(--muted);">No payments yet.</div>';
@@ -6607,7 +6618,7 @@
     function renderBookingCard(b) {
       var det = b.details || {};
       var icon = UPCOMING_ICON[b.kind] || UPCOMING_ICON.other;
-      var when = fmtBookingTime(b.starts_at, b.timezone);
+      var when = det.all_day ? '' : fmtBookingTime(b.starts_at, b.timezone);
       var until = b.ends_at ? fmtBookingTime(b.ends_at, b.timezone) : '';
       var sameDay = b.ends_at && fmtBookingDate(b.ends_at, b.timezone) === fmtBookingDate(b.starts_at, b.timezone);
       var route = det.from && det.to ? escHtml(det.from) + ' &rarr; ' + escHtml(det.to) : (b.location ? escHtml(b.location) : '');
@@ -6849,7 +6860,8 @@
     async function loadReminders() {
       try {
         var res = await fetch('/api/reminders');
-        var rows = res.ok ? await res.json() : [];
+        if (!res.ok) return;
+        var rows = await res.json();
         // A task set for a time waits under Waiting to start on the Agents tab
         // and its run shows there; Upcoming keeps the reminders.
         rows = rows.filter(function (r) { return !(r.kind === 'task' && !r.repeats); });
@@ -6918,7 +6930,8 @@
     async function loadGoalCheckIns() {
       try {
         var res = await fetch('/api/goals');
-        var data = res.ok ? await res.json() : { goals: [] };
+        if (!res.ok) return;
+        var data = await res.json();
         var due = (data.goals || []).filter(function(g) { return g.status === 'active' && g.check_in && g.check_in.next_at; })
           .sort(function(a, b) { return new Date(a.check_in.next_at) - new Date(b.check_in.next_at); });
         setUpcoming('checkins', due.map(function(g) {
@@ -7432,8 +7445,15 @@
     async function getJson(url) {
       try { var r = await fetch(url); return r.ok ? await r.json() : null; } catch (e) { return null; }
     }
+    // A refresh that fails keeps what is shown: the one on waking from sleep
+    // goes before the network is back, and it emptied Working now for a
+    // moment. Only a list that never loaded, or refreshes failing for a
+    // while, say so.
+    var _agentsLast = [], _agentsMissed = 0;
     async function loadAgents() {
       var got = await Promise.all([getJson('/api/agents'), getJson('/api/automations'), getJson('/api/automations/recent'), getJson('/api/reminders')]);
+      _agentsMissed = got[0] ? 0 : _agentsMissed + 1;
+      got = got.map(function (x, i) { return x === null ? _agentsLast[i] || null : (_agentsLast[i] = x); });
       var tasks = got[0], routines = got[1], runs = got[2] || [];
       // Tasks set in chat for a date, not yet run: Waiting to start too.
       var jobs = (Array.isArray(got[3]) ? got[3] : []).filter(function (r) { return r.kind === 'task' && !r.archived && !r.repeats; });
@@ -7462,7 +7482,7 @@
         .concat(runs.filter(function (r) { return !r.live; }).map(function (r) { return { at: Date.parse(r.completed_at || r.started_at), html: renderRoutineRun(r) }; }))
         .sort(newest).slice(0, 30);
       var html = function (list) { return list.map(function (x) { return x.html; }).join(''); };
-      document.getElementById('auto-active-error').hidden = !!tasks;
+      document.getElementById('auto-active-error').hidden = !!tasks && _agentsMissed < 3;
       drawInto('auto-active-list', html(now));
       document.getElementById('auto-active-desc').hidden = !now.length;
       document.getElementById('auto-active-empty').hidden = !!now.length || !tasks;
@@ -7642,6 +7662,7 @@
       var inline = function(s) {
         return s.replace(/^#{1,6}\s*(.+)$/, '<b>$1</b>')
                 .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+                .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s.,;:!?)]|$)/g, '$1<i>$2</i>')
                 .replace(/`([^`]+)`/g, '<b>$1</b>');
       };
       var flush = function() {
@@ -7932,7 +7953,7 @@
         '</div>' +
         '<div class="auto-card-meta">' + escapeHtml((team ? 'Team of ' + team.length : 'Task') + ' \u00b7 ' + (running || asked ? '' : sentenceCase(runWord(a)) + ' \u00b7 ') + String(detail)) + '</div>' +
         (team ? teamLines(a, team, running || !!asked) : '') +
-        '<div class="agent-detail">' + (steps || '<div class="agent-step">No steps recorded.</div>') + toolsHtml + errHtml + reportHtml + '</div>' +
+        '<div class="agent-detail">' + (steps || (toolsHtml || errHtml || reportHtml ? '' : '<div class="agent-step">No steps recorded.</div>')) + toolsHtml + errHtml + reportHtml + '</div>' +
       '</div>';
     }
 
@@ -9664,10 +9685,8 @@
             // labelled by its subject, a name and an email both showed the same name.
             var displayKey = factLabel(n);
             html += '<div class="pinned-note-row" onclick="openPinnedNoteEdit(\'' + escapeAttr(n.key) + '\', this)">';
-            html += '<div style="width:11.25rem;flex-shrink:0;">';
-            html += '<span style="font-size:0.75rem;color:var(--muted);font-weight:600;">' + escapeHtml(displayKey) + '</span>';
-            html += '</div>';
-            html += '<div style="flex:1;min-width:0;font-size:0.8125rem;color:var(--fg);">' + escapeHtml(valPreview) + '</div>';
+            html += '<div class="pinned-note-label">' + escapeHtml(displayKey) + '</div>';
+            html += '<div class="pinned-note-value">' + escapeHtml(valPreview) + '</div>';
             html += '<div class="note-actions">';
             html += '<button class="note-action-btn delete" onclick="event.stopPropagation();deletePinnedNote(\'' + escapeAttr(n.key) + '\', this)" title="Delete" aria-label="Delete">&#215;</button>';
             html += '</div>';
@@ -9778,6 +9797,19 @@
       document.getElementById('brain-panel-edit').onclick = function() { editPinnedNote(key); };
       document.getElementById('brain-panel-delete').onclick = function() { deletePinnedNote(key, this); };
       panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // A Pinned Fact goes for good, so it asks first, in its row or in the
+    // panel's buttons, whichever Delete was pressed.
+    async function deletePinnedNote(key, btn) {
+      if (!(await askFirst(btn.closest('#brain-panel-ways') || btn.closest('.pinned-note-row') || btn, { text: 'Delete this Pinned Fact for good?', yes: 'Delete' }))) return;
+      try {
+        var res = await fetch('/api/notes/' + encodeURIComponent(key), { method: 'DELETE' });
+        if (!res.ok) { showToast('Could not delete', true); return; }
+        closeBrainPanel();
+        showToast('Pinned Fact deleted');
+        loadUnifiedMemory();
+      } catch (e) { showToast('Could not delete', true); }
     }
 
     async function deleteCurrentNote(btn) {

@@ -71,7 +71,14 @@ test("Context Brain: which is which in All, each fact its own row, no machinery 
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, /if \(both\) html \+= '<div class="memory-group-label">Pinned Facts<\/div>';/);
   assert.match(dash, /if \(both && \(organic\.length > 0 \|\| pulseNodes\.length > 0\)\) html \+= '<div class="memory-group-label">Context Notes<\/div>';/);
-  assert.match(dash, /\.pinned-note-list \{ display:grid; grid-template-columns:1fr; gap:0.375rem;/);
+  // One column no wider than the list: a fixed label column once pushed
+  // rows past a phone's width, and the list scrolled sideways in its own box.
+  assert.match(dash, /\.pinned-note-list \{ display:grid; grid-template-columns:minmax\(0, 1fr\); gap:0.375rem;/);
+  assert.match(dash, /<div id="brain-list"><\/div>/, "the list grows with the page, never a scrolling box inside it");
+  assert.match(dash, /@media \(hover: none\) \{ \.note-actions \{ opacity:1; \} \}/, "Delete shows on a touch screen");
+  // Its Delete called a function that did not exist, so nothing happened.
+  assert.match(dash, /async function deletePinnedNote\(key, btn\) \{\n\s*if \(!\(await askFirst\(/, "and it asks first");
+  assert.match(dash, /fetch\('\/api\/notes\/' \+ encodeURIComponent\(key\), \{ method: 'DELETE' \}\)/);
   assert.match(dash, /\.pinned-note-row \{[^}]*border-radius:0.375rem; background:rgba\(var\(--fg-rgb\),0\.035\);/);
   assert.doesNotMatch(dash, /access-badge|accessCount === 1 \? ' time'/, "how often a fact was used is bookkeeping, not something to act on");
   assert.match(dash, /var tags = '';/, "thread_summary and the like are never shown");

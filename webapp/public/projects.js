@@ -229,7 +229,7 @@
     const head = el("a", "project-head card-open");
     head.href = `/page/project/${p.id}`;
     head.append(el("span", "project-mark", p.emoji), el("span", "project-name card-open-name", p.name));
-    const when = p.status === "archived" && p.archived_at ? `archived ${shortDate(p.archived_at)}` : `updated ${shortDate(p.last_touched)}`;
+    const when = p.status === "archived" && p.archived_at ? `Archived ${shortDate(p.archived_at)}` : `Updated ${shortDate(p.last_touched)}`;
     head.append(el("span", "project-when", when + (p.expected_end ? ` · until ${shortDate(p.expected_end)}` : "")));
     c.append(head);
     if (p.summary) c.append(el("p", "project-summary", p.summary));

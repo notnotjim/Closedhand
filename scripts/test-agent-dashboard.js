@@ -9,7 +9,7 @@ const server = fs.readFileSync(path.join(root, 'webapp/server.js'), 'utf8');
 // The Agents tab's loading (loadAgents): what is working now, the routines
 // and what finished this week, from three reads drawn together.
 function dashboard({ tasks = [], routines = [], runs = [], reminders = [], fail = '' } = {}) {
-  const elements = new Map(), requests = [], timers = [], drawn = {}, telling = { on: false };
+  const elements = new Map(), requests = [], timers = [], drawn = {}, telling = { on: false }, state = { fail };
   const get = id => {
     if (!elements.has(id)) {
       const el = { textContent: '', style: {}, hidden: true, _html: '' };
@@ -21,7 +21,7 @@ function dashboard({ tasks = [], routines = [], runs = [], reminders = [], fail 
   const body = { '/api/agents': tasks, '/api/automations': routines, '/api/automations/recent': runs, '/api/reminders': reminders };
   const context = vm.createContext({ console, Date, window: {},
     document: { hidden: false, getElementById: get, addEventListener() {}, querySelector: (sel) => (sel === '.agent-tell' && telling.on ? {} : null) },
-    fetch: async url => { requests.push(url); return { ok: url !== fail, json: async () => body[url] }; },
+    fetch: async url => { requests.push(url); return { ok: url !== state.fail, json: async () => body[url] }; },
     renderAgentCard: a => '[task ' + a.id + ']',
     renderAutomationCard: a => '[routine ' + a.id + ']',
     renderWaitingCard: a => '[waiting ' + a.id + ']',
@@ -34,7 +34,7 @@ function dashboard({ tasks = [], routines = [], runs = [], reminders = [], fail 
   vm.runInContext(html.slice(team, html.indexOf('\n', team)), context);
   vm.runInContext(html.slice(html.indexOf('    var _agentsHtml = {};'), html.indexOf('    // Permission drift is invisible')), context);
   vm.runInContext(html.slice(html.indexOf('    var _tabPoll = null'), html.indexOf('    function fileSize(n) {')), context);
-  return { context, get, requests, timers, drawn, telling };
+  return { context, get, requests, timers, drawn, telling, state };
 }
 const at = (mins) => new Date(Date.now() - mins * 60000).toISOString();
 test('a routine with agents of its own is a team, with its card under Teams', async () => {
@@ -87,6 +87,28 @@ test('a failed read shows its own error and leaves the rest', async () => {
   assert.equal(g.get('auto-saved-error').hidden, false);
   assert.notEqual(g.get('auto-empty').style.display, 'block', 'not mistaken for having no routines');
   assert.equal(g.get('auto-active-list').innerHTML, '[task t1]', 'what is working still shows');
+});
+test('a refresh that fails keeps what is shown, and says so only once it keeps failing', async () => {
+  // Waking from sleep, the first refresh goes before the network is back:
+  // Working now emptied and said it could not refresh, then came back.
+  const h = dashboard({ tasks: [{ id: 't1', status: 'running', created_at: at(1) }], routines: [{ id: 'r1' }] });
+  await h.context.loadAgents();
+  h.state.fail = '/api/agents';
+  await h.context.loadAgents();
+  assert.equal(h.get('auto-active-list').innerHTML, '[task t1]', 'still there');
+  assert.equal(h.get('auto-active-error').hidden, true, 'one miss is not news');
+  await h.context.loadAgents(); await h.context.loadAgents();
+  assert.equal(h.get('auto-active-error').hidden, false, 'a minute or so of misses is');
+  assert.equal(h.get('auto-active-list').innerHTML, '[task t1]', 'above the last list it had');
+  h.state.fail = '';
+  await h.context.loadAgents();
+  assert.equal(h.get('auto-active-error').hidden, true);
+  assert.match(html, /<p id="auto-active-error" class="section-desc" role="status" hidden>/, 'set like the line it stands in for');
+});
+test('an open card keeps the card inset and names no missing steps beside what it did', () => {
+  assert.match(html, /\.agent-card \.agent-detail \{ display: none; margin: -0\.375rem 1\.25rem 1\.125rem;/);
+  assert.match(html, /\.agent-card :is\(\.agent-detail, \.team-members, \.team-lead\) \{ margin-left: 1rem; margin-right: 1rem; \}/);
+  assert.match(html, /\(steps \|\| \(toolsHtml \|\| errHtml \|\| reportHtml \? '' : '<div class="agent-step">No steps recorded\.<\/div>'\)\)/);
 });
 test('a list is drawn again only when it changed, and the tab on screen is asked again while it is', async () => {
   const h = dashboard({ tasks: [{ id: 't1', status: 'running', created_at: at(1) }] });
