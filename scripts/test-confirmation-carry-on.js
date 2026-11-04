@@ -76,7 +76,7 @@ test("the chat's loop takes the turn up where it stopped", () => {
   assert.match(engine, /messages\.push\(\.\.\.\(opts\.resume \? opts\.resume\.messages : conversation\)\);/, "the turn as it stood");
   assert.match(engine, /const isLight = !fileData && !opts\.resume && /);
   assert.match(engine, /const isQuick = !fileData && !isLight && !opts\.resume && /);
-  assert.match(engine, /for \(const m of opts\.resume\?\.messages \|\| \[\]\) \{[\s\S]{0,300}unlockedInternalTools\.add\(b\.name\);\n\s*unlockedMcpTools\.add\(b\.name\);/, "tools unlocked before the question stay unlocked");
+  assert.match(engine, /for \(const m of opts\.resume\?\.messages \|\| \[\]\) \{[\s\S]{0,300}loadedTools\.add\(b\.name\);/, "tools unlocked before the question stay unlocked");
   // Anything but a yes or no drops the question, and the reply hears so.
   assert.match(engine, /turnOpts\.heldNote = await dropPending\(userId, "moved_on"\);/);
   assert.match(engine, /macHowTo\(userMessage, conversation\) \+ \(opts\.heldNote \? "\\n\\n" \+ opts\.heldNote : ""\)/);

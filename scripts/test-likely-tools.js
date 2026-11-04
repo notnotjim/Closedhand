@@ -10,7 +10,7 @@ const src = fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf
 const start = src.indexOf("const TOOL_FAMILIES");
 const end = src.indexOf("\n}\n", src.indexOf("function likelyOnDemandTools")) + 3;
 const box = {};
-vm.runInNewContext(src.slice(start, end) + "\nthis.likely = likelyOnDemandTools;", box);
+vm.runInNewContext(src.slice(start, end) + "\nthis.likely = likelyOnDemandTools; this.kept = keptTools;", box);
 const available = ["gmail_send", "gmail_reply", "gmail_create_draft", "gcal_create_event", "gcal_update_event", "drive_search", "drive_read", "outlook_send", "list_bookings", "booking_scan", "add_schedule", "list_schedules", "remove_schedule", "maps_search_places", "maps_directions", "maps_geocode"].map((name) => ({ name }));
 const pick = (msg, convo = []) => [...box.likely(msg, convo, available)].sort();
 
@@ -58,4 +58,18 @@ test("anything else leaves every tool on demand", () => {
 
 test("only tools this person can use are ever loaded", () => {
   assert.deepEqual([...box.likely("send an email", [], [{ name: "outlook_send" }])], ["outlook_send"]);
+});
+
+test("tools a conversation loaded stay loaded, in the order loaded, so the provider's cached prompt still matches next turn", () => {
+  const first = box.kept("u1", "t1");
+  first.add("gcal_create_event"); first.add("gcal_update_event");
+  const next = box.kept("u1", "t1");
+  assert.equal(next, first, "the next turn starts from what this conversation loaded");
+  next.add("gmail_send"); next.add("gcal_create_event");
+  assert.deepEqual([...box.kept("u1", "t1")], ["gcal_create_event", "gcal_update_event", "gmail_send"], "a new one goes at the end, nothing moves");
+  assert.equal(box.kept("u1", "t2").size, 0, "each conversation its own");
+  assert.equal(box.kept("u2", "t1").size, 0, "each person their own");
+  assert.match(src, /const loadedTools = keptTools\(userId, ctx\.activeThreadId\);\n\s*for \(const name of likelyOnDemandTools\(userMessage, conversation, getOnDemandInternalTools\(\)\)\) loadedTools\.add\(name\);/);
+  assert.match(src, /const iterationTools = \[\.\.\.allTools\];[\s\S]{0,200}for \(const toolName of loadedTools\)/, "each request lists them after the base tools, in that order");
+  assert.match(src, /if \(block\.name === "get_tool_details" && !result\.error && result\.name\) \{\n\s*loadedTools\.add\(result\.name\);/, "one looked up mid-reply is kept too");
 });
