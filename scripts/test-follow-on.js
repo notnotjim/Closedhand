@@ -45,10 +45,12 @@ test("Telegram's sender splits too, wherever it is called from", async () => {
 
 test("every chat app sender and every non-chat output handles breaks", () => {
   const messaging = read("lib/messaging.js");
-  for (const fn of ["sendWhatsAppMessage", "sendSlackMessage", "sendDiscordMessage"]) {
-    assert.match(messaging, new RegExp(`require\\("\\./follow-on"\\)\\.sendParts\\(text, \\(part\\) => ${fn}\\(`), fn);
+  assert.match(messaging, /require\("\.\/follow-on"\)\.sendParts\(text, \(part\) => sendSlackMessage\(/, "sendSlackMessage");
+  // An answer that replies to the person's message quotes it on its first part only (lib/one-chat.js).
+  for (const fn of ["sendWhatsAppMessage", "sendDiscordMessage"]) {
+    assert.match(messaging, new RegExp(`require\\("\\./follow-on"\\)\\.sendParts\\(text, \\(part\\) => \\{ const o = first \\? \\{ replyTo \\} : \\{\\}; first = false; return ${fn}\\(`), fn);
   }
-  assert.match(read("lib/platforms/line.js"), /sendParts\(text, \(part\) => sendLinePush\(lineUserId, part\)\)/);
+  assert.match(read("lib/platforms/line.js"), /sendParts\(text, \(part\) => \{ const o = first \? \{ quoteToken \} : \{\}; first = false; return sendLinePush\(lineUserId, part, o\); \}\)/);
   assert.match(read("lib/platforms/whatsapp-linked.js"), /sendParts\(message, \(part\) => sendLinkedMessage\(chatId, part, messageId\)\)/);
   assert.match(read("lib/platforms/telegram.js"), /if \(streamInfo && inParts\)/, "a streamed Telegram reply is replaced by its parts");
   assert.match(read("lib/assistant-email.js"), /text = require\('\.\/follow-on'\)\.joined\(text\);/, "an email is one message");
