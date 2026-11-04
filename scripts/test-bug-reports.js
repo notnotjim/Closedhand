@@ -55,7 +55,7 @@ test("/bug asks first and sends nothing; a no drops it", async () => {
   assert.equal(r.api.isBugReport("/bug wrong time"), true);
   assert.equal(r.api.isBugReport("bug wrong"), false);
   const ask = await r.api.fileBugReport({ userId: "alice", text: "/bug the time is wrong", platform: "telegram" });
-  assert.equal(ask, "This sends Closedhand your note and the last 5 messages of this chat, so the problem can be found and fixed. Send it? Reply yes or no.");
+  assert.equal(ask, "This sends Closedhand your note and the last 10 messages of this chat, so the problem can be found and fixed. Send it? Reply yes or no.");
   assert.equal(r.calls.length, 0, "nothing leaves before the yes");
   assert.equal(await r.api.handleBugSendReply("alice", "no"), "Not sent.");
   assert.equal(r.api.handleBugSendReply("alice", "yes"), null, "a later yes is just a message");
@@ -65,7 +65,7 @@ test("/bug asks first and sends nothing; a no drops it", async () => {
 test("/bug on its own sends the conversation, and a yes sends it to Closedhand's database", async () => {
   const r = reporter();
   const ask = await r.api.fileBugReport({ userId: "alice", text: "/bug", fileData: shot, platform: "web" });
-  assert.equal(ask, "This sends Closedhand the last 5 messages of this chat and your screenshot, so the problem can be found and fixed. Send it? Reply yes or no.");
+  assert.equal(ask, "This sends Closedhand the last 10 messages of this chat and your screenshot, so the problem can be found and fixed. Send it? Reply yes or no.");
   const sent = await r.api.handleBugSendReply("alice", "yes");
   assert.equal(sent, "Sent to Closedhand as report 5d1e0c2a. I'll tell you when it's fixed.", "a reference, for someone who sends several");
   assert.equal(r.calls.length, 1);
@@ -79,6 +79,14 @@ test("/bug on its own sends the conversation, and a yes sends it to Closedhand's
   assert.equal(kept.length, 1);
   assert.notEqual(kept[0].receipt, "a".repeat(64), "the receipt is sealed");
   assert.equal(r.api.handleBugSendReply("alice", "yes"), null, "sent once");
+});
+
+test("a report carries the last ten messages, so what led to the trouble goes with it", async () => {
+  const r = reporter();
+  r.ctx.store.conversations.alice = Array.from({ length: 14 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: "message " + i }));
+  await r.api.fileBugReport({ userId: "alice", text: "/bug", platform: "telegram" });
+  await r.api.handleBugSendReply("alice", "yes");
+  assert.deepEqual(r.calls[0].body.transcript.map((t) => t.content), Array.from({ length: 10 }, (_, i) => "message " + (i + 4)));
 });
 
 test("once sent, what the person wrote and the reply join the conversation, so the chat knows what they reported; a no adds nothing", async () => {
@@ -113,7 +121,7 @@ test("/bug as a reply sends the messages up to the one replied to, not the lates
   const r = reporter();
   r.ctx.store.conversations.alice = earlier.slice();
   const ask = await r.api.fileBugReport({ userId: "alice", text: replyTo("Pim Fixture at Velo Couriers, the same one as last time"), platform: "whatsapp_linked" });
-  assert.equal(ask, "This sends Closedhand your note and the 5 messages up to the one you replied to, so the problem can be found and fixed. Send it? Reply yes or no.");
+  assert.equal(ask, "This sends Closedhand your note and the 10 messages up to the one you replied to, so the problem can be found and fixed. Send it? Reply yes or no.");
   await r.api.handleBugSendReply("alice", "yes");
   const body = r.calls[0].body;
   assert.deepEqual(body.transcript.map((t) => t.content), earlier.slice(0, 4).map((m) => m.content), "the replied-to message last, with what led to it");
@@ -135,7 +143,7 @@ test("the replied-to message is found in a project's conversation or the archive
 
   const nowhere = reporter();
   const ask = await nowhere.api.fileBugReport({ userId: "alice", text: replyTo("A message from long before anything kept"), platform: "telegram" });
-  assert.match(ask, /the last 5 messages of this chat/);
+  assert.match(ask, /the last 10 messages of this chat/);
 });
 
 test("a quote holding a ] is still read as /bug, on every app's form", () => {
