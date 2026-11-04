@@ -24,25 +24,46 @@ function load(stubs, t) {
 }
 const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
 
-test("a bot app's first reply after a switch says where the person left off; nothing when they stay, or it was long ago", () => {
-  const { pickUpLine } = require("../lib/one-chat");
+test("switching to a bot app mid-topic shows where they left off, both sides, as a quote; not when they stay, or it was hours ago", () => {
+  const { catchUp, catchUpMessage } = require("../lib/one-chat");
   const chat = (via, ts, content = "Can you find the Harbour Hall booking form?") => [
     { role: "user", content: "earlier", via: "telegram", ts: ago(30) },
     { role: "assistant", content: "Sure", via: "telegram", ts: ago(30) },
     { role: "user", content, via, ts },
-    { role: "assistant", content: "Found it.", via, ts },
+    { role: "assistant", content: "**Found it**: it's attached to the venue's email from Tuesday.\n\nWant me to fill it in?", via, ts },
   ];
-  assert.equal(pickUpLine(chat("web", ago(1)), "telegram"), 'Carrying on from the web chat, where you said: "Can you find the Harbour Hall booking form?"');
-  assert.equal(pickUpLine(chat("whatsapp_linked", ago(1)), "slack"), 'Carrying on from WhatsApp, where you said: "Can you find the Harbour Hall booking form?"');
-  assert.equal(pickUpLine(chat("telegram", ago(1)), "telegram"), "", "same app: the chat shows it already");
-  assert.equal(pickUpLine(chat("telegram", ago(1)), "web"), "", "the web chat shows everything, so never");
-  assert.equal(pickUpLine(chat("telegram", ago(1)), "whatsapp_linked"), "", "nor WhatsApp linked to their account, which gets every turn");
-  assert.equal(pickUpLine(chat("web", ago(13)), "telegram"), "", "a day-old topic is not carried on");
-  assert.equal(pickUpLine([{ role: "user", content: "untagged", ts: ago(1) }], "telegram"), "", "older messages say no app");
-  const quoted = pickUpLine(chat("web", ago(1), "[replying to Closedhand's message: \"Found two forms\"]\nthe second one"), "telegram");
-  assert.equal(quoted, 'Carrying on from the web chat, where you said: "the second one"', "their words, not the message they replied to");
-  const long = pickUpLine(chat("web", ago(1), "word ".repeat(40)), "telegram");
-  assert.ok(long.length < 150 && long.endsWith('…"'), long);
+  const card = catchUp(chat("web", ago(1)), "telegram", { botName: "Pete" });
+  assert.deepEqual(card, { from: "the web chat", you: "Can you find the Harbour Hall booking form?", them: "Found it: it's attached to the venue's email from Tuesday.", botName: "Pete" });
+  assert.equal(catchUpMessage(card, "discord").text, "Earlier, in the web chat:\n> You: Can you find the Harbour Hall booking form?\n> Pete: Found it: it's attached to the venue's email from Tuesday.");
+  assert.equal(catchUpMessage(card, "telegram").text, "Earlier, in the web chat:\n<blockquote>You: Can you find the Harbour Hall booking form?\nPete: Found it: it's attached to the venue's email from Tuesday.</blockquote>");
+  assert.equal(catchUpMessage(card, "telegram").html, true);
+  assert.equal(catchUpMessage(card, "line").text, "Earlier, in the web chat:\nYou: Can you find the Harbour Hall booking form?\nPete: Found it: it's attached to the venue's email from Tuesday.", "LINE shows no quote marks");
+  assert.equal(catchUp(chat("whatsapp_linked", ago(1)), "slack").from, "WhatsApp");
+  assert.equal(catchUp(chat("telegram", ago(1)), "telegram"), null, "same app: the chat shows it already");
+  assert.equal(catchUp(chat("telegram", ago(1)), "web"), null, "the web chat shows everything, so never");
+  assert.equal(catchUp(chat("telegram", ago(1)), "whatsapp_linked"), null, "nor WhatsApp linked to their account, which gets every turn");
+  assert.equal(catchUp(chat("web", ago(4)), "telegram"), null, "hours later is a new start");
+  assert.equal(catchUp([{ role: "user", content: "untagged", ts: ago(1) }], "telegram"), null, "older messages say no app");
+  const quoted = catchUp(chat("web", ago(1), "[replying to Closedhand's message: \"Found two forms\"]\nthe second one"), "telegram");
+  assert.equal(quoted.you, "the second one", "their words, not the message they replied to");
+  assert.ok(catchUp(chat("web", ago(1), "word ".repeat(40)), "telegram").you.endsWith("…"));
+  assert.match(catchUpMessage({ from: "the web chat", you: "a < b & c", them: "", botName: "Pete" }, "telegram").text, /You: a &lt; b &amp; c<\/blockquote>$/, "their words are text, never markup");
+});
+
+test("after the card, the answer goes as a reply to their new message, in each app that has replies", () => {
+  assert.match(read("lib/platforms/telegram.js"), /if \(statusOpts\.opts\.caughtUp\) \{[\s\S]{0,800}i === 0 \? \{ reply_to_message_id: msg\.message_id, allow_sending_without_reply: true \} : undefined/);
+  assert.match(read("lib/platforms/discord.js"), /sendDiscordMessage\(discordUserId, response, opts\.caughtUp \? \{ replyTo: msg\.id \} : \{\}\)/);
+  assert.match(read("lib/platforms/line.js"), /sendLinePush\(lineUserId, response, lineOpts\.caughtUp \? \{ quoteToken: event\.message\?\.quoteToken \} : \{\}\)/);
+  assert.match(read("lib/platforms/whatsapp.js"), /sendWhatsAppMessage\(waId, response, opts\.caughtUp \? \{ replyTo: waMessageId \} : \{\}\)/);
+  const messaging = read("lib/messaging.js");
+  assert.match(messaging, /\.\.\.\(answering \? \{ context: \{ message_id: answering \} \} : \{\}\)/);
+  assert.match(messaging, /reply: \{ messageReference: replyTo, failIfNotExists: false \}/);
+  // A reply in parts quotes their message on its first part only.
+  const sent = [];
+  const bot = require("../lib/follow-on").splitTelegram({ sendMessage: async (id, text, o) => sent.push(o || null) });
+  return bot.sendMessage(1, "First part.\n[[next]]\nSecond part.", { reply_to_message_id: 9, parse_mode: "HTML" }).then(() => {
+    assert.deepEqual(sent, [{ reply_to_message_id: 9, parse_mode: "HTML" }, { parse_mode: "HTML" }]);
+  });
 });
 
 test("a turn's messages carry the app; the other apps get the turn: the web chat live, WhatsApp in the person's own chat", async (t) => {
@@ -76,9 +97,8 @@ test("a turn's messages carry the app; the other apps get the turn: the web chat
 
 test("the turn's hook, proactive messages and the web chat page", () => {
   const engine = read("lib/engine.js");
-  assert.match(engine, /const before = new Set\(conversation\);\n\s*const pickUp = oneChat\.pickUpLine\(conversation, platform\);/);
+  assert.match(engine, /const card = oneChat\.catchUp\(conversation, platform, \{ botName: ctx\.activeUserStore\?\.profile\?\.settings\?\.bot_name \|\| "Closedhand" \}\);\n\s*if \(card && await oneChat\.sendCatchUp\(platform, chatId, card\)[\s\S]{0,140}opts\.caughtUp = true;/, "the card goes before the answer, in the app they are in");
   assert.match(engine, /oneChat\.after\(\{ userId, via: platform, said: userMessage, reply, fileData, project: project \? project\.project : null \}\)/);
-  assert.match(engine, /return pickUp && typeof reply === "string" && reply\.trim\(\) \? `\$\{pickUp\}\\n\\n\$\{reply\}` : reply;/, "the line goes only to the bot app, never into the conversation");
   const messaging = read("lib/messaging.js");
   assert.match(messaging, /if \(userId && !\(ctx\.currentAsk && ctx\.currentAsk\[userId\]\)\) \{\n\s*try \{ require\("\.\/one-chat"\)\.sentElsewhere\(/, "a proactive message shows in the web chat; a turn's own sends do not show twice");
   const wa = read("lib/platforms/whatsapp-linked.js");
