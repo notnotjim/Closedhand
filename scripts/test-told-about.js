@@ -124,3 +124,75 @@ test("recall's word search gives every kind of item a share, so mail with a name
   assert.equal(lexical.filter_type, null);
   assert.deepEqual(found.results.map((r) => r.id), ["e1", "m1", "e2", "m2", "e3"], "each kind's best in turn, so fusion cannot cut every chat");
 });
+
+// A chat read whole. Asked to "see my chat with dad" about an estate agent, a
+// task's searches found only lines sharing a word with the request, and the
+// agent's address, sent on its own line, never came back.
+function fakeCache(rows) {
+  return { from: () => {
+    const f = [], q = { _limit: 1e9, _desc: false };
+    const chain = {
+      select: () => chain, eq: (k, v) => (f.push((r) => get(r, k) === v), chain),
+      ilike: (k, p) => { const re = new RegExp("^" + p.replace(/%/g, ".*") + "$", "i"); f.push((r) => re.test(String(get(r, k) || ""))); return chain; },
+      gte: (k, v) => (f.push((r) => get(r, k) >= v), chain),
+      order: (k, o) => { q._desc = !o.ascending; return chain; }, limit: (n) => { q._limit = n; return chain; },
+      then: (res) => { let out = rows.filter((r) => f.every((t) => t(r))); out.sort((a, b) => (q._desc ? -1 : 1) * a.received_at.localeCompare(b.received_at)); return res({ data: out.slice(0, q._limit), error: null }); },
+    };
+    return chain;
+  } };
+}
+const get = (r, k) => k.startsWith("data->>") ? r.data[k.slice(7)] : r[k];
+const msg = (n, chat, chat_name, sender, text, ago) => ({ user_id: "u1", type: "message", source: "whatsapp", external_id: "wa-" + n,
+  received_at: new Date(Date.now() - ago * 3600000).toISOString(), data: { id: "x" + n, chat, chat_name, sender, text, date: "d" + n } });
+const chats = [
+  msg(1, "100@s.example", "Dad", "Dad", "https://harbour-homes.example/", 30), msg(2, "100@s.example", "Dad", "Dad", "office@harbour-homes.example", 29),
+  msg(3, "100@s.example", "Dad", "Dad", "Send them the documents, you stand a good chance.", 28),
+  msg(4, "200@s.example", "Notes to self", "me", "Can you find the estate agent viewing documents?", 1),
+  msg(5, "100@s.example", "Dad", "Dad", "Old news about the boiler", 24 * 40),
+];
+
+test("search_cache reads one chat in order, by its name or a message id, so a line with no words in common is still read", async () => {
+  const sync = load("lib/services/data-sync.js", { "../../user-store": { supabase: fakeCache(chats) } });
+  const all = await sync.queryChat("u1", { chat: "dad", query: "*", days: 7 });
+  assert.equal(all.chat, "Dad");
+  assert.deepEqual(all.results.map((r) => r.text), ["https://harbour-homes.example/", "office@harbour-homes.example", "Send them the documents, you stand a good chance."], "oldest first, within the days asked, no other chat");
+  assert.deepEqual(Object.keys(all.results[0]).sort(), ["date", "id", "sender", "text"]);
+  assert.equal(all.results[1].id, "wa-2", "each line by the id that opens it");
+  assert.equal((await sync.queryChat("u1", { chat: "100@s.example", query: "*", days: 7 })).chat, "Dad", "or by the chat's own address");
+  const byId = await sync.queryChat("u1", { chat: "wa-3", query: "documents", days: 7 });
+  assert.deepEqual(byId.results.map((r) => r.id), ["wa-3"], "words find the lines that hold them");
+  const none = await sync.queryChat("u1", { chat: "Dad", query: "estate agent viewing", days: 7 });
+  assert.equal(none.results.length, 3, "nothing matching gives the chat's newest, not nothing");
+  assert.match(none.note, /Nothing in this chat holds those words/);
+  assert.equal((await sync.queryChat("u1", { chat: "Mum", query: "*" })).message, 'No chat called "Mum". Recent chats: Notes to self, Dad.', "and the chats there are, newest first");
+  const handlers = read("lib/tools/handlers.js");
+  assert.ok(handlers.indexOf("if (toolInput.chat) {") < handlers.indexOf("wantsMail(toolInput)"), "a chat is read before any search");
+  assert.match(read("lib/tools/definitions.js"), /chat: \{ type: "string", description: "Read one chat in order, by its chat_name or a message id in it/);
+});
+
+test("a task's answer keeps where it read the address it gives, and nothing for what the person gave or their own accounts", () => {
+  const { sourcesFor } = require("../lib/task-sources");
+  const messages = [
+    { role: "assistant", content: [{ type: "tool_use", id: "a", name: "search_cache", input: { query: "viewing documents" } }, { type: "tool_use", id: "b", name: "sandbox_browse", input: { url: "https://harbour-homes.example/team" } }] },
+    { role: "user", content: [
+      { type: "tool_result", tool_use_id: "a", content: JSON.stringify({ results: [{ id: "m1", source: "gmail", account: "sam.fixture@example.com", body: "Offer letter attached" }] }) },
+      { type: "tool_result", tool_use_id: "b", content: JSON.stringify({ ok: true, result: { t: "Our team\nRowan Pike\nSales Negotiator\n0191 000 0000\nrowan.pike@harbour-homes.example\nKit Lowe\nLettings" } }) },
+    ] },
+    { role: "assistant", content: [{ type: "tool_use", id: "c", name: "gmail_create_draft", input: { to: "rowan.pike@harbour-homes.example" } }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "c", content: "{\"draft_id\":\"r-1\",\"to\":\"rowan.pike@harbour-homes.example\"}" }] },
+  ];
+  const answer = "Draft is ready in your sam.fixture@example.com, to Rowan Pike (rowan.pike@harbour-homes.example), copying ana@example.org as you asked.";
+  const kept = sourcesFor(answer, messages, "Send it to the agent and copy ana@example.org");
+  assert.equal(kept.length, 1, "the agent's address only: not the person's own account, not what they gave");
+  assert.match(kept[0].text, /^Read from https:\/\/harbour-homes\.example\/team: …/);
+  assert.match(kept[0].text, /Rowan Pike Sales Negotiator 0191 000 0000 rowan\.pike@harbour-homes\.example/, "the lines around it, read where it was read, not where it was written");
+  assert.deepEqual(sourcesFor("Done, nothing to add.", messages), [], "most answers carry none");
+  const many = "a@x.example b@x.example c@x.example d@x.example";
+  const pages = [{ role: "assistant", content: [{ type: "tool_use", id: "p", name: "web_fetch", input: { url: "https://x.example" } }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "p", content: many.split(" ").join(" ".repeat(600)) }] }];
+  assert.equal(sourcesFor(many, pages).length, 3, "never more than three");
+  const delivery = read("lib/task-delivery.js");
+  assert.match(delivery, /table === "agent_tasks" && report \? require\("\.\/task-sources"\)\.sourcesFor\(report, row\.messages, row\.goal\) : \[\]/);
+  assert.match(read("lib/agents.js"), /const pinned = require\("\.\/facts-prose"\)\.factsProse\(userStore\?\.facts\);/, "a task knows the person's people as the chat does");
+  assert.match(read("lib/agents.js"), /when you use something other than what they or their messages gave \(another address, contact, time or price\), say in a line what they had and why yours is better/);
+});
