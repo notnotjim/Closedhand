@@ -50,3 +50,18 @@ test("files kept in the database: saved, read back, replaced and removed, and pa
   assert.equal((await files.download("u1/note.txt")).error.message, "Object not found");
   assert.equal(createPgStorage({ pool }).from("logos").getPublicUrl("a.svg").data.publicUrl, "/storage/logos/a.svg");
 });
+
+test("the word search finds the words inside an email or web address, not the mail provider's", async () => {
+  // Invented items: an agency's address and its site, each alone in a message,
+  // and an email whose only addresses are in its From and To lines.
+  const me = "33333333-3333-3333-3333-333333333333";
+  await pool.query(`INSERT INTO data_cache (user_id, source, type, external_id, data, received_at) VALUES
+    ($1, 'whatsapp', 'message', 'wa-1', $2, now()), ($1, 'whatsapp', 'message', 'wa-2', $3, now()), ($1, 'gmail', 'email', 'e-1', $4, now())`,
+    [me, { text: "office@harbour-homes.example" }, { text: "https://www.harbour-homes.example/team" }, { from: "Sam Fixture <sam.fixture@gmail.com>", to: "me@outlook.com", body: "See you Friday" }]);
+  const found = async (words) => (await pool.query("SELECT external_id FROM search_data_cache_lexical($1, $2, 20)", [me, words])).rows.map((r) => r.external_id).sort();
+  assert.deepEqual(await found(["harbour", "homes"]), ["wa-1", "wa-2"], "the agency by its name, from its address and its link");
+  assert.deepEqual(await found(["office@harbour-homes.example"]), ["wa-1"], "the whole address still");
+  assert.deepEqual(await found(["gmail"]), [], "a free mail provider's name says nothing about whose address it is");
+  assert.deepEqual(await found(["www"]), []);
+  assert.deepEqual(await found(["fixture"]), ["e-1"], "the sender by name, as before");
+});
