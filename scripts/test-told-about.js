@@ -196,3 +196,61 @@ test("a task's answer keeps where it read the address it gives, and nothing for 
   assert.match(read("lib/agents.js"), /const pinned = require\("\.\/facts-prose"\)\.factsProse\(userStore\?\.facts\);/, "a task knows the person's people as the chat does");
   assert.match(read("lib/agents.js"), /when you use something other than what they or their messages gave \(another address, contact, time or price\), say in a line what they had and why yours is better/);
 });
+
+// What Closedhand made, as it is now (lib/made.js). A draft it wrote was
+// edited and sent by the person, and the reply had come, yet the chat said it
+// was "still sat in" their drafts. Invented mail and events.
+function fakeDb(tables) {
+  return { from: (t) => {
+    const f = [], q = { limit: 1e9, key: null, desc: false };
+    const c = {
+      select: () => c, eq: (k, v) => (f.push((r) => get(r, k) === v), c), gte: (k, v) => (f.push((r) => get(r, k) >= v), c),
+      like: (k, p) => { const re = new RegExp("^" + p.replace(/%/g, ".*") + "$"); f.push((r) => re.test(String(get(r, k) || ""))); return c; },
+      order: (k, o) => ((q.key = k), (q.desc = !o.ascending), c), limit: (n) => ((q.limit = n), c),
+      then: (res) => { let out = (tables[t] || []).filter((r) => f.every((x) => x(r))); if (q.key) out.sort((a, b) => (q.desc ? -1 : 1) * String(get(a, q.key)).localeCompare(String(get(b, q.key)))); return res({ data: out.slice(0, q.limit), error: null }); },
+    };
+    return c;
+  } };
+}
+
+test("what Closedhand made is noted as it is made, from the result of the call that made it", () => {
+  const made = require("../lib/made");
+  assert.deepEqual(made.madeBy("gmail_create_draft", { subject: "Viewing at Harbour Hall" }, { success: true, draft_id: "r-77", thread_id: "t-9", account: "sam.fixture@example.com" }),
+    { kind: "draft", source: "gmail", ref: "r-77", thread: "t-9", title: "Viewing at Harbour Hall", account: "sam.fixture@example.com" });
+  assert.equal(made.madeBy("gmail_create_draft", {}, { error: "Draft not saved" }), null, "nothing when it failed");
+  assert.deepEqual(made.madeBy("gcal_create_event", {}, { success: true, id: "ev-1", summary: "Boiler service", start: "2026-11-10T09:00:00Z" }),
+    { kind: "event", source: "gcal", ref: "ev-1", title: "Boiler service", detail: "2026-11-10T09:00:00Z" });
+  assert.equal(made.madeBy("search_cache", {}, { success: true }), null);
+  const handlers = read("lib/tools/handlers.js");
+  assert.match(handlers, /module\.exports = \{ handleInternalTool: handleInternalToolNoted,/, "every tool call, from the chat, tasks and Pulse alike");
+  assert.match(handlers, /threadId: draft\.message\?\.threadId \|\| threadId \|\| null/, "a draft is followed by its thread, which editing it in Gmail does not change");
+});
+
+test("each turn reads what it made as it is now: sent, replied to, moved, gone, or not synced yet", async () => {
+  const made = require("../lib/made");
+  const at = (h) => new Date(Date.now() - h * 3600000).toISOString();
+  const db = fakeDb({
+    made_items: [
+      { user_id: "u1", kind: "draft", source: "gmail", ref: "r-77", thread: "t-9", title: "Viewing at Harbour Hall", account: "sam.fixture@example.com", made_at: at(5) },
+      { user_id: "u1", kind: "event", source: "gcal", ref: "ev-1", title: "Boiler service", detail: "2026-11-10T09:00:00Z", made_at: at(4) },
+      { user_id: "u1", kind: "event", source: "gcal", ref: "ev-2", title: "Dentist", detail: "2026-11-12T09:00:00Z", made_at: at(3) },
+      { user_id: "u1", kind: "draft", source: "gmail", ref: "r-90", thread: "t-12", title: "Quote for the roof", made_at: new Date().toISOString() },
+    ],
+    data_cache: [
+      { user_id: "u1", type: "email", source: "gmail_sam", received_at: at(4.5), synced_at: at(4.4), data: { threadId: "t-9", labels: ["SENT"], is_draft: false, from: "Sam Fixture <sam.fixture@example.com>" } },
+      { user_id: "u1", type: "email", source: "gmail_sam", received_at: at(2), synced_at: at(1.9), data: { threadId: "t-9", labels: ["INBOX"], is_draft: false, from: "Harbour Homes <office@harbour-homes.example>" } },
+      { user_id: "u1", type: "event", source: "gcal", external_id: "ev-1", received_at: at(1), synced_at: at(1), data: { start: "2026-11-11T09:00:00Z", status: "confirmed" } },
+    ],
+  });
+  const line = await made.nowLine("u1", { tz: "UTC", db });
+  assert.match(line, /^WHAT YOU MADE IN THEIR ACCOUNTS LATELY, AS IT IS NOW/);
+  assert.match(line, /Mail draft "Viewing at Harbour Hall" \(sam\.fixture@example\.com\), made \w{3} \d+ \w{3}, \d\d:\d\d: sent from their account \w{3} \d+ \w{3}, \d\d:\d\d, so it is no longer a draft; a reply since, last from Harbour Homes/);
+  assert.match(line, /Calendar event "Boiler service", made .+?: moved: now Wed 11 Nov, 09:00 \(was Tue 10 Nov, 09:00\)\./);
+  assert.match(line, /Calendar event "Dentist", made .+?: no longer in their calendar\./, "gone, once their calendar has synced since");
+  assert.match(line, /Mail draft "Quote for the roof", made .+?: not synced yet\./, "never \"gone\" before their mail has caught up");
+  assert.equal(await made.nowLine("u2", { db }), "", "nothing made, nothing said");
+  assert.match(read("lib/engine.js"), /require\("\.\/made"\)\.nowLine\(userId, \{ tz: require\("\.\/time-context"\)\.personZone\(ctx\.store\) \}\)/, "the chat sees it every turn");
+  assert.match(read("lib/pulse.js"), /\$\{madeNow \? `\\n\\n\$\{madeNow\}` : ""\}/, "and so does Pulse");
+  assert.match(read("webapp/server.js"), /"person_links", "person_names", "made_items",/);
+  assert.match(read("migrations/090_made_items.sql"), /PRIMARY KEY \(user_id, kind, ref\)/);
+});

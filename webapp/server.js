@@ -4595,6 +4595,11 @@ async function purgeSyncedFor(userId, serviceKeys) {
     const { error: e2 } = await supabase.from("data_vectors").delete().eq("user_id", userId).eq("service", key);
     if (e2) console.error(`[disconnect] purge data_vectors ${key}:`, e2.message);
   }
+  // What Closedhand made in that account's mail and calendar goes with it.
+  if (keys.some((k) => /^(google|gmail|gcal)/.test(k))) {
+    const { error: e5 } = await supabase.from("made_items").delete().eq("user_id", userId).in("source", ["gmail", "gcal"]);
+    if (e5) console.error("[disconnect] purge made_items:", e5.message);
+  }
   // Who is who as WhatsApp said it (lib/people.js) goes with its messages.
   if (keys.some((k) => k.includes("whatsapp"))) {
     const { error: e3 } = await supabase.from("person_links").delete().eq("user_id", userId).eq("source", "whatsapp");
@@ -9225,7 +9230,7 @@ app.delete("/api/account", async (req, res) => {
       "facts", "user_rules", "schedules", "attachments", "pulse_config",
       "task_followups", "task_model_calls", "task_deliveries", "task_worker_results",
       "agent_tasks", "automations",
-      "data_vectors", "data_cache", "index_progress", "person_links", "person_names",
+      "data_vectors", "data_cache", "index_progress", "person_links", "person_names", "made_items",
       "user_skills", "user_mcps", "user_bridges", "sandboxes",
       "chat_links", "connections",
       "bridge_requests", "bug_reports", "token_usage",

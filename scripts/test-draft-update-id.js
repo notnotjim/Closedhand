@@ -90,7 +90,7 @@ test('a draft edited in Gmail since Closedhand last saw it is handed back, not o
   // What Closedhand saves is what it has seen.
   assert.match(block('gmail_draft_update'), /const saved = result\.message\?\.id \|\| \(await liveGmailDraft\(dApi, draftId, "minimal"\)\)\.draft\?\.message\?\.id;\n\s*if \(saved\) draftLastSeen\.set\(draftId, saved\);/);
   assert.match(block('gmail_create_draft'), /if \(result\.messageId\) draftLastSeen\.set\(result\.draftId, result\.messageId\);/);
-  assert.match(fnSrc('createGmailDraft'), /return \{ draftId: draft\.id, messageId: draft\.message\?\.id \};/);
+  assert.match(fnSrc('createGmailDraft'), /return \{ draftId: draft\.id, messageId: draft\.message\?\.id, threadId: draft\.message\?\.threadId \|\| threadId \|\| null \};/);
   const defs = fs.readFileSync(path.join(__dirname, '..', 'lib', 'tools', 'definitions.js'), 'utf8');
   assert.match(defs, /A draft in search_cache is a copy that can be a few minutes behind Gmail[^"]*never tell them their edit did not save\. Sending it is gmail_send_draft, and only when the person says to send\."/);
 });
