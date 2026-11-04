@@ -272,6 +272,37 @@ test('a chat model that cannot see gets what the VLM sees where no image model i
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../lib/model-images.js'), 'utf8'), /understanding is off/i);
 });
 
+test('an image model is told what a picture came with or is looked at for, and looks again for a new question', async () => {
+  noDatabase();
+  const wirePath = require.resolve('../lib/model-wire'), imagesPath = require.resolve('../lib/model-images');
+  const real = require.cache[wirePath], sent = [];
+  require.cache[wirePath] = { id: wirePath, filename: wirePath, loaded: true, exports: {
+    request: async (conn, params) => { sent.push(params); return { content: [{ type: 'text', text: 'Two mugs on a shelf; the left one says HOME.' }], usage: {} }; },
+    responseText: (r) => r.content[0].text } };
+  delete require.cache[imagesPath];
+  try {
+    const { substituteImages } = require('../lib/model-images');
+    const vision = { baseUrl: 'https://img.example.test/v1', apiKey: 'test-key', model: 'seer-1' };
+    const block = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from('a shelf').toString('base64') } };
+    const asked = [{ role: 'user', content: [{ type: 'text', text: '[Closedhand context for this message, not written by the user]\nTime: 10:00' }, block, { type: 'text', text: 'what does the left mug say?' }] }];
+    const out = await substituteImages(asked, vision, 'u-ask');
+    assert.equal(out[0].content[1].text, '[Description from the selected image model, looking at what was asked]\nTwo mugs on a shelf; the left one says HOME.');
+    assert.match(JSON.stringify(sent[0].messages[0].content), /what does the left mug say\?/, 'the question goes with the picture');
+    assert.doesNotMatch(JSON.stringify(sent[0].messages), /Closedhand context|Time: 10:00/, 'Closedhand\'s own context does not');
+    await substituteImages(asked, vision, 'u-ask');
+    assert.equal(sent.length, 1, 'the same question is answered from what was seen');
+    await substituteImages([{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: [block, { type: 'text', text: 'Image: a kitchen shelf' }, { type: 'text', text: 'Look for: how many mugs' }] }] }], vision, 'u-ask');
+    assert.equal(sent.length, 2, 'a new question looks again');
+    assert.match(JSON.stringify(sent[1].messages[0].content), /Look for: how many mugs/);
+  } finally {
+    if (real) require.cache[wirePath] = real; else delete require.cache[wirePath];
+    delete require.cache[imagesPath];
+  }
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  assert.match(read('lib/tools/handlers.js'), /description: data\.description, \.\.\.\(toolInput\.question \? \{ question:/, 'view_attachment takes what to look for');
+  assert.match(read('lib/engine.js'), /\.\.\.\(result\.question \? \[\{ type: "text", text: `Look for: \$\{result\.question\}` \}\] : \[\]\)/, 'and it rides with the picture');
+});
+
 test('the bot describes a picture for File Search by the VLM, for the web app only', async () => {
   const { Readable } = require('node:stream');
   const routes = {};
