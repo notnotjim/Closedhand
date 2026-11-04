@@ -396,7 +396,9 @@ async function request(conn, params, options = {}) {
   if (conn.backend === "anthropic") {
     headers["x-api-key"] = conn.apiKey;
     headers["anthropic-version"] = "2023-06-01";
-    const messages = (params.messages || []).map(m => ({ ...m, content: Array.isArray(m.content) ? m.content.filter(b =>
+    // Only what the API defines: a saved turn can carry Closedhand's own
+    // fields (what a nudge was about), which Anthropic refuses.
+    const messages = (params.messages || []).map(m => ({ role: m.role, content: Array.isArray(m.content) ? m.content.filter(b =>
       b.type !== "provider_state" && (!["thinking", "redacted_thinking"].includes(b.type) || b._identity === id)
     ).map(b => {
       const { _geminiPart, _identity, ...clean } = b; return clean;

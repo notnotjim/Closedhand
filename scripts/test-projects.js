@@ -634,7 +634,7 @@ test("Closedhand's own messages about a project carry its emoji, and a reply to 
   assert.match(pulse, /project: \{ type: "string", description: "When the whole message is about one of THEIR PROJECTS, that project's emoji; leave out otherwise\." \}/);
   assert.match(pulse, /"project": null or "the emoji of the one project in THEIR PROJECTS the whole message is about"/);
   assert.match(pulse, /\$\{theirProjects\.length \? `\\n\\nTHEIR PROJECTS: \$\{theirProjects\.join\("; "\)\}` : ""\}/);
-  assert.match(pulse, /if \(project\) text = [^\n]*`\$\{project\.emoji\} \$\{text\}`;\n\s*await deliver\(text\);/);
+  assert.match(pulse, /if \(project\) text = [^\n]*`\$\{project\.emoji\} \$\{text\}`;\n\s*await deliver\(text, about\);/);
   assert.match(pulse, /if \(project\) await require\("\.\/projects"\)\.said\(userId, project, text\)/);
   assert.equal((pulse.match(/sendChecked\([^\n]*written\.project\)/g) || []).length, 2, "the one-call writer too, and its second go");
 });

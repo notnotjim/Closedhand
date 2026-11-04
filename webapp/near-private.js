@@ -214,13 +214,39 @@ async function checkEvidence(body, nonceHex, peerSpkiHex, deps) {
 
 // Intel's quote check, with collateral from Intel's PCS (signed by Intel, so
 // Phala's PCCS serves only if Intel's is out of reach).
-async function verifyQuoteDefault(quote) {
-  const dcap = require("@phala/dcap-qvl");
-  let verified;
-  try { verified = await dcap.getCollateralAndVerify(quote, dcap.INTEL_PCS_URL); }
+async function fetchCollateral(dcap, quote) {
+  try { return await dcap.getCollateral(dcap.INTEL_PCS_URL, quote); }
   catch (e) {
     if (!/fetch|network|ENOTFOUND|ECONN|ETIMEDOUT|timeout|HTTP/i.test(String(e.message))) throw e;
-    verified = await dcap.getCollateralAndVerify(quote, dcap.PHALA_PCCS_URL);
+    return dcap.getCollateral(dcap.PHALA_PCCS_URL, quote);
+  }
+}
+// The collateral (Intel's revocation lists, TCB info and quoting enclave
+// identity) is the same for every quote from one machine, and fetching it
+// was half of each new connection's proof: about 3 of 6 seconds, paid again
+// whenever NEAR AI had closed an idle connection. Kept an hour per machine,
+// by the certificate chain in its quotes. Every quote is still checked in
+// full against it; one that fails is checked again on freshly fetched
+// collateral, so an expired list is never the reason a proof fails.
+const COLLATERAL_FOR_MS = 3600 * 1000;
+const collaterals = new Map();
+async function verifyQuoteDefault(quote) {
+  const dcap = require("@phala/dcap-qvl");
+  const now = () => Math.floor(Date.now() / 1000);
+  let machine = null;
+  try {
+    const parsedQuote = dcap.Quote.parse(quote);
+    if (parsedQuote.innerCertType() === dcap.constants.PCK_ID_PCK_CERT_CHAIN) machine = sha("sha256", Buffer.from(parsedQuote.rawCertChain())).toString("hex");
+  } catch { /* fetched for this quote alone */ }
+  const kept = machine && collaterals.get(machine);
+  let verified = null;
+  if (kept && Date.now() - kept.at < COLLATERAL_FOR_MS) {
+    try { verified = await dcap.verify(quote, kept.collateral, now()); } catch { collaterals.delete(machine); }
+  }
+  if (!verified) {
+    const collateral = await fetchCollateral(dcap, quote);
+    verified = await dcap.verify(quote, collateral, now());
+    if (machine) collaterals.set(machine, { at: Date.now(), collateral });
   }
   const td = verified.report.asTd10();
   if (!td) throw new Error("the quote is not a TDX quote");
@@ -485,4 +511,4 @@ function isNear(conn) {
   try { return new URL(conn?.baseUrl).hostname === "cloud-api.near.ai"; } catch { return false; }
 }
 
-module.exports = { isNear, complete, provenModels, useDeps, hchacha20, xchachaSeal, xchachaOpen, edToX25519, clientKeys, seal, open, encryptRequest, decryptResponse, replayRtmr3, checkReport, checkEvidence, ACCEPTED_TCB };
+module.exports = { isNear, complete, provenModels, useDeps, verifyQuoteDefault, hchacha20, xchachaSeal, xchachaOpen, edToX25519, clientKeys, seal, open, encryptRequest, decryptResponse, replayRtmr3, checkReport, checkEvidence, ACCEPTED_TCB };

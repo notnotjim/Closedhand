@@ -235,3 +235,31 @@ test("only the NEAR AI models whose privacy can be proven are listed, as text-on
   } finally { globalThis.fetch = realFetch; }
   assert.match(fs.readFileSync(path.join(__dirname, "../lib/model-wire.js"), "utf8"), /if \(conn\.backend === "custom" && require\("\.\/near-private"\)\.isNear\(conn\)\) return require\("\.\/near-private"\)\.provenModels\(conn, models\);/);
 });
+
+test("Intel's collateral is kept per machine and every quote is still checked; a check that fails on kept collateral is redone on fresh", async () => {
+  const Module = require("node:module");
+  const calls = { fetched: [], verified: 0 }, handed = [];
+  const dcap = {
+    INTEL_PCS_URL: "https://pcs.example.test", PHALA_PCCS_URL: "https://pccs.example.test",
+    constants: { PCK_ID_PCK_CERT_CHAIN: 5 },
+    Quote: { parse: (q) => ({ innerCertType: () => 5, rawCertChain: () => Buffer.from("chain of machine " + q[0]) }) },
+    getCollateral: async (url, q) => { calls.fetched.push(q[0]); const c = { fresh: true }; handed.push(c); return c; },
+    verify: async (q, collateral) => { calls.verified++; if (!collateral.fresh) throw new Error("TCB info expired"); return { status: "UpToDate", report: { asTd10: () => ({ machine: q[0] }) } }; },
+  };
+  const real = Module._load;
+  Module._load = function (request, ...rest) { return request === "@phala/dcap-qvl" ? dcap : real.call(this, request, ...rest); };
+  try {
+    const a = Buffer.from([0xa1]), b = Buffer.from([0xb2]);
+    assert.deepEqual(await near.verifyQuoteDefault(a), { status: "UpToDate", td: { machine: 0xa1 } });
+    await near.verifyQuoteDefault(a);
+    assert.deepEqual(calls.fetched, [0xa1], "fetched once for one machine");
+    assert.equal(calls.verified, 2, "but every quote checked");
+    await near.verifyQuoteDefault(b);
+    assert.deepEqual(calls.fetched, [0xa1, 0xb2], "another machine has its own");
+    handed[0].fresh = false; // machine a's kept collateral has passed Intel's next update
+    assert.deepEqual(await near.verifyQuoteDefault(a), { status: "UpToDate", td: { machine: 0xa1 } }, "the proof still passes");
+    assert.deepEqual(calls.fetched, [0xa1, 0xb2, 0xa1], "on collateral fetched again");
+    await near.verifyQuoteDefault(a);
+    assert.deepEqual(calls.fetched, [0xa1, 0xb2, 0xa1], "which is kept in turn");
+  } finally { Module._load = real; }
+});
