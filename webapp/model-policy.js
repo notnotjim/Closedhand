@@ -36,6 +36,10 @@ function capabilities(conn, model, metadata = {}) {
   let reasoning = null;
   // A runner on the computer running Closedhand (webapp/run-here.js).
   if (conn.provider === "here") reasoning = "here";
+  // NEAR AI serves open models through their own chat templates, which take
+  // a thinking switch: a one-line support job on DeepSeek V4.1 Flash thought
+  // 78 tokens and took 8 s without it, none and under a second with it.
+  if (conn.provider === "near" || host === "cloud-api.near.ai") reasoning = "template";
   if (host === "openrouter.ai" && supported?.includes("reasoning")) reasoning = "router";
   if (host === "api.deepseek.com" && /^deepseek-(?:v[34]|flash|pro|chat|reasoner)/i.test(model)) reasoning = "deepseek";
   if (host === "api.deepinfra.com" && /^(?:deepseek-ai\/DeepSeek-V[34]|zai-org\/GLM-5|moonshotai\/Kimi-K3|inclusionAI\/Ling-3)/i.test(model)) reasoning = "deepinfra";
@@ -69,9 +73,9 @@ function effortOptions(cap, effort = "default", maxTokens = 4096) {
     case "deepseek": return low ? { thinking: { type: "disabled" } } : { thinking: { type: "enabled" }, reasoning_effort: high ? "max" : "high" };
     case "deepinfra": return { reasoning_effort: low ? "none" : high ? "high" : "medium" };
     case "qwen": return { chat_template_kwargs: { enable_thinking: !low } };
-    // llama.cpp passes these to the model's own chat template; one that
-    // knows no thinking switch ignores it.
-    case "here": return low ? { chat_template_kwargs: { enable_thinking: false } } : {};
+    // llama.cpp, and NEAR AI's servers, pass these to the model's own chat
+    // template; one that knows no thinking switch ignores it.
+    case "here": case "template": return low ? { chat_template_kwargs: { enable_thinking: false } } : {};
     case "xai": case "openai": return { reasoning_effort: low ? "low" : high ? "high" : "medium" };
     case "adaptive": return { thinking: { type: "adaptive" }, output_config: { effort: low ? "low" : high ? "high" : "medium" } };
     case "anthropic-budget": return high && maxTokens > 1024 ? { thinking: { type: "enabled", budget_tokens: Math.min(10000, maxTokens - 1) } } : {};

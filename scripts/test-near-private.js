@@ -198,7 +198,7 @@ test("NEAR AI is a provider like the others: listed, named and found by its addr
   const read = (p) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
   assert.equal(require("../lib/model-policy").BASES.near, "https://cloud-api.near.ai/v1");
   assert.match(read("webapp/public/model-settings.js"), /near: "NEAR AI"/);
-  assert.equal(require("../webapp/provider-capabilities").PROVIDERS.near.label, "NEAR AI");
+  assert.equal(require("../webapp/provider-names").PROVIDERS.near, "NEAR AI");
   assert.match(read("webapp/model-summary.js"), /"cloud-api\.near\.ai": "NEAR AI"/);
   assert.ok(near.isNear({ provider: "near" }) && near.isNear({ provider: "custom", baseUrl: "https://cloud-api.near.ai/v1" }) && !near.isNear({ provider: "deepseek", baseUrl: "https://api.deepseek.com/v1" }));
   assert.match(read("lib/model-wire.js"), /near\.isNear\(conn\) \? await near\.complete\(conn, body, \{ signal \}\)/);
@@ -292,4 +292,13 @@ test("a new connection to a proven enclave key reuses its proof for a while, one
     await near.complete(c3, { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] });
     assert.equal(fake.reports, 2, "past its time a proof is made again");
   } finally { near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, signatureWaitMs: 5 }); }
+});
+
+test("a NEAR AI model's quick support jobs skip thinking through its chat template; its replies think as the model does", () => {
+  const policy = require("../lib/model-policy");
+  const cap = policy.capabilities(conn(), MODEL_ID, { input_modalities: ["text"] });
+  assert.equal(cap.reasoning, "template");
+  assert.deepEqual(policy.effortOptions(cap, "fast"), { chat_template_kwargs: { enable_thinking: false } });
+  assert.deepEqual(policy.effortOptions(cap, "default"), {});
+  assert.equal(cap.vision, false, "and it takes text only");
 });
