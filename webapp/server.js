@@ -4595,6 +4595,12 @@ async function purgeSyncedFor(userId, serviceKeys) {
     const { error: e2 } = await supabase.from("data_vectors").delete().eq("user_id", userId).eq("service", key);
     if (e2) console.error(`[disconnect] purge data_vectors ${key}:`, e2.message);
   }
+  // Who is who as WhatsApp said it (lib/people.js) goes with its messages.
+  if (keys.some((k) => k.includes("whatsapp"))) {
+    const { error: e3 } = await supabase.from("person_links").delete().eq("user_id", userId).eq("source", "whatsapp");
+    const { error: e4 } = await supabase.from("person_names").delete().eq("user_id", userId).like("handle", "wa:%");
+    if (e3 || e4) console.error("[disconnect] purge people whatsapp:", (e3 || e4).message);
+  }
   return keys;
 }
 
@@ -9219,7 +9225,7 @@ app.delete("/api/account", async (req, res) => {
       "facts", "user_rules", "schedules", "attachments", "pulse_config",
       "task_followups", "task_model_calls", "task_deliveries", "task_worker_results",
       "agent_tasks", "automations",
-      "data_vectors", "data_cache", "index_progress",
+      "data_vectors", "data_cache", "index_progress", "person_links", "person_names",
       "user_skills", "user_mcps", "user_bridges", "sandboxes",
       "chat_links", "connections",
       "bridge_requests", "bug_reports", "token_usage",

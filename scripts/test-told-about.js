@@ -132,7 +132,7 @@ function fakeCache(rows) {
   return { from: () => {
     const f = [], q = { _limit: 1e9, _desc: false };
     const chain = {
-      select: () => chain, eq: (k, v) => (f.push((r) => get(r, k) === v), chain),
+      select: () => chain, eq: (k, v) => (f.push((r) => get(r, k) === v), chain), in: (k, vs) => (f.push((r) => vs.includes(get(r, k))), chain),
       ilike: (k, p) => { const re = new RegExp("^" + p.replace(/%/g, ".*") + "$", "i"); f.push((r) => re.test(String(get(r, k) || ""))); return chain; },
       gte: (k, v) => (f.push((r) => get(r, k) >= v), chain),
       order: (k, o) => { q._desc = !o.ascending; return chain; }, limit: (n) => { q._limit = n; return chain; },
@@ -152,7 +152,7 @@ const chats = [
 ];
 
 test("search_cache reads one chat in order, by its name or a message id, so a line with no words in common is still read", async () => {
-  const sync = load("lib/services/data-sync.js", { "../../user-store": { supabase: fakeCache(chats) } });
+  const sync = load("lib/services/data-sync.js", { "../../user-store": { supabase: fakeCache(chats) }, "../people": { load: async () => require("../lib/people").build({}) } });
   const all = await sync.queryChat("u1", { chat: "dad", query: "*", days: 7 });
   assert.equal(all.chat, "Dad");
   assert.deepEqual(all.results.map((r) => r.text), ["https://harbour-homes.example/", "office@harbour-homes.example", "Send them the documents, you stand a good chance."], "oldest first, within the days asked, no other chat");

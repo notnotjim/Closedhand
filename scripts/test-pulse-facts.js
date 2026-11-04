@@ -122,18 +122,18 @@ test("the writer: one call from the cited items, tools only when it asks", () =>
 // the 20th?" from a dad abroad was answered with the flight home.
 test("who of the people a message is from no Pinned Fact names, asked about once", () => {
   const m = (chat, chat_name) => ({ type: "message", data: { chat, chat_name } });
-  const known = { "family-partner": { value: "Mina is Sam's partner; she is from Lyon", subject: "Mina" }, "family-dad": { value: "Pete is Sam's dad", subject: "Pete" }, _pulse_last: { value: "Mike's moved the weekend" } };
-  assert.equal(f.unknownPerson([m("447700900002@s.whatsapp.net", "Mike")], known), "Mike", "Closedhand's own note of what it said does not make him known");
+  const known = { "family-partner": { value: "Mina is Sam's partner; she is from Lyon", subject: "Mina" }, "family-dad": { value: "Pete is Sam's dad", subject: "Pete" }, _pulse_last: { value: "Theo's moved the weekend" } };
+  assert.equal(f.unknownPerson([m("447700900002@s.whatsapp.net", "Theo")], known), "Theo", "Closedhand's own note of what it said does not make him known");
   assert.equal(f.unknownPerson([m("447700900003@s.whatsapp.net", "Minako")], known), null, "a fact's short form covers the chat's name");
   assert.equal(f.unknownPerson([m("447700900004@s.whatsapp.net", "Peter")], known), null);
-  assert.equal(f.unknownPerson([m("447700900002@s.whatsapp.net", "Mike")], known, ["mike"]), null, "asked once");
+  assert.equal(f.unknownPerson([m("447700900002@s.whatsapp.net", "Theo")], known, ["theo"]), null, "asked once");
   assert.equal(f.unknownPerson([m("120363000000000001@g.us", "Flat 4 group")], known), null, "not a group");
   assert.equal(f.unknownPerson([m("447700900005@s.whatsapp.net", "Clinica Sorriso")], known), null, "nor an organisation");
   assert.equal(f.unknownPerson([m("447700900006@s.whatsapp.net", "+44 7700 900006")], known), null, "nor a number");
   assert.equal(f.unknownPerson([{ type: "email", data: { from: "Ana <ana@example.test>" } }], known), null, "chats only");
   // The writer is told, and when what it would say rests on who they are or
   // where they live (one narrow question to their LLM), it asks first.
-  assert.match(pulse, /const askWho = facts\.unknownPerson\(numbered\.filter\(\(r, i\) => r && r\.type === "message" && cited\.has\(i \+ 1\)\), store\.facts, \[\.\.\.\(settings\.asked_who \|\| \[\]\), \.\.\.require\("\.\/ask-who"\)\.ownNames\(store\)\]\);/);
+  assert.match(pulse, /const askWho = facts\.unknownPerson\(numbered\.filter\(\(r, i\) => r && r\.type === "message" && cited\.has\(i \+ 1\)\), store\.facts, \[\.\.\.\(settings\.asked_who \|\| \[\]\), \.\.\.require\("\.\/ask-who"\)\.ownNames\(store\)\], people\);/);
   assert.match(pulse, /if \(askWho\) chatText \+= `\\n\\nNOT KNOWN TO CLOSEDHAND: who \$\{askWho\} is to \$\{userName\}, and where they live\. Never assume either/);
   assert.match(pulse, /Would anything you would tell \$\{userName\} here depend on who \$\{askWho\} is to \$\{userName\} or where \$\{askWho\} lives/);
   assert.match(pulse, /await deliver\(`\$\{said \? `\$\{askWho\} wrote: "\$\{said\}"\\n\\n` : ""\}Before I say anything about it: who's \$\{askWho\} to you, and where do they live\? Tell me once and I'll remember, so I get things like this right\.`\);/);
