@@ -57,7 +57,7 @@ const COMPOSE = "services:\n  model:\n    image: example/model@sha256:00";
 const MR_CONFIG = Buffer.concat([Buffer.from([1]), sha("sha256", COMPOSE), Buffer.alloc(15)]).toString("hex");
 const quote = (fields) => Buffer.from(JSON.stringify(fields)).toString("hex");
 
-const fake = { mode: {}, reports: 0, posts: [], sockets: new Set() };
+const fake = { mode: {}, reports: 0, posts: [], signatures: {}, sockets: new Set() };
 const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 30000 }, (req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
@@ -96,10 +96,11 @@ const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 3000
       const text = fake.mode.gatewaySigns ? `${sha("sha256", raw).toString("hex")}:${sha("sha256", resBytes).toString("hex")}` : `${body.model}:${sha("sha256", raw).toString("hex")}:${sha("sha256", resBytes).toString("hex")}`;
       fake.signature = { text, signing_address: signer.pub.toString("hex"), signing_algo: "ed25519", signature_kind: fake.mode.gatewaySigns ? "gateway" : "provider_tee",
         signature: crypto.sign(null, Buffer.from(fake.mode.badSignature ? text + "x" : text), signer.privateKey).toString("hex") };
+      fake.signatures["chatcmpl-" + fake.posts.length] = fake.signature;
       res.writeHead(200, { "Content-Type": "application/json", "Content-Length": resBytes.length });
       return res.end(resBytes);
     }
-    if (url.pathname.startsWith("/v1/signature/")) return fake.mode.noSignature ? send(404, { error: "not found" }) : send(200, fake.signature);
+    if (url.pathname.startsWith("/v1/signature/")) return fake.mode.noSignature ? send(404, { error: "not found" }) : send(200, fake.signatures[decodeURIComponent(url.pathname.slice("/v1/signature/".length))] || fake.signature);
     send(404, {});
   });
 });
@@ -115,7 +116,7 @@ let keyN = 0;
 // A fresh connection per test (its own key), so each test proves its own.
 const conn = () => ({ provider: "near", backend: "custom", baseUrl: `https://localhost:${PORT}/v1`, apiKey: "test-key-" + ++keyN });
 const MODEL_ID = "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated";
-const reset = (mode = {}) => { fake.mode = mode; fake.reports = 0; fake.posts = []; gpuVerdict = true; };
+const reset = (mode = {}) => { fake.mode = mode; fake.reports = 0; fake.posts = []; fake.signatures = {}; gpuVerdict = true; };
 
 test("a request goes only after the proof, fully encrypted, and the reply is decrypted once its signature checks out", async () => {
   await ready; reset();
@@ -262,4 +263,33 @@ test("Intel's collateral is kept per machine and every quote is still checked; a
     await near.verifyQuoteDefault(a);
     assert.deepEqual(calls.fetched, [0xa1, 0xb2, 0xa1], "which is kept in turn");
   } finally { Module._load = real; }
+});
+
+test("a new connection to a proven enclave key reuses its proof for a while, ones opened together share one, and warm proves one ahead", async () => {
+  await ready; reset();
+  const c = conn();
+  await near.warm(c, MODEL_ID);
+  assert.equal(fake.reports, 1, "warm proved a connection");
+  assert.equal(fake.posts.length, 0, "and asked the model nothing");
+  for (const s of fake.sockets) s.destroy(); // NEAR AI closes idle connections
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal((await (await near.complete(c, { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] })).json()).choices[0].message.content, "Echo: hi");
+  assert.equal(fake.reports, 1, "a new connection to the same key, no new proof");
+
+  reset();
+  const c2 = conn();
+  await Promise.all([1, 2, 3].map((i) => near.complete(c2, { model: MODEL_ID, messages: [{ role: "user", content: "q" + i }] }).then((r) => r.json())));
+  assert.equal(fake.reports, 1, "three at once, one proof");
+  assert.ok(new Set(fake.posts.map((p) => p.socket)).size > 1, "over more than one connection");
+
+  near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, signatureWaitMs: 5, proofReuseMs: 0 });
+  try {
+    reset();
+    const c3 = conn();
+    await near.warm(c3, MODEL_ID);
+    for (const s of fake.sockets) s.destroy();
+    await new Promise((r) => setTimeout(r, 50));
+    await near.complete(c3, { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] });
+    assert.equal(fake.reports, 2, "past its time a proof is made again");
+  } finally { near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, signatureWaitMs: 5 }); }
 });
