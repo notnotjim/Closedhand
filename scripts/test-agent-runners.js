@@ -241,13 +241,12 @@ test("an answer that could not go for a day, or that may have gone, is not sent 
   assert.deepEqual(h.db.tables.agent_tasks.map((t) => t.delivery_status), ["uncertain", "uncertain"]);
 });
 
-test("compact tables remain intact on web and are adapted for phone chat", async () => {
+test("a table in a short answer needs no model call: the web keeps it, and a chat app gets it as lines when it is sent", async () => {
   const h = harness(), delivery = h.load("task-delivery", true);
-  const table = "| Option | Cost |\n| A | 12 |";
+  const table = "| Option | Cost |\n|---|---|\n| A | 12 |";
   assert.equal(await delivery.reportDigest(table, "web", "user", {}), table);
+  assert.equal(await delivery.reportDigest(table, "whatsapp_linked", "user", {}), table);
   assert.equal(h.calls.length, 0);
-  await delivery.reportDigest(table, "whatsapp_linked", "user", {});
-  assert.equal(h.calls.length, 1);
 });
 test("completed task delivery leads with the answer and remains idempotent", async () => {
   const h = harness({tables: {agent_tasks: [row({platform:"telegram",chat_id:"phone",status:"completed",delivery_status:"pending",result:"The flight leaves at 20:00."})]}});

@@ -182,7 +182,7 @@ test("a saved agent's page is linked in its message, and removing a run keeps it
   assert.match(handlers, /note: run\?\.kind === "agent" \|\| run\?\.kind === "automation"/);
   const delivery = read("lib/task-delivery.js");
   assert.match(delivery, /\.eq\(table === "automation_runs" \? "automation_run_id" : "task_id", row\.id\)/);
-  assert.match(delivery, /const reportId = await reportFor\(db, row, table\);/);
+  assert.match(delivery, /const reportId = await reportFor\(db, row, table\) \|\| await tablePage\(row, table, report, destinations\);/);
   const sql = read("migrations/052_pages.sql");
   assert.match(sql, /FOREIGN KEY \(task_id\) REFERENCES agent_tasks\(id\) ON DELETE SET NULL;/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS automation_run_id uuid REFERENCES automation_runs\(id\) ON DELETE SET NULL;/);

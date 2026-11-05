@@ -113,7 +113,7 @@ test("the writer: one call from the cited items, tools only when it asks", () =>
   assert.match(pulse, /const brief = `\$\{about \? `ABOUT THEM \(who they are, the people in their life and where they live/, "the writer knows who the people are, as the noticing does");
   assert.match(pulse, /const result = await sendChecked\(String\(\(block\.input && block\.input\.text\) \|\| ""\)\.trim\(\), lookedUp, null, block\.input && block\.input\.project\);/, "both ways go through the same check");
   assert.match(pulse, /ctx\.store\.facts\._pulse_last = \{ value: /, "what it told them is kept in code");
-  assert.match(pulse, /text = require\("\.\/plain-dashes"\)\.noEmDashes\(text\);/);
+  assert.match(pulse, /text = require\("\.\/stock-phrases"\)\.noStockPhrases\(require\("\.\/plain-dashes"\)\.noEmDashes\(text\)\);/);
   assert.match(require("../lib/pulse-triage").notice.toString(), /say only what they show: no guesses about the person's circumstances/);
 });
 
