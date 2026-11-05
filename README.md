@@ -107,6 +107,8 @@ Setup gives Closedhand a personal URL, two ordinary words and a number like ambe
 
 Claiming the URL creates your Closedhand account on closedhand.com. You sign in to it with Google or Microsoft, and it stores your email and nothing else; the [privacy page](https://closedhand.com/privacy) lists the routing details it needs to carry the connection. Connecting Google or Microsoft through Closedhand's own app claims the URL with that same sign-in. With your own Google project, setup asks for a second sign-in on closedhand.com, because closedhand.com can't trust a sign-in made by someone else's project.
 
+Or use Closedhand anonymously. Your Closedhand account then has an account number instead of an email, and closedhand.com stores no email, only a one-way fingerprint of the account number. Your account number is the only way back in, and nobody can recover a lost account number. An account like this starts by paying ahead in crypto for Closedhand Managed Models, and pays in crypto only, never by card.
+
 You can rename the URL in **Settings → Personal URL**; the old address points to the new one for 30 days. **Delete account** in My Account deletes your Closedhand account and everything Closedhand keeps on that computer. Without the computer, sign in at closedhand.com/account to delete the account alone.
 
 ## Privacy and security

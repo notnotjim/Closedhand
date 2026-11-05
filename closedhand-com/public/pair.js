@@ -134,7 +134,7 @@
         timer = setTimeout(check, 4000);
         return;
       }
-      $('who').textContent = 'Signed in as ' + (account.email || 'your ' + providerName(account.provider) + ' account');
+      $('who').textContent = account.provider === 'anonymous' ? 'Signed in with your account number' : 'Signed in as ' + (account.email || 'your ' + providerName(account.provider) + ' account');
       // Switching picks an account afresh, so it names none.
       $('switch').href = '/auth/' + (account.provider === 'microsoft' ? 'microsoft' : 'google') + '?return_to=' + encodeURIComponent(here);
       // The account setup just connected, signed in here too: nothing left to

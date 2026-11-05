@@ -290,6 +290,13 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 #phone-rename p { margin: 0.5rem 0 0; max-width: 68ch; color: var(--ui-muted); line-height: 1.65; }
 #phone-rename p:empty { display: none; }
 #phone-rename button { margin-top: 0.875rem; min-height: 2.75rem; padding: 0.625rem 1rem; }
+#phone-terms { margin: 0.75rem 0 1rem; }
+.dashboard-link-section label.terms-check { display: flex; margin: 0; font-size: 0.875rem; }
+#phone-block #url-number label.terms-check { margin: 0.75rem 0 0.5rem; }
+#phone-terms .account-action-desc { margin: 0.375rem 0 0 1.375rem; }
+#phone-block #url-number { margin-top: 1rem; }
+#phone-block #url-number p { color: var(--ui-muted); line-height: 1.65; }
+#phone-block #url-number .url-number-label { color: var(--fg); }
 .dashboard-container .dashboard-link-section h2 { margin-bottom: 0.75rem; }
 /* Its two addresses are two cards side by side (stacked on a phone), in
    the same style as the other Settings cards: an icon and title, the
@@ -607,3 +614,70 @@ input[type=search]::-webkit-search-cancel-button:hover { background-color: var(-
 .needs-nudge { animation: needs-nudge .34s ease 1; }
 @keyframes needs-nudge { 0%, 100% { transform: none; } 20% { transform: translateX(-0.1875rem); } 50% { transform: translateX(0.1875rem); } 80% { transform: translateX(-0.0625rem); } }
 @media (prefers-reduced-motion: reduce) { .field-needs, .needs-nudge { animation: none; } }
+
+/* The Terms box and claiming without an email (account-number-claim.js), the
+   same in setup and on the dashboard: the account number, large and grouped
+   with Copy, and the box ticked once it is saved. */
+.terms-check { display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer; font-size: 0.875rem; line-height: 1.5; font-weight: 500; color: var(--fg); }
+.terms-check input { flex: none; width: 0.875rem; height: 0.875rem; margin: 0.25rem 0 0; accent-color: var(--accent-strong); }
+.url-number-label { color: var(--fg); font-weight: 500; margin: 0 0 0.5rem; }
+.account-number-row { display: flex; align-items: center; border: 1px solid rgba(var(--fg-rgb),0.1); border-radius: 0.625rem; overflow: hidden; }
+.account-number { flex: 1; min-width: 0; padding: 0.875rem 1rem; color: var(--fg); font: 500 1.25rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; word-spacing: 0.25em; overflow-wrap: anywhere; user-select: all; }
+#url-number-copy { flex: 0 0 2.75rem; align-self: stretch; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+#url-number-copy:hover { color: var(--fg); background: rgba(var(--accent-strong-rgb),0.07); }
+#url-number-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: -0.1875rem; }
+#url-number-copy-status { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--muted); }
+#url-number .account-number-row + p, #url-number-copy-status + p { margin-top: 0.75rem; }
+#url-number .terms-check { margin: 0.75rem 0 0.5rem; }
+/* "Use anonymously": the neutral outline sized down, below the main claim;
+   pressed, the claim turns into its panel in place. */
+.btn-quiet.btn-small { min-height: 2rem; padding: 0.3125rem 0.75rem; font-size: var(--ui-small); }
+#url-anonymous { display: flex; width: fit-content; margin-top: 1rem; color: var(--muted); }
+#url-anonymous[hidden], #url-anon-panel[hidden] { display: none; }
+#url-anon-panel { margin: 0.25rem 0 0.5rem; padding: 1rem 1.125rem 0.875rem; border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.75rem; }
+#url-anon-panel h3 { margin: 0 0 0.375rem; font: 600 0.9375rem/1.4 var(--font-ui); color: var(--fg); }
+#url-anon-panel p { margin: 0; color: var(--muted); font-size: 0.875rem; line-height: 1.55; }
+.anon-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin-top: 0.875rem; }
+#url-anon-panel, #url-number { animation: anon-panel-in 0.22s ease both; }
+@keyframes anon-panel-in { from { opacity: 0; transform: translateY(0.25rem); } to { opacity: 1; transform: none; } }
+/* Paid for first: the months, as My Account offers paying ahead in crypto,
+   the box agreeing the payment starts straight away, and one live line
+   while it waits. */
+#url-anon-panel .anon-label { margin: 0.875rem 0 0.5rem; color: var(--fg); }
+.anon-months { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.anon-month[aria-pressed="true"] { border-color: rgba(var(--accent-strong-rgb),0.6); background: rgba(var(--accent-strong-rgb),0.08); color: var(--fg); }
+#url-anon-agree { margin-top: 0.75rem; }
+#url-anon-panel .anon-wait { color: var(--fg); }
+#url-anon-panel .anon-fine { margin-top: 0.5rem; font-size: 0.8125rem; color: var(--muted); }
+/* Waiting for the payment: the fist, as in the brand's circle mark, with an
+   arc of ink travelling round it, longer and shorter as it goes, while the
+   fist breathes. Paid, the ring closes for a moment. Still and whole for
+   reduced motion. Beside the line, and above it, centred, on phones. */
+.anon-wait-row { display: flex; align-items: center; gap: 0.875rem; margin-top: 0.75rem; }
+.anon-wait-row:not(:has(> :not([hidden]))) { display: none; }
+.anon-wait-row .anon-wait { margin-top: 0 !important; }
+.anon-progress { position: relative; flex: none; width: 2.75rem; height: 2.75rem; display: grid; place-items: center; }
+.anon-progress[hidden] { display: none; }
+.anon-progress svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.anon-progress path { fill: none; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+.anon-ring-track { stroke: rgba(var(--fg-rgb),0.1); }
+.anon-ring-ink { stroke: var(--accent); stroke-dasharray: 22 78; animation: anon-ink 1.8s cubic-bezier(.45, .05, .55, .95) infinite; filter: drop-shadow(0 0 0.0625rem rgba(var(--accent-rgb),0.45)); }
+.anon-fist { width: 42%; aspect-ratio: 242 / 267; background: var(--fg); -webkit-mask: url(/fist.png) center / contain no-repeat; mask: url(/fist.png) center / contain no-repeat; animation: anon-breathe 2.6s ease-in-out infinite; }
+.anon-progress.is-done .anon-ring-ink { animation: none; stroke-dasharray: 100 0; stroke-dashoffset: 0; transition: stroke-dasharray .6s cubic-bezier(.2, .8, .2, 1); }
+.anon-progress.is-done .anon-fist { animation: none; transform: scale(1.06); transition: transform .4s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes anon-ink { 0% { stroke-dashoffset: 100; stroke-dasharray: 14 86; } 50% { stroke-dasharray: 34 66; } 100% { stroke-dashoffset: 0; stroke-dasharray: 14 86; } }
+@keyframes anon-breathe { 0%, 100% { transform: scale(0.96); } 50% { transform: scale(1.03); } }
+@media (max-width: 600px) { .anon-wait-row.is-waiting { flex-direction: column; text-align: center; gap: 0.625rem; } }
+@media (prefers-reduced-motion: reduce) { .anon-ring-ink, .anon-fist { animation: none; } .anon-ring-ink { stroke-dasharray: 100 0; } }
+#url-anon-pay[hidden], #url-anon-go[hidden], #url-anon-back[hidden] { display: none; }
+/* A box to tick first, pressed past: the row lights briefly in the focus
+   colour, its quiet helper line shows and the focus moves to its box. */
+.terms-nudge { margin: 0.375rem 0 0 1.375rem; font-size: 0.8125rem; color: var(--muted); }
+.terms-nudge[hidden] { display: none; }
+.is-nudged { border-radius: 0.5rem; animation: terms-nudge 1.4s ease; }
+#phone-terms .terms-nudge, #url-anon-panel .terms-nudge, .terms-accept .terms-nudge { margin: 0.375rem 0 0 1.375rem; }
+@keyframes terms-nudge {
+  0%, 100% { outline: 2px solid rgba(var(--accent-strong-rgb),0); outline-offset: 0.375rem; box-shadow: 0 0 0 0.375rem rgba(var(--accent-strong-rgb),0); background: rgba(var(--accent-strong-rgb),0); }
+  18%, 60% { outline: 2px solid rgba(var(--accent-strong-rgb),0.55); outline-offset: 0.375rem; box-shadow: 0 0 0 0.375rem rgba(var(--accent-strong-rgb),0.06); background: rgba(var(--accent-strong-rgb),0.06); }
+}
+@media (prefers-reduced-motion: reduce) { #url-anon-panel, #url-number { animation: none; } }

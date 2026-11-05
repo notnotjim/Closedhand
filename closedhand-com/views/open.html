@@ -63,6 +63,15 @@
         <a class="btn btn-primary" id="login-google" href="/auth/google?return_to=%2Fopen"><img src="/logos/google-color.svg" alt="">Continue with Google</a>
         <a class="btn" id="login-microsoft" href="/auth/microsoft?return_to=%2Fopen"><img src="/logos/microsoft-color.svg" alt="">Continue with Microsoft</a>
       </div>
+      <button class="have-it" type="button" data-number-show>Sign in with an account number</button>
+      <form data-number-signin novalidate hidden>
+        <label for="number">Account number</label>
+        <div class="field">
+          <input id="number" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="30" placeholder="XXXX XXXX XXXX XXXX XXXX" aria-describedby="number-error">
+          <button class="btn" type="submit">Sign in</button>
+        </div>
+        <p class="error" id="number-error" role="alert" hidden></p>
+      </form>
       <button class="have-it" id="type-it" type="button" hidden>Type your personal URL instead</button>
       <form id="address-form" novalidate hidden>
         <label for="address">Personal URL</label>
@@ -86,6 +95,7 @@
   </main>
   <footer class="site-foot"><a href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></footer>
   <script src="/entry-navigation.js" defer></script>
+  <script src="/number-signin.js" defer></script>
   <script src="/open.js" defer></script>
 </body>
 </html>

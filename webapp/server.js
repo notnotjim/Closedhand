@@ -1300,8 +1300,10 @@ app.get("/api/phone", async (req, res) => {
   const savedUrl = require("./phone-registration").validAddress(saved) ? saved : null;
   // Whether closedhand.com can give out a personal URL right now: setup
   // offers to carry on without one only when it can't.
-  const serviceAvailable = await require("./phone-registration").serviceAvailable();
-  res.set("Cache-Control", "no-store").json({ ...phoneAccess.status(), savedUrl, addressName: await getRuntimeConf("PHONE_ADDRESS_NAME") || null, serviceAvailable, termsAccepted: await require("./phone-registration").termsAccepted() });
+  const registration = require("./phone-registration");
+  const serviceAvailable = await registration.serviceAvailable();
+  res.set("Cache-Control", "no-store").json({ ...phoneAccess.status(), savedUrl, addressName: await getRuntimeConf("PHONE_ADDRESS_NAME") || null, serviceAvailable, termsAccepted: await registration.termsAccepted(),
+    signInWaiting: !!signInWaiting(), accountNumberToSave: await registration.accountNumberToSave(), anonymousWaiting: await registration.anonymousWaiting() });
 });
 app.post("/api/phone", async (req, res) => {
   if (!(await requireSetupAccess(req, res))) return;
@@ -1326,19 +1328,60 @@ app.post("/api/phone/claim", async (req, res) => {
   }
 });
 // Agreeing to the Terms and Privacy policy on the setup page, once, before
-// the personal URL is claimed; a Google or Microsoft sign-in that was waiting
-// for it claims straight away.
+// the personal URL is claimed either way: with the Google or Microsoft
+// sign-in waiting for it (claim-waiting), or without an email.
 app.post("/api/phone/accept-terms", async (req, res) => {
   if (!(await requireSetupAccess(req, res))) return;
   try {
     await require("./phone-registration").acceptTerms();
-    const waiting = claimAwaitingTerms && Date.now() - claimAwaitingTerms.at < 50 * 60000 ? claimAwaitingTerms : null;
-    claimAwaitingTerms = null;
-    const url = waiting ? await claimPersonalUrlWith(waiting.provider, waiting.idToken).catch(() => null) : null;
-    res.json({ ...phoneAccess.status(), termsAccepted: true, claimed: !!url });
+    res.json({ ...phoneAccess.status(), termsAccepted: true, signInWaiting: !!signInWaiting() });
   } catch (e) {
     res.status(500).json({ error: "Could not save that. Please try again." });
   }
+});
+// Claim your personal URL, with the Google or Microsoft account just
+// connected: no second sign-in.
+app.post("/api/phone/claim-waiting", async (req, res) => {
+  if (!(await requireSetupAccess(req, res))) return;
+  const waiting = signInWaiting();
+  claimAwaitingTerms = null;
+  const url = waiting ? await claimPersonalUrlWith(waiting.provider, waiting.idToken).catch((e) => { console.error("[personal url] claim:", e.message); return null; }) : null;
+  res.json({ ...phoneAccess.status(), claimed: !!url });
+});
+// Using Closedhand anonymously, paid for first in crypto: the months chosen
+// make a claim waiting for its payment, answered with the payment page. A
+// sign-in waiting to claim is dropped unsent. Asked again, the claim says
+// where it stands, and once paid the Closedhand account comes back with its
+// account number, shown here once. What it costs, for setup to show first.
+app.post("/api/phone/claim-anonymous", async (req, res) => {
+  if (!(await requireSetupAccess(req, res))) return;
+  claimAwaitingTerms = null;
+  try { res.json(await require("./phone-registration").claimAnonymous((req.body || {}).months)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get("/api/phone/claim-anonymous", async (req, res) => {
+  if (!(await requireSetupAccess(req, res))) return;
+  res.set("Cache-Control", "no-store");
+  try {
+    const result = await require("./phone-registration").anonymousClaim();
+    if (result.state === "ready") await phoneAccess.enable("managed");
+    res.json({ ...phoneAccess.status(), ...result });
+  } catch (e) { res.status(503).json({ error: "Could not check the payment just now. Closedhand tries again by itself." }); }
+});
+app.get("/api/phone/anonymous", async (req, res) => {
+  if (!(await requireSetupAccess(req, res))) return;
+  res.set("Cache-Control", "no-store").json(await require("./phone-registration").anonymousOffer());
+});
+// The account number, for setup to ask that it is saved and for My Account
+// to show when asked; and that it is saved, once.
+app.get("/api/phone/account-number", async (req, res) => {
+  if (!(await requireSetupAccess(req, res))) return;
+  res.set("Cache-Control", "no-store").json({ accountNumber: await require("./phone-registration").accountNumber() });
+});
+app.post("/api/phone/account-number/saved", async (req, res) => {
+  if (!(await requireSetupAccess(req, res))) return;
+  await require("./phone-registration").accountNumberSaved();
+  res.json({ saved: true });
 });
 // Rename the personal URL (Settings, or Change in setup). The old name sends
 // visitors on to the new one for thirty days; this copy reconnects at the new
@@ -3029,12 +3072,18 @@ async function connectMcpHandler(req, res) {
 // Closedhand account too, so whichever one the person connected works on
 // closedhand.com. Mail is connected either way; a claim that fails leaves the
 // usual way to get one on the setup page.
-// The claim waits for the person to agree to the Terms on the setup page:
-// the sign-in is held here, in memory, for most of the hour it lasts, and
-// agreeing then claims with it, still with no second sign-in.
+// The claim waits for the person to agree to the Terms on the setup page and
+// choose how to claim: the sign-in is held here, in memory, for most of the
+// hour it lasts, and claiming with it needs no second sign-in. Claiming
+// without an email drops it unsent. An account made with an account number
+// never has a sign-in passed on (phone-registration.js anonymous).
 let claimAwaitingTerms = null;
+function signInWaiting() {
+  return claimAwaitingTerms && Date.now() - claimAwaitingTerms.at < 50 * 60000 ? claimAwaitingTerms : null;
+}
 async function claimPersonalUrlWith(provider, idToken) {
   const registration = require("./phone-registration");
+  if (await getRuntimeConf("PHONE_ANONYMOUS") === "1") return null;
   if (await getRuntimeConf("PHONE_PERMANENT_URL") || registration.status().ownershipConfirmed) {
     await registration.addSignIn(provider, idToken).catch((e) => console.error("[personal url] sign-in not added:", e.message));
     return null;

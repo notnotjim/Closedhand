@@ -144,8 +144,8 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   }
 
   // The one-way fingerprint of the account's sign-in, which starter_grants keeps.
-  async function personOf(ownerId) {
-    const who = (await db.query('SELECT provider, subject FROM owners WHERE id = $1', [ownerId])).rows[0];
+  async function personOf(ownerId, who) {
+    if (!who) who = (await db.query('SELECT provider, subject FROM owners WHERE id = $1', [ownerId])).rows[0];
     return fingerprint('person', who && who.subject ? who.provider + ':' + who.subject : 'owner:' + ownerId);
   }
 
@@ -189,7 +189,11 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
         return { key: made.key, models: roles() };
       }
       if (sub) return await keyForSubscriber(ownerId, sub);
-      const person = await personOf(ownerId);
+      // An account made with an account number has no free days: Managed
+      // Models come to it only paid ahead in crypto.
+      const who = (await db.query('SELECT provider, subject FROM owners WHERE id = $1', [ownerId])).rows[0];
+      if (who?.provider === 'anonymous') return null;
+      const person = await personOf(ownerId, who);
       const place = connection(ip) && fingerprint('connection', connection(ip));
       await db.query("UPDATE starter_grants SET network_hash = NULL WHERE network_hash IS NOT NULL AND granted_at < now() - interval '30 days'");
       const refused = (await db.query('SELECT 1 FROM starter_grants WHERE person_hash = $1', [person])).rowCount ? 'this sign-in has had them'
@@ -463,4 +467,4 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
 }
 
-module.exports = { create };
+module.exports = { create, connection };

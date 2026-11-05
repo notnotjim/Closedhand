@@ -275,9 +275,11 @@ test('a second Google or Microsoft account connected once there is a personal UR
     const calls = [];
     const client = registration({}, async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => ({ signIn: 'added' }) }; });
     assert.deepEqual(plain(await client.addSignIn(provider, 'id.token.second')), { signIn: 'added' });
-    assert.ok(calls[0].url.endsWith('/api/phone-enrollment/sign-in-' + provider));
-    assert.deepEqual(JSON.parse(calls[0].options.body), { idToken: 'id.token.second' });
-    assert.match(calls[0].options.headers.Authorization, /^Bearer [a-f0-9-]{36}\.[a-f0-9]{64}$/, "as this computer");
+    // Whose account it is comes first: one made with an account number gets no sign-in (test-anonymous-account.js).
+    assert.ok(calls[0].url.endsWith('/api/phone-enrollment/account') && !calls[0].options.body);
+    assert.ok(calls[1].url.endsWith('/api/phone-enrollment/sign-in-' + provider));
+    assert.deepEqual(JSON.parse(calls[1].options.body), { idToken: 'id.token.second' });
+    assert.match(calls[1].options.headers.Authorization, /^Bearer [a-f0-9-]{36}\.[a-f0-9]{64}$/, "as this computer");
   }
   await assert.rejects(registration({}, async () => ({ ok: true, json: async () => ({}) })).addSignIn('account/delete', 'x'));
   const server = fs.readFileSync(path.join(__dirname, '..', 'webapp/server.js'), 'utf8');

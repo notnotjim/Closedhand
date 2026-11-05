@@ -118,6 +118,7 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
     const accounts = await both(`SELECT count(*)::int AS total,
         count(*) FILTER (WHERE provider = 'google')::int AS google,
         count(*) FILTER (WHERE provider = 'microsoft')::int AS microsoft,
+        count(*) FILTER (WHERE provider = 'anonymous')::int AS anonymous,
         count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS week,
         count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS month
       FROM owners WHERE {who}`, 'id');
@@ -176,8 +177,8 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       LEFT JOIN ahead_plans ap ON ap.owner_id = o.id AND ap.ended_at IS NULL AND ap.ends_at > now()
       LEFT JOIN LATERAL (SELECT string_agg(address, ', ' ORDER BY created_at) AS addresses, min(owner_email) AS owner_email
         FROM mail_relay_accounts WHERE owner_id = o.id AND enabled) m ON true
-      LEFT JOIN mail_relay_usage u ON m.owner_email IS NOT NULL
-        AND u.owner_key = encode(sha256(convert_to(lower(m.owner_email), 'UTF8')), 'hex')
+      LEFT JOIN mail_relay_usage u ON m.addresses IS NOT NULL
+        AND u.owner_key = coalesce(encode(sha256(convert_to(lower(m.owner_email), 'UTF8')), 'hex'), 'owner:' || o.id::text)
         AND u.period = date_trunc('month', now() at time zone 'UTC')::date
       ORDER BY o.created_at DESC LIMIT 2000`, [mine])).rows.map(({ plus_from: from, plus_extended_for: extendedFor, ...p }) => {
         // Carried on this month of fair use, which in a subscription every 6

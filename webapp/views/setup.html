@@ -229,8 +229,6 @@
     /* One shake and a glow when setup was where the dashboard sent them. */
     #url-start.nudge { animation: claimShake 0.6s ease 0.5s, claimGlow 1.6s ease 0.5s; }
     .terms-accept { margin: 0.75rem 0 1rem; }
-    .terms-check { display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer; font-size: 0.875rem; line-height: 1.5; font-weight: 500; color: var(--text-primary); }
-    .terms-check input { flex: none; width: 0.875rem; height: 0.875rem; margin: 0.25rem 0 0; accent-color: var(--accent-strong); }
     .terms-accept .note { margin: 0.375rem 0 0 1.375rem; }
     @keyframes claimShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-0.375rem); } 40% { transform: translateX(0.375rem); } 60% { transform: translateX(-0.25rem); } 80% { transform: translateX(0.1875rem); } }
     @keyframes claimGlow { 0% { box-shadow: 0 0 0 0 rgba(var(--accent-strong-rgb),0.55); } 70% { box-shadow: 0 0 0 0.75rem rgba(var(--accent-strong-rgb),0); } 100% { box-shadow: 0 0 0 0 rgba(var(--accent-strong-rgb),0); } }
@@ -387,6 +385,7 @@
   <script src="/model-settings.js"></script>
   <script src="/ask.js"></script>
   <script src="/text-motion.js"></script>
+  <script src="/account-number-claim.js"></script>
   <script src="/setup-personal-url.js"></script>
 </head>
 <body class="setup-page">
@@ -725,20 +724,67 @@
         <div class="card-body">
             <section id="setup-personal-url" aria-labelledby="personal-url-heading">
               <p id="url-password-note">Connect Google or Microsoft above first.</p>
-              <p>Open Closedhand from your phone or any device at an address like amber-fox-42.closedhand.ai. Claiming one creates your Closedhand account, which stores your email and nothing else.</p>
+              <p>Open Closedhand from your phone or any device at an address like amber-fox-42.closedhand.ai. Claiming one creates your Closedhand account.</p>
               <div id="url-controls" hidden>
                 <form id="url-form">
                   <p class="url-why" id="url-why" hidden>Claim your personal URL to finish setup.</p>
-                  <p>You claim it by signing in on closedhand.com below.</p>
+                  <p id="url-how" data-claim-way>You claim one by signing in on closedhand.com below, and your Closedhand account stores your email and nothing else.</p>
                   <!-- Agreed once, here, before the personal URL is claimed
                        either way (this button, or the Google or Microsoft
                        sign-in above, which waits for it). -->
                   <div class="terms-accept" id="url-terms">
                     <label class="terms-check"><input type="checkbox" id="url-terms-box"><span>I agree to the <a href="https://closedhand.com/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://closedhand.com/privacy" target="_blank" rel="noopener">Privacy&nbsp;policy</a></span></label>
-                    <p class="note">With Managed Models, no company's rulebook limits what Closedhand can say and nobody else can read your conversations. All we ask is that you use Closedhand within the law.</p>
+                    <p class="note">With Managed Models, there is no company restricting what Closedhand can say or do, and nobody but you can read your conversations. All we ask is that you use Closedhand within the law.</p>
+                    <p class="terms-nudge" id="url-terms-nudge" hidden>Tick to agree to the Terms first</p>
                   </div>
-                  <button class="save-btn" id="url-start" type="submit">Claim your personal URL</button>
+                  <button class="save-btn" id="url-start" type="submit" data-claim-way>Claim your personal URL</button>
+                  <!-- Using Closedhand anonymously (account-number-claim.js): pressed, the
+                       claim turns into this panel in place. -->
+                  <button class="btn-quiet btn-small" id="url-anonymous" type="button" data-claim-way>Use anonymously</button>
+                  <div class="anon-panel" id="url-anon-panel" hidden>
+                    <h3>Use Closedhand anonymously</h3>
+                    <p>No email required + pay with crypto instead of card payments.</p>
+                    <p>You will be given an anonymous account number to keep safe.</p>
+                    <!-- Paid for first: the months, as My Account offers paying ahead in crypto. -->
+                    <div id="url-anon-choice" hidden>
+                      <p class="anon-label">Anonymous users are automatically given access to Managed Models with uncensored LLM access. One time payment with no auto-renewal.</p>
+                      <div class="anon-months" id="url-anon-months" role="group" aria-label="Months paid ahead"></div>
+                      <p class="anon-fine">Prices in US dollars, paid in the crypto of your choice.</p>
+                      <div class="nudge-row" id="url-anon-agree">
+                        <label class="terms-check"><input type="checkbox" id="url-anon-agree-box"><span>I agree that what I pay for now starts straight away and can't be refunded once started.</span></label>
+                        <p class="terms-nudge" hidden>Tick to agree first</p>
+                      </div>
+                    </div>
+                    <div class="anon-wait-row" id="url-anon-wait-row">
+                      <!-- Waiting for the payment: the fist, with an ink arc going round. -->
+                      <div class="anon-progress" id="url-anon-progress" aria-hidden="true" hidden>
+                        <svg viewBox="0 0 48 48"><path class="anon-ring-track" d="M24 4.3C35.3 3.9 44.2 12.7 43.8 24.2C43.4 35.5 35.2 44.1 23.7 43.8C12.5 43.4 3.9 35.3 4.3 23.8C4.7 12.7 13 4.6 24 4.3Z"/><path class="anon-ring-ink" pathLength="100" d="M24 4.3C35.3 3.9 44.2 12.7 43.8 24.2C43.4 35.5 35.2 44.1 23.7 43.8C12.5 43.4 3.9 35.3 4.3 23.8C4.7 12.7 13 4.6 24 4.3Z"/></svg>
+                        <span class="anon-fist"></span>
+                      </div>
+                      <p class="anon-wait" id="url-anon-wait" role="status" aria-live="polite" hidden></p>
+                    </div>
+                    <div class="anon-panel-actions">
+                      <button class="save-btn" id="url-anon-go" type="button">Pay and continue anonymously</button>
+                      <a class="save-btn" id="url-anon-pay" target="_blank" rel="noopener" hidden>Open the payment page</a>
+                      <button class="quiet-link" id="url-anon-back" type="button">Back</button>
+                    </div>
+                  </div>
                 </form>
+                <!-- Claimed without an email: the account number, shown until
+                     the person says it is saved. -->
+                <div id="url-number" hidden>
+                  <p class="url-number-label">Your account number</p>
+                  <div class="account-number-row">
+                    <output class="account-number" id="url-number-value"></output>
+                    <button id="url-number-copy" type="button" aria-label="Copy account number" title="Copy account number">
+                      <svg width="1.25rem" height="1.25rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>
+                    </button>
+                  </div>
+                  <p id="url-number-copy-status" role="status" aria-live="polite" hidden></p>
+                  <p>Your account number is the only way back into your Closedhand account, on closedhand.com or another computer. Nobody can recover a lost account number, not even closedhand.com, so keep yours somewhere safe, like a password manager.</p>
+                  <label class="terms-check"><input type="checkbox" id="url-number-saved"><span>I've saved my account number</span></label>
+                  <button class="save-btn" id="url-number-continue" type="button" disabled>Continue setup</button>
+                </div>
                 <div id="url-ready" hidden>
                   <p class="url-where-line">Your Closedhand is at <strong id="url-where"></strong> <a href="#" id="url-change">Change</a></p>
                   <form id="url-rename-form" hidden>

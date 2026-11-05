@@ -1,8 +1,10 @@
 /* The personal URL, setup's step after email and calendar. Connecting Google
    or Microsoft through Closedhand's app claims it with that same sign-in;
-   otherwise one click claims it on closedhand.com (which picks the name). Then "Your
-   Closedhand is at name.closedhand.ai", with Change to rename. Claimed, the
-   step folds by itself: connecting carries on in the background. */
+   otherwise one click claims it on closedhand.com (which picks the name).
+   Or Closedhand is used anonymously, paid for first in crypto: the account
+   gets an account number, shown here until the person says it is saved. Then "Your Closedhand is at
+   name.closedhand.ai", with Change to rename. Claimed, the step folds by
+   itself: connecting carries on in the background. */
 (function (root) {
   'use strict';
   function mount(container, changed) {
@@ -63,7 +65,10 @@
       // box to paste it into is only for setup opened from somewhere else.
       var handsBack = !!confirm && /#t=/.test(confirm) && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(root.location.hostname || '');
       var waiting = !!confirm && !(saved || confirmed) && !handsBack;
-      $('url-form').hidden = !!(saved || confirmed);
+      var number = numbers.number();
+      $('url-form').hidden = !!(saved || confirmed || number);
+      numbers.draw();
+      if (!password) $('url-number').hidden = true;
       // Confirming on closedhand.com shows a code; typing it here finishes.
       $('url-code-form').hidden = !waiting;
       // The code box is the next thing to use: have it ready to paste into.
@@ -75,7 +80,7 @@
       $('url-value').value = saved || reserved || '';
       $('url-copy').hidden = !(saved || reserved);
       // Where Closedhand is, once its address is confirmed, with Change.
-      $('url-ready').hidden = !password || !(saved || reserved);
+      $('url-ready').hidden = !password || !(saved || reserved) || !!number;
       $('url-where').textContent = saved || reserved ? new URL(saved || reserved).hostname : '';
       $('url-rename-submit').disabled = renaming;
       $('url-rename-submit').textContent = renaming ? 'Saving…' : 'Save';
@@ -83,11 +88,14 @@
       var agreed = !!state.termsAccepted;
       $('url-terms').hidden = agreed && !agreedHere;
       if (agreedHere) $('url-terms-box').checked = true;
-      $('url-start').disabled = busy || !password || !agreed;
+      // Never disabled for the Terms: pressing it unticked draws the eye there.
+      $('url-start').disabled = busy || !password;
       $('url-start').textContent = busy ? 'Opening…' : waiting ? 'Open closedhand.com again' : signingIn && confirm ? 'Open the sign-in again' : 'Claim your personal URL';
+      // With the account just connected, claiming needs no sign-in here.
+      $('url-how').textContent = state.signInWaiting && !confirm ? 'You claim one with the account you connected above, and your Closedhand account stores that account’s email and nothing else.' : 'You claim one by signing in on closedhand.com below, and your Closedhand account stores your email and nothing else.';
       $('url-start').classList.toggle('is-quiet', waiting);
       $('url-start').formNoValidate = !!confirm;
-      $('url-status').textContent = actionError || state.error || (renamed ? renamed : saved
+      $('url-status').textContent = actionError || state.error || (number ? '' : renamed ? renamed : saved
         ? (state.state === 'on' ? 'Your personal URL is ready. Use your dashboard password to open it.' : 'Your personal URL is saved. Closedhand is not connected to it yet. You can continue setup here.')
         : confirmed ? (state.registrationState === 'error'
           ? 'Your personal URL is claimed, but its connection is delayed. Closedhand will retry automatically.'
@@ -100,7 +108,7 @@
       // getting one failed); the dashboard offers it again later.
       var cantGet = state.serviceAvailable === false || !!(actionError || state.error);
       // Claimed: the step folds by itself, so there is nothing to press.
-      $('url-continue').hidden = !!confirmed || !(saved || cantGet);
+      $('url-continue').hidden = !!confirmed || !(saved || cantGet) || !!number;
       $('url-continue').textContent = saved ? 'Continue setup' : 'Continue without a personal URL';
     }
     async function request(method, body) {
@@ -119,6 +127,11 @@
         var result = await request('GET');
         if (run !== generation) return;
         state = result;
+        // Claimed without an email and not yet saved, as when setup is
+        // opened again: the number is shown again until it is.
+        if (state.accountNumberToSave) await numbers.waiting();
+        // A payment already on its way: the panel waits for it again.
+        if (state.anonymousWaiting) numbers.resume(state.anonymousWaiting);
       } catch (e) { if (run === generation) state.error = e.message; }
       finally {
         checking = false;
@@ -130,7 +143,7 @@
           // Claimed is finished: connecting is Closedhand's part, not the person's.
           var claimed = state.enabled && state.ownershipConfirmed && personalUrl('https://' + state.addressName + '.closedhand.ai');
           var working = state.state === 'on' && personalUrl(state.permanent && state.url || state.savedUrl);
-          if (password && !completedReady && $('url-rename-form').hidden && (claimed || working)) {
+          if (password && !completedReady && !numbers.number() && !state.accountNumberToSave && $('url-rename-form').hidden && (claimed || working)) {
             completedReady = true;
             remember();
           }
@@ -146,15 +159,18 @@
         var response = await fetch('/api/phone/accept-terms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(30000) });
         var result = await response.json().catch(function () { return {}; });
         if (!response.ok) throw new Error(result.error || 'Could not save that. Please try again.');
-        // A Google or Microsoft sign-in that was waiting has claimed it.
+        // Whether a Google or Microsoft sign-in waits to claim with.
         state = Object.assign({}, state, result, { termsAccepted: true });
-        agreedHere = true; actionError = null;
+        agreedHere = true; actionError = null; $('url-terms-nudge').hidden = true;
       } catch (e) { box.checked = false; actionError = e.message; }
       finally { box.disabled = false; display(); }
     });
     $('url-form').addEventListener('submit', async function (event) {
       event.preventDefault();
       if (!password || busy) return;
+      if (state.termsAccepted === false) return root.ClosedHandAccountNumber.nudge($('url-terms'));
+      // The account just connected claims it here, with no sign-in.
+      if (state.signInWaiting) return claimWaiting();
       // Open during the click, before awaiting the fresh ticket, so browsers
       // do not mistake it for an unsolicited popup. A small window of its own,
       // like any "Sign in with Google": it closes itself once the claim is in,
@@ -175,6 +191,34 @@
         if (confirmationTab) confirmationTab.close();
         if (run === generation) actionError = e.message;
       } finally { if (run === generation) { busy = false; lastCheck = 0; display(); } }
+    });
+    async function claimWaiting() {
+      busy = true; actionError = null; var run = ++generation; display();
+      try {
+        var result = await post('/api/phone/claim-waiting');
+        if (run !== generation) return;
+        state = Object.assign({}, state, result, { signInWaiting: false });
+        if (!result.claimed) throw new Error('That account couldn’t claim your personal URL. Press Claim your personal URL to sign in on closedhand.com instead.');
+      } catch (e) { if (run === generation) actionError = e.message; }
+      finally { if (run === generation) { busy = false; lastCheck = 0; display(); check(); } }
+    }
+    async function post(path, body) {
+      var response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), signal: AbortSignal.timeout(30000) });
+      var result = await response.json().catch(function () { return {}; });
+      if (!response.ok) throw new Error(result.error || 'Could not claim your personal URL. Please try again.');
+      return result;
+    }
+    // Using Closedhand anonymously (account-number-claim.js, shared with the
+    // dashboard): paid for first, then the account number shows until it is
+    // saved.
+    var numbers = root.ClosedHandAccountNumber.mount(container, {
+      ready: function () { return password && !busy; },
+      agreed: function () { return !!state.termsAccepted; },
+      terms: function () { return $('url-terms'); },
+      say: function (message) { actionError = message; display(); },
+      changed: function () { display(); },
+      claimed: function (result) { generation++; lastCheck = Date.now(); state = Object.assign({}, state, result, { signInWaiting: false, accountNumberToSave: true }); },
+      saved: function () { state = Object.assign({}, state, { accountNumberToSave: false }); completedReady = true; remember(); }
     });
     // Six letters and numbers, pasted or typed, with or without the space.
     function codeTyped() { return String($('url-code').value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
@@ -248,7 +292,7 @@
         signin = account || null;
         var nextKey = installId ? 'ch-setup-personal-url:' + installId : null;
         if (nextKey !== key) {
-          key = nextKey; generation++; state = {}; actionError = null; busy = false; lastCheck = 0; completedReady = false;
+          key = nextKey; generation++; state = {}; actionError = null; busy = false; lastCheck = 0; completedReady = false; numbers.forget();
           try { settled = !!key && localStorage.getItem(key) === 'done'; } catch (_) { settled = false; }
         }
         password = hasPassword;

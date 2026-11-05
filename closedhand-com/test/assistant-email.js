@@ -39,8 +39,14 @@ before(async () => {
 after(async () => { server?.close(); await db?.end(); });
 
 const cookieFrom = res => (res.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).filter(c => !c.endsWith('=')).join('; ');
+// An account begins where a personal URL is claimed; signing in on the
+// confirmation page only finds one (lib/signin.js).
 async function signIn(provider, claims) {
-  const start = await fetch(base + '/auth/' + provider + '?return_to=' + encodeURIComponent('/assistant-email/confirm#t'), { redirect: 'manual' });
+  await signInAt(provider, claims, '/phone-access/pair');
+  return signInAt(provider, claims, '/assistant-email/confirm#t');
+}
+async function signInAt(provider, claims, returnTo) {
+  const start = await fetch(base + '/auth/' + provider + '?return_to=' + encodeURIComponent(returnTo), { redirect: 'manual' });
   const to = new URL(start.headers.get('location'));
   nextClaims = claims;
   const back = await fetch(base + `/auth/${provider}/callback?code=${to.searchParams.get('nonce')}&state=${to.searchParams.get('state')}`, { redirect: 'manual', headers: { cookie: cookieFrom(start) } });
@@ -192,4 +198,37 @@ test('the maintainer\'s own Managed Models bring Closedhand\'s own email address
     const other = await signIn('google', google('g-ida', 'ida@example.com'));
     assert.equal((await pair(copy(), other.cookie, 'Pete', false)).status, 403, 'nobody else\'s');
   }
+});
+
+// An account made with an account number (lib/account-number.js) signs in
+// with the number on the confirmation page; a Google sign-in there never
+// makes a second account. With no email of the owner's, the address answers
+// mail sent to it and never writes first, and its use is counted by the account.
+test('an account made with an account number confirms Closedhand\'s email address with its number, and the address only answers', async () => {
+  const stranger = await signInAt('google', google('g-nobody-yet', 'nobody@example.com'), '/assistant-email/confirm#t');
+  assert.equal(stranger.location, '/assistant-email/confirm?none=google#t', 'a sign-in with no account is told so');
+  assert.equal((await db.query("SELECT 1 FROM owners WHERE subject = 'g-nobody-yet'")).rowCount, 0, 'and nothing is made for it');
+
+  const accountNumber = require('../lib/account-number');
+  const number = accountNumber.make();
+  const owner = (await db.query("INSERT INTO owners (provider, subject) VALUES ('anonymous', $1) RETURNING id", [accountNumber.fingerprint(number, env.TOKEN_ENCRYPTION_KEY)])).rows[0].id;
+  await db.query("INSERT INTO ahead_plans (owner_id, starts_at, ends_at) VALUES ($1, now() - interval '1 day', now() + interval '3 months')", [owner]);
+  const signedIn = await fetch(base + '/auth/number', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://closedhand.com' }, body: JSON.stringify({ number: accountNumber.grouped(number) }) });
+  assert.equal(signedIn.status, 200);
+  const cookie = cookieFrom(signedIn);
+  const c = copy();
+  const paired = await pair(c, cookie, 'Pete', false);
+  assert.equal(paired.status, 200, 'Managed Models paid ahead in crypto bring the address');
+  const made = await paired.json();
+  assert.match(made.address, /^pete-[a-f0-9]{8}@assist\.closedhand\.ai$/);
+  assert.equal(made.email, null, 'no email of the owner\'s is kept');
+  assert.equal((await db.query('SELECT owner_email FROM mail_relay_accounts WHERE owner_id = $1', [owner])).rows[0].owner_email, null);
+  const status = await (await call('GET', '/api/assistant-mail-relay/status', null, c.auth)).json();
+  assert.deepEqual([status.address, status.ownerEmail, status.usage.entitled], [made.address, null, true]);
+  const first = await call('POST', '/api/assistant-mail-relay/outbox', { id: crypto.randomUUID(), to: ['someone@example.com'], subject: 'Hello', text: 'Hello' }, c.auth);
+  assert.equal(first.status, 403);
+  assert.equal((await first.json()).error, 'Your Closedhand account has no email, so Closedhand can answer email you send but can\u2019t email you first.');
+  const counted = (await db.query("SELECT * FROM reserve_mail_relay_usage('number-event-1', $1, 'out', 1, 100)", [c.id])).rows[0];
+  assert.deepEqual([counted.allowed, counted.reason], [true, null], 'its use is counted, by the account');
+  assert.equal((await db.query("SELECT sent FROM mail_relay_usage WHERE owner_key = $1 AND period = date_trunc('month', now() at time zone 'UTC')::date", ['owner:' + owner])).rows[0].sent, 1);
 });

@@ -15,6 +15,7 @@
 const crypto = require('crypto');
 const { equal } = require('./session');
 const { fairUseMonth } = require('./months');
+const { isAnonymous } = require('./owners');
 
 const LIVE = ['active', 'trialing', 'past_due'];
 // Most of a month's fair use: the account page offers carrying on from here.
@@ -62,6 +63,8 @@ function verify(headers, raw, secret, now = Date.now()) {
 
 // What the person agrees to before a payment that charges at once.
 const AGREE = 'Tick the box first: this payment starts straight away.';
+// An account made with an account number never pays by card (account-number.js).
+const CARDLESS = 'Your Closedhand account uses an account number, so Closedhand Managed Models are paid ahead in crypto, never by card.';
 
 function create({ db, env = process.env, request = fetch, includedAi, ahead = null, baseUrl = 'https://closedhand.com' }) {
   const API = env.POLAR_SERVER === 'sandbox' ? 'https://sandbox-api.polar.sh' : 'https://api.polar.sh';
@@ -254,6 +257,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
   // null when it can: the lengths there are, and agreeing first to a payment
   // that charges at once (any but the monthly one with free days first).
   async function cannotSubscribe(owner, every, agreed) {
+    if (await isAnonymous(db, owner.id)) return CARDLESS;
     if (![1, 6, 12].includes(every) || (every > 1 && !longerOn())) return 'Choose every month, every 6 months or every 12 months.';
     if (agreed !== true && !(every === 1 && await freeMonth(owner.id))) return AGREE;
     return null;
@@ -577,7 +581,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
         if (await require('./maintainer').isMaintainer(db, env, owner.id)) return res.redirect(302, '/account');
         const now = await state(owner.id);
         if (now.active) return res.redirect(302, await portal(owner));
-        if (now.ahead_until || !now.free_month) return res.redirect(302, '/account');
+        if (now.ahead_until || !now.free_month || await isAnonymous(db, owner.id)) return res.redirect(302, '/account');
         const address = (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount;
         if (!address) return res.redirect(302, '/account');
         res.redirect(302, await checkout(owner));
@@ -598,6 +602,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
         const owner = ownerId && (await db.query('SELECT id FROM owners WHERE id = $1', [ownerId])).rows[0];
         const closedhand = !!owner && (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount > 0;
         const mine = closedhand && await require('./maintainer').isMaintainer(db, env, owner.id);
+        const cardless = closedhand && await isAnonymous(db, owner.id);
         const now = closedhand && !mine ? await state(owner.id) : null;
         res.json({
           price: (await prices(req.get('cf-ipcountry')))?.plus || null,
@@ -605,9 +610,9 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
           crypto: ahead ? ahead.options().crypto || [] : [],
           model: includedAi?.current()?.name || null,
           days: includedAi?.trialDays || 14,
-          subscribe: !!now && now.available && !now.active && !now.ahead_until,
+          subscribe: !!now && now.available && !now.active && !now.ahead_until && !cardless,
           subscribed: !!now?.active || !!mine,
-          ...(now?.free_month ? { freeDays: true } : {}),
+          ...(now?.free_month && !cardless ? { freeDays: true } : {}),
         });
       } catch (e) {
         console.error('[plus] managed models page:', e.message);

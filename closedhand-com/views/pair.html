@@ -34,6 +34,15 @@
           <a class="btn btn-primary" id="login-google"><img src="/logos/google-color.svg" alt="">Continue with Google</a>
           <a class="btn" id="login-microsoft"><img src="/logos/microsoft-color.svg" alt="">Continue with Microsoft</a>
         </div>
+        <button class="have-it" type="button" data-number-show>Sign in with an account number</button>
+        <form data-number-signin novalidate hidden>
+          <label for="number">Account number</label>
+          <div class="field">
+            <input id="number" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="30" placeholder="XXXX XXXX XXXX XXXX XXXX" aria-describedby="number-error">
+            <button class="btn" type="submit">Sign in</button>
+          </div>
+          <p class="error" id="number-error" role="alert" hidden></p>
+        </form>
       </div>
 
       <!-- Step 2: confirm, as the signed-in account. -->
@@ -69,6 +78,7 @@
     </details>
   </main>
   <footer class="site-foot"><a href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></footer>
+  <script src="/number-signin.js" defer></script>
   <script src="/pair.js" defer></script>
 </body>
 </html>

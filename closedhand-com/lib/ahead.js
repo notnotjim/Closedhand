@@ -12,6 +12,11 @@
 // What closedhand.com keeps of each payment (ahead_payments): BTCPay's invoice
 // id, what it paid for, the amount and when. Nothing about the payer: an
 // invoice carries only the account's id and what it is for.
+//
+// Using Closedhand anonymously is paid for first: the invoice names a claim
+// waiting for its payment instead of an account (lib/addresses.js makes the
+// account, its personal URL and its plan once the invoice settles, through
+// onPendingClaim), and an invoice that expires or turns invalid discards it.
 const crypto = require('crypto');
 const { equal } = require('./session');
 const { addMonths, monthIn } = require('./months');
@@ -38,6 +43,9 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   const cryptoUsd = { 3: Number(env.CRYPTO_3_MONTHS_USD || 90), 6: Number(env.CRYPTO_6_MONTHS_USD || 168), 9: Number(env.CRYPTO_9_MONTHS_USD || 243) };
   const extendUsd = Number(env.CRYPTO_EXTEND_USD || 30);
   const cryptoOn = () => btcpay.url.startsWith('https://') && !!btcpay.store && !!btcpay.key && !!btcpay.secret && !!includedAi?.enabled();
+  // lib/addresses.js: what to do with a paid claim, and with one whose invoice lapsed.
+  let pending = null;
+  const onPendingClaim = handlers => { pending = handlers; };
   const usd = n => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }).format(n);
 
   // The plan running now, or null.
@@ -197,6 +205,16 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     return baseUrl + '/pay/' + made.id;
   }
 
+  // An invoice for a claim waiting to be paid, months ahead: its id and
+  // checkout. Nothing about the payer, and no account yet.
+  async function invoiceForClaim(claimId, months) {
+    if (!cryptoOn()) throw Object.assign(new Error('Paying in crypto is not available just now.'), { status: 503 });
+    if (!CRYPTO_MONTHS.includes(months)) throw Object.assign(new Error('Choose 3, 6 or 9 months.'), { status: 400 });
+    const made = await btcpayApi('/invoices', 'POST', { amount: String(cryptoUsd[months]), currency: 'USD', metadata: { pendingClaim: claimId, months } });
+    if (typeof made?.id !== 'string' || !/^[A-Za-z0-9]{8,64}$/.test(made.id)) throw new Error('BTCPay did not return an invoice');
+    return { id: made.id, url: baseUrl + '/pay/' + made.id };
+  }
+
   // A settled invoice, read back from BTCPay itself rather than trusted from
   // the webhook: months ahead start or move on the plan, carrying on adds a
   // month's fair use to this month. An invoice expired, invalid or for
@@ -206,11 +224,17 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     // BTCPay answers an invoice id it has never made with 403, not 404.
     const found = await btcpayApi('/invoices/' + encodeURIComponent(invoiceId)).catch(e => { if (e.status === 404 || e.status === 403) return null; throw e; });
     if (!found || found.status !== 'Settled') return 'not settled';
+    const cents = Math.round(Number(found.amount) * 100);
+    const paid = { id: 'btcpay:' + invoiceId, cents: Number.isFinite(cents) ? cents : null, currency: found.currency || 'USD' };
+    const claimId = String(found.metadata?.pendingClaim || '');
+    if (claimId) {
+      const months = Number(found.metadata?.months);
+      if (!/^[0-9a-f-]{36}$/.test(claimId) || !CRYPTO_MONTHS.includes(months) || !pending) return 'not ours';
+      return pending.paid(claimId, months, paid);
+    }
     const ownerId = String(found.metadata?.ownerId || '');
     if (!/^[0-9a-f-]{36}$/.test(ownerId)) return 'not ours';
     if (!(await db.query('SELECT 1 FROM owners WHERE id = $1', [ownerId])).rowCount) return 'no account';
-    const cents = Math.round(Number(found.amount) * 100);
-    const paid = { id: 'btcpay:' + invoiceId, cents: Number.isFinite(cents) ? cents : null, currency: found.currency || 'USD' };
     if (found.metadata?.extend === true) return carryOn(ownerId, paid);
     const months = Number(found.metadata?.months);
     if (!CRYPTO_MONTHS.includes(months)) return 'not ours';
@@ -255,7 +279,11 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       let event;
       try { event = JSON.parse(req.body.toString('utf8')); } catch (_) { return res.status(400).json({ error: 'Invalid body' }); }
       try {
-        const done = event?.type === 'InvoiceSettled' && (!event.storeId || event.storeId === btcpay.store) ? await settled(event.invoiceId) : 'not used';
+        const ours = !event?.storeId || event.storeId === btcpay.store;
+        const done = event?.type === 'InvoiceSettled' && ours ? await settled(event.invoiceId)
+          // A claim waiting on an invoice that will never be paid is let go.
+          : ['InvoiceExpired', 'InvoiceInvalid'].includes(event?.type) && ours && pending ? await pending.lapsed(String(event.invoiceId || '').slice(0, 64))
+          : 'not used';
         console.log(`[ahead] ${String(event?.type).slice(0, 40)}: ${done}`);
         res.json({ ok: true });
       } catch (e) {
@@ -266,7 +294,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     });
   }
 
-  return { running, monthOf, extended, grant, carryOn, sweep, options, checkout, settled, cryptoPayments, register, refused, cryptoOn, CRYPTO_MONTHS };
+  return { running, monthOf, extended, grant, carryOn, sweep, options, checkout, invoiceForClaim, onPendingClaim, settled, cryptoPayments, register, refused, cryptoOn, CRYPTO_MONTHS };
 }
 
 module.exports = { create, verifyBtcpay, CRYPTO_MONTHS };

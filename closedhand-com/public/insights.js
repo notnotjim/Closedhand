@@ -100,8 +100,8 @@
     const ya = a.you || {}, yu = u.you || {}, taken = (u.used || 0) + (yu.used || 0), full = u.limit > 0 && taken / u.limit >= 0.8;
     $('tiles').replaceChildren(
       tile({ label: 'Closedhand accounts', value: n(a.total), chip: a.week ? `+${n(a.week)} this week` : '', you: ya.total ? n(ya.total) : '',
-        bar: split([['Google', a.google, 'tone-a'], ['Microsoft', a.microsoft, 'tone-b']]),
-        sub: `${n(a.google)} Google, ${n(a.microsoft)} Microsoft, not counting yours` }),
+        bar: split([['Google', a.google, 'tone-a'], ['Microsoft', a.microsoft, 'tone-b'], ['Account number', a.anonymous, 'tone-quiet']]),
+        sub: `${n(a.google)} Google, ${n(a.microsoft)} Microsoft, ${n(a.anonymous)} account number, not counting yours` }),
       tile({ label: 'Personal URLs taken', value: n(u.used), you: yu.used ? n(yu.used) : '', bar: meter(taken, u.limit, full ? 'tone-warn' : 'tone-b'),
         sub: `${n(taken)} of ${n(u.limit)} with yours. Past ${n(u.limit)} nobody new can claim one.`, tone: full ? 'warn' : '' }),
       tile({ label: 'Online today', value: n(u.day), you: yu.day ? n(yu.day) : '', bar: meter(u.day, u.working, 'tone-today'),
@@ -238,7 +238,7 @@
   function details(p) {
     const box = el('dl', 'person-details');
     const row = (label, value) => { box.append(el('dt', '', label), el('dd', '', value)); return box.lastChild; };
-    const signIns = [`${p.provider === 'microsoft' ? 'Microsoft' : 'Google'} ${p.email || '(no email given)'}${p.email_verified ? '' : ' (unverified)'}`]
+    const signIns = p.provider === 'anonymous' ? ['Account number, no email'] : [`${p.provider === 'microsoft' ? 'Microsoft' : 'Google'} ${p.email || '(no email given)'}${p.email_verified ? '' : ' (unverified)'}`]
       .concat((p.more_sign_ins || []).map(s => `${s.provider === 'microsoft' ? 'Microsoft' : 'Google'} ${s.email || '(no email given)'}`));
     row('Signs in with', signIns.join(', '));
     row('Signed up', when(p.signed_up));
@@ -271,7 +271,7 @@
       const head = el('p', 'person-head');
       const seen = el('span', 'person-seen');
       seen.append(el('i', 'dot tone-' + (p.hostname ? band(p.last_online) : 'never')), !p.hostname ? 'no personal URL' : p.last_online ? 'online ' + ago(p.last_online) : 'never online');
-      const name = el('button', 'person-email', p.email || '(no email given)');
+      const name = el('button', 'person-email', p.email || (p.provider === 'anonymous' ? p.hostname || 'Account number' : '(no email given)'));
       name.type = 'button';
       name.setAttribute('aria-expanded', String(open.has(p.id)));
       head.append(name, seen);
@@ -286,8 +286,8 @@
       main.append(line);
       const chips = el('p', 'chips');
       if (p.you) chips.append(el('span', 'chip', 'You'));
-      chips.append(el('span', 'chip', p.provider === 'microsoft' ? 'Microsoft' : 'Google'));
-      if (!p.email_verified) chips.append(el('span', 'chip warn', 'email unverified'));
+      chips.append(el('span', 'chip', { microsoft: 'Microsoft', anonymous: 'Account number' }[p.provider] || 'Google'));
+      if (!p.email_verified && p.provider !== 'anonymous') chips.append(el('span', 'chip warn', 'email unverified'));
       chips.append(el('span', 'chip', 'signed up ' + day(p.signed_up)));
       if (p.claimed) chips.append(el('span', 'chip', 'claimed ' + day(p.claimed)));
       if (p.renames) chips.append(el('span', 'chip', `renamed ${p.renames}x`));

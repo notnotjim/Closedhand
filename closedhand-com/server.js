@@ -122,7 +122,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   });
 
   require('./lib/signin').register(app, {
-    db, sessions, baseUrl, request,
+    db, sessions, baseUrl, request, pepper: String(env.TOKEN_ENCRYPTION_KEY || ''),
     clients: {
       google: { id: env.GOOGLE_CLIENT_ID, secret: env.GOOGLE_CLIENT_SECRET },
       microsoft: { id: env.MICROSOFT_CLIENT_ID, secret: env.MICROSOFT_CLIENT_SECRET },

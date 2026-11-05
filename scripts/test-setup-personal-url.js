@@ -3,12 +3,17 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync(require.resolve('../webapp/public/setup-personal-url'), 'utf8');
+// Using Closedhand anonymously is a piece of its own, shared with the dashboard.
+const shared = fs.readFileSync(require.resolve('../webapp/public/account-number-claim'), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture(respond = () => ({ state: 'off' }), at = {}) {
-  const nodes = new Map(), storage = new Map(), calls = [], copied = [], opened = [], popups = [], replaced = [];
+  const nodes = new Map(), storage = new Map(), calls = [], copied = [], opened = [], popups = [], replaced = [], timers = [], nudged = [];
   let now = 10000, changes = 0;
+  const element = selector => ({ selector, value: '', hidden: false, handlers: {}, children: [], classList: { toggle(name, on) { this[name] = !!on; }, remove() {}, add(name) { if (name === 'is-nudged') nudged.push(selector); } },
+    addEventListener(name, fn) { this.handlers[name] = fn; }, removeAttribute(name) { delete this[name]; }, focus() {}, select() {}, scrollIntoView() {},
+    replaceChildren(...children) { this.children = children; }, querySelectorAll() { return this.children; }, querySelector(inner) { return node(selector + ' ' + inner); } });
   function node(selector) {
-    if (!nodes.has(selector)) nodes.set(selector, { value: '', hidden: false, handlers: {}, classList: { toggle() {} }, addEventListener(name, fn) { this.handlers[name] = fn; }, removeAttribute(name) { delete this[name]; }, focus() {}, select() {} });
+    if (!nodes.has(selector)) nodes.set(selector, element(selector));
     return nodes.get(selector);
   }
   const context = { window: { closed: 0, close() { this.closed++; }, open() {
@@ -17,14 +22,19 @@ function fixture(respond = () => ({ state: 'off' }), at = {}) {
   }, location: { assign(url) { opened.push(url); }, origin: 'http://localhost:3000', hostname: at.hostname || 'localhost', pathname: '/setup', search: '', hash: at.hash || '' },
     history: { replaceState(_, __, url) { context.window.location.hash = ''; replaced.push(url); } } }, URL, URLSearchParams, AbortSignal, Date: { now: () => now },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
-    navigator: { clipboard: { writeText: async text => copied.push(text) } }, document: { execCommand: () => true }, setTimeout: fn => fn(),
+    navigator: { clipboard: { writeText: async text => copied.push(text) } }, document: { execCommand: () => true, createElement: () => element('created') },
+    // Waits of a few seconds (the payment's polling) wait for the test.
+    setTimeout: (fn, ms) => { if (ms > 100) timers.push(fn); else fn(); }, clearTimeout() {},
     // The Terms are agreed already unless a test says otherwise (setup asks once).
-    fetch: async (_, options) => { calls.push(options); const answer = await respond(options); const result = answer && !answer.error && !('termsAccepted' in answer) ? { termsAccepted: true, ...answer } : answer; return { ok: !result.error, json: async () => result }; }
+    fetch: async (url, options = {}) => { options = { ...options, url }; calls.push(options); const answer = await respond(options); const result = answer && !answer.error && !('termsAccepted' in answer) ? { termsAccepted: true, ...answer } : answer; return { ok: !result.error, json: async () => result }; }
   };
   node('#url-rename-form').hidden = true; // as setup.html starts it
-  vm.runInNewContext(source, context);
-  const api = context.window.ClosedHandSetupUrl.mount({ querySelector: node }, () => changes++);
-  return { api, calls, copied, storage, opened, popups, replaced, context, node: id => node('#' + id),
+  vm.runInNewContext(shared + '\n' + source, context);
+  // The normal claim, which the anonymous panel stands in for while open.
+  const ways = () => ['#url-how', '#url-start', '#url-anonymous'].map(node);
+  const api = context.window.ClosedHandSetupUrl.mount({ querySelector: node, querySelectorAll: s => s === '[data-claim-way]' ? ways() : [] }, () => changes++);
+  return { api, calls, copied, storage, opened, popups, replaced, context, nudged, node: id => node('#' + id),
+    async later() { const due = timers.splice(0); for (const fn of due) await fn(); for (let i = 0; i < 5; i++) await tick(); },
     event: (id, type) => node('#' + id).handlers[type]({ preventDefault() {} }),
     async update(id = 'first', password = true) { now += 5000; api.update(id, password); await tick(); },
     changes: () => changes };
@@ -98,7 +108,8 @@ test('chat apps wait for the personal URL: claimed, or carried on without while 
   assert.match(html, /if \(li.classList.contains\("is-locked"\)\) \{\n\s+var url = document.getElementById\("step-personal_url"\);/);
   // Settled is what lifts it: claimed (even while connecting) or Continue without.
   assert.match(source, /\$\('url-continue'\)\.addEventListener\('click', function \(\) \{\n\s+if \(!password\) return;\n\s+remember\(\);/);
-  assert.match(source, /if \(password && !completedReady && \$\('url-rename-form'\)\.hidden && \(claimed \|\| working\)\) \{\n\s+completedReady = true;\n\s+remember\(\);/);
+  // Not while an account number waits to be saved.
+  assert.match(source, /if \(password && !completedReady && !numbers\.number\(\) && !state\.accountNumberToSave && \$\('url-rename-form'\)\.hidden && \(claimed \|\| working\)\) \{\n\s+completedReady = true;\n\s+remember\(\);/);
 });
 test('enrollment errors remain readable across background status checks', async () => {
   const f = fixture(o => o.method === 'POST' ? { error: 'That personal URL is already taken.' } : { state: 'off' });
@@ -334,17 +345,114 @@ test('the paste-a-code box shows only where the code cannot come back by itself'
   assert.equal(older.node('url-code-form').hidden, false, 'an older link still shows its code to paste');
 });
 
-test('the claim waits for the Terms, agreed once here; agreeing claims with a sign-in that was waiting', async () => {
-  let state = { state: 'off', serviceAvailable: true, termsAccepted: false };
-  const f = fixture(o => o.method === 'POST' ? { state: 'provisioning', enabled: true, ownershipConfirmed: true, addressName: 'amber-fox-42', termsAccepted: true, claimed: true } : state);
+test('the claim waits for the Terms, agreed once here; then Claim uses a sign-in that was waiting, with no window', async () => {
+  let state = { state: 'off', serviceAvailable: true, termsAccepted: false, signInWaiting: true };
+  const f = fixture(o => o.url === '/api/phone/accept-terms' ? { state: 'off', termsAccepted: true, signInWaiting: true }
+    : o.url === '/api/phone/claim-waiting' ? (state = { state: 'provisioning', enabled: true, ownershipConfirmed: true, addressName: 'amber-fox-42', termsAccepted: true }, { ...state, claimed: true }) : state);
   await f.update();
   assert.equal(f.node('url-terms').hidden, false, 'asked before claiming');
-  assert.equal(f.node('url-start').disabled, true, 'no claim before agreeing');
+  assert.equal(f.node('url-start').disabled, false, 'never disabled for the Terms');
+  await f.event('url-form', 'submit'); await tick();
+  assert.deepEqual(f.calls.filter(c => c.method === 'POST'), [], 'pressed unticked, nothing is claimed');
+  assert.deepEqual(f.nudged, ['#url-terms'], 'the Terms row lights briefly instead');
+  assert.equal(f.node('url-terms').querySelector('.terms-nudge').hidden, false, 'with its quiet helper line');
+  assert.equal(f.popups.length, 0, 'and no window opens');
+  assert.equal(f.node('url-how').textContent, 'You claim one with the account you connected above, and your Closedhand account stores that account’s email and nothing else.');
   f.node('url-terms-box').checked = true;
   await f.node('url-terms-box').handlers.change.call(f.node('url-terms-box')); await tick();
-  const sent = f.calls.filter(c => c.method === 'POST');
-  assert.equal(sent.length, 1, 'agreed once');
-  assert.equal(f.node('url-form').hidden, true, 'the waiting sign-in claimed it');
+  assert.deepEqual(f.calls.filter(c => c.method === 'POST').map(c => c.url), ['/api/phone/accept-terms'], 'agreeing alone claims nothing: the person picks which way');
+  assert.equal(f.node('url-form').hidden, false);
+  await f.event('url-form', 'submit'); await tick();
+  assert.deepEqual(f.calls.filter(c => c.method === 'POST').map(c => c.url), ['/api/phone/accept-terms', '/api/phone/claim-waiting']);
+  assert.equal(f.popups.length, 0, 'no sign-in window: the account just connected claims it');
+  assert.equal(f.node('url-form').hidden, true, 'claimed');
+});
+
+test('using Closedhand anonymously: a small button opens a panel in place, paid for first in crypto; the account number then shows until the person says the number is saved, and the step folds', async () => {
+  const NUMBER = 'H7KD 3QPA ZW9M RT4E BN2X', PAGE = 'https://closedhand.com/pay/InvFixture0001';
+  const crypto3 = [{ months: 3, price: '$90', monthly: '$30' }, { months: 6, price: '$168', monthly: '$28' }, { months: 9, price: '$243', monthly: '$27' }];
+  let state = { state: 'off', serviceAvailable: true, termsAccepted: false }, paid = false;
+  const claimed = { enabled: true, state: 'connecting', ownershipConfirmed: true, registrationState: 'pending', addressName: 'quiet-heron-27', termsAccepted: true, accountNumberToSave: true };
+  const f = fixture(o => o.url === '/api/phone/anonymous' ? { crypto: crypto3 }
+    : o.url === '/api/phone/claim-anonymous' && o.method === 'POST' ? { state: 'waiting', url: PAGE, months: JSON.parse(o.body).months }
+    : o.url === '/api/phone/claim-anonymous' ? (paid ? (state = claimed, { ...claimed, state: 'ready', accountNumber: NUMBER }) : { state: 'waiting' })
+    : o.url === '/api/phone/account-number/saved' ? (state = { ...claimed, accountNumberToSave: false }, { saved: true })
+    : o.url === '/api/phone/account-number' ? { accountNumber: NUMBER } : state);
+  await f.update();
+  assert.equal(f.node('url-anon-panel').hidden, true, 'nothing explains it until pressed');
+  f.event('url-anonymous', 'click'); for (let i = 0; i < 5; i++) await tick();
+  assert.equal(f.node('url-anon-panel').hidden, false);
+  for (const way of ['url-how', 'url-start', 'url-anonymous']) assert.equal(f.node(way).hidden, true, 'the claim turns into the panel: ' + way);
+  assert.deepEqual(f.node('url-anon-months').children.map(b => b.textContent), ['3 months · $90 ($30 a month)', '6 months · $168 ($28 a month)', '9 months · $243 ($27 a month)'], "as My Account words paying ahead in crypto");
+  assert.equal(f.node('url-anon-go').textContent, 'Pay and continue anonymously');
+  assert.equal(f.node('url-anon-go').disabled, false, 'never disabled for the Terms');
+  f.event('url-anon-back', 'click');
+  assert.equal(f.node('url-anon-panel').hidden, true, 'Back restores the normal claim');
+  for (const way of ['url-how', 'url-start', 'url-anonymous']) assert.equal(f.node(way).hidden, false, way);
+  f.event('url-anonymous', 'click'); for (let i = 0; i < 5; i++) await tick();
+  // Pressed unticked: the Terms row, then the payment's own box, drawn to gently.
+  await f.event('url-anon-go', 'click'); await tick();
+  assert.deepEqual(f.nudged, ['#url-terms']);
+  state = { ...state, termsAccepted: true };
+  await f.update();
+  assert.equal(f.node('url-anon-panel').hidden, false, 'still open');
+  await f.event('url-anon-go', 'click'); await tick();
+  assert.deepEqual(f.nudged, ['#url-terms', '#url-anon-agree'], 'then the box agreeing the payment starts straight away');
+  assert.equal(f.calls.filter(c => c.method === 'POST').length, 0, 'nothing asked yet');
+  f.node('url-anon-months').children[1].handlers.click();
+  f.node('url-anon-agree-box').checked = true;
+  await f.event('url-anon-go', 'click'); await tick();
+  assert.deepEqual(f.calls.filter(c => c.method === 'POST').map(c => [c.url, JSON.parse(c.body)]), [['/api/phone/claim-anonymous', { months: 6 }]]);
+  assert.equal(f.popups.length, 0, 'no blank window: the payment page opens from its own link');
+  assert.equal(f.node('url-anon-pay').hidden, false);
+  assert.equal(f.node('url-anon-pay').href, PAGE);
+  assert.equal(f.node('url-anon-pay').textContent, 'Open the payment page for 6 months');
+  assert.equal(f.node('url-anon-go').hidden, true);
+  assert.equal(f.node('url-anon-back').hidden, true, 'no way back while a payment is on its way');
+  assert.equal(f.node('url-anon-wait').textContent, 'Waiting for your payment to be confirmed, usually within the hour. You can leave this page open.');
+  assert.equal(f.node('url-anon-progress').hidden, false, 'the fist and its ink ring while it waits');
+  assert.equal(f.node('url-anon-progress').classList['is-done'], false);
+  await f.later();
+  assert.equal(f.node('url-number').hidden, true, 'still waiting');
+  paid = true;
+  await f.later();
+  assert.equal(f.node('url-anon-progress').classList['is-done'], true, 'paid: the ring closes for a moment');
+  assert.equal(f.node('url-anon-wait').textContent, 'Payment confirmed.');
+  assert.equal(f.node('url-number').hidden, true, 'before the number');
+  await f.later();
+  assert.equal(f.node('url-number').hidden, false);
+  assert.equal(f.node('url-number-value').textContent, NUMBER);
+  assert.equal(f.node('url-anon-panel').hidden, true, 'the panel gives way to the number');
+  assert.equal(f.node('url-anon-progress').hidden, true, 'and is gone once the number shows');
+  assert.equal(f.node('url-form').hidden, true);
+  assert.equal(f.node('url-continue').hidden, true);
+  assert.equal(f.node('url-number-continue').disabled, true, 'not before the number is saved');
+  await f.update();
+  assert.equal(f.api.settled(), false, 'claimed, but the step stays open while the number waits');
+  await f.event('url-number-copy', 'click');
+  assert.deepEqual(f.copied, [NUMBER]);
+  f.node('url-number-saved').checked = true; f.node('url-number-saved').handlers.change();
+  assert.equal(f.node('url-number-continue').disabled, false);
+  await f.node('url-number-continue').handlers.click.call(f.node('url-number-continue')); await tick();
+  assert.ok(f.calls.some(c => c.url === '/api/phone/account-number/saved' && c.method === 'POST'));
+  assert.equal(f.api.settled(), true);
+  assert.equal(f.node('url-number').hidden, true, 'and shown no more');
+
+  // Setup opened again before the number was saved: shown again.
+  state = claimed;
+  const again = fixture(o => o.url === '/api/phone/account-number' ? { accountNumber: NUMBER } : state);
+  await again.update(); for (let i = 0; i < 5; i++) await tick();
+  assert.equal(again.node('url-number-value').textContent, NUMBER);
+  assert.equal(again.api.settled(), false);
+  // Opened again while a payment is on its way: waiting for it again, then an expired page starts over.
+  const resumed = fixture(o => o.url === '/api/phone/claim-anonymous' ? { state: 'expired' } : { state: 'off', serviceAvailable: true, termsAccepted: true, anonymousWaiting: { url: PAGE, months: 3 } });
+  await resumed.update(); for (let i = 0; i < 5; i++) await tick();
+  assert.equal(resumed.node('url-anon-panel').hidden, false);
+  assert.equal(resumed.node('url-anon-pay').textContent, 'Open the payment page for 3 months');
+  await resumed.later();
+  assert.equal(resumed.node('url-anon-wait').textContent, 'That payment page expired before a payment arrived. Choose again to start over.');
+  assert.equal(resumed.node('url-anon-progress').hidden, true, 'gone once the page expires');
+  assert.equal(resumed.node('url-anon-go').hidden, false);
 });
 
 test('ticked here, the agreement stays in view, ticked; agreed on an earlier visit, it is not asked again', async () => {

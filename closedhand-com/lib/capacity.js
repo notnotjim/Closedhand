@@ -9,6 +9,8 @@
 //   INCLUDED_AI_MONTHLY_PEOPLE: at 75%, 90% and 100%, then every further 25%.
 // - Free days started in the last 24 hours reaching
 //   INCLUDED_AI_DAILY_PEOPLE: once a UTC day, as a burst worth a look.
+// - Accounts made with an account number in the last 24 hours reaching
+//   ANONYMOUS_DAILY_ACCOUNTS: once a UTC day, as a burst worth a look.
 // - Personal URLs taken, against ADDRESS_LIMIT: at 75%, 90% and 100%, told
 //   again once the limit is raised. Past it nobody new can claim one.
 // - The credit Managed Models draw on at their provider (NEAR's spend limit
@@ -26,6 +28,7 @@ function create({ db, env = process.env, notices, includedAi = null }) {
   const monthlyPeople = Number(env.INCLUDED_AI_MONTHLY_PEOPLE || 100);
   const dailyPeople = Number(env.INCLUDED_AI_DAILY_PEOPLE || 25);
   const urlLimit = Number.parseInt(env.ADDRESS_LIMIT || '100', 10);
+  const dailyAnonymous = Number(env.ANONYMOUS_DAILY_ACCOUNTS || 10);
 
   // Claims the levels not yet told for this period; true when any was new, so
   // one notice says where things stand rather than one per level passed.
@@ -54,6 +57,10 @@ function create({ db, env = process.env, notices, includedAi = null }) {
     }
     if (dailyPeople > 0 && lastDay >= dailyPeople && await claim('burst', day, [100])) {
       told.push(`Closedhand: ${lastDay} people started their free days of Managed Models in the last 24 hours, more than usual. Worth a look for account farming.`);
+    }
+    const anonymous = Number((await db.query("SELECT count(*)::int AS n FROM owners WHERE provider = 'anonymous' AND created_at >= $1::timestamptz - interval '1 day'", [now])).rows[0].n);
+    if (dailyAnonymous > 0 && anonymous >= dailyAnonymous && await claim('anonymous-burst', day, [100])) {
+      told.push(`Closedhand: ${anonymous} accounts were made with an account number in the last 24 hours, more than usual. Worth a look for account farming.`);
     }
     // The credit every key draws on: when it runs out, every free period and
     // every subscription stops at once.

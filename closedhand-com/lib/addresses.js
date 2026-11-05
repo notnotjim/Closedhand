@@ -9,6 +9,8 @@
 // A copy that has just connected mail through Closedhand's own Google or
 // Microsoft app can claim in one step instead (claim-google, claim-microsoft):
 // it passes on that sign-in, which is checked against the provider's keys.
+// Or it is used anonymously (claim-anonymous): paid for first in crypto, the
+// account is made with an account number (account-number.js), shown once.
 //
 // The sign-in that claims a personal URL is the owner's Closedhand account.
 // Only its email is kept, with the address, and deleting it
@@ -23,7 +25,8 @@ const { randomName, cleanName } = require('./names');
 const { reportDnsRecords } = require('./alerts');
 const { verifyPassedSignIn } = require('./passed-sign-in');
 const { PROVIDERS } = require('./signin');
-const { ownerFor, addSignIn, signInsOf } = require('./owners');
+const { ownerFor, addSignIn, signInsOf, anonymousOwner, isAnonymous } = require('./owners');
+const accountNumber = require('./account-number');
 
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 // Names a person could mistake for a Closedhand or mail service address.
@@ -286,7 +289,7 @@ async function releaseIdle(pool, days) {
 
 // The Terms as they stand (views/terms.html, its "Last updated" day): what
 // an account agreed to when its claim says the person ticked the box.
-const TERMS_VERSION = '2026-11-05';
+const TERMS_VERSION = '2026-11-06';
 async function agreed(db, ownerId, body) {
   if (body?.acceptedTerms === true) await db.query('UPDATE owners SET terms_version = $2, terms_accepted_at = now() WHERE id = $1', [ownerId, TERMS_VERSION]);
 }
@@ -294,10 +297,12 @@ async function agreed(db, ownerId, body) {
 function register(app, { db, sessions, secret, baseUrl, env = process.env, request = fetch, includedAi = require('./included-ai').create({ db, env, request }), plus = null, ahead = null, notices = null }) {
   const { planFor } = require('./plan');
   const enabled = () => env.PHONE_ENROLLMENT_ENABLED === '1';
-  // A claim's answer, with the included AI's key when one is given.
+  // A claim's answer, with the included AI's key when one is given, and
+  // whether the account is one made with an account number, so the computer
+  // never passes a Google or Microsoft sign-in on to it.
   const claimed = async (row, ownerId, req) => {
     const included = await includedAi.forOwner(ownerId, { ip: req.ip });
-    return { state: shown(row), url: 'https://' + row.hostname, ...(included ? { included_ai: included } : {}) };
+    return { state: shown(row), url: 'https://' + row.hostname, ...(included ? { included_ai: included } : {}), ...(await isAnonymous(db, ownerId) ? { anonymous: true } : {}) };
   };
   // The maintainer hears of each account's first personal URL through their
   // own Closedhand (lib/operator-notices.js), which no other account can
@@ -308,7 +313,8 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const who = (await db.query('SELECT email, provider FROM owners WHERE id = $1', [ownerId])).rows[0] || {};
     const n = (await db.query("SELECT count(DISTINCT owner_id)::int AS n FROM addresses WHERE state <> 'revoked'")).rows[0].n;
     const by = { google: 'Google', microsoft: 'Microsoft' }[who.provider] || who.provider || 'a sign-in';
-    await notices.queue(`Closedhand: new sign-up, ${who.email || 'no email'} (${by}), took ${row.hostname}. ${n} ${n === 1 ? 'person has' : 'people have'} a personal URL now.`)
+    const signUp = who.provider === 'anonymous' ? 'new sign-up with an account number, no email,' : `new sign-up, ${who.email || 'no email'} (${by}),`;
+    await notices.queue(`Closedhand: ${signUp} took ${row.hostname}. ${n} ${n === 1 ? 'person has' : 'people have'} a personal URL now.`)
       .catch(e => console.error('[operator] notice:', e.message));
   };
   const limit = Number.parseInt(env.ADDRESS_LIMIT || '100', 10);
@@ -467,6 +473,11 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       const claims = ids.length ? await verifyPassedSignIn(provider, idToken, { appIds: ids, request }) : null;
       const identity = claims && PROVIDERS[provider].identity(claims, claims.aud);
       if (!identity) return res.status(400).json({ error: `The ${apps.name} sign-in could not be checked. Claim your personal URL with the button instead.` });
+      // A computer whose personal URL belongs to an account made with an
+      // account number keeps that account free of any sign-in: nothing is
+      // made or kept for this one.
+      const theirs = (await db.query("SELECT owner_id FROM addresses WHERE secret_hash = $1 AND state <> 'revoked'", [copy.secret_hash])).rows[0];
+      if (theirs && await isAnonymous(db, theirs.owner_id)) return res.json({ state: 'unconfirmed', claimHere: true });
       const owner = await ownerFor(db, identity);
       const mine = (await db.query('SELECT * FROM addresses WHERE owner_id = $1', [owner])).rows[0];
       if (mine && mine.secret_hash === copy.secret_hash && mine.state !== 'revoked') return res.json(await claimed(mine, owner, req));
@@ -493,9 +504,95 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       if (!identity) return res.status(400).json({ error: `The ${apps.name} sign-in could not be checked.` });
       const held = (await db.query("SELECT owner_id FROM addresses WHERE secret_hash = $1 AND state <> 'revoked'", [copy.secret_hash])).rows[0];
       if (!held) return res.status(409).json({ error: 'This computer has no personal URL yet.' });
+      if (await isAnonymous(db, held.owner_id)) return res.status(409).json({ error: 'Your Closedhand account uses an account number, so no Google or Microsoft sign-in is added.' });
       res.json({ signIn: await addSignIn(db, held.owner_id, identity) });
     }));
   }
+
+  // Using Closedhand anonymously is paid for first, in crypto (lib/ahead.js).
+  // The computer asks with the months it chose and gets the payment page;
+  // the claim waits here, with no account, until the invoice settles. Then
+  // the account (made with an account number), its personal URL and its plan
+  // are made together, and the computer collects the number once by asking
+  // again with the secret only it holds. The number is kept here only sealed
+  // and only until then; afterwards only its fingerprint. An invoice that
+  // expires discards the claim, and a claim never paid goes after a day.
+  const dropOld = () => db.query("DELETE FROM anonymous_pending WHERE (state = 'waiting' AND created_at < now() - interval '1 day') OR (state = 'paid' AND created_at < now() - interval '30 days')");
+  app.post('/api/phone-enrollment/claim-anonymous', wrap(async (req, res) => {
+    const copy = installation(req), { port, months } = req.body || {};
+    if (!copy) return res.status(401).json({ error: 'Closedhand could not be recognised. Update it on your computer and try again.' });
+    if (!Number.isInteger(port) || port < 1024 || port > 65535) return res.status(400).json({ error: 'Update Closedhand on your computer and try again.' });
+    if (req.body?.acceptedTerms !== true) return res.status(400).json({ error: 'Agree to the Terms and Privacy policy first.' });
+    if (!ahead?.cryptoOn() || String(env.TOKEN_ENCRYPTION_KEY || '').length < 16) return res.status(503).json({ error: 'Using Closedhand anonymously isn\u2019t available just now. Please try again later.' });
+    if (!ahead.CRYPTO_MONTHS.includes(months)) return res.status(400).json({ error: 'Choose 3, 6 or 9 months.' });
+    if ((await db.query("SELECT 1 FROM addresses WHERE secret_hash = $1 AND state <> 'revoked'", [copy.secret_hash])).rowCount) throw new Refusal('This computer already has a personal URL.');
+    const live = (await db.query("SELECT count(*)::int AS n FROM addresses WHERE state <> 'revoked' AND (activated_at IS NOT NULL OR created_at > now() - interval '24 hours')")).rows[0].n;
+    if (live >= limit) throw new Refusal('Personal URLs are full for now. Try again later.');
+    await dropOld();
+    // Asking again starts over: one waiting claim a computer.
+    await db.query("DELETE FROM anonymous_pending WHERE secret_hash = $1 AND state = 'waiting'", [copy.secret_hash]);
+    const id = crypto.randomUUID();
+    await db.query('INSERT INTO anonymous_pending (id, secret_hash, web_port, months, terms_version) VALUES ($1, $2, $3, $4, $5)', [id, copy.secret_hash, port, months, TERMS_VERSION]);
+    let invoice;
+    try { invoice = await ahead.invoiceForClaim(id, months); }
+    catch (e) { await db.query('DELETE FROM anonymous_pending WHERE id = $1', [id]); throw e; }
+    await db.query('UPDATE anonymous_pending SET invoice_id = $2 WHERE id = $1', [id, invoice.id]);
+    res.json({ state: 'waiting', url: invoice.url });
+  }));
+  // Where the claim stands: waiting (read back from BTCPay at most every 20
+  // seconds, in case its webhook went astray), none (never asked, or the
+  // invoice lapsed), or made, which is answered once, with the number.
+  app.get('/api/phone-enrollment/claim-anonymous', wrap(async (req, res) => {
+    const copy = installation(req);
+    if (!copy) return res.status(401).json({ error: 'Closedhand could not be recognised. Update it on your computer and try again.' });
+    await dropOld();
+    const mine = () => db.query('SELECT * FROM anonymous_pending WHERE secret_hash = $1 ORDER BY created_at DESC LIMIT 1', [copy.secret_hash]).then(r => r.rows[0]);
+    let row = await mine();
+    if (row?.state === 'waiting' && row.invoice_id && ahead && (!row.checked_at || Date.now() - new Date(row.checked_at).getTime() > 20000)) {
+      await db.query('UPDATE anonymous_pending SET checked_at = now() WHERE id = $1', [row.id]);
+      await ahead.settled(row.invoice_id).catch(e => console.error('[addresses] anonymous claim read back:', e.message));
+      row = await mine();
+    }
+    if (!row) return res.json({ state: 'none' });
+    if (row.state !== 'paid') return res.json({ state: 'waiting' });
+    const taken = (await db.query("DELETE FROM anonymous_pending WHERE id = $1 AND state = 'paid' RETURNING owner_id, number", [row.id])).rows[0];
+    const number = taken && decryptString(taken.number);
+    if (!number) return res.json({ state: 'none' });
+    const address = (await db.query("SELECT * FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [taken.owner_id])).rows[0];
+    res.json({ ...(address ? await claimed(address, taken.owner_id, req) : { state: 'unconfirmed', anonymous: true }), accountNumber: accountNumber.grouped(number) });
+  }, { always: true }));
+  // The invoice settled: the account, its personal URL and its plan, made
+  // once. A claim no longer waiting (its invoice lapsed first) makes nothing;
+  // a late payment is for support, as the Terms say.
+  async function claimPaid(claimId, months, paid) {
+    const taken = (await db.query("UPDATE anonymous_pending SET state = 'making' WHERE id = $1 AND state = 'waiting' RETURNING *", [claimId])).rows[0];
+    if (!taken) {
+      if (!(await db.query('SELECT 1 FROM anonymous_pending WHERE id = $1', [claimId])).rowCount) console.error('[addresses] a payment for an anonymous claim no longer waiting: ' + paid.id);
+      return 'no claim waiting';
+    }
+    const number = accountNumber.make();
+    const owner = await anonymousOwner(db, accountNumber.fingerprint(number, String(env.TOKEN_ENCRYPTION_KEY || '')));
+    try {
+      if (taken.terms_version) await db.query('UPDATE owners SET terms_version = $2, terms_accepted_at = $3 WHERE id = $1', [owner, taken.terms_version, taken.created_at]);
+      let row = null;
+      // Paid for, so made even past the limit on personal URLs (checked when asked).
+      try { row = await reserve(db, { ownerId: owner, secretHash: taken.secret_hash, hostname: await freeName(db), port: taken.web_port, limit: Infinity }); }
+      catch (e) { if (!(e instanceof Refusal)) throw e; console.error('[addresses] a paid anonymous account without a personal URL:', e.message); }
+      await ahead.grant(owner, months, paid);
+      await db.query("UPDATE anonymous_pending SET state = 'paid', owner_id = $2, number = $3 WHERE id = $1", [claimId, owner, encryptString(number)]);
+      if (row) await announce(true, owner, row);
+      return 'made an anonymous account, paid ahead ' + months + ' months';
+    } catch (e) {
+      // BTCPay sends the webhook again; the claim waits for it.
+      await deleteAccount(db, owner).catch(() => {});
+      await db.query("UPDATE anonymous_pending SET state = 'waiting' WHERE id = $1", [claimId]);
+      throw e;
+    }
+  }
+  ahead?.onPendingClaim({
+    paid: claimPaid,
+    lapsed: async invoiceId => (await db.query("DELETE FROM anonymous_pending WHERE invoice_id = $1 AND state = 'waiting'", [invoiceId])).rowCount ? 'claim let go' : 'not used',
+  });
 
   // Which provider and models Closedhand Managed Models use now. A computer
   // with its key asks every hour and switches itself over when they change.
@@ -677,6 +774,10 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   // used, as a share for one bar and never an amount, and the subscription
   // with its prices where the person is.
   async function detailsOf(owner, country, { card: withCard = false } = {}) {
+    // An account made with an account number pays in crypto only: a card
+    // would tie it to a name. It is told no card prices or ways to pay by
+    // card, and Managed Models are there for it whenever crypto is.
+    if (await isAnonymous(db, owner)) return anonymousDetails(owner);
     const plusState = plus ? await plus.state(owner) : null;
     const plusPrices = plusState?.available ? await plus.prices(country) : null;
     // A subscription every 6 or 12 months: its own price, for what resuming would charge.
@@ -697,6 +798,18 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const usage = running ? await includedAi.usage(owner).catch(() => null) : null;
     const used = usage ? Math.round(Math.min(1, Math.max(0, usage.used / usage.limit)) * 100) / 100 : null;
     return { signIns: await signInsOf(db, owner), ...(plusState ? { plus: { ...plusState, ...(plusPrices ? { prices: plusPrices } : {}), ...(card ? { card } : {}), ...ways } } : {}), ...(plan.name ? { plan } : {}), ...(used !== null ? { used } : {}) };
+  }
+
+  async function anonymousDetails(owner) {
+    const plan = await planFor(db, env, owner, undefined, includedAi);
+    const running = ['plus', 'ahead'].includes(plan.name);
+    const plusState = plus ? await plus.state(owner) : null;
+    const coins = ahead?.cryptoOn() ? ahead.options() : {};
+    const crypto = coins.crypto?.length ? { crypto: coins.crypto, ...(plusState?.ahead_until ? { crypto_extend: coins.extend } : {}) } : {};
+    const p = plusState ? { active: false, extended: plusState.extended, nearly: plusState.nearly, ...(plusState.ahead_until ? { ahead_until: plusState.ahead_until } : {}) } : null;
+    const usage = running ? await includedAi.usage(owner).catch(() => null) : null;
+    const used = usage ? Math.round(Math.min(1, Math.max(0, usage.used / usage.limit)) * 100) / 100 : null;
+    return { anonymous: true, signIns: [], ...(p ? { plus: { ...p, available: !!crypto.crypto, ...crypto } } : {}), ...(plan.name ? { plan } : {}), ...(used !== null ? { used } : {}) };
   }
 
   // Who is signed in here, and their personal URL: "url" once it works (to
@@ -759,7 +872,8 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
          AND NOT EXISTS (SELECT 1 FROM retired_names r WHERE r.owner_id = o.id)
          AND NOT EXISTS (SELECT 1 FROM held_names h WHERE h.owner_id = o.id)
          AND NOT EXISTS (SELECT 1 FROM approvals p WHERE p.owner_id = o.id)
-         AND NOT EXISTS (SELECT 1 FROM plus_subscriptions s WHERE s.owner_id = o.id AND s.status IN ('active', 'trialing', 'past_due'))`);
+         AND NOT EXISTS (SELECT 1 FROM plus_subscriptions s WHERE s.owner_id = o.id AND s.status IN ('active', 'trialing', 'past_due'))
+         AND NOT EXISTS (SELECT 1 FROM ahead_plans p WHERE p.owner_id = o.id AND p.ended_at IS NULL AND p.ends_at > now())`);
   }
   // When each address's computer was last connected, from Cloudflare's
   // record of its tunnel, reported by the Worker every hour.

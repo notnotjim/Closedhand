@@ -169,7 +169,7 @@ test("the confirmation page never presents the owner's own address as the assist
   assert.match(script, /'Your Closedhand assistant, ' \+ name \+ ', is getting its own email address\./);
   assert.match(view, />Create Closedhand’s email address<\/button>/);
   assert.match(script, /\$\('approve'\)\.textContent = 'Create ' \+ whose \+ ' email address';/);
-  assert.match(script, /if \(!account\.signedIn \|\| !account\.emailVerified\) \{/, 'an older or unverified sign-in is asked to sign in again before confirming');
+  assert.match(script, /if \(!account\.signedIn \|\| !\(account\.emailVerified \|\| account\.anonymous\)\) \{/, 'an older or unverified sign-in is asked to sign in again before confirming; an account number has no email to verify');
 });
 
 test('the service keeps the retired flow out and runs the real assistant email relay', () => {

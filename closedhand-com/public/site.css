@@ -64,6 +64,9 @@ label { display: block; font-size: .875rem; font-weight: 500; margin-bottom: .5r
 .field input:focus { outline: none; border-color: rgba(var(--fg-rgb),0.4); }
 .field .btn { width: auto; flex: none; }
 .error { color: var(--danger); font-size: .8125rem; margin: .625rem 0 0; }
+/* A form opened under a card's sign-in buttons: the typed personal URL, or
+   the account number (number-signin.js). */
+.stack ~ form { margin-top: 1rem; }
 
 .status { min-height: 1.375rem; margin: 1.125rem 0 0; text-align: center; font-size: .875rem; color: var(--muted); }
 .status.warn { color: var(--accent-soft); }

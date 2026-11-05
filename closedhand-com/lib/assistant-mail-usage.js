@@ -10,7 +10,8 @@ async function reserve(db, event, account, direction, deliveries, bytes) {
 }
 async function usage(db, account) {
   const month = new Date().toISOString().slice(0,7) + '-01';
-  const owner = crypto.createHash('sha256').update(account.owner_email.toLowerCase()).digest('hex');
+  // By the owner's email, or by the account where it has none (migration 028).
+  const owner = account.owner_email ? crypto.createHash('sha256').update(account.owner_email.toLowerCase()).digest('hex') : 'owner:' + account.owner_id;
   const row = mustWrite(await db.from('mail_relay_usage').select('sent,received,bytes').eq('owner_key', owner).eq('period', month).maybeSingle());
   const daily = mustWrite(await db.from('mail_relay_usage').select('sent,received').eq('owner_key', owner + ':daily').eq('period', new Date().toISOString().slice(0,10)).maybeSingle());
   // No monthly allowance; the daily one stays as a guard against runaway sending

@@ -56,7 +56,9 @@ function register(app, db, userId) {
     const account = await record(owner); if (!account) return res.json({ pending: false });
     let status;
     try { status = await call(account, 'status'); } catch (e) { if (e.status === 401) return res.json({ pending: true }); throw e; }
-    if (!p.address(status.address)?.endsWith('@' + p.DOMAIN) || !p.address(status.ownerEmail)) throw new Error('Could not verify this address.');
+    // No owner email for an account made with an account number: the address
+    // answers mail sent to it and never writes first.
+    if (!p.address(status.address)?.endsWith('@' + p.DOMAIN) || (status.ownerEmail !== null && !p.address(status.ownerEmail))) throw new Error('Could not verify this address.');
     mustWrite(await db.from('assistant_email_accounts').update({ address: status.address, owner_email: status.ownerEmail, enabled: status.enabled, last_error: null }).eq('user_id', owner));
     res.json({ pending: false, address: status.address, sandbox: status.sandbox });
   }));

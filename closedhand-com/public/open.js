@@ -114,7 +114,7 @@
       const data = await response.json();
       const found = navigation.registeredAddress(data.url);
       const pending = !found && /^[a-z][a-z0-9-]{1,30}[a-z0-9]\.closedhand\.ai$/.test(data.address || '');
-      const who = data.email || 'your ' + providerName(data.provider) + ' account';
+      const who = data.email || (data.provider === 'anonymous' ? 'your account number' : 'your ' + providerName(data.provider) + ' account');
       const screen = navigation.openScreen({ signedIn: data.signedIn, found, pending, available: data.available, choosing, failedSignIn });
       if (screen === 'find') {
         show('find');

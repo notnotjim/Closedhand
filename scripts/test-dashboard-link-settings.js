@@ -21,6 +21,8 @@ function page() {
     escHtml: text => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     clearTimeout() {}, setTimeout: () => { state.polls++; }, askFirst: async () => ({ checked: false }),
     polls: 0,
+    // Claiming without an email (account-number-claim.js): nothing waiting here.
+    window: { ClosedHandAccountNumber: { mount: () => ({ number: () => null, draw() {}, waiting: async () => {}, resume() {} }), nudge: row => { state.nudged = row; } } },
   });
   vm.runInContext("var _phone, _phonePoll;\n" + region(html, "    async function loadPhoneAccess()", "    // === Usage tab"), state);
   return { state, el, fallback: value => { fallback = value; }, cleanup: () => ({ removed, selected }) };
@@ -121,8 +123,9 @@ test("the dashboard status route authenticates before reading only public addres
     app: { get: (_, fn) => { handler = fn; } },
     requireSetupAccess: async () => allowed,
     getRuntimeConf: async key => { reads++; assert.ok(["PHONE_PERMANENT_URL", "PHONE_ADDRESS_NAME"].includes(key)); return key === "PHONE_ADDRESS_NAME" ? "example" : address; },
-    require: name => { assert.equal(name, "./phone-registration"); return { validAddress: url => url === address, serviceAvailable: async () => false, termsAccepted: async () => true }; },
+    require: name => { assert.equal(name, "./phone-registration"); return { validAddress: url => url === address, serviceAvailable: async () => false, termsAccepted: async () => true, accountNumberToSave: async () => false, anonymousWaiting: async () => null }; },
     phoneAccess: { status: () => ({ enabled: false, state: "off", url: null }) },
+    signInWaiting: () => null,
   });
   vm.runInContext(region(source, 'app.get("/api/phone",', 'app.post("/api/phone",'), state);
   const response = { set(name, value) { assert.equal(name, "Cache-Control"); assert.equal(value, "no-store"); return this; }, json(data) { output = data; } };
@@ -134,6 +137,8 @@ test("the dashboard status route authenticates before reading only public addres
   assert.equal(output.savedUrl, address);
   assert.equal(output.addressName, "example");
   assert.equal(output.termsAccepted, true, "whether the Terms were agreed, so setup asks once");
+  assert.equal(output.signInWaiting, false, "whether a sign-in waits to claim with, so setup says how it claims");
+  assert.equal(output.accountNumberToSave, false, "and whether an account number still waits to be saved");
   assert.equal(reads, 2);
   assert.equal(output.enabled, false);
   assert.equal(output.serviceAvailable, false, "setup learns whether closedhand.com can give one out");
@@ -263,7 +268,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   assert.equal(withAccount.el("my-cancel-desc").textContent, "If you cancel, your subscription stays on until 15 December, then ends.", "what cancelling would do, beside a plan that renews");
   assert.match(html, /"If you cancel, your free 14 days run until " \+ day\(until\) \+ " and nothing is charged\."/, "free days that renew aren't said to end");
   assert.equal(withAccount.el("plus-cancel-text").textContent, "Your subscription ends on 15 December and is not charged again. Until then you can resume your subscription.");
-  assert.match(withAccount.el("delete-account-text").textContent, /^This deletes your Closedhand account: amber-fox-42\.closedhand\.ai stops working and closedhand\.com forgets your sign-in\. It also permanently deletes everything Closedhand keeps for you on your own computer/);
+  assert.match(withAccount.el("delete-account-text").textContent, /^This deletes your Closedhand account: amber-fox-42\.closedhand\.ai stops working and closedhand\.com forgets your sign-in\. This also permanently deletes everything Closedhand keeps for you on your own computer/);
   const html2 = fs.readFileSync(require.resolve("../webapp/views/dashboard.html"), "utf8");
   for (const [id, call] of [["my-plus-get", "payFor\\('plus', 1, this\\)"], ["my-plus-extend", "payFor\\('extend', 0, this\\)"]]) {
     assert.match(html2, new RegExp(`id="${id}" hidden onclick="${call}"`), id);
@@ -784,4 +789,35 @@ test("resuming the subscription asks first, saying when it renews, for how much 
   box.includedState = { plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" }, price: "$10" };
   await box.setPlusCancel(false, button);
   assert.equal(asked[2].text, "Your subscription renews on 27 November, charging $10 to the card it's paid with, then every month until you cancel. Nothing is charged now.");
+});
+test("the dashboard's later claim offers using Closedhand anonymously: the same piece and words as setup, after the same Terms", async () => {
+  const setup = fs.readFileSync(require.resolve("../webapp/views/setup.html"), "utf8");
+  for (const words of ['class="btn-quiet btn-small" id="url-anonymous" type="button" data-claim-way>Use anonymously</button>',
+    '<h3>Use Closedhand anonymously</h3>', '<p>No email required + pay with crypto instead of card payments.</p>', '<p>You will be given an anonymous account number to keep safe.</p>',
+    '<p class="anon-label">Anonymous users are automatically given access to Managed Models with uncensored LLM access. One time payment with no auto-renewal.</p>',
+    '<p class="anon-fine">Prices in US dollars, paid in the crypto of your choice.</p>',
+    `<span>I agree that what I pay for now starts straight away and can't be refunded once started.</span>`, '<p class="terms-nudge" hidden>Tick to agree first</p>',
+    'id="url-anon-go" type="button">Pay and continue anonymously</button>', '<button class="quiet-link" id="url-anon-back" type="button">Back</button>',
+    'hidden>Tick to agree to the Terms first</p>',
+    "With Managed Models, there is no company restricting what Closedhand can say or do, and nobody but you can read your conversations. All we ask is that you use Closedhand within the law.",
+    "You claim one by signing in on closedhand.com below, and your Closedhand account stores your email and nothing else.",
+    '<p class="url-number-label">Your account number</p>',
+    "Your account number is the only way back into your Closedhand account, on closedhand.com or another computer. Nobody can recover a lost account number, not even closedhand.com, so keep yours somewhere safe, like a password manager.",
+    `<label class="terms-check"><input type="checkbox" id="url-number-saved"><span>I've saved my account number</span></label>`,
+    'I agree to the <a href="https://closedhand.com/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://closedhand.com/privacy" target="_blank" rel="noopener">Privacy&nbsp;policy</a>',
+    '<script src="/account-number-claim.js"></script>']) {
+    assert.ok(html.includes(words), "dashboard: " + words);
+    assert.ok(setup.includes(words), "setup: " + words);
+  }
+  const { state, el } = page();
+  state.renderPhone({ enabled: false, state: "off", termsAccepted: false });
+  assert.equal(el("phone-terms").hidden, false, "the Terms first");
+  assert.equal(el("phone-start").disabled, false, "never disabled for them");
+  const sent = [];
+  state.fetch = async url => { sent.push(url); return { ok: true, json: async () => ({}) }; };
+  await state.startDashboardLink();
+  assert.deepEqual(sent, [], "pressed unticked, nothing is claimed");
+  assert.equal(state.nudged, el("phone-terms"), "the Terms row is shown instead");
+  state.renderPhone({ enabled: false, state: "off", termsAccepted: true });
+  assert.equal(el("phone-terms").hidden, true, "agreed before, not asked again");
 });

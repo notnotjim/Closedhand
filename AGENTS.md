@@ -102,16 +102,19 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   closedhand.com's DNS-record labels and the X-ClosedHand-Edge header.
 - Naming the thing running on the person's computer. On the website (closedhand.com), where
   "Closedhand" could also mean the site, the first mention of it in a page's text is "your
-  Closedhand assistant": it says what the thing is and keeps it apart from the site. After that,
-  "it" or "Closedhand". Headings, navigation and buttons stay short ("Sign in", "Open
+  Closedhand assistant": the phrase says what the thing is and keeps it apart from the site. After
+  that, "Closedhand", never "it" or "they" for Closedhand, its products or its features, and no
+  sentence starts with "It" for one. Headings, navigation and buttons stay short ("Sign in", "Open
   Closedhand"). Inside the app (setup, dashboard, chat replies, the menu bar) it is simply
   "Closedhand": the person is already using it. Never "install", "installation", "instance" or
   "copy" as a noun for it in anything people read: website, app, chat replies, error messages,
   release notes, README. Code, comments and contributor docs may use them.
 - The Closedhand account is the account on closedhand.com that holds a personal URL. It has
-  no password of its own: people sign in to it with Google or Microsoft. closedhand.com keeps
-  only the email of that sign-in, linked to the personal URL; it never keeps the password, the
-  mail or anything from the person's computer. Copy says what the account holds and how you
+  no password of its own: people sign in to it with Google or Microsoft, or, when it was claimed
+  without an email, with its account number. closedhand.com keeps only the email of that sign-in,
+  linked to the personal URL, or for an account number only the number's one-way fingerprint and
+  no email; it never keeps the password, the number itself, the mail or anything from the
+  person's computer. Copy says what the account holds and how you
   sign in to it, never that it is the Google or Microsoft account or the sign-in ("your
   Closedhand account is your Google account"): they are separate accounts, and one is only
   used to sign in to the other. Setup has two
@@ -127,8 +130,8 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   carries it. Mail to Closedhand's own email address, if turned on, passes through
   closedhand.com sealed to the computer's key: name it wherever "never" is said in full. Wherever the
   account is named, the copy says what it keeps, the email, in those words: "stores your email
-  and nothing else" is right, a bare "keeps nothing" is not. The privacy page carries the full
-  list (the sign-in's account number and the URL's routing details). Signing in to take a personal URL is "claim", never
+  and nothing else" is right, a bare "keeps nothing" is not; for an account number, "stores no
+  email". The privacy page carries the full list (the sign-in's ID and the URL's routing details). Signing in to take a personal URL is "claim", never
   "confirm it with Google or Microsoft". Connecting Google or Microsoft through Closedhand's own app
   claims the personal URL with that same sign-in (closedhand.com checks it against Google's or
   Microsoft's keys). Connecting Google through the
@@ -137,11 +140,27 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   the second sign-in as one button, "Claim your personal
   URL": closedhand.com signs in with the account just connected (any Google or Microsoft account
   may claim it), and the code goes back by itself to setup on that same computer, never
-  anywhere else, so nothing is typed. Nothing else is ever called a
+  anywhere else, so nothing is typed. Below that main claim, under the same Terms box, setup and
+  the dashboard's later claim offer a small outlined "Use anonymously" (one shared piece,
+  `webapp/public/account-number-claim.js`). Nothing explains it until it is pressed; then the claim
+  turns, in place, into a short panel ("Use Closedhand anonymously", two short lines, the crypto
+  lengths, "Pay and continue anonymously" and a quiet "Back"). The account is made only once that
+  crypto payment is confirmed: closedhand.com holds a waiting claim until then and lets it go if the
+  invoice expires, then makes the account, the personal URL and the paid-ahead plan together. The account is made with an account number (`closedhand-com/lib/account-number.js`),
+  shown once, large and grouped with Copy, and setup goes on only once the person ticks that they
+  saved it. The number is kept sealed on the computer, shown in My Account only when asked, and is the only
+  way back in: copy says plainly that nobody can recover a lost account number, closedhand.com
+  included. Such an
+  account starts paid ahead and pays in crypto only, never by card, and no Google or Microsoft
+  sign-in is ever passed to closedhand.com for it (`webapp/phone-registration.js` anonymous). The
+  account number signs in wherever Google and Microsoft do on closedhand.com, through one shared
+  piece (`closedhand-com/public/number-signin.js`); signing in to confirm Closedhand's own email
+  address only finds an account, never makes one. Closedhand's own email address works for such an
+  account too, answering mail sent to the address and never writing first, as there is no email to
+  write to. Nothing else is ever called a
   Closedhand account. "Delete account" deletes it, and in the app also everything Closedhand
   keeps on that computer; the confirmation names both. Setup creates the account, so never "no account", "nothing to sign up for" or "no
-  sign up required". "Anonymous" only for what truly is (the download), never for
-  Closedhand or the account: say what closedhand.com holds instead.
+  sign up required". "Anonymous" wherever it is true, and nowhere else.
 - Setup's notes with a side bar are helper notes: one colour, no "Tip:" label, and
   "Important:" only where missing it means redoing a step. Yellow is only for something wrong
   with the person's account, like a sign-in to do again.
@@ -236,7 +255,8 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   person's own LLM provider, whose bill it is; Managed Models use is shown by that name alone.
 - Closedhand is free software that runs with any LLM the person chooses through their own API key,
   free ones included; that is the main path. Managed Models and their subscription are
-  conveniences. Each person has 14 free days of Managed Models, ever, which need no card. Someone who did not
+  conveniences. Each person has 14 free days of Managed Models, ever, which need no card; an
+  account made with an account number has none, and pays ahead in crypto only. Someone who did not
   get them then has the subscription's first 14 days free instead (Polar's trial: the card is
   taken at checkout, nothing is charged until they end, and Polar emails three days before). It is
   said plainly, with the day it ends and the price after, never as urgency or bait. The free days'
@@ -254,6 +274,9 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   product is named with or without the company (iTunes, Apple iTunes): the full name where it
   could be mistaken for any provider's models (a heading, a first mention, chat), "Managed
   Models" once that is clear. Never another name for it.
+- Name Closedhand, its products and its features (Managed Models, Closedhand's email address, the
+  account number) every time they are meant: never "it", "they" or "its" for one, and no sentence
+  starts with "It" for one. A pronoun makes the reader work out what is meant.
 - No staccato ad-copy ("We do X. We don't do Y. No Z."). Plain flowing sentences that
   state facts directly.
 - No em dashes (the long dash) in anything people read. Where a dash reads best, a hyphen

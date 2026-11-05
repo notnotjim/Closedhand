@@ -1197,6 +1197,8 @@
     .account-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.5rem 1.5rem; margin: 0; padding: 1rem 1.25rem 1.25rem; font-size: 0.875rem; line-height: 1.5; }
     .account-facts dt { color: var(--muted); }
     .account-facts dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
+    .account-facts .quiet-link { padding: 0; font-size: inherit; }
+    .account-facts .account-number { padding: 0; font: 500 0.9375rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; word-spacing: 0.2em; }
     @media (max-width: 600px) { .account-facts { grid-template-columns: 1fr; gap: 2px 0; } .account-facts dd { margin-bottom: 0.5rem; } }
     .fair-use { margin: 0; }
     .fair-use + #my-plus-about { margin-top: 0.875rem; }
@@ -2107,6 +2109,7 @@
   <meta name="theme-color" content="#100E0D">
   <link rel="stylesheet" href="/model-settings.css">
   <script src="/model-settings.js"></script>
+  <script src="/account-number-claim.js"></script>
   <link rel="stylesheet" href="/connection-catalogue.css">
   <link rel="stylesheet" href="/goals.css">
   <script defer src="/goals.js"></script>
@@ -2479,10 +2482,48 @@
               </div>
             </div>
             <div id="phone-setup" hidden>
-              <p>Opens the web chat and dashboard from any device, at an address like amber-fox-42.closedhand.ai. You claim it by signing in on closedhand.com, which creates your Closedhand account. It stores your email and nothing else.</p>
+              <p>Opens the web chat and dashboard from any device, at an address like amber-fox-42.closedhand.ai. Claiming one creates your Closedhand account.</p>
               <p>Closedhand and Cloudflare connect the address to the computer running Closedhand, so it works whenever that computer is awake and online.</p>
-              <button class="account-action-btn" id="phone-start" onclick="startDashboardLink()">Claim your personal URL</button>
+              <p data-claim-way>You claim one by signing in on closedhand.com below, and your Closedhand account stores your email and nothing else.</p>
+              <!-- Agreed once, before either way of claiming, as in setup. -->
+              <div class="terms-accept" id="phone-terms" hidden>
+                <label class="terms-check"><input type="checkbox" id="phone-terms-box" onchange="agreeDashboardTerms(this)"><span>I agree to the <a href="https://closedhand.com/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://closedhand.com/privacy" target="_blank" rel="noopener">Privacy&nbsp;policy</a></span></label>
+                <p class="account-action-desc">With Managed Models, there is no company restricting what Closedhand can say or do, and nobody but you can read your conversations. All we ask is that you use Closedhand within the law.</p>
+                <p class="terms-nudge" id="phone-terms-nudge" hidden>Tick to agree to the Terms first</p>
+              </div>
+              <button class="account-action-btn" id="phone-start" onclick="startDashboardLink()" data-claim-way>Claim your personal URL</button>
               <a id="phone-setup-link" target="_blank" rel="noopener" hidden>Claim your personal URL</a>
+              <!-- Using Closedhand anonymously (account-number-claim.js): pressed, the
+                   claim turns into this panel in place. -->
+              <button class="btn-quiet btn-small" id="url-anonymous" type="button" data-claim-way>Use anonymously</button>
+              <div class="anon-panel" id="url-anon-panel" hidden>
+                <h3>Use Closedhand anonymously</h3>
+                <p>No email required + pay with crypto instead of card payments.</p>
+                <p>You will be given an anonymous account number to keep safe.</p>
+                <!-- Paid for first: the months, as My Account offers paying ahead in crypto. -->
+                <div id="url-anon-choice" hidden>
+                  <p class="anon-label">Anonymous users are automatically given access to Managed Models with uncensored LLM access. One time payment with no auto-renewal.</p>
+                  <div class="anon-months" id="url-anon-months" role="group" aria-label="Months paid ahead"></div>
+                  <p class="anon-fine">Prices in US dollars, paid in the crypto of your choice.</p>
+                  <div class="nudge-row" id="url-anon-agree">
+                    <label class="terms-check"><input type="checkbox" id="url-anon-agree-box"><span>I agree that what I pay for now starts straight away and can't be refunded once started.</span></label>
+                    <p class="terms-nudge" hidden>Tick to agree first</p>
+                  </div>
+                </div>
+                <div class="anon-wait-row" id="url-anon-wait-row">
+                  <!-- Waiting for the payment: the fist, with an ink arc going round. -->
+                  <div class="anon-progress" id="url-anon-progress" aria-hidden="true" hidden>
+                    <svg viewBox="0 0 48 48"><path class="anon-ring-track" d="M24 4.3C35.3 3.9 44.2 12.7 43.8 24.2C43.4 35.5 35.2 44.1 23.7 43.8C12.5 43.4 3.9 35.3 4.3 23.8C4.7 12.7 13 4.6 24 4.3Z"/><path class="anon-ring-ink" pathLength="100" d="M24 4.3C35.3 3.9 44.2 12.7 43.8 24.2C43.4 35.5 35.2 44.1 23.7 43.8C12.5 43.4 3.9 35.3 4.3 23.8C4.7 12.7 13 4.6 24 4.3Z"/></svg>
+                    <span class="anon-fist"></span>
+                  </div>
+                  <p class="anon-wait" id="url-anon-wait" role="status" aria-live="polite" hidden></p>
+                </div>
+                <div class="anon-panel-actions">
+                  <button class="account-action-btn" id="url-anon-go" type="button">Pay and continue anonymously</button>
+                  <a class="account-action-btn" id="url-anon-pay" target="_blank" rel="noopener" hidden>Open the payment page</a>
+                  <button class="quiet-link" id="url-anon-back" type="button">Back</button>
+                </div>
+              </div>
               <div id="phone-code" hidden>
                 <label for="phone-code-input">Paste the code from closedhand.com</label>
                 <input id="phone-code-input" oninput="codeTypedInSettings()" class="settings-input" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="ABC 234">
@@ -2490,6 +2531,21 @@
                 <button class="account-action-btn" id="phone-code-submit" onclick="claimDashboardLink()">Finish</button>
                 <p id="phone-code-status" role="status"></p>
               </div>
+            </div>
+            <!-- Claimed without an email: the account number, shown until the
+                 person says it is saved (account-number-claim.js). -->
+            <div id="url-number" hidden>
+              <p class="url-number-label">Your account number</p>
+              <div class="account-number-row">
+                <output class="account-number" id="url-number-value"></output>
+                <button id="url-number-copy" type="button" aria-label="Copy account number" title="Copy account number">
+                  <svg width="1.25rem" height="1.25rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+              </div>
+              <p id="url-number-copy-status" role="status" aria-live="polite" hidden></p>
+              <p>Your account number is the only way back into your Closedhand account, on closedhand.com or another computer. Nobody can recover a lost account number, not even closedhand.com, so keep yours somewhere safe, like a password manager.</p>
+              <label class="terms-check"><input type="checkbox" id="url-number-saved"><span>I've saved my account number</span></label>
+              <button class="account-action-btn" id="url-number-continue" type="button" disabled>Done</button>
             </div>
             <div class="address-foot">
             <p id="phone-change-line" hidden><a href="#" class="text-link" id="phone-change" onclick="toggleDashboardRename(event)">Change URL</a></p>
@@ -4722,7 +4778,7 @@
       var renew = data.nearly && plan.fair_use_renews_at ? ' ' + fairUseRenewsIn(plan.fair_use_renews_at) : '';
       if (plan.name === 'maintainer') { said = 'Closedhand Managed Models are on for your account as the maintainer, with no charge' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.'; tail = " This month's use is in "; }
       else if (plan.name === 'ahead') { said = 'Closedhand Managed Models are paid ahead until ' + planDay(plan.ends_at) + '.' + renew + after; }
-      else if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or subscribe again in '; tail = ''; }
+      else if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or ' + (plan.was === 'ahead' ? 'pay ahead again' : 'subscribe again') + ' in '; tail = ''; }
       else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'Closedhand Managed Models come with your free 14 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
       else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'Closedhand Managed Models come with your free 14 days.'; }
       else if (plan.name === 'plus' && plan.ends_at) { said = 'Closedhand Managed Models come with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + renew + after; tail = ' Resume it in '; }
@@ -5083,20 +5139,52 @@
       try { const r = await fetch("/api/phone/account"); data = r.ok ? await r.json() : null; } catch (_) {}
       const account = data && !data.unreachable ? data.account : null;
       facts.textContent = "";
-      if (account) {
+      if (account && account.anonymous) {
+        // Made with an account number: no email, and the number shown only
+        // when asked, from where this computer keeps it sealed.
+        const host = new URL(account.url).hostname;
+        row("Personal URL", host, account.url);
+        row("Sign in with", "Your account number");
+        if (account.numberHere) {
+          const dd = facts.lastElementChild, show = document.createElement("button");
+          show.type = "button"; show.className = "quiet-link"; show.textContent = "Show account number";
+          show.onclick = () => showAccountNumber(dd, show);
+          dd.append(" ", show);
+        }
+        document.getElementById("my-account-about").textContent = "The account holds your personal URL, and you sign in with your account number. closedhand.com stores no email.";
+        confirmText.textContent = "This deletes your Closedhand account: " + host + " stops working and closedhand.com forgets your account number. This also permanently deletes " + local;
+      } else if (account) {
         const host = new URL(account.url).hostname;
         row("Personal URL", host, account.url);
         const signIns = account.signIns && account.signIns.length ? account.signIns : [{ provider: account.provider, email: account.email }];
         row("Sign in with", signIns.map(s => (s.provider === "microsoft" ? "Microsoft" : "Google") + (s.email ? ": " + s.email : "")).join(" \u00b7 "));
         document.getElementById("my-account-about").textContent = "The account holds your personal URL, and you sign in with " + (signIns.length > 1 ? "any of the accounts" : "the account") + " below. closedhand.com stores your email and nothing else.";
-        confirmText.textContent = "This deletes your Closedhand account: " + host + " stops working and closedhand.com forgets your sign-in. It also permanently deletes " + local;
+        confirmText.textContent = "This deletes your Closedhand account: " + host + " stops working and closedhand.com forgets your sign-in. This also permanently deletes " + local;
       } else if (!data || data.unreachable) {
         row("Right now", "closedhand.com can't be reached, so your account can't be shown. Please try again shortly.");
       } else {
-        row("Signed in with", "Nothing yet. Claiming a personal URL creates your Closedhand account, which you sign in to with Google or Microsoft.");
+        row("Signed in with", "Nothing yet. Claiming a personal URL creates your Closedhand account, which you sign in to with Google, Microsoft or an account number.");
         confirmText.textContent = "This permanently deletes " + local;
       }
       await renderMyPlan(account);
+    }
+
+    // The account number, shown in place when asked for, with Copy.
+    async function showAccountNumber(dd, button) {
+      button.disabled = true;
+      try {
+        const r = await fetch("/api/phone/account-number", { cache: "no-store" });
+        const number = r.ok ? (await r.json()).accountNumber : null;
+        if (!number) throw new Error();
+        const value = document.createElement("span"), copy = document.createElement("button");
+        value.className = "account-number"; value.textContent = number;
+        copy.type = "button"; copy.className = "quiet-link"; copy.textContent = "Copy";
+        copy.onclick = () => navigator.clipboard.writeText(number).then(() => showToast("Copied.")).catch(() => showToast("Select and copy your account number.", true));
+        dd.replaceChildren(value, " ", copy);
+      } catch (_) {
+        button.disabled = false;
+        showToast("Could not show your account number just now. Please try again.", true);
+      }
     }
 
     // Closedhand Managed Models in My Account: where the plan stands and how
@@ -5161,7 +5249,7 @@
       } else if (plan.name === "ended") state.push("Your free 14 days of Closedhand Managed Models have ended.");
       if (["first-month", "plus", "ahead"].includes(plan.name)) bar(plan.fair_use_renews_at); else $("my-fair-use").hidden = true;
       $("my-plus-about").hidden = $("my-plus-fine").hidden = !p.available;
-      $("my-plus-get").hidden = !p.available || p.active || crypto;
+      $("my-plus-get").hidden = !p.available || p.active || crypto || !!account.anonymous;
       // Carrying on, the way the plan is paid: by card, or in crypto.
       const extendPrice = crypto ? p.crypto_extend : prices.extend;
       $("my-plus-extend").hidden = !(p.available && (p.active || (crypto && extendPrice)) && p.nearly && !p.extended);
@@ -5192,9 +5280,11 @@
         $("action-plus-cancel").style.display = "";
       }
       $("my-plus-about").hidden = !p.available || p.active || crypto;
-      renderWays(p, crypto, p.available && !p.active);
+      renderWays(p, crypto, p.available && !p.active, !!account.anonymous);
       if (p.available) {
-        $("my-plus-about").textContent = "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own"
+        // An account made with an account number pays in crypto only.
+        $("my-plus-about").textContent = account.anonymous ? "Pay ahead for Closedhand Managed Models in crypto, so you need no LLM provider of your own. With an account number, Closedhand Managed Models are paid in crypto only, never by card, so nothing ties your account to your name."
+          : "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own"
           + (plan.email ? ", and for Closedhand's own email address" : "") + ". Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com."
           // Never had the free days: the subscription's first 14 days are them (Polar's trial).
           + (p.free_month ? " The first 14 days are free, then " + (prices.plus || "a monthly price") + " a month." : "");
@@ -5205,7 +5295,7 @@
         else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your subscription stays on until " + when(p.ends_at) + ", then ends."); }
         else if (p.active) { status("Active", "on"); if (p.renews_at) state.push((p.every ? "Renews every " + p.every + " months, next on " : "Renews on ") + when(p.renews_at) + "."); }
         if ((p.active || crypto) && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
-        $("my-plus-fine").textContent = p.active || crypto ? "" : "Cancel any time.";
+        $("my-plus-fine").textContent = p.active || crypto || account.anonymous ? "" : "Cancel any time.";
         $("my-plus-fine").hidden = !$("my-plus-fine").textContent;
         // The box shows above any button that charges at once.
         $("my-agree").hidden = $("my-plus-extend").hidden && ($("my-plus-get").hidden || !!p.free_month) && $("my-ahead").hidden;
@@ -5219,7 +5309,7 @@
     // outlined button with its price and what that comes to a month, and
     // paying ahead in crypto behind a quiet link, or straight there while a
     // plan paid in crypto runs. Nothing goes ahead until the box is ticked.
-    function renderWays(p, crypto, offered) {
+    function renderWays(p, crypto, offered, anonymous) {
       const $ = id => document.getElementById(id);
       const longer = p.longer || [], coins = p.crypto || [];
       $("my-ahead").hidden = !offered || (!longer.length && !coins.length);
@@ -5236,9 +5326,10 @@
       $("my-longer").replaceChildren(...longer.map(o => button(o, "Every " + o.months + " months", "plus")));
       $("my-longer").hidden = !longer.length;
       $("my-ahead-crypto").replaceChildren(...coins.map(o => button(o, o.months + " months", "ahead")));
-      $("my-ahead-crypto").hidden = !crypto;
-      $("my-ahead-crypto-line").hidden = crypto || !coins.length;
-      $("my-ahead-crypto-label").hidden = true;
+      // The only way for an account made with an account number: shown straight away.
+      $("my-ahead-crypto").hidden = !crypto && !anonymous;
+      $("my-ahead-crypto-line").hidden = crypto || anonymous || !coins.length;
+      $("my-ahead-crypto-label").hidden = !anonymous || crypto;
     }
     function showAheadCrypto(event) {
       event.preventDefault();
@@ -6072,18 +6163,51 @@
         document.getElementById('phone-desc').innerHTML = 'Could not check your personal URL. <button class="notification-retry" onclick="loadPhoneAccess()">Try again</button>';
       }
     }
+    // Using Closedhand anonymously, the same piece as setup's: paid for
+    // first, then the account number shows until it is saved.
+    var _numbers = null, _termsHere = false;
+    function accountNumbers() {
+      return _numbers = _numbers || window.ClosedHandAccountNumber.mount(document.getElementById('phone-block'), {
+        ready: function () { return true; },
+        agreed: function () { return !!(_phone && _phone.termsAccepted); },
+        terms: function () { return document.getElementById('phone-terms'); },
+        say: function (message) { if (message) document.getElementById('phone-desc').textContent = message; },
+        changed: function () {},
+        claimed: function () { loadPhoneAccess(); },
+        saved: function () { loadPhoneAccess(); }
+      });
+    }
+    // The Terms, agreed once before either way of claiming, as in setup.
+    async function agreeDashboardTerms(box) {
+      if (!box.checked) { if (_termsHere) box.checked = true; return; }
+      box.disabled = true;
+      try {
+        var r = await fetch('/api/phone/accept-terms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).error || 'Could not save that. Please try again.');
+        _termsHere = true;
+        document.getElementById('phone-terms-nudge').hidden = true;
+        if (_phone) renderPhone(Object.assign({}, _phone, { termsAccepted: true }));
+      } catch (e) { box.checked = false; document.getElementById('phone-desc').textContent = e.message; }
+      finally { box.disabled = false; }
+    }
     function renderPhone(p) {
       _phone = p;
       var desc = document.getElementById('phone-desc'), btn = document.getElementById('phone-btn');
       var live = document.getElementById('phone-live'), setup = document.getElementById('phone-setup');
       var base = p.url || p.savedUrl;
       var permanent = p.url ? !!p.permanent : !!p.savedUrl;
+      var numbers = accountNumbers();
+      if (p.accountNumberToSave) numbers.waiting();
+      if (p.anonymousWaiting) numbers.resume(p.anonymousWaiting);
+      numbers.draw();
       clearTimeout(_phonePoll);
       btn.disabled = false;
       btn.hidden = p.state === 'unavailable';
       btn.textContent = p.enabled ? 'Pause link' : 'Resume link';
       live.hidden = !base;
-      setup.hidden = !!base && permanent;
+      setup.hidden = (!!base && permanent) || !!numbers.number() || !!p.accountNumberToSave;
+      document.getElementById('phone-terms').hidden = !!p.termsAccepted && !_termsHere;
+      document.getElementById('phone-terms-box').checked = !!p.termsAccepted;
       document.getElementById('phone-options').hidden = !base && !p.enabled;
       // Waiting for the owner to confirm on closedhand.com and type its code here.
       var awaiting = p.state === 'pairing' && !!p.pairingUrl && !p.ownershipConfirmed;
@@ -6098,6 +6222,7 @@
       // A lasting personal URL can be renamed.
       document.getElementById('phone-change-line').hidden = !(base && permanent);
       if (!(base && permanent)) document.getElementById('phone-rename').hidden = true;
+      // Never disabled for the Terms: pressing it unticked draws the eye there.
       document.getElementById('phone-start').disabled = false;
       document.getElementById('phone-save').hidden = !permanent;
       document.getElementById('phone-copy-status').textContent = '';
@@ -6169,6 +6294,7 @@
       finally { btn.disabled = false; }
     }
     async function startDashboardLink() {
+      if (_phone && _phone.termsAccepted === false) return window.ClosedHandAccountNumber.nudge(document.getElementById('phone-terms'));
       var btn = document.getElementById('phone-start'); btn.disabled = true;
       try {
         var r = await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true, mode: 'managed' }) });

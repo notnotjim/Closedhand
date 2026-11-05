@@ -54,9 +54,11 @@ function createRelay({ db, owner: signedIn, secret, env = process.env, baseUrl =
       const proof = p.readTicket(req.body?.ticket, secret);
       if (!proof) return res.status(400).json({ error: 'This link expired. Return to Settings and try again.' });
       // Replies go to this address, so it must be one the sign-in vouches for.
-      const person = mustWrite(await db.from('owners').select('email,email_verified').eq('id', owner).maybeSingle());
+      // An account made with an account number has none: its address only
+      // answers mail sent to it (outbox, below).
+      const person = mustWrite(await db.from('owners').select('provider,email,email_verified').eq('id', owner).maybeSingle());
       const email = person?.email_verified ? p.address(person.email) : null;
-      if (!email) return res.status(400).json({ error: 'Sign in again with Google, or a personal Microsoft account, so replies go to an address they have confirmed.' });
+      if (!email && person?.provider !== 'anonymous') return res.status(400).json({ error: 'Sign in again with Google, or a personal Microsoft account, so replies go to an address they have confirmed.' });
       const launchOwners = (env.ASSISTANT_EMAIL_TEST_OWNERS || '').split(',').map(p.address).filter(Boolean);
       if (launchOwners.length && !launchOwners.includes(email)) return res.status(503).json({ error: 'Email beta is completing its final checks. Please try again later.' });
       let row = mustWrite(await db.from('mail_relay_accounts').select('*').eq('id', proof.id).maybeSingle());
@@ -121,6 +123,7 @@ function createRelay({ db, owner: signedIn, secret, env = process.env, baseUrl =
         // A new email, such as a saved agent's results, goes to the owner only.
         // Nobody else can be reached this way, so a stolen copy credential
         // cannot turn the service into a way of mailing strangers.
+        if (!row.owner_email) return res.status(403).json({ error: 'Your Closedhand account has no email, so Closedhand can answer email you send but can’t email you first.' });
         if (mail.to.some(recipient => recipient !== row.owner_email)) return res.status(403).json({ error: 'A new email from this address can only go to you.' });
         mail.inReplyTo = null; mail.references = [];
       } else {

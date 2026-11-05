@@ -799,7 +799,7 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   assert.ok(data.people.filter(p => p.you).every(p => p.email === 'operator@example.com' && p.email_verified), 'only a verified operator email is theirs');
   assert.equal(data.accounts.total + data.accounts.you.total, owners);
   assert.equal(data.people.filter(p => p.you).length, data.accounts.you.total);
-  assert.equal(data.accounts.google + data.accounts.microsoft, data.accounts.total);
+  assert.equal(data.accounts.google + data.accounts.microsoft + data.accounts.anonymous, data.accounts.total, 'every account counted by how it signs in');
   assert.ok('you' in data.urls && 'you' in data.managed && 'you' in data.email, 'each with the maintainer\'s share beside it');
   assert.equal(typeof data.managed.you.maintainer, 'number', 'the maintainer\'s own Managed Models, counted apart from free days and subscriptions');
   assert.ok(data.weeks.every(w => 'you_accounts' in w && 'you_claimed' in w));

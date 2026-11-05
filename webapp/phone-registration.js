@@ -1,5 +1,8 @@
 // Personal URL registration with closedhand.com. Only routing credentials leave the install.
 // A claim can bring back the AI that comes with Closedhand (included-ai-setup.js).
+// Claimed without an email, the Closedhand account is known only by an
+// account number, and no Google or Microsoft sign-in ever goes to
+// closedhand.com from this computer (anonymous).
 const crypto = require('node:crypto');
 const { getConf, setConf } = require('./config');
 const { encryptString, decryptString } = require('./crypto-tokens');
@@ -173,6 +176,7 @@ async function claim(code, state) {
     await setConf({ PHONE_CLAIM_STATES: JSON.stringify(states.filter(s => s !== match)) });
   }
   const data = withIncludedAi(await call('claim', 'POST', { code, acceptedTerms: await termsAccepted() }));
+  if (data.anonymous === true) await setConf({ PHONE_ANONYMOUS: '1' });
   if (['pending', 'provisioning', 'connecting', 'active', 'error'].includes(data.state)) registrationState = data.state;
   // The name closedhand.com picked, so setup can say where Closedhand is.
   if (validAddress(data.url)) await setConf({ PHONE_ADDRESS_NAME: new URL(data.url).hostname.split('.')[0] });
@@ -184,6 +188,7 @@ async function claim(code, state) {
 // its confirmation page instead (an address already used on another computer).
 async function claimWithSignIn(provider, idToken) {
   if (!['google', 'microsoft'].includes(provider)) throw new Error('Unknown sign-in');
+  if (await getConf('PHONE_ANONYMOUS') === '1') return null;
   const data = withIncludedAi(await call('claim-' + provider, 'POST', { idToken, port: Number(process.env.PORT || 3000), acceptedTerms: await termsAccepted() }));
   if (data.claimHere || !validAddress(data.url)) return null;
   if (['pending', 'provisioning', 'connecting', 'active', 'error'].includes(data.state)) registrationState = data.state;
@@ -195,8 +200,88 @@ async function claimWithSignIn(provider, idToken) {
 // account, so any account connected at setup signs in there.
 async function addSignIn(provider, idToken) {
   if (!['google', 'microsoft'].includes(provider)) throw new Error('Unknown sign-in');
+  if (await anonymous()) return { signIn: 'kept here' };
   return call('sign-in-' + provider, 'POST', { idToken });
 }
+// Whether this computer's Closedhand account was made with an account
+// number. Known here from its claim; otherwise closedhand.com is asked, and
+// when it can't say, the answer is yes, so a sign-in never leaves on a guess.
+async function anonymous() {
+  if (await getConf('PHONE_ANONYMOUS') === '1') return true;
+  try {
+    const found = (await call('account')).account;
+    if (found?.provider !== 'anonymous') return false;
+    await setConf({ PHONE_ANONYMOUS: '1' });
+    return true;
+  } catch (_) { return true; }
+}
+// Using Closedhand anonymously, paid for first in crypto: closedhand.com
+// keeps a claim waiting for the payment and answers with its payment page.
+// Once paid, closedhand.com makes the Closedhand account with an account
+// number, and this computer collects it once (anonymousClaim): the number,
+// kept here sealed for My Account to show on request, the personal URL, and
+// Managed Models, set up as for a subscriber. A Google or Microsoft sign-in
+// waiting to claim is never sent.
+const NUMBER = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{20}$/;
+const grouped = (number) => number.match(/.{4}/g).join(' ');
+async function claimAnonymous(months) {
+  if (!(await termsAccepted())) throw new Error('Agree to the Terms and Privacy policy first.');
+  months = Number(months);
+  if (![3, 6, 9].includes(months)) throw new Error('Choose 3, 6 or 9 months.');
+  const data = await call('claim-anonymous', 'POST', { port: Number(process.env.PORT || 3000), acceptedTerms: true, months });
+  if (data.state !== 'waiting' || !CRYPTO_PAGE.test(String(data.url))) throw new Error('Could not open the payment page. Please try again.');
+  await setConf({ PHONE_ANONYMOUS_PENDING: JSON.stringify({ url: data.url, months }) });
+  return { state: 'waiting', url: data.url, months };
+}
+// A claim waiting for its payment here: its payment page and months, or null.
+async function anonymousWaiting() {
+  try {
+    const waiting = JSON.parse(await getConf('PHONE_ANONYMOUS_PENDING') || 'null');
+    return waiting && CRYPTO_PAGE.test(String(waiting.url)) ? { url: waiting.url, months: [3, 6, 9].includes(waiting.months) ? waiting.months : null } : null;
+  } catch (_) { return null; }
+}
+// Where that claim stands: waiting, ready (collected now, once) or expired
+// (the invoice lapsed, so closedhand.com let the claim go).
+async function anonymousClaim() {
+  const waiting = await anonymousWaiting();
+  if (!waiting) return { state: 'none' };
+  const data = withIncludedAi(await call('claim-anonymous'));
+  if (data.state === 'waiting') return { state: 'waiting', ...waiting };
+  const number = String(data.accountNumber || '').replace(/\s/g, '');
+  if (!NUMBER.test(number)) {
+    await setConf({ PHONE_ANONYMOUS_PENDING: null });
+    return { state: 'expired' };
+  }
+  const url = validAddress(data.url) ? data.url : null;
+  await setConf({ PHONE_ANONYMOUS_PENDING: null, PHONE_ENROLLMENT: '2', PHONE_ANONYMOUS: '1', PHONE_ACCOUNT_NUMBER: encrypted(number), PHONE_ACCOUNT_NUMBER_SAVED: null,
+    ...(url ? { PHONE_ADDRESS_NAME: new URL(url).hostname.split('.')[0] } : {}) });
+  if (['pending', 'provisioning', 'connecting', 'active', 'error'].includes(data.state)) registrationState = data.state;
+  return { state: 'ready', url, accountNumber: grouped(number) };
+}
+// What using Closedhand anonymously costs: each length paid ahead in crypto,
+// with its price and its price a month, as closedhand.com shows them to
+// anyone. Read at most every ten minutes.
+let offer = { at: 0, crypto: [] };
+async function anonymousOffer() {
+  if (Date.now() - offer.at < 600000 && offer.crypto.length) return { crypto: offer.crypto };
+  try {
+    const response = await fetch(PROVIDER + '/api/managed-models', { redirect: 'error', signal: AbortSignal.timeout(8000) });
+    const coins = response.ok ? lengths((await response.json()).crypto).filter((o) => [3, 6, 9].includes(o.months)) : [];
+    offer = { at: Date.now(), crypto: coins };
+  } catch (_) { offer = { at: Date.now(), crypto: [] }; }
+  return { crypto: offer.crypto };
+}
+// The account number this computer was given, grouped as it is shown, or
+// null (an account claimed with a sign-in, or claimed on another computer).
+async function accountNumber() {
+  const number = decryptString(await getConf('PHONE_ACCOUNT_NUMBER'));
+  return number && NUMBER.test(number) ? grouped(number) : null;
+}
+// Setup asks for the number to be saved before going on, once.
+async function accountNumberToSave() {
+  return !!(await getConf('PHONE_ACCOUNT_NUMBER')) && (await getConf('PHONE_ACCOUNT_NUMBER_SAVED')) !== '1';
+}
+async function accountNumberSaved() { await setConf({ PHONE_ACCOUNT_NUMBER_SAVED: '1' }); }
 // A claim's answer without the included AI's key, which is kept here (sealed)
 // and set up as the models; nothing returned from here carries it.
 function withIncludedAi(data) {
@@ -217,7 +302,8 @@ async function account() {
   if (!(await getConf('PHONE_INSTALL_ID'))) return null;
   const found = (await call('account')).account;
   if (!found || !validAddress(found.url)) return null;
-  const provider = (p) => p === 'microsoft' ? 'microsoft' : 'google';
+  const provider = (p) => ['microsoft', 'anonymous'].includes(p) ? p : 'google';
+  if (found.provider === 'anonymous' && (await getConf('PHONE_ANONYMOUS')) !== '1') await setConf({ PHONE_ANONYMOUS: '1' });
   const text = (v) => typeof v === 'string' ? v.slice(0, 200) : null;
   const date = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null;
   const plan = found.plan && ['first-month', 'plus', 'ended', 'none', 'maintainer', 'ahead'].includes(found.plan.name) ? found.plan : null;
@@ -225,6 +311,7 @@ async function account() {
   const prices = plus?.prices && typeof plus.prices === 'object' ? plus.prices : {};
   return {
     provider: provider(found.provider), email: text(found.email), url: new URL(found.url).origin,
+    ...(found.provider === 'anonymous' ? { anonymous: true, numberHere: !!(await getConf('PHONE_ACCOUNT_NUMBER')) } : {}),
     signIns: (Array.isArray(found.signIns) ? found.signIns : []).slice(0, 10).map((s) => ({ provider: provider(s?.provider), email: text(s?.email) })),
     plan: plan ? { name: plan.name, email: plan.email === true, ends_at: date(plan.ends_at), renews_at: date(plan.renews_at),
       fair_use_renews_at: date(plan.fair_use_renews_at), ...(plan.extended === true ? { extended: true } : {}),
@@ -306,6 +393,7 @@ async function deleteAccount() {
   if (!(await getConf('PHONE_INSTALL_ID'))) return { deleted: false };
   const data = await call('account/delete', 'POST', {});
   await forget();
+  await setConf({ PHONE_ANONYMOUS: null, PHONE_ACCOUNT_NUMBER: null, PHONE_ACCOUNT_NUMBER_SAVED: null, PHONE_ANONYMOUS_PENDING: null });
   return { deleted: data.deleted === true };
 }
 async function forget() {
@@ -315,4 +403,4 @@ async function forget() {
 function status() {
   return { registrationState, ownershipConfirmed: ['pending', 'provisioning', 'connecting', 'active', 'error'].includes(registrationState) };
 }
-module.exports = { begin, claim, claimWithSignIn, termsAccepted, acceptTerms, addSignIn, rename, cleanName, connection, validAddress, confirm, challenge, status, serviceAvailable, includedAiOffered, includedAiModel, includedAiState, account, plus, deleteAccount };
+module.exports = { begin, claim, claimWithSignIn, claimAnonymous, anonymousWaiting, anonymousClaim, anonymousOffer, anonymous, accountNumber, accountNumberToSave, accountNumberSaved, termsAccepted, acceptTerms, addSignIn, rename, cleanName, connection, validAddress, confirm, challenge, status, serviceAvailable, includedAiOffered, includedAiModel, includedAiState, account, plus, deleteAccount };

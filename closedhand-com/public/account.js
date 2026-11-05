@@ -42,7 +42,7 @@
     $('acct-address-note').textContent = data.address ? 'Your personal URL' : 'Setup on your computer gives Closedhand one.';
     // Every account connected at setup signs in here, the first one first.
     const signIns = data.signIns && data.signIns.length ? data.signIns : [{ provider: data.provider, email: data.email }];
-    $('acct-who').textContent = signIns.map(s => providerName(s.provider) + (s.email ? ': ' + s.email : '')).join(' · ');
+    $('acct-who').textContent = data.anonymous ? 'Signed in with your account number' : signIns.map(s => providerName(s.provider) + (s.email ? ': ' + s.email : '')).join(' · ');
     plus();
   }
 
@@ -111,11 +111,13 @@
     // Their name links to what they are (closedhand.com/managed-models).
     const about = document.createElement('a');
     about.href = '/managed-models'; about.textContent = 'Closedhand Managed Models';
-    $('plus-about').replaceChildren('Subscribe to keep ', about, ' every month, so you need no LLM provider of your own'
+    // An account made with an account number pays in crypto only.
+    if (data.anonymous) $('plus-about').replaceChildren('Pay ahead for ', about, ' in crypto, so you need no LLM provider of your own. With an account number, Closedhand Managed Models are paid in crypto only, never by card, so nothing ties your account to your name.');
+    else $('plus-about').replaceChildren('Subscribe to keep ', about, ' every month, so you need no LLM provider of your own'
       + (email ? ", and for Closedhand's own email address" : '') + ". Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com."
       // Never had the free days: the subscription's first 14 days are them (Polar's trial).
       + (p.free_month ? ' The first 14 days are free, then ' + (prices.plus || 'a monthly price') + ' a month.' : ''));
-    $('plus-get').hidden = p.active || crypto;
+    $('plus-get').hidden = p.active || crypto || !!data.anonymous;
     $('plus-get').textContent = p.free_month ? 'Subscribe · 14 days free' : 'Subscribe' + (prices.plus ? ' · ' + prices.plus + ' a month' : '');
     $('plus-manage').hidden = !p.active;
     // A date months away says its year.
@@ -130,7 +132,7 @@
     const extendPrice = crypto ? p.crypto_extend : prices.extend;
     $('plus-extend').hidden = !((p.active || (crypto && extendPrice)) && p.nearly && !p.extended);
     $('plus-extend').textContent = 'Carry on to the end of the month' + (extendPrice ? ' · ' + extendPrice : '');
-    $('plus-fine').textContent = p.active ? "Change your card, see your invoices or cancel on Polar's page." : crypto ? '' : 'Cancel any time.';
+    $('plus-fine').textContent = p.active ? "Change your card, see your invoices or cancel on Polar's page." : crypto || data.anonymous ? '' : 'Cancel any time.';
     $('plus-fine').hidden = !$('plus-fine').textContent;
     ways(p, crypto);
     // The box shows above any button that charges at once.
@@ -157,9 +159,12 @@
     $('plus-longer').hidden = !longer.length;
     $('ahead-crypto').replaceChildren(...coins.map(o => button(o, o.months + ' months', b => pay('/api/ahead/checkout', { months: o.months }, b))));
     $('ahead-crypto-label').textContent = 'In crypto, paid once and never renewed, priced in US dollars:';
-    $('ahead-crypto').hidden = !crypto;
-    $('ahead-crypto-show').hidden = crypto || !coins.length;
-    $('ahead-crypto-label').hidden = true;
+    // Crypto is the only way for an account made with an account number, so
+    // it is shown straight away.
+    const open = crypto || !!data.anonymous;
+    $('ahead-crypto').hidden = !open;
+    $('ahead-crypto-show').hidden = open || !coins.length;
+    $('ahead-crypto-label').hidden = !data.anonymous || crypto;
   }
   // A payment that charges at once, once the box is ticked: Polar's page, or
   // closedhand.com's own crypto payment page.
@@ -201,8 +206,8 @@
     if (data.address) {
       const name = document.createElement('strong');
       name.className = 'nowrap'; name.textContent = data.address;
-      text.append('This deletes your Closedhand account. ', name, ' stops working and closedhand.com forgets your sign-in. Nobody can take the name for six months, and nothing links it to you. Closedhand keeps everything on your computer; to delete that too, use Delete account in My Account on its dashboard.');
-    } else text.textContent = 'This deletes your Closedhand account, and closedhand.com forgets your sign-in.';
+      text.append('This deletes your Closedhand account. ', name, ' stops working and closedhand.com forgets your ' + (data.anonymous ? 'account number' : 'sign-in') + '. Nobody can take the name for six months, and nothing links it to you. Closedhand keeps everything on your computer; to delete that too, use Delete account in My Account on its dashboard.');
+    } else text.textContent = 'This deletes your Closedhand account, and closedhand.com forgets your ' + (data.anonymous ? 'account number' : 'sign-in') + '.';
     $('delete').hidden = true; $('confirm').hidden = false; $('delete-go').focus();
   });
   $('delete-cancel').addEventListener('click', () => { $('confirm').hidden = true; $('delete').hidden = false; $('delete').focus(); });

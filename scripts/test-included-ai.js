@@ -728,13 +728,14 @@ test("the Terms are agreed once before the personal URL is claimed, and say what
   const setup = read("webapp/views/setup.html");
   assert.equal((setup.match(/id="url-terms-box"/g) || []).length, 1, "one box, in the personal URL step");
   assert.ok(setup.includes(`<span>I agree to the <a href="https://closedhand.com/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://closedhand.com/privacy" target="_blank" rel="noopener">Privacy&nbsp;policy</a></span>`));
-  assert.ok(setup.includes("With Managed Models, no company's rulebook limits what Closedhand can say and nobody else can read your conversations. All we ask is that you use Closedhand within the law."));
+  assert.ok(setup.includes("With Managed Models, there is no company restricting what Closedhand can say or do, and nobody but you can read your conversations. All we ask is that you use Closedhand within the law."));
   const card = read("webapp/public/setup-personal-url.js");
-  assert.match(card, /\$\('url-start'\)\.disabled = busy \|\| !password \|\| !agreed;/, "no claim before agreeing");
+  assert.match(card, /if \(state\.termsAccepted === false\) return root\.ClosedHandAccountNumber\.nudge\(\$\('url-terms'\)\);/, "no claim before agreeing: pressed unticked, the Terms row is shown");
   assert.match(card, /fetch\('\/api\/phone\/accept-terms'/);
   const server = read("webapp/server.js");
   assert.match(server, /if \(!\(await registration\.termsAccepted\(\)\)\) \{ claimAwaitingTerms = \{ provider, idToken, at: Date\.now\(\) \}; return null; \}/, "a Google or Microsoft sign-in waits for it");
-  assert.match(server, /app\.post\("\/api\/phone\/accept-terms"[\s\S]{0,600}claimPersonalUrlWith\(waiting\.provider, waiting\.idToken\)/, "and claims once it is agreed, with no second sign-in");
+  assert.match(server, /app\.post\("\/api\/phone\/claim-waiting"[\s\S]{0,600}claimPersonalUrlWith\(waiting\.provider, waiting\.idToken\)/, "and claims with it when the person presses Claim, with no second sign-in");
+  assert.doesNotMatch(server.match(/app\.post\("\/api\/phone\/accept-terms"[\s\S]*?\n\}\);/)[0], /claimPersonalUrlWith/, "agreeing alone claims nothing: the person picks which way, or without an email");
   const registration = read("webapp/phone-registration.js");
   assert.match(registration, /call\('claim', 'POST', \{ code, acceptedTerms: await termsAccepted\(\) \}\)/);
   assert.match(registration, /acceptedTerms: await termsAccepted\(\) \}\)\);/);

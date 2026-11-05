@@ -20,7 +20,7 @@
   </header>
   <main class="site-main account-main">
     <h1 class="title">Your Closedhand account</h1>
-    <p class="lede"><span>Your Closedhand account holds your personal URL, and you sign in to it with Google or Microsoft.</span> <span>closedhand.com keeps only the email you sign in with, linked to your personal URL. Everything your Closedhand assistant knows about you stays on your computer.</span></p>
+    <p class="lede"><span>Your Closedhand account holds your personal URL, and you sign in with Google, Microsoft or an account number.</span> <span>closedhand.com keeps only the email you sign in with, linked to your personal URL, and with an account number no email at all. Everything your Closedhand assistant knows about you stays on your computer.</span></p>
 
     <!-- One of these shows (see account.js). -->
     <section class="card" id="signed-out" hidden>
@@ -31,6 +31,15 @@
         <a class="btn btn-primary" href="/auth/google?return_to=%2Faccount"><img src="/logos/google-color.svg" alt="">Continue with Google</a>
         <a class="btn" href="/auth/microsoft?return_to=%2Faccount"><img src="/logos/microsoft-color.svg" alt="">Continue with Microsoft</a>
       </div>
+      <button class="have-it" type="button" data-number-show>Sign in with an account number</button>
+      <form data-number-signin novalidate hidden>
+        <label for="number">Account number</label>
+        <div class="field">
+          <input id="number" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="30" placeholder="XXXX XXXX XXXX XXXX XXXX" aria-describedby="number-error">
+          <button class="btn" type="submit">Sign in</button>
+        </div>
+        <p class="error" id="number-error" role="alert" hidden></p>
+      </form>
     </section>
 
     <div class="account-grid">
@@ -90,6 +99,7 @@
     <p class="status" id="status" role="status" aria-live="polite">Checking…</p>
   </main>
   <footer class="site-foot"><a aria-current="page" href="/account">Account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></footer>
+  <script src="/number-signin.js" defer></script>
   <script src="/account.js" defer></script>
 </body>
 </html>

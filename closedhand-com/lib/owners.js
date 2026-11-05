@@ -54,6 +54,20 @@ async function ownerFor(db, identity) {
   return created.rows[0].id;
 }
 
+// An account made with an account number (lib/account-number.js): known by
+// the number's fingerprint alone, with no email. Made only by claiming a
+// personal URL without one; signing in with the number only finds it.
+async function anonymousOwner(db, fingerprint) {
+  const created = await db.query("INSERT INTO owners (provider, subject) VALUES ('anonymous', $1) RETURNING id", [fingerprint]);
+  return created.rows[0].id;
+}
+async function findAnonymous(db, fingerprint) {
+  return (await db.query("SELECT id FROM owners WHERE provider = 'anonymous' AND subject = $1", [fingerprint])).rows[0]?.id || null;
+}
+async function isAnonymous(db, ownerId) {
+  return !!ownerId && (await db.query("SELECT 1 FROM owners WHERE id = $1 AND provider = 'anonymous'", [ownerId])).rowCount > 0;
+}
+
 async function describe(db, ownerId) {
   if (!ownerId) return null;
   const { rows } = await db.query('SELECT id, provider, email FROM owners WHERE id = $1', [ownerId]);
@@ -84,4 +98,4 @@ async function signInsOf(db, ownerId) {
   return rows;
 }
 
-module.exports = { findOwner, ownerFor, addSignIn, signInsOf, describe };
+module.exports = { findOwner, ownerFor, addSignIn, signInsOf, describe, anonymousOwner, findAnonymous, isAnonymous };
