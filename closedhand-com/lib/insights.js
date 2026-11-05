@@ -71,38 +71,55 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
     return github;
   }
 
-  // This month's Managed Models spend across every key and what is left of
-  // the NEAR AI credit they draw on, read at most every five minutes.
+  // This month's spend at the provider, apart: Managed Models of everyone
+  // else, the maintainer's own Managed Models (their account's key and
+  // closedhand.com's own), and the maintainer's own use with keys
+  // closedhand.com did not make, which is not Managed Models at all. With what
+  // is left of the credit they all draw on. Read at most every five minutes.
   let near = null, nearAt = 0;
-  async function fromNear() {
-    if (!includedAi || !includedAi.enabled()) return { spentThisMonth: null, credit: null };
+  async function fromNear(mine) {
+    if (!includedAi || !includedAi.enabled()) return { spentThisMonth: null, spentYou: null, ownUse: null, credit: null, provider: null };
     if (Date.now() - nearAt < 5 * 60000) return near;
     nearAt = Date.now();
     const read = (what, promise) => promise.catch(e => { console.error(`[insights] ${what} unavailable:`, e.message); return null; });
-    const [spentThisMonth, credit] = await Promise.all([read('spend', includedAi.spentThisMonth()), read('credit', includedAi.credit())]);
-    return (near = { spentThisMonth, credit });
+    const [spend, credit] = await Promise.all([read('spend', includedAi.spendSplit(mine)), read('credit', includedAi.credit())]);
+    return (near = { spentThisMonth: spend ? spend.others : null, spentYou: spend ? spend.you : null, ownUse: spend ? spend.own : null, credit, provider: includedAi.label });
   }
 
   async function gather() {
-    const one = async sql => (await db.query(sql)).rows[0] || {};
-    // Closedhand Managed Models: first months running and ended, what they
-    // allow, and subscriptions by state.
-    const firstMonths = await one(`SELECT
-        count(*) FILTER (WHERE stopped_at IS NULL AND (ends_at IS NULL OR ends_at > now()))::int AS running,
-        coalesce(sum(granted_usd) FILTER (WHERE stopped_at IS NULL AND (ends_at IS NULL OR ends_at > now())), 0)::float AS allowance,
-        count(*) FILTER (WHERE stopped_at IS NOT NULL OR ends_at <= now())::int AS ended,
-        count(*) FILTER (WHERE granted_at > now() - interval '7 days')::int AS week
-      FROM included_ai_keys`);
-    const plusStates = (await db.query('SELECT status, count(*)::int AS n FROM plus_subscriptions GROUP BY status')).rows;
-    const accounts = await one(`SELECT count(*)::int AS total,
+    const one = async (sql, args = []) => (await db.query(sql, args)).rows[0] || {};
+    // The maintainer's own accounts (a verified sign-in email in
+    // OPERATOR_EMAILS), kept apart so real people's numbers are plain to see:
+    // each total is everyone else's, with the maintainer's share beside it.
+    const mine = (await db.query('SELECT id FROM owners WHERE email_verified AND lower(email) = ANY($1::text[])', [[...operators]])).rows.map(r => r.id);
+    const both = async (sql, col = 'owner_id') => {
+      const [others, you] = await Promise.all([
+        one(sql.replace('{who}', `NOT (${col} = ANY($1::uuid[]))`), [mine]),
+        one(sql.replace('{who}', `${col} = ANY($1::uuid[])`), [mine]),
+      ]);
+      return { ...others, you };
+    };
+    // Closedhand Managed Models: free days running and ended, what they
+    // allow, and subscriptions by state. The maintainer's own key is none of
+    // these: it is counted apart.
+    const firstMonths = await both(`SELECT
+        count(*) FILTER (WHERE NOT maintainer AND stopped_at IS NULL AND (ends_at IS NULL OR ends_at > now()))::int AS running,
+        coalesce(sum(granted_usd) FILTER (WHERE NOT maintainer AND stopped_at IS NULL AND (ends_at IS NULL OR ends_at > now())), 0)::float AS allowance,
+        count(*) FILTER (WHERE NOT maintainer AND (stopped_at IS NOT NULL OR ends_at <= now()))::int AS ended,
+        count(*) FILTER (WHERE NOT maintainer AND granted_at > now() - interval '7 days')::int AS week,
+        count(*) FILTER (WHERE maintainer)::int AS maintainer
+      FROM included_ai_keys WHERE {who}`);
+    const plusOf = async who => Object.fromEntries((await db.query(`SELECT status, count(*)::int AS n FROM plus_subscriptions WHERE ${who} GROUP BY status`, [mine])).rows.map(r => [r.status, r.n]));
+    const [plus, plusYou] = await Promise.all([plusOf('NOT (owner_id = ANY($1::uuid[]))'), plusOf('owner_id = ANY($1::uuid[])')]);
+    const accounts = await both(`SELECT count(*)::int AS total,
         count(*) FILTER (WHERE provider = 'google')::int AS google,
         count(*) FILTER (WHERE provider = 'microsoft')::int AS microsoft,
         count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS week,
         count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS month
-      FROM owners`);
+      FROM owners WHERE {who}`, 'id');
     // Online means the computer running it connected in that time, from the
     // Worker's hourly report of Cloudflare's tunnel records.
-    const urls = await one(`SELECT
+    const urls = await both(`SELECT
         count(*) FILTER (WHERE activated_at IS NOT NULL AND state <> 'revoked')::int AS working,
         count(*) FILTER (WHERE activated_at IS NOT NULL AND state <> 'revoked' AND last_seen_at > now() - interval '1 day')::int AS day,
         count(*) FILTER (WHERE activated_at IS NOT NULL AND state <> 'revoked' AND last_seen_at > now() - interval '7 days')::int AS week,
@@ -110,28 +127,38 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
         count(*) FILTER (WHERE activated_at IS NULL AND state IN ('pending', 'provisioning', 'connecting'))::int AS setting_up,
         count(*) FILTER (WHERE state = 'error')::int AS errors,
         count(*) FILTER (WHERE state <> 'revoked' AND (activated_at IS NOT NULL OR created_at > now() - interval '24 hours'))::int AS used
-      FROM addresses`);
+      FROM addresses WHERE {who}`);
     const dns = await one("SELECT value FROM service_alerts WHERE name = 'dns-records'");
     const weeks = (await db.query(`SELECT to_char(w, 'YYYY-MM-DD') AS week,
-        (SELECT count(*)::int FROM owners WHERE created_at >= w AND created_at < w + interval '7 days') AS accounts,
-        (SELECT count(*)::int FROM addresses WHERE activated_at >= w AND activated_at < w + interval '7 days') AS claimed,
+        (SELECT count(*)::int FROM owners WHERE created_at >= w AND created_at < w + interval '7 days' AND NOT (id = ANY($1::uuid[]))) AS accounts,
+        (SELECT count(*)::int FROM owners WHERE created_at >= w AND created_at < w + interval '7 days' AND id = ANY($1::uuid[])) AS you_accounts,
+        (SELECT count(*)::int FROM addresses WHERE activated_at >= w AND activated_at < w + interval '7 days' AND NOT (owner_id = ANY($1::uuid[]))) AS claimed,
+        (SELECT count(*)::int FROM addresses WHERE activated_at >= w AND activated_at < w + interval '7 days' AND owner_id = ANY($1::uuid[])) AS you_claimed,
         (SELECT coalesce(sum(fetches), 0)::int FROM install_fetches WHERE day >= w::date AND day < (w + interval '7 days')::date) AS installs
       FROM generate_series(date_trunc('week', now()) - interval '7 weeks', date_trunc('week', now()), interval '1 week') AS w
-      ORDER BY w`)).rows;
+      ORDER BY w`, [mine])).rows;
     const installs = await one('SELECT coalesce(sum(fetches), 0)::int AS total FROM install_fetches');
     const bugs = await one(`SELECT count(*) FILTER (WHERE status = 'open')::int AS open,
         count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS week FROM bug_reports`);
+    // Closedhand's own email: addresses on, and this month's mail, the
+    // maintainer's counted from their own addresses' use and taken out.
     const email = await one(`SELECT
-        (SELECT count(*)::int FROM mail_relay_accounts WHERE enabled) AS accounts,
-        coalesce(u.sent, 0)::int AS sent, coalesce(u.received, 0)::int AS received
-      FROM (SELECT 1) AS x LEFT JOIN mail_relay_usage u
-        ON u.owner_key = 'global' AND u.period = date_trunc('month', now() at time zone 'UTC')::date`);
+        (SELECT count(*)::int FROM mail_relay_accounts WHERE enabled AND NOT (owner_id = ANY($1::uuid[]))) AS accounts,
+        (SELECT count(*)::int FROM mail_relay_accounts WHERE enabled AND owner_id = ANY($1::uuid[])) AS you_accounts,
+        coalesce(g.sent, 0)::int AS all_sent, coalesce(g.received, 0)::int AS all_received,
+        (SELECT coalesce(sum(u.sent), 0)::int FROM mail_relay_usage u WHERE u.period = date_trunc('month', now() at time zone 'UTC')::date
+          AND u.owner_key IN (SELECT DISTINCT encode(sha256(convert_to(lower(owner_email), 'UTF8')), 'hex') FROM mail_relay_accounts WHERE owner_id = ANY($1::uuid[]))) AS you_sent,
+        (SELECT coalesce(sum(u.received), 0)::int FROM mail_relay_usage u WHERE u.period = date_trunc('month', now() at time zone 'UTC')::date
+          AND u.owner_key IN (SELECT DISTINCT encode(sha256(convert_to(lower(owner_email), 'UTF8')), 'hex') FROM mail_relay_accounts WHERE owner_id = ANY($1::uuid[]))) AS you_received
+      FROM (SELECT 1) AS x LEFT JOIN mail_relay_usage g
+        ON g.owner_key = 'global' AND g.period = date_trunc('month', now() at time zone 'UTC')::date`, [mine]);
     // Everyone with a Closedhand account, newest first: their sign-in, the
     // personal URL it holds and when its computer last connected, a name held
     // for them, and Closedhand's own email addresses with this month's use.
-    const people = (await db.query(`SELECT o.id, o.email, o.provider, o.email_verified, o.created_at AS signed_up,
+    const people = (await db.query(`SELECT o.id, o.email, o.provider, o.email_verified, o.created_at AS signed_up, (o.id = ANY($1::uuid[])) AS you,
         (SELECT json_agg(json_build_object('provider', s.provider, 'email', s.email) ORDER BY s.created_at) FROM owner_sign_ins s WHERE s.owner_id = o.id) AS more_sign_ins,
-        k.granted_usd::float AS first_month_usd, k.granted_at AS first_month_from, k.ends_at AS first_month_until, k.stopped_at AS first_month_stopped,
+        CASE WHEN k.maintainer THEN NULL ELSE k.granted_usd::float END AS first_month_usd, k.granted_at AS first_month_from, k.ends_at AS first_month_until, k.stopped_at AS first_month_stopped,
+        coalesce(k.maintainer, false) AS maintainer,
         p.status AS plus_status, p.started_at AS plus_since, p.current_period_end AS plus_until, p.cancel_at_period_end AS plus_cancels, (p.extended_for IS NOT NULL AND p.extended_for = p.current_period_start) AS plus_extended,
         a.hostname, a.state, a.activated_at AS claimed, a.last_seen_at AS last_online,
         (SELECT h.hostname FROM held_names h WHERE h.owner_id = o.id ORDER BY h.created_at DESC LIMIT 1) AS held_name,
@@ -146,7 +173,7 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       LEFT JOIN mail_relay_usage u ON m.owner_email IS NOT NULL
         AND u.owner_key = encode(sha256(convert_to(lower(m.owner_email), 'UTF8')), 'hex')
         AND u.period = date_trunc('month', now() at time zone 'UTC')::date
-      ORDER BY o.created_at DESC LIMIT 2000`)).rows;
+      ORDER BY o.created_at DESC LIMIT 2000`, [mine])).rows;
     const reports = (await db.query(`SELECT created_at, status, left(comment, 400) AS comment, app_version, platform, resolved_at
       FROM bug_reports ORDER BY created_at DESC LIMIT 50`)).rows;
     return {
@@ -158,8 +185,9 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       weeks,
       installs: { total: installs.total },
       bugs,
-      email,
-      managed: { ...firstMonths, plus: Object.fromEntries(plusStates.map(r => [r.status, r.n])), ...await fromNear() },
+      email: { accounts: email.accounts, sent: Math.max(0, email.all_sent - email.you_sent), received: Math.max(0, email.all_received - email.you_received),
+        you: { accounts: email.you_accounts, sent: email.you_sent, received: email.you_received } },
+      managed: { ...firstMonths, plus, you: { ...firstMonths.you, plus: plusYou }, ...await fromNear(mine) },
       github: await githubCounts(),
     };
   }

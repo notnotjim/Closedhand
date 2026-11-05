@@ -208,12 +208,12 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   can read what you send or what it answers. When a better uncensored LLM is available,
   Closedhand switches to it for you." The company running that hardware (NEAR AI) is named only
   on the Privacy page, never elsewhere in the app, on the site or in chat.
-- Closedhand Managed Models are one product with one name: a first month set up for the person,
-  then a monthly subscription that keeps them going and lifts the monthly limits on Closedhand's
-  own email. The paid part is "the subscription" (or "your subscription"), never a name of its
+- Closedhand Managed Models are one product with one name: 14 free days set up for the person,
+  then a monthly subscription that keeps them going. Closedhand's own email address comes with
+  them and works only while they are the person's. The paid part is "the subscription" (or "your subscription"), never a name of its
   own: there is no "Closedhand+". The code and its tables still say plus.
 - Closedhand Managed Models are never money in anything people read but the subscription's
-  price: no credit, balances, dollars of use, tokens or top-ups. People see a plan (a first month
+  price: no credit, balances, dollars of use, tokens or top-ups. People see a plan (14 free days
   set up for them, or a subscription renewing or ending on a day) and, where the account is shown,
   one plain bar of this month's fair use with no amount; chat tells them about use only near the
   fair-use ceiling. Credit exists only behind the scenes (closedhand.com's key limits).
@@ -235,11 +235,11 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   person's own LLM provider, whose bill it is; Managed Models use is shown by that name alone.
 - Closedhand is free software that runs with any LLM the person chooses through their own API key,
   free ones included; that is the main path. Managed Models and their subscription are
-  conveniences. Each person has one free month of Managed Models, ever: the first month, which
-  needs no card. Someone who did not get it then has the subscription's first month free instead
-  (Polar's trial: the card is taken at checkout, nothing is charged until that month ends, and
-  Polar emails three days before). It is said plainly, with the day it ends and the price after,
-  never as urgency or bait. The first month's end is mentioned only in its last week, and an offer
+  conveniences. Each person has 14 free days of Managed Models, ever, which need no card. Someone who did not
+  get them then has the subscription's first 14 days free instead (Polar's trial: the card is
+  taken at checkout, nothing is charged until they end, and Polar emails three days before). It is
+  said plainly, with the day it ends and the price after, never as urgency or bait. The free days'
+  end is mentioned only in their last three days, and an offer
   of what comes next puts the person's own LLM provider first and the subscription second.
 - LLM providers are equal. No provider gets special treatment, fallback priority, or
   hardcoded references. Each provider is fully isolated.

@@ -13,12 +13,19 @@ async function usage(db, account) {
   const owner = crypto.createHash('sha256').update(account.owner_email.toLowerCase()).digest('hex');
   const row = mustWrite(await db.from('mail_relay_usage').select('sent,received,bytes').eq('owner_key', owner).eq('period', month).maybeSingle());
   const daily = mustWrite(await db.from('mail_relay_usage').select('sent,received').eq('owner_key', owner + ':daily').eq('period', new Date().toISOString().slice(0,10)).maybeSingle());
-  // A Managed Models subscription lifts the monthly allowances; the daily one stays, ten times
-  // higher, as a guard against runaway sending (migration 014).
-  const subscriber = !!account.owner_id && !!mustWrite(await db.from('plus_subscriptions').select('status')
-    .eq('owner_id', account.owner_id).in('status', ['active', 'trialing', 'past_due']).maybeSingle());
-  if (subscriber) return { dailySent: daily?.sent || 0, dailyReceived: daily?.received || 0, sent: row?.sent || 0, received: row?.received || 0, bytes: Number(row?.bytes || 0), sentLimit: null, receivedLimit: null, bytesLimit: null, dailySentLimit: 1000, dailyReceivedLimit: 2000, plus: true };
-  return { dailySent: daily?.sent || 0, dailyReceived: daily?.received || 0, sent: row?.sent || 0, received: row?.received || 0, bytes: Number(row?.bytes || 0), sentLimit: 1000, receivedLimit: 2000, bytesLimit: 262144000, dailySentLimit: 100, dailyReceivedLimit: 200, resets: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1)).toISOString() };
+  // No monthly allowance; the daily one stays as a guard against runaway sending
+  // (migration 023).
+  return { dailySent: daily?.sent || 0, dailyReceived: daily?.received || 0, sent: row?.sent || 0, received: row?.received || 0, bytes: Number(row?.bytes || 0), dailySentLimit: 1000, dailyReceivedLimit: 2000, entitled: await entitled(db, account.owner_id) };
+}
+// Closedhand's own email address comes with Closedhand Managed Models: it
+// works while the account's free 14 days run, its subscription gives access,
+// or it is the maintainer's own (reserve_mail_relay_usage
+// checks the same, migration 023).
+async function entitled(db, ownerId) {
+  if (!ownerId) return false;
+  if (mustWrite(await db.from('plus_subscriptions').select('status').eq('owner_id', ownerId).in('status', ['active', 'trialing', 'past_due']).maybeSingle())) return true;
+  const key = mustWrite(await db.from('included_ai_keys').select('ends_at,maintainer').eq('owner_id', ownerId).is('stopped_at', null).maybeSingle());
+  return !!key && (key.maintainer === true || (!!key.ends_at && new Date(key.ends_at) > new Date()));
 }
 async function monitor(db, notify, cutoff) {
   const month = new Date().toISOString().slice(0,7) + '-01';
@@ -40,4 +47,4 @@ async function monitor(db, notify, cutoff) {
     }
   }
 }
-module.exports = { reserve, usage, monitor };
+module.exports = { reserve, usage, entitled, monitor };

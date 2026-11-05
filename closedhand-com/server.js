@@ -107,6 +107,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   app.get('/ethos', page('ethos.html'));
   app.get('/architecture', page('architecture.html'));
   app.get('/pcl', page('pcl.html'));
+  app.get('/managed-models', page('managed-models.html'));
   app.get('/privacy', page('privacy.html'));
   app.get('/terms', page('terms.html'));
   app.get('/open', page('open.html'));
@@ -132,7 +133,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   const notices = require('./lib/operator-notices').create({ db, env, request });
   const includedAi = require('./lib/included-ai').create({ db, env, request, notices });
   const plus = require('./lib/plus').create({ db, env, request, includedAi, baseUrl });
-  const capacity = require('./lib/capacity').create({ db, env, notices });
+  const capacity = require('./lib/capacity').create({ db, env, notices, includedAi });
   const backup = require('./lib/backup').create({ db, env, notices });
   require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, notices });
   plus.register(app, { sessions });
@@ -173,7 +174,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
     if (res.headersSent) return next(err);
     res.status(status).json({ error: status === 413 ? 'That request is too large.' : status < 500 ? 'That request could not be read.' : 'Something went wrong. Please try again.' });
   });
-  // Run hourly: first months that have run out and months carried on past
+  // Run hourly: free days that have run out and months carried on past
   // fair use end, keys are brought in line with their subscriptions, the
   // maintainer is told what needs raising, a notice their computer has not
   // collected for a day goes by email, and once a day the database is backed up.

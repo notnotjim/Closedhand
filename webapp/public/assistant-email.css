@@ -29,3 +29,8 @@
 #assistant-email .assistant-email-usage td { white-space:nowrap; color:var(--ui-muted); }
 #assistant-email .assistant-email-usage strong { color:var(--ui-text); }
 #assistant-email .assistant-email-usage th:first-child { padding-left:0; }
+
+/* Without Closedhand Managed Models: a lock by the title, any address kept, and Unlock. */
+.address-head .assistant-email-lock { width: 0.875rem; height: 0.875rem; vertical-align: -0.0625rem; fill: none; stroke: var(--ui-muted, var(--muted)); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#assistant-email .assistant-email-kept { color: var(--ui-muted, var(--muted)); }
+#assistant-email a.assistant-email-unlock { display: inline-flex; align-items: center; min-height: 2.75rem; box-sizing: border-box; text-decoration: none; }

@@ -12,6 +12,7 @@ const { migrate } = require('../lib/db');
 const capacity = require('../lib/capacity');
 const notices = require('../lib/operator-notices');
 const { planFor } = require('../lib/plan');
+process.env.TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || require('node:crypto').randomBytes(32).toString('base64');
 
 const NAME = 'closedhand_capacity_test';
 let admin, db;
@@ -39,30 +40,30 @@ const started = (n, at = new Date()) => Promise.all(Array.from({ length: n }, ()
   db.query('INSERT INTO starter_grants (person_hash, granted_usd, granted_at) VALUES ($1, 20, $2)', [crypto.randomBytes(16).toString('hex'), at])));
 const fresh = async () => { await db.query('TRUNCATE starter_grants, operator_alerts, operator_notices'); };
 
-test('first months past the expected number are told at 75%, 90%, 100%, then every 25%, and never stop anyone', async () => {
+test('free days past the expected number are told at 75%, 90%, 100%, then every 25%, and never stop anyone', async () => {
   await fresh();
   const queued = notices.create({ db, env: {} });
   const watch = capacity.create({ db, env: { INCLUDED_AI_MONTHLY_PEOPLE: '8', INCLUDED_AI_DAILY_PEOPLE: '1000' }, notices: queued });
   await started(5);
   assert.deepEqual(await watch.check(), [], 'under 75%');
   await started(1);
-  assert.deepEqual(await watch.check(), ["Closedhand: 6 of this month's 8 first months of Managed Models are taken. Raise INCLUDED_AI_MONTHLY_PEOPLE on Railway if more people are coming."]);
+  assert.deepEqual(await watch.check(), ["Closedhand: 6 people have started their free days of Managed Models this month, against the 8 expected. Raise INCLUDED_AI_MONTHLY_PEOPLE on Railway if more people are coming."]);
   assert.deepEqual(await watch.check(), [], 'told once');
   await started(4);
-  assert.deepEqual(await watch.check(), ["Closedhand: 10 of this month's 8 first months of Managed Models are taken. Raise INCLUDED_AI_MONTHLY_PEOPLE on Railway if more people are coming."], 'one notice for 90%, 100% and 125% passed at once');
+  assert.deepEqual(await watch.check(), ["Closedhand: 10 people have started their free days of Managed Models this month, against the 8 expected. Raise INCLUDED_AI_MONTHLY_PEOPLE on Railway if more people are coming."], 'one notice for 90%, 100% and 125% passed at once');
   assert.equal((await db.query("SELECT count(*) AS n FROM operator_alerts WHERE kind = 'first-months'")).rows[0].n, '4');
   await started(1, new Date(Date.UTC(2020, 0, 15)));
   assert.deepEqual(await watch.check(), [], 'another month counts apart');
   assert.equal((await db.query('SELECT count(*) AS n FROM operator_notices')).rows[0].n, '2');
 });
 
-test('a burst of first months in a day is told once that day', async () => {
+test('a burst of free days in a day is told once that day', async () => {
   await fresh();
   const watch = capacity.create({ db, env: { INCLUDED_AI_MONTHLY_PEOPLE: '1000', INCLUDED_AI_DAILY_PEOPLE: '3' }, notices: notices.create({ db, env: {} }) });
   await started(2);
   assert.deepEqual(await watch.check(), []);
   await started(1);
-  assert.deepEqual(await watch.check(), ['Closedhand: 3 first months of Managed Models started in the last 24 hours, more than usual. Worth a look for account farming.']);
+  assert.deepEqual(await watch.check(), ['Closedhand: 3 people started their free days of Managed Models in the last 24 hours, more than usual. Worth a look for account farming.']);
   await started(5);
   assert.deepEqual(await watch.check(), [], 'once a day');
 });
@@ -97,13 +98,13 @@ test('notices go to the maintainer\'s own Closedhand once, and by email when it 
   assert.equal(await notices.create({ db, env: { ...env, MAIL_FROM: '' }, request }).emailStale(), 0, 'no sender, no email');
 });
 
-test('the plan says where an account stands: first month, subscribed, ended or none', async () => {
+test('the plan says where an account stands: free days, subscribed, ended or none', async () => {
   const env = { ASSISTANT_EMAIL_ENABLED: '1', ASSISTANT_EMAIL_RELEASED: '1' };
   const now = new Date('2026-11-10T12:00:00Z');
   const none = await person(), first = await person(), over = await person(), plus = await person(), leaving = await person();
-  assert.deepEqual(await planFor(db, {}, none, now), { name: 'none', email: false, plus_trial: true }, 'never had Managed Models: a subscription would start with the free month');
+  assert.deepEqual(await planFor(db, {}, none, now), { name: 'none', email: false, plus_trial: true }, 'never had Managed Models: a subscription would start with the free days');
   await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, $2, 20, '2026-11-20T00:00:00Z')", [first, crypto.randomBytes(32).toString('hex')]);
-  assert.deepEqual(await planFor(db, env, first, now), { name: 'first-month', ends_at: '2026-11-20T00:00:00.000Z', email: true }, 'in the one free month: none to come');
+  assert.deepEqual(await planFor(db, env, first, now), { name: 'first-month', ends_at: '2026-11-20T00:00:00.000Z', email: true }, 'in the free days: none to come');
   await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, $2, 20, '2026-11-01T00:00:00Z')", [over, crypto.randomBytes(32).toString('hex')]);
   assert.equal((await planFor(db, env, over, now)).name, 'ended');
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_start, current_period_end, extended_for, started_at) VALUES ($1, 'sub_a', 'active', '2026-11-01T00:00:00Z', '2026-12-01T00:00:00Z', '2026-11-01T00:00:00Z', now())", [plus]);
@@ -113,9 +114,16 @@ test('the plan says where an account stands: first month, subscribed, ended or n
   assert.deepEqual(await planFor(db, env, leaving, now), { name: 'plus', ends_at: '2026-12-01T00:00:00.000Z', extended: false, email: true });
   await db.query("UPDATE plus_subscriptions SET status = 'canceled' WHERE owner_id = $1", [leaving]);
   assert.equal((await planFor(db, env, leaving, now)).name, 'ended', 'an ended subscription without a key');
+  const boss = await person('Boss@Example.com');
+  const maintained = { ...env, OPERATOR_EMAILS: 'boss@example.com' };
+  assert.deepEqual(await planFor(db, maintained, boss, now), { name: 'maintainer', renews_at: '2026-12-01T00:00:00.000Z', email: true },
+    'the maintainer\'s own account: no charge, a month of fair use renewing on the first');
+  await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_end, cancel_at_period_end, started_at) VALUES ($1, 'sub_boss', 'active', '2026-11-27T00:00:00Z', true, now())", [boss]);
+  assert.equal((await planFor(db, maintained, boss, now)).name, 'maintainer', 'whatever Polar says');
+  assert.equal((await planFor(db, maintained, none, now)).name, 'none', 'nobody else');
 });
 
-test('a subscription lifts the monthly email allowances; a daily guard stays, ten times higher', async () => {
+test('Closedhand\'s email address works only while Managed Models are the account\'s, with no monthly allowance; a daily guard stays', async () => {
   const reserve = async (account, direction) => (await db.query(
     "SELECT * FROM reserve_mail_relay_usage($1, $2, $3, 1, 1000)", [crypto.randomUUID(), account, direction])).rows[0];
   const mailbox = async (ownerId, email) => {
@@ -132,17 +140,29 @@ test('a subscription lifts the monthly email allowances; a daily guard stays, te
   const sentToday = (email, sent) => db.query(
     'INSERT INTO mail_relay_usage (owner_key, period, sent) VALUES ($1, $2, $3) ON CONFLICT (owner_key, period) DO UPDATE SET sent = EXCLUDED.sent', [owner(email) + ':daily', today, sent]);
 
-  const freeEmail = `free${people}@example.com`, plusEmail = `plus${people}@example.com`;
-  const free = await mailbox(await person(freeEmail), freeEmail);
+  const off = "Closedhand's email address sends and receives mail only with Closedhand Managed Models, which this account doesn't have right now.";
+  const noneEmail = `none${people}@example.com`, freeEmail = `free${people}@example.com`, overEmail = `over${people}@example.com`, plusEmail = `plus${people}@example.com`;
+  const none = await mailbox(await person(noneEmail), noneEmail);
+  const freeOwner = await person(freeEmail), free = await mailbox(freeOwner, freeEmail);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, $2, 12, now() + interval '5 days')", [freeOwner, hex()]);
+  const overOwner = await person(overEmail), over = await mailbox(overOwner, overEmail);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at, stopped_at) VALUES ($1, $2, 12, now() - interval '1 day', now())", [overOwner, hex()]);
   const subscriberOwner = await person(plusEmail);
   const subscriber = await mailbox(subscriberOwner, plusEmail);
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, started_at) VALUES ($1, 'sub_mail', 'active', now())", [subscriberOwner]);
-  await sentThisMonth(freeEmail, 1000);
-  await sentThisMonth(plusEmail, 1000);
-  assert.deepEqual(await reserve(free, 'out'), { allowed: false, reason: 'Your monthly email allowance has been reached. It resets next month.' });
-  assert.deepEqual(await reserve(subscriber, 'out'), { allowed: true, reason: null }, 'no monthly allowance with a subscription');
+  assert.deepEqual(await reserve(none, 'out'), { allowed: false, reason: off }, 'never had Managed Models: nothing is sent');
+  assert.deepEqual(await reserve(none, 'in'), { allowed: false, reason: off }, 'nor received, with one plain line');
+  assert.deepEqual(await reserve(over, 'in'), { allowed: false, reason: off }, 'free days over');
+  await sentThisMonth(freeEmail, 5000);
+  assert.deepEqual(await reserve(free, 'out'), { allowed: true, reason: null }, 'in the free days, no monthly allowance');
+  await sentThisMonth(plusEmail, 5000);
+  assert.deepEqual(await reserve(subscriber, 'out'), { allowed: true, reason: null }, 'with a subscription, none either');
   await sentToday(plusEmail, 1000);
   assert.deepEqual(await reserve(subscriber, 'out'), { allowed: false, reason: 'Your daily email allowance has been reached. It resets at midnight UTC.' }, 'the daily guard stays');
+  // The maintainer's own Managed Models count like any other: no end, never free days.
+  const bossEmail = `boss${people}@example.com`, bossOwner = await person(bossEmail), boss = await mailbox(bossOwner, bossEmail);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, base_usd, base_for, maintainer) VALUES ($1, $2, 0, 0, date_trunc('month', now()), true)", [bossOwner, hex()]);
+  assert.deepEqual(await reserve(boss, 'out'), { allowed: true, reason: null }, 'mail through the maintainer\'s Managed Models');
 });
 
 // Personal URLs taken, as the limit counts them (working, or reserved today).
@@ -190,7 +210,7 @@ test('possible misuse: nothing to report shows nothing and asks no LLM', async (
   await fresh();
   await db.query('DELETE FROM included_ai_keys; DELETE FROM retired_ai_keys; DELETE FROM addresses');
   const { asked, misuse } = misuseWorld([]);
-  assert.deepEqual(await misuse.report(), { signs: [], summary: null });
+  assert.deepEqual(await misuse.report(), { signs: [], mine: [], summary: null });
   assert.equal(asked.length, 0);
 });
 
@@ -242,16 +262,19 @@ test('possible misuse: fast use, unused first months, full connections and loose
     { id: loose, name: 'Closedhand ' + crypto.randomUUID(), limit: 20, usage: 4.5 },
     { id: hex(), name: 'Closedhand insights', limit: 1, usage: 0.01 },
   ];
-  const { asked, misuse } = misuseWorld(keys, 'One connection has had three first months \u2014 maybe a household.');
+  // amber-lake-12 is the maintainer's own account here (OPERATOR_EMAILS): marked, and the LLM is told.
+  const { asked, misuse } = misuseWorld(keys, 'One connection has had three first months \u2014 maybe a household.', { OPERATOR_EMAILS: 'Fast@example.com' });
   const got = await misuse.report(now);
   assert.deepEqual(got.signs, [
     '1 NEAR AI key is live that no account holds, with $4.50 used.',
-    'amber-lake-12 has used 75% of its first month ($15.00) in 2 days.',
+    'amber-lake-12 has used 75% of its free days ($15.00) in 2 days.',
     "quiet-fern-40 has used 80% of this month's subscription fair use ($16.00) in 2 days.",
-    `account ${idle.slice(0, 8)} got a first month, but its personal URL has never come online.`,
-    '1 internet connection has reached the most first months one connection may have (3 in 30 days).',
+    `account ${idle.slice(0, 8)} got free days, but its personal URL has never come online.`,
+    '1 internet connection has reached the most free days one connection may have (3 in 30 days).',
     '1 replaced or deleted key has not been deleted at NEAR AI after 3 tries.',
   ]);
+  assert.deepEqual(got.mine, [false, true, false, false, false, false], 'only the maintainer\'s own account is marked');
+  assert.match(asked[0].messages[1].content, /amber-lake-12 has used 75% of its free days \(\$15\.00\) in 2 days\. \(This is your own account\.\)/);
   assert.equal(got.summary, 'One connection has had three first months, maybe a household.', 'no dashes');
   assert.equal(asked.length, 1);
   assert.equal(asked[0].model, 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated');
@@ -260,4 +283,49 @@ test('possible misuse: fast use, unused first months, full connections and loose
   await misuse.report(now);
   assert.equal(asked.length, 1, 'the same signs are summed up once');
   await db.query('DELETE FROM included_ai_keys; DELETE FROM retired_ai_keys; DELETE FROM addresses; DELETE FROM starter_grants; DELETE FROM plus_subscriptions');
+});
+
+// The credit Managed Models draw on, with the provider stood in: told at 14
+// and 7 days left, and when less than one free period's ceiling is left; each
+// once, and again only after a top-up.
+test('the provider\'s credit running low is told at 14 and 7 days, and under one free period, once until topped up', async () => {
+  await fresh();
+  const queued = notices.create({ db, env: {} });
+  const credit = { left: 300, days: 40 };
+  const includedAi = { enabled: () => true, credit: async () => ({ ...credit }), label: 'NEAR AI', trialUsd: 12,
+    topUp: 'Add credit, or raise the organisation\'s spend limit, at cloud.near.ai' };
+  const watch = capacity.create({ db, env: { INCLUDED_AI_DAILY_PEOPLE: '1000' }, notices: queued, includedAi });
+  assert.deepEqual(await watch.check(), [], 'forty days: nothing to say');
+  Object.assign(credit, { left: 120, days: 12 });
+  assert.deepEqual(await watch.check(), ["Closedhand: the NEAR AI credit Managed Models draw on lasts about 12 more days at the last 30 days' pace ($120.00 left). When it runs out, every free period and every subscription stops at once. Add credit, or raise the organisation's spend limit, at cloud.near.ai."]);
+  assert.deepEqual(await watch.check(), [], 'told once');
+  Object.assign(credit, { left: 60, days: 6 });
+  assert.match((await watch.check())[0], /lasts about 6 more days/, 'and again at a week');
+  assert.deepEqual(await watch.check(), []);
+  Object.assign(credit, { left: 9.5, days: 1 });
+  assert.deepEqual(await watch.check(), ["Closedhand: the NEAR AI credit Managed Models draw on is down to $9.50, less than one person's free days can use. When it runs out, every free period and every subscription stops at once. Add credit, or raise the organisation's spend limit, at cloud.near.ai."]);
+  // Topped up: each is told again when it comes back.
+  Object.assign(credit, { left: 500, days: 60 });
+  assert.deepEqual(await watch.check(), []);
+  Object.assign(credit, { left: 100, days: 10 });
+  assert.equal((await watch.check()).length, 1, 'told again after the top-up');
+  // Unread, or nothing used lately: nothing about days.
+  Object.assign(credit, { left: 400, days: null });
+  assert.deepEqual(await watch.check(), []);
+  const broken = capacity.create({ db, env: { INCLUDED_AI_DAILY_PEOPLE: '1000' }, notices: queued, includedAi: { ...includedAi, credit: async () => { throw new Error('NEAR AI answered 503'); } } });
+  const err = console.error; console.error = () => {};
+  try { assert.deepEqual(await broken.check(), [], 'a credit that can\'t be read is not a notice'); } finally { console.error = err; }
+});
+
+test('NEAR\'s spend limit counts as running out too: what is left is whichever ends first', async () => {
+  const { nearAi, SIGN_IN, BROWSER } = require('./near-ai');
+  // Each stand-in NEAR starts from the sign-in handed over.
+  await db.query('DELETE FROM near_session');
+  const near = nearAi({ balance: { remaining: 6.63e9, spend_limit: 10e9, total_spent: 9.5e9, credit_limits: [] } });
+  const ai = require('../lib/included-ai').create({ db, env: { NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: 'k'.repeat(44) }, request: near.request });
+  assert.equal((await ai.credit(new Date('2027-03-11T09:00:00Z'))).left, 0.5, 'the spend limit ends first');
+  await db.query('DELETE FROM near_session');
+  const roomy = nearAi({ balance: { remaining: 6.63e9, spend_limit: 100e9, total_spent: 3.37e9, credit_limits: [] } });
+  const more = require('../lib/included-ai').create({ db, env: { NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: 'k'.repeat(44) }, request: roomy.request });
+  assert.equal((await more.credit(new Date('2027-03-11T09:00:00Z'))).left, 6.63, 'the credit ends first');
 });

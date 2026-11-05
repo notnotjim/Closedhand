@@ -1,6 +1,6 @@
 // Recent Closedhand accounts and what each has of Closedhand Managed Models:
-// its first month (allowance, when it began and ends, spend so far) and
-// its subscription, with this month's NEAR AI spend across every key. For the
+// its free 14 days (allowance, when they began and end, spend so far) and
+// its subscription, with this month's spend at the provider across every key. For the
 // maintainer. Reads only; never prints an email or a key.
 //
 // Run inside the closedhand-com service:
@@ -14,7 +14,7 @@ async function recent(db, includedAi, days = 7) {
     `SELECT o.id, o.created_at, o.provider,
             (SELECT count(*)::int FROM owner_sign_ins s WHERE s.owner_id = o.id) AS more_sign_ins,
             a.hostname, a.state,
-            k.granted_usd, k.granted_at, k.ends_at, k.stopped_at,
+            k.granted_usd, k.granted_at, k.ends_at, k.stopped_at, k.maintainer,
             p.status AS plus_status, p.current_period_end
        FROM owners o
        LEFT JOIN addresses a ON a.owner_id = o.id
@@ -25,8 +25,8 @@ async function recent(db, includedAi, days = 7) {
   const lines = [`Accounts made in the last ${days} day(s): ${rows.length}`];
   for (const r of rows) {
     const used = r.granted_usd != null ? await includedAi.usage(r.id).catch(() => null) : null;
-    const first = r.granted_usd == null ? 'no first month'
-      : `first month ${usd(r.granted_usd)} from ${day(r.granted_at)} to ${day(r.ends_at)}${r.stopped_at ? `, stopped ${day(r.stopped_at)}` : ''}`
+    const first = r.maintainer ? 'Managed Models as the maintainer, monthly fair use' : r.granted_usd == null ? 'no free days'
+      : `free days ${usd(r.granted_usd)} from ${day(r.granted_at)} to ${day(r.ends_at)}${r.stopped_at ? `, stopped ${day(r.stopped_at)}` : ''}`
         + (used ? `, used ${usd(used.used)} of ${usd(used.limit)}` : '');
     const plus = r.plus_status ? `subscription ${r.plus_status} until ${day(r.current_period_end)}` : 'no subscription';
     lines.push(`  ${day(r.created_at)}  ${r.provider}${r.more_sign_ins ? ` +${r.more_sign_ins} sign-in(s)` : ''}  `
@@ -35,7 +35,7 @@ async function recent(db, includedAi, days = 7) {
   const live = (await db.query('SELECT count(*)::int n, coalesce(sum(granted_usd), 0) total FROM included_ai_keys WHERE stopped_at IS NULL')).rows[0];
   lines.push(`Keys running now: ${live.n}, allowances totalling ${usd(live.total)}`);
   const spent = await includedAi.spentThisMonth().catch(() => null);
-  lines.push(`NEAR AI spend this month across every key: ${spent == null ? 'could not be read' : usd(spent)}`);
+  lines.push(`${includedAi.label || 'NEAR AI'} spend this month across every key: ${spent == null ? 'could not be read' : usd(spent)}`);
   return lines.join('\n');
 }
 

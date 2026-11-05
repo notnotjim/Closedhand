@@ -15,7 +15,7 @@
 // forgets the sign-in and takes the route down (deleteAccount).
 //
 // A claim also hands the claiming computer the AI that comes with Closedhand,
-// a key of its own at NEAR AI (included-ai.js), when one can be given.
+// a key of its own at the Managed Models provider (included-ai.js), when one can be given.
 const crypto = require('node:crypto');
 const { encryptString, decryptString } = require('./crypto-tokens');
 const { equal } = require('./session');
@@ -284,6 +284,13 @@ async function releaseIdle(pool, days) {
   return idle.length;
 }
 
+// The Terms as they stand (views/terms.html, its "Last updated" day): what
+// an account agreed to when its claim says the person ticked the box.
+const TERMS_VERSION = '2026-11-05';
+async function agreed(db, ownerId, body) {
+  if (body?.acceptedTerms === true) await db.query('UPDATE owners SET terms_version = $2, terms_accepted_at = now() WHERE id = $1', [ownerId, TERMS_VERSION]);
+}
+
 function register(app, { db, sessions, secret, baseUrl, env = process.env, request = fetch, includedAi = require('./included-ai').create({ db, env, request }), plus = null, notices = null }) {
   const { planFor } = require('./plan');
   const enabled = () => env.PHONE_ENROLLMENT_ENABLED === '1';
@@ -435,6 +442,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const a = used.rows[0];
     const first = !(await db.query('SELECT 1 FROM addresses WHERE owner_id = $1', [a.owner_id])).rowCount;
     const row = await reserve(db, { ownerId: a.owner_id, secretHash: copy.secret_hash, hostname: a.hostname, port: a.web_port, limit });
+    await agreed(db, a.owner_id, req.body);
     await announce(first, a.owner_id, row);
     res.json(await claimed(row, a.owner_id, req));
   }));
@@ -466,6 +474,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       if ((mine && mine.state !== 'revoked') || (held && held.owner_id !== owner)) return res.json({ state: 'unconfirmed', claimHere: true });
       const hostname = mine ? mine.hostname : await heldName(db, owner) || await freeName(db);
       const row = await reserve(db, { ownerId: owner, secretHash: copy.secret_hash, hostname, port, limit });
+      await agreed(db, owner, req.body);
       await announce(!mine, owner, row);
       res.json(await claimed(row, owner, req));
     }));
@@ -490,7 +499,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
 
   // Which provider and models Closedhand Managed Models use now. A computer
   // with its key asks every hour and switches itself over when they change.
-  // It is also told its plan (lib/plan.js: its first month, a subscription,
+  // It is also told its plan (lib/plan.js: its free 14 days, a subscription,
   // ended or none) and how much of the plan's fair use is used (a NEAR key
   // can't read that itself), a subscriber whose account holds no key yet gets
   // one here, once, to seal, and the maintainer's own Closedhand collects
@@ -500,8 +509,10 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const found = await owned(req);
     const ownerId = found?.row.owner_id || null;
     const plan = await planFor(db, env, ownerId, undefined, includedAi);
-    const key = plan.name === 'plus' ? await includedAi.collect(ownerId) : null;
-    const usage = plan.name === 'plus' || plan.name === 'first-month' ? await includedAi.usage(ownerId).catch(() => null) : null;
+    // A subscriber's key, or the maintainer's, collected once; the maintainer's
+    // is also kept to its month here.
+    const key = plan.name === 'plus' || plan.name === 'maintainer' ? await includedAi.collect(ownerId) : null;
+    const usage = ['plus', 'first-month', 'maintainer'].includes(plan.name) ? await includedAi.usage(ownerId).catch(() => null) : null;
     const told = notices ? await notices.collect(ownerId) : [];
     // What the subscription costs where the computer is, so Closedhand can say when asked.
     const prices = plus ? await plus.prices(req.headers['cf-ipcountry']).catch(() => null) : null;
@@ -655,7 +666,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     // ask for the account on every view, and each card read opens a Polar session.
     const card = withCard && plusState?.active ? await plus.cardOnFile(owner).catch(() => null) : null;
     const plan = await planFor(db, env, owner, undefined, includedAi);
-    const running = plan.name === 'first-month' || plan.name === 'plus';
+    const running = ['first-month', 'plus', 'maintainer'].includes(plan.name);
     const usage = running ? await includedAi.usage(owner).catch(() => null) : null;
     const used = usage ? Math.round(Math.min(1, Math.max(0, usage.used / usage.limit)) * 100) / 100 : null;
     return { signIns: await signInsOf(db, owner), ...(plusState ? { plus: { ...plusState, ...(plusPrices ? { prices: plusPrices } : {}), ...(card ? { card } : {}) } } : {}), ...(plan.name ? { plan } : {}), ...(used !== null ? { used } : {}) };
@@ -831,4 +842,4 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   }));
 }
 
-module.exports = { register, reserve, rename, deleteAccount, releaseIdle, heldName, nameTaken, freeName, ticketFor, readTicket, installation, validHostname, tokenTunnel, Refusal };
+module.exports = { TERMS_VERSION, register, reserve, rename, deleteAccount, releaseIdle, heldName, nameTaken, freeName, ticketFor, readTicket, installation, validHostname, tokenTunnel, Refusal };

@@ -158,6 +158,10 @@ async function confirm(permanent) {
   await setConf({ PHONE_PERMANENT_URL: permanent.url, PHONE_TUNNEL_TOKEN: encrypted(permanent.token) });
 }
 // state: set when closedhand.com handed the code back by itself (not typed).
+// Whether the person agreed to the Terms and Privacy policy on the setup
+// page, which a claim tells closedhand.com (it keeps which Terms and when).
+async function termsAccepted() { return !!(await getConf('TERMS_ACCEPTED_AT')); }
+async function acceptTerms() { await setConf({ TERMS_ACCEPTED_AT: new Date().toISOString() }); }
 async function claim(code, state) {
   code = String(code || '').toUpperCase().replace(/[\s-]/g, '');
   if (!/^[A-Z0-9]{6}$/.test(code)) throw new Error('The code is 6 letters and numbers, as shown on closedhand.com.');
@@ -168,7 +172,7 @@ async function claim(code, state) {
     if (!match) throw new Error('That link didn’t come from this Closedhand. Get your personal URL here instead.');
     await setConf({ PHONE_CLAIM_STATES: JSON.stringify(states.filter(s => s !== match)) });
   }
-  const data = withIncludedAi(await call('claim', 'POST', { code }));
+  const data = withIncludedAi(await call('claim', 'POST', { code, acceptedTerms: await termsAccepted() }));
   if (['pending', 'provisioning', 'connecting', 'active', 'error'].includes(data.state)) registrationState = data.state;
   // The name closedhand.com picked, so setup can say where Closedhand is.
   if (validAddress(data.url)) await setConf({ PHONE_ADDRESS_NAME: new URL(data.url).hostname.split('.')[0] });
@@ -180,7 +184,7 @@ async function claim(code, state) {
 // its confirmation page instead (an address already used on another computer).
 async function claimWithSignIn(provider, idToken) {
   if (!['google', 'microsoft'].includes(provider)) throw new Error('Unknown sign-in');
-  const data = withIncludedAi(await call('claim-' + provider, 'POST', { idToken, port: Number(process.env.PORT || 3000) }));
+  const data = withIncludedAi(await call('claim-' + provider, 'POST', { idToken, port: Number(process.env.PORT || 3000), acceptedTerms: await termsAccepted() }));
   if (data.claimHere || !validAddress(data.url)) return null;
   if (['pending', 'provisioning', 'connecting', 'active', 'error'].includes(data.state)) registrationState = data.state;
   await setConf({ PHONE_ENROLLMENT: '2', PHONE_ADDRESS_NAME: new URL(data.url).hostname.split('.')[0] });
@@ -216,7 +220,7 @@ async function account() {
   const provider = (p) => p === 'microsoft' ? 'microsoft' : 'google';
   const text = (v) => typeof v === 'string' ? v.slice(0, 200) : null;
   const date = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null;
-  const plan = found.plan && ['first-month', 'plus', 'ended', 'none'].includes(found.plan.name) ? found.plan : null;
+  const plan = found.plan && ['first-month', 'plus', 'ended', 'none', 'maintainer'].includes(found.plan.name) ? found.plan : null;
   const plus = found.plus && typeof found.plus === 'object' ? found.plus : null;
   const prices = plus?.prices && typeof plus.prices === 'object' ? plus.prices : {};
   return {
@@ -285,4 +289,4 @@ async function forget() {
 function status() {
   return { registrationState, ownershipConfirmed: ['pending', 'provisioning', 'connecting', 'active', 'error'].includes(registrationState) };
 }
-module.exports = { begin, claim, claimWithSignIn, addSignIn, rename, cleanName, connection, validAddress, confirm, challenge, status, serviceAvailable, includedAiOffered, includedAiModel, includedAiState, account, plus, deleteAccount };
+module.exports = { begin, claim, claimWithSignIn, termsAccepted, acceptTerms, addSignIn, rename, cleanName, connection, validAddress, confirm, challenge, status, serviceAvailable, includedAiOffered, includedAiModel, includedAiState, account, plus, deleteAccount };

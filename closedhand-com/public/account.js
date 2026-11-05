@@ -10,7 +10,7 @@
   const providerName = p => p === 'microsoft' ? 'Microsoft' : 'Google';
   const show = screen => {
     for (const id of ['signed-out', 'details', 'deleted']) $(id).hidden = id !== screen;
-    $('plus').hidden = screen !== 'details' || !(data?.plus?.available || ['first-month', 'plus', 'ended'].includes(data?.plan?.name));
+    $('plus').hidden = screen !== 'details' || !(data?.plus?.available || ['first-month', 'plus', 'ended', 'maintainer'].includes(data?.plan?.name));
   };
   let data = null;
   async function load() {
@@ -66,9 +66,20 @@
   function plus() {
     const p = data.plus || {}, prices = p.prices || {}, plan = data.plan || {};
     const state = [];
+    // The maintainer's own account: Managed Models with no charge and this
+    // month's fair use, with nothing to buy, cancel or carry on.
+    if (plan.name === 'maintainer') {
+      for (const id of ['plus-about', 'plus-get', 'plus-extend', 'plus-manage', 'plus-fine']) $(id).hidden = true;
+      const used = typeof data.used === 'number';
+      $('fair-use').hidden = !used;
+      if (used) { const share = Math.round(data.used * 100); $('fair-use-fill').style.width = Math.max(1, share) + '%'; $('fair-use-track').setAttribute('aria-valuenow', String(share)); }
+      $('plus-state').textContent = 'Closedhand Managed Models are on for your account as the maintainer, with no charge.' + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + '.' : '');
+      $('plus-state').hidden = false;
+      return;
+    }
     if (plan.name === 'first-month') {
       const left = Date.parse(plan.ends_at) - Date.now();
-      state.push(left > 0 && left <= 7 * 86400000 ? 'Your first month of Closedhand Managed Models stays on until ' + day(plan.ends_at) + '.' : 'Your first month of Closedhand Managed Models is running.');
+      state.push(left > 0 && left <= 3 * 86400000 ? 'Your free 14 days of Closedhand Managed Models run until ' + day(plan.ends_at) + '.' : 'Your free 14 days of Closedhand Managed Models are running.');
     } else if (plan.name === 'ended') state.push('Closedhand Managed Models have ended.');
     const running = (plan.name === 'first-month' || plan.name === 'plus') && typeof data.used === 'number';
     $('fair-use').hidden = !running;
@@ -83,15 +94,18 @@
     if (!p.available) { $('plus-about').hidden = true; $('plus-fine').hidden = true; return showState(); }
     const email = data.plan?.email;
     $('plus-about').hidden = !!p.active;
-    $('plus-about').textContent = 'Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own'
-      + (email ? ", and to use Closedhand's own email with no monthly limit" : '') + ". They run in sealed hardware, so nobody but you can read what you send or what they answer, not even closedhand.com."
-      // Never had the free month: the subscription's first month is it (Polar's trial).
-      + (p.free_month ? ' The first month is free, then ' + (prices.plus || 'a monthly price') + ' a month.' : '');
+    // Their name links to what they are (closedhand.com/managed-models).
+    const about = document.createElement('a');
+    about.href = '/managed-models'; about.textContent = 'Closedhand Managed Models';
+    $('plus-about').replaceChildren('Subscribe to keep ', about, ' every month, so you need no LLM provider of your own'
+      + (email ? ", and for Closedhand's own email address" : '') + ". Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com."
+      // Never had the free days: the subscription's first 14 days are them (Polar's trial).
+      + (p.free_month ? ' The first 14 days are free, then ' + (prices.plus || 'a monthly price') + ' a month.' : ''));
     $('plus-get').hidden = p.active;
-    $('plus-get').textContent = p.free_month ? 'Subscribe · first month free' : 'Subscribe' + (prices.plus ? ' · ' + prices.plus + ' a month' : '');
+    $('plus-get').textContent = p.free_month ? 'Subscribe · 14 days free' : 'Subscribe' + (prices.plus ? ' · ' + prices.plus + ' a month' : '');
     $('plus-manage').hidden = !p.active;
-    if (p.active && p.trial && p.ends_at) state.push('Your free month runs until ' + day(p.ends_at) + ', then your subscription ends and nothing is charged.');
-    else if (p.active && p.trial && p.renews_at) state.push('Your free month runs until ' + day(p.renews_at) + ', then your subscription renews at ' + (prices.plus || 'its monthly price') + ' a month.');
+    if (p.active && p.trial && p.ends_at) state.push('Your free 14 days run until ' + day(p.ends_at) + ', then your subscription ends and nothing is charged.');
+    else if (p.active && p.trial && p.renews_at) state.push('Your free 14 days run until ' + day(p.renews_at) + ', then your subscription renews at ' + (prices.plus || 'its monthly price') + ' a month.');
     else if (p.active && p.ends_at) state.push('Ends on ' + day(p.ends_at) + '.');
     else if (p.active && p.renews_at) state.push('Renews on ' + day(p.renews_at) + '.');
     if (p.active && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");

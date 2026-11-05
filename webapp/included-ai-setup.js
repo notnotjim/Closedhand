@@ -131,7 +131,7 @@ const NEW_KEY_WAIT = 5000;
 // it: what it is, when it ends or renews, whether this month was carried on,
 // and whether Closedhand's own email comes with it. An ended plan remembers
 // what it was, so the words for it fit. Anything unknown keeps what was known.
-const PLANS = ["first-month", "plus", "ended", "none"];
+const PLANS = ["first-month", "plus", "ended", "none", "maintainer"];
 function cleanPlan(plan, previous) {
   if (!plan || !PLANS.includes(plan.name)) return previous || null;
   const date = (value) => typeof value === "string" && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : null;

@@ -23,7 +23,7 @@
   function render() {
     content.replaceChildren();
     const heading = document.getElementById('assistant-email-heading'); heading.textContent = 'Closedhand’s email address';
-    content.append(el('p', 'An email address of its own, like an assistant has. Email it, forward things to it or CC it into a conversation.', 'section-desc'));
+    content.append(el('p', 'Email, forward or CC Closedhand into any conversation, as you would an assistant.', 'section-desc'));
     if (state.available === false) {
       const unavailable = el('button', 'Coming soon', 'conn-btn conn-btn-manage');
       unavailable.type = 'button'; unavailable.disabled = true;
@@ -31,27 +31,43 @@
       content.append(unavailable);
       return;
     }
+    // Closedhand's email address comes with Closedhand Managed Models. Without
+    // them the card is locked: a lock by the title and Unlock, to what they
+    // include. An address already made is kept and works again once unlocked.
+    const locked = state.entitled === false;
+    if (locked) {
+      const lock = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      lock.setAttribute('viewBox', '0 0 24 24'); lock.setAttribute('class', 'assistant-email-lock'); lock.setAttribute('aria-hidden', 'true');
+      lock.innerHTML = '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>';
+      heading.append(document.createTextNode(' '), lock);
+    }
     heading.append(document.createTextNode(' '), el('span', 'Beta', 'badge badge-soon'));
+    if (locked) {
+      if (state.address) content.append(el('strong', state.address, 'assistant-email-kept'));
+      content.append(el('p', (state.address ? 'The address is kept for you. ' : '') + 'Unlock with Closedhand Managed Models.', 'section-desc'));
+      const unlock = el('a', 'Unlock', 'conn-btn conn-btn-manage assistant-email-unlock');
+      unlock.href = 'https://closedhand.com/managed-models'; unlock.target = '_blank'; unlock.rel = 'noopener';
+      content.append(unlock);
+      return;
+    }
     const allowance = el('details'); allowance.append(el('summary', 'Allowance'));
     const table = el('table', '', 'assistant-email-usage');
     const labels = el('tr');
     for (const label of ['', 'Sent', 'Received']) { const cell = el('th', label); cell.scope = 'col'; labels.append(cell); }
     const head = el('thead'); head.append(labels); table.append(head);
     const body = el('tbody');
-    // No limit (a subscription has no monthly one) shows just what was used.
     const count = (used, limit) => {
       const cell = el('td');
       cell.append(el('strong', Number.isFinite(used) ? used.toLocaleString() : '…'));
-      if (limit !== null) cell.append(document.createTextNode(' / ' + limit.toLocaleString()));
+      cell.append(document.createTextNode(' / ' + limit.toLocaleString()));
       return cell;
     };
-    // The limits closedhand.com reports for this person, or the usual ones
-    // before it has said.
+    // A day's allowance, a guard against runaway sending, as closedhand.com
+    // reports it, or the usual one before it has said. There is no monthly one.
     const u = state.usage || {};
-    const limit = (given, usual) => given === null ? null : Number.isFinite(given) ? given : usual;
+    const limit = (given, usual) => Number.isFinite(given) ? given : usual;
     for (const [label, sent, received, sentLimit, receivedLimit] of [
-      ['This month', u.sent, u.received, limit(u.sentLimit, 1000), limit(u.receivedLimit, 2000)],
-      ['Today', u.dailySent, u.dailyReceived, limit(u.dailySentLimit, 100), limit(u.dailyReceivedLimit, 200)]
+      ['Today', u.dailySent, u.dailyReceived, limit(u.dailySentLimit, 1000), limit(u.dailyReceivedLimit, 2000)]
     ]) {
       const row = el('tr'); const title = el('th', label); title.scope = 'row';
       row.append(title, count(state.address ? sent : 0, sentLimit), count(state.address ? received : 0, receivedLimit)); body.append(row);

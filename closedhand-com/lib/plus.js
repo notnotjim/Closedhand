@@ -179,19 +179,20 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   // Polar's checkout for one product, tied to this account by its own ID, so
   // the webhooks that follow can name it. origin: the personal URL that frames
   // it in My Account, which Polar then lets show it.
-  // Each person has one free month of Managed Models. It is the first month,
-  // set up when they claim their personal URL; someone who did not get it then
-  // has it as the subscription's first month instead: Polar takes the card,
-  // charges nothing until the month ends and emails three days before it does
-  // (Polar's trials). Once had, never again; any trial set on the product in
-  // Polar is turned off for everyone else.
+  // Each person has 14 free days of Managed Models, set up when they claim
+  // their personal URL; someone who did not get them then has them as the
+  // subscription's first 14 days instead (INCLUDED_AI_TRIAL_DAYS, so both
+  // free periods are the same length): Polar takes the card, charges nothing
+  // until they end and emails three days before they do (Polar's trials).
+  // Once had, never again; any trial set on the product in Polar is turned off
+  // for everyone else.
   async function freeMonth(ownerId) {
     return enabled() && !!ownerId && !(await row(ownerId)) && !(await includedAi.hadFreeMonth(ownerId));
   }
   async function checkoutFor(owner, product, back, origin, trial = false) {
     const made = await api('/v1/checkouts/', 'POST', {
       products: [product],
-      ...(trial ? { trial_interval: 'month', trial_interval_count: 1 } : { allow_trial: false }),
+      ...(trial ? { trial_interval: 'day', trial_interval_count: includedAi.trialDays } : { allow_trial: false }),
       external_customer_id: owner.id,
       ...(owner.email ? { customer_email: owner.email } : {}),
       success_url: baseUrl + '/account?plus=' + back,
@@ -503,6 +504,8 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
         if (!ownerId) return res.redirect(302, '/account?then=subscribe');
         const owner = enabled() && (await db.query('SELECT id, email FROM owners WHERE id = $1', [ownerId])).rows[0];
         if (!owner) return res.redirect(302, '/account');
+        // The maintainer's own account has Managed Models for good: nothing to buy.
+        if (await require('./maintainer').isMaintainer(db, env, owner.id)) return res.redirect(302, '/account');
         if ((await state(owner.id)).active) return res.redirect(302, await portal(owner));
         const address = (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount;
         if (!address) return res.redirect(302, '/account');
@@ -510,6 +513,31 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       } catch (e) {
         console.error('[plus] subscribe:', e.message);
         res.redirect(302, '/account');
+      }
+    });
+    // What the Managed Models page shows (views/managed-models.html): the price
+    // where the person is, the LLM Closedhand picks for them, and, when they
+    // are signed in with a Closedhand of their own, whether to offer
+    // subscribing (nothing when they already have it).
+    app.get('/api/managed-models', async (req, res) => {
+      res.set('Cache-Control', 'no-store');
+      try {
+        const ownerId = sessions.owner(req);
+        const owner = ownerId && (await db.query('SELECT id FROM owners WHERE id = $1', [ownerId])).rows[0];
+        const closedhand = !!owner && (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount > 0;
+        const mine = closedhand && await require('./maintainer').isMaintainer(db, env, owner.id);
+        const now = closedhand && !mine ? await state(owner.id) : null;
+        res.json({
+          price: (await prices(req.get('cf-ipcountry')))?.plus || null,
+          model: includedAi?.current()?.name || null,
+          days: includedAi?.trialDays || 14,
+          subscribe: !!now && now.available && !now.active,
+          subscribed: !!now?.active || !!mine,
+          ...(now?.free_month ? { freeDays: true } : {}),
+        });
+      } catch (e) {
+        console.error('[plus] managed models page:', e.message);
+        res.json({ price: null, model: null, days: includedAi?.trialDays || 14, subscribe: false, subscribed: false });
       }
     });
     route('/api/plus/manage', async (owner, req, res) => {

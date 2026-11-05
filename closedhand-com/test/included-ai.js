@@ -13,7 +13,7 @@ const { nearAi, SIGN_IN, BROWSER } = require('./near-ai');
 const MODEL = 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated';
 
 // The few queries included-ai.js makes, over lists of rows: accounts (owners),
-// their keys (included_ai_keys), the first months given (starter_grants) and
+// their keys (included_ai_keys), the free days given (starter_grants) and
 // the sign-in at NEAR (near_session).
 function database() {
   const rows = [], grants = [], owners = new Map(), retired = new Set();
@@ -36,19 +36,25 @@ function database() {
         sessions[0].warned_for = args[0];
         return result([{ id: 1 }]);
       }
-      if (sql.startsWith('SELECT * FROM included_ai_keys') || sql.startsWith('SELECT key_id FROM included_ai_keys')) return result(rows.filter(r => r.owner_id === args[0]));
+      if (sql.startsWith('SELECT * FROM included_ai_keys') || /^SELECT key_id(, stopped_at)? FROM included_ai_keys/.test(sql)) return result(rows.filter(r => (Array.isArray(args[0]) ? args[0].includes(r.owner_id) : r.owner_id === args[0])));
       if (sql.startsWith('INSERT INTO included_ai_keys')) {
         if (rows.some(r => r.owner_id === args[0])) return result([]);
-        rows.push({ owner_id: args[0], key_id: args[1], granted_usd: args[2], granted_at: new Date(), ends_at: new Date(Date.now() + args[3] * DAY), stopped_at: null });
+        // The maintainer's key: no end, its months from the first.
+        if (sql.includes('maintainer')) rows.push({ owner_id: args[0], key_id: args[1], granted_usd: 0, base_usd: 0, base_for: args[2], carry_usd: 0, granted_at: new Date(), ends_at: null, stopped_at: null, maintainer: true });
+        else rows.push({ owner_id: args[0], key_id: args[1], granted_usd: args[2], granted_at: new Date(), ends_at: new Date(Date.now() + args[3] * DAY), stopped_at: null });
         return result([{ owner_id: args[0] }]);
       }
+      if (sql.startsWith('UPDATE included_ai_keys SET maintainer = true')) { Object.assign(rows.find(r => r.owner_id === args[0]), { maintainer: true, stopped_at: null }); return result([]); }
+      if (sql.startsWith('UPDATE included_ai_keys SET maintainer = false')) { rows.find(r => r.owner_id === args[0]).maintainer = false; return result([]); }
+      // A month that has just begun (beginMonth).
+      if (sql.startsWith('UPDATE included_ai_keys SET base_usd = $2, base_for = $3, carry_usd = $4')) { Object.assign(rows.find(r => r.owner_id === args[0]), { base_usd: args[1], base_for: args[2], carry_usd: args[3], left_usd: null }); return result([]); }
       // Replaced only while it still holds the key that was read; the old
       // key waits to be deleted, as 018_key_upkeep.sql's trigger does.
       if (sql.startsWith('UPDATE included_ai_keys SET key_id')) {
         const row = rows.find(r => r.owner_id === args[0] && r.key_id === args[3]);
         if (!row) return result([]);
         retired.add(row.key_id);
-        Object.assign(row, { key_id: args[1], base_usd: args[2] });
+        Object.assign(row, { key_id: args[1], base_usd: args[2] }, sql.includes('maintainer = true') ? { base_for: args[4], carry_usd: args[5], maintainer: true, stopped_at: null } : {});
         return result([{ owner_id: args[0] }]);
       }
       if (sql.startsWith('SELECT key_id, base_usd FROM included_ai_keys')) return result(rows.filter(r => r.owner_id === args[0]));
@@ -56,9 +62,9 @@ function database() {
       if (sql.startsWith('DELETE FROM retired_ai_keys')) { retired.delete(args[0]); return result([]); }
       if (sql.startsWith('SELECT key_id FROM retired_ai_keys')) return result([...retired].map(key_id => ({ key_id })));
       if (sql.startsWith('UPDATE retired_ai_keys')) return result([]);
-      if (sql.startsWith('UPDATE included_ai_keys SET stopped_at = now()')) { rows.find(r => r.owner_id === args[0]).stopped_at = new Date(); return result([]); }
+      if (sql.startsWith('UPDATE included_ai_keys SET stopped_at = now()')) { const r = rows.find(r => r.owner_id === args[0]); r.stopped_at = new Date(); if (args[1] != null) r.left_usd = args[1]; return result([]); }
       if (sql.includes('FROM included_ai_keys k')) return result(rows.filter(r => !r.stopped_at && r.ends_at && r.ends_at <= new Date()).map(r => ({ owner_id: r.owner_id })));
-      if (sql.startsWith('SELECT provider, subject FROM owners')) return result(owners.has(args[0]) ? [owners.get(args[0])] : []);
+      if (sql.startsWith('SELECT provider, subject FROM owners') || sql.startsWith('SELECT email, email_verified FROM owners')) return result(owners.has(args[0]) ? [owners.get(args[0])] : []);
       // The subscription is test/plus.js's: nobody here subscribes.
       if (sql.includes('FROM plus_subscriptions')) return result([]);
       if (sql.startsWith('UPDATE starter_grants SET network_hash = NULL')) { for (const g of grants) if (Date.now() - g.granted_at > 30 * DAY) g.network_hash = null; return result([]); }
@@ -80,7 +86,7 @@ const DAY = 24 * 3600 * 1000;
 const ACCOUNT_KEY = 'k'.repeat(44);
 const env = (more = {}) => ({ NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, ...more });
 let people = 0;
-const owner = (db, subject = 'g-' + (++people)) => { const id = crypto.randomUUID(); db?.owners.set(id, { provider: 'google', subject }); return id; };
+const owner = (db, subject = 'g-' + (++people), email = null) => { const id = crypto.randomUUID(); db?.owners.set(id, { provider: 'google', subject, email, email_verified: !!email }); return id; };
 // Each claim from its own connection unless a test says otherwise.
 let addresses = 0;
 const from = () => ({ ip: '198.51.100.' + (++addresses % 250) });
@@ -88,7 +94,7 @@ const quiet = fn => async () => { const log = console.log, err = console.error; 
 // The maintainer's notices, as lib/operator-notices.js queues them.
 const noticeBox = () => { const told = []; return { told, queue: async text => { told.push(text); } }; };
 
-test('a claim gets a first month of its own: a NEAR key with the fair-use ceiling, never reset, for the chosen model', async () => {
+test('a claim gets 14 free days of its own: a NEAR key with their own ceiling, never reset, for the chosen model', async () => {
   const near = nearAi(), db = database();
   const ai = create({ db, env: env(), request: near.request });
   const id = owner(db);
@@ -96,11 +102,11 @@ test('a claim gets a first month of its own: a NEAR key with the fair-use ceilin
   assert.match(given.key, /^sk-[a-f0-9]{32}$/);
   assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: MODEL, name: 'DeepSeek V4.1 Flash, uncensored' }, 'text only: pictures go to the vision language model on the computer');
   const [keyId, made] = [...near.keys][0];
-  assert.equal(made.limit, 20, 'the whole month');
+  assert.equal(made.limit, 12, 'the free days\' ceiling');
   assert.equal(made.name, 'Closedhand ' + id, 'named by the account, never its email');
-  assert.deepEqual(db.rows.map(r => [r.key_id, r.granted_usd]), [[keyId, 20]], 'only NEAR\'s id for it is kept');
+  assert.deepEqual(db.rows.map(r => [r.key_id, r.granted_usd]), [[keyId, 12]], 'only NEAR\'s id for it is kept');
   const days = (db.rows[0].ends_at - Date.now()) / DAY;
-  assert.ok(days > 29.9 && days <= 30, 'the first month ends in 30 days');
+  assert.ok(days > 13.9 && days <= 14, 'the free days end in 14 days');
   assert.ok(!JSON.stringify(db.rows).includes(given.key), 'the key itself is never stored');
 });
 
@@ -173,11 +179,11 @@ test('claiming again gets a new key with what was left and the same end; the old
   assert.ok(again.key);
   assert.ok(!near.keys.has(firstId), 'the old key is deleted');
   const [, second] = [...near.keys][0];
-  assert.equal(second.limit, 13.75, 'it carries what was left, read afresh');
+  assert.equal(second.limit, 5.75, 'it carries what was left, read afresh');
   assert.equal(db.rows.length, 1);
   const ends = db.rows[0].ends_at;
-  assert.ok(ends > new Date(), 'the same first month');
-  // Once the month is over, claiming again brings nothing.
+  assert.ok(ends > new Date(), 'the same free days');
+  // Once they are over, claiming again brings nothing.
   db.rows[0].ends_at = new Date(Date.now() - 1000);
   assert.equal(await ai.forOwner(id, from()), null);
 });
@@ -190,7 +196,7 @@ test('how many people start is never a reason to refuse one', quiet(async () => 
   assert.equal(near.keys.size, 6);
 }));
 
-test('the hourly sweep stops a first month that has run out, once', quiet(async () => {
+test('the hourly sweep stops free days that have run out, once, keeping what they left', quiet(async () => {
   const near = nearAi(), db = database();
   const ai = create({ db, env: env(), request: near.request });
   const id = owner(db), still = owner(db);
@@ -202,7 +208,8 @@ test('the hourly sweep stops a first month that has run out, once', quiet(async 
   assert.equal(await ai.sweep(), 1);
   assert.equal(made.limit, 7.326, 'stopped where it stands');
   assert.ok(db.rows[0].stopped_at);
-  assert.equal(near.keys.get(db.rows[1].key_id).limit, 20, 'a month still running is left alone');
+  assert.equal(db.rows[0].left_usd, 4.67, 'what they left, for a subscription that comes later');
+  assert.equal(near.keys.get(db.rows[1].key_id).limit, 12, 'free days still running are left alone');
   assert.equal(await ai.sweep(), 0, 'stopped once');
 }));
 
@@ -224,11 +231,11 @@ test('NEAR lists keys a page at a time: they are read in pages and kept five min
   const id = owner(db);
   await ai.forOwner(id, from());
   const before = pages().length;
-  assert.deepEqual(await ai.usage(id), { limit: 20, used: 0 });
-  assert.deepEqual(await ai.usage(id), { limit: 20, used: 0 });
+  assert.deepEqual(await ai.usage(id), { limit: 12, used: 0 });
+  assert.deepEqual(await ai.usage(id), { limit: 12, used: 0 });
   assert.equal(pages().length, before, 'the new key was kept when it was made: no pages read');
   near.keys.get(db.rows[0].key_id).usage = 3;
-  assert.deepEqual(await ai.usage(id), { limit: 20, used: 0 }, 'kept five minutes');
+  assert.deepEqual(await ai.usage(id), { limit: 12, used: 0 }, 'kept five minutes');
   assert.equal(await create({ db, env: env(), request: near.request }).usage(id).then(u => u.used), 3, 'read afresh by a process without the list');
 });
 
@@ -259,7 +266,7 @@ test('nothing is made without a sign-in at NEAR, or when NEAR is unreachable', q
   const down = nearAi(), db = database();
   down.state.down = true;
   assert.equal(await create({ db, env: env(), request: down.request }).forOwner(owner(db), from()), null);
-  assert.equal(db.grants.length, 0, 'the first month it held is given back');
+  assert.equal(db.grants.length, 0, 'the free days it held are given back');
 }));
 
 test('deleting the account deletes its key', async () => {
@@ -273,15 +280,15 @@ test('deleting the account deletes its key', async () => {
 
 test('the provider and models come from the settings: chat first, support second', async () => {
   const near = nearAi();
-  const ai = create({ db: database(), env: env({ INCLUDED_AI_MODELS: MODEL + ', zai-org/GLM-5.3-Flash', INCLUDED_AI_FAIR_USE_USD: '5' }), request: near.request });
+  const ai = create({ db: database(), env: env({ INCLUDED_AI_MODELS: MODEL + ', zai-org/GLM-5.3-Flash', INCLUDED_AI_TRIAL_USD: '5', INCLUDED_AI_VISION_MODEL: 'some/vision-model' }), request: near.request });
   const given = await ai.forOwner(owner(), from());
-  assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: 'zai-org/GLM-5.3-Flash', name: 'DeepSeek V4.1 Flash, uncensored' });
+  assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: 'zai-org/GLM-5.3-Flash', name: 'DeepSeek V4.1 Flash, uncensored' }, 'never a vision model on NEAR: its encryption carries words');
   assert.deepEqual(ai.current(), given.models, 'computers asking get the same pick');
   assert.equal(create({ db: database(), env: {}, request: near.request }).current(), null, 'none without a sign-in at NEAR');
   assert.equal([...near.keys.values()][0].limit, 5);
 });
 
-test('a first month is given once per person: deleting the account and claiming again gives nothing new', quiet(async () => {
+test('the free days are given once per person: deleting the account and claiming again gives nothing new', quiet(async () => {
   const near = nearAi(), db = database();
   const ai = create({ db, env: env(), request: near.request });
   const first = owner(db, 'g-avery');
@@ -308,4 +315,169 @@ test('one connection gets it a few times a month, then no more; others still do'
   for (const g of db.grants) g.granted_at = new Date(Date.now() - 31 * 24 * 3600 * 1000);
   assert.ok(await ai.forOwner(owner(db), home));
   assert.equal(db.grants.filter(g => g.network_hash === null).length, 11);
+}));
+
+// OpenRouter, kept so Managed Models can move back (INCLUDED_AI_PROVIDER):
+// the same rules, keys made with the provisioning key from the settings,
+// each behind one guardrail. A stand-in OpenRouter as far as Closedhand uses it.
+const MANAGEMENT = 'sk-or-v1-' + 'm'.repeat(64);
+function openRouter({ failAssign = false, credits = { total_credits: 0, total_usage: 0 }, activity = [] } = {}) {
+  const keys = new Map(), guardrails = [], calls = [];
+  const reply = (status, body) => new Response(body === undefined ? '' : JSON.stringify(body), { status });
+  const request = async (url, opts = {}) => {
+    const method = opts.method || 'GET', where = url.replace('https://openrouter.ai/api/v1', '');
+    calls.push(method + ' ' + where);
+    assert.equal(opts.headers.Authorization, 'Bearer ' + MANAGEMENT, 'only the provisioning key from the settings is used');
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    if (method === 'GET' && where.startsWith('/guardrails')) return reply(200, { data: guardrails });
+    if (method === 'POST' && where === '/guardrails') { const g = { id: crypto.randomUUID(), ...body }; guardrails.push(g); return reply(201, { data: g }); }
+    if (method === 'PATCH' && where.startsWith('/guardrails/')) { Object.assign(guardrails.find(g => g.id === where.split('/')[2]), body); return reply(200, { data: {} }); }
+    let m = where.match(/^\/guardrails\/([^/]+)\/assignments\/keys$/);
+    if (m && method === 'POST') {
+      if (failAssign) return reply(500, { error: 'unavailable' });
+      for (const hash of body.key_hashes) keys.get(hash).guardrail = m[1];
+      return reply(200, { assigned_count: body.key_hashes.length });
+    }
+    if (method === 'POST' && where === '/keys') {
+      const hash = crypto.randomBytes(32).toString('hex'), key = 'sk-or-v1-' + crypto.randomBytes(32).toString('hex');
+      keys.set(hash, { name: body.name, limit: body.limit, limit_reset: body.limit_reset || null, usage: 0, usage_monthly: 0, key, guardrail: null });
+      return reply(201, { data: { hash, name: body.name, limit: body.limit, usage: 0 }, key });
+    }
+    m = where.match(/^\/keys\/([a-f0-9]{64})$/);
+    if (m && method === 'GET') { const k = keys.get(m[1]); return k ? reply(200, { data: { hash: m[1], name: k.name, limit: k.limit, usage: k.usage } }) : reply(404, { error: 'not found' }); }
+    if (m && method === 'PATCH') { Object.assign(keys.get(m[1]), body); return reply(200, { data: keys.get(m[1]) }); }
+    if (m && method === 'DELETE') { keys.delete(m[1]); return reply(200, { deleted: true }); }
+    if (method === 'GET' && where === '/credits') return reply(200, { data: credits });
+    if (method === 'GET' && where === '/activity') return reply(200, { data: activity });
+    m = where.match(/^\/keys\?offset=(\d+)$/);
+    if (m && method === 'GET') return reply(200, { data: [...keys].slice(Number(m[1]), Number(m[1]) + 100).map(([hash, k]) => ({ hash, name: k.name, limit: k.limit, usage: k.usage, usage_monthly: k.usage_monthly })) });
+    throw new Error('unexpected ' + method + ' ' + url);
+  };
+  return { request, keys, guardrails, calls };
+}
+const onOpenRouter = (more = {}) => ({ INCLUDED_AI_PROVIDER: 'openrouter', OPENROUTER_PROVISIONING_KEY: MANAGEMENT, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, ...more });
+
+test('on OpenRouter: the same free days, a key behind a guardrail of the chosen models on providers that keep nothing, and the computer told so', async () => {
+  const router = openRouter(), db = database();
+  const ai = create({ db, env: onOpenRouter(), request: router.request });
+  const id = owner(db);
+  const given = await ai.forOwner(id, from());
+  assert.match(given.key, /^sk-or-v1-/);
+  assert.deepEqual(given.models, { provider: 'openrouter', chat: 'deepseek/deepseek-v4.1-flash', background: 'deepseek/deepseek-v4.1-flash', vision: 'xiaomi/mimo-v2.6-flash', name: 'DeepSeek V4.1 Flash' });
+  const [hash, made] = [...router.keys][0];
+  assert.equal(made.limit, 12);
+  assert.equal(made.guardrail, router.guardrails[0].id, 'never without its guardrail');
+  assert.deepEqual(router.guardrails[0].allowed_models, ['deepseek/deepseek-v4.1-flash', 'xiaomi/mimo-v2.6-flash']);
+  for (const f of ['enforce_zdr_anthropic', 'enforce_zdr_openai', 'enforce_zdr_google', 'enforce_zdr_xai', 'enforce_zdr_other']) assert.equal(router.guardrails[0][f], true, f);
+  assert.equal(router.guardrails[0].enable_paid_model_training, false);
+  assert.equal(db.rows[0].key_id, hash, 'only OpenRouter\'s id for it is kept');
+  made.usage = 3.456;
+  db.rows[0].ends_at = new Date(Date.now() - 1000);
+  assert.equal(await ai.sweep(), 1);
+  assert.equal(made.limit, 3.46, 'stopped where it stands, to the cent OpenRouter takes');
+  assert.equal(made.limit_reset, null);
+  await ai.forget(id);
+  assert.equal(router.keys.size, 0);
+});
+
+test('on OpenRouter: a key its guardrail could not be attached to never leaves; spend and credit come from OpenRouter\'s own counts', quiet(async () => {
+  const broken = openRouter({ failAssign: true }), db = database();
+  assert.equal(await create({ db, env: onOpenRouter(), request: broken.request }).forOwner(owner(db), from()), null);
+  assert.equal(broken.keys.size, 0, 'deleted at once');
+  assert.equal(db.grants.length, 0, 'the free days it held are given back');
+  const at = new Date('2027-03-11T09:00:00Z');
+  const router = openRouter({ credits: { total_credits: 100, total_usage: 40 }, activity: [{ date: '2027-03-05', usage: 3 }, { date: '2027-03-09', usage: 3 }] });
+  const ai = create({ db: database(), env: onOpenRouter(), request: router.request });
+  router.keys.set('a'.repeat(64), { name: 'Closedhand one', limit: 15, usage: 2, usage_monthly: 2.5 });
+  router.keys.set('b'.repeat(64), { name: 'Closedhand two', limit: 15, usage: 1, usage_monthly: 1.25 });
+  assert.equal(await ai.spentThisMonth(at), 3.75);
+  assert.deepEqual(await ai.credit(at), { left: 60, days: 60 }, '$6 over six days, a dollar a day');
+  assert.deepEqual((await ai.allKeys()).map(k => [k.name, k.limit, k.usage]), [['Closedhand one', 15, 2], ['Closedhand two', 15, 1]]);
+  const op = await ai.forOperator();
+  assert.equal(op.base, 'https://openrouter.ai/api/v1');
+  assert.equal([...router.keys.values()].find(k => k.name === 'Closedhand insights').limit_reset, 'monthly');
+}));
+
+test('the provider is one setting; an unknown one or one without its settings makes nothing, and no key is ever in the code', async () => {
+  assert.equal(create({ db: database(), env: onOpenRouter({ INCLUDED_AI_PROVIDER: 'elsewhere' }) }).enabled(), false);
+  assert.equal(create({ db: database(), env: onOpenRouter({ OPENROUTER_PROVISIONING_KEY: '' }) }).enabled(), false);
+  assert.equal(create({ db: database(), env: env() }).current().provider, 'near', 'NEAR unless set otherwise');
+  for (const f of ['included-ai.js', 'included-ai-near.js', 'included-ai-openrouter.js', 'near-session.js']) {
+    assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'lib', f), 'utf8'), /sk-or-v1-[A-Za-z0-9]{20,}|rt_[A-Za-z0-9]{20,}|sk-[a-f0-9]{32}/, f);
+  }
+});
+
+test('this month\'s spend, apart: the maintainer\'s own keys closedhand.com did not make, their own Managed Models, and everyone else\'s', async () => {
+  const db = database();
+  const mine = owner(db), someone = owner(db);
+  const near = nearAi({ byModel: [{ model: MODEL, total_cost: 30e9 }], history: { 'k-own': [4, 1.5], 'k-mine': [2], 'k-insights': [0.25], 'k-someone': [22.25] } });
+  near.keys.set('k-own', { name: 'My own key', limit: null, usage: 40, key: 'sk-own' });
+  near.keys.set('k-mine', { name: 'Closedhand ' + mine, limit: 15, usage: 2, key: 'sk-mine' });
+  near.keys.set('k-insights', { name: 'Closedhand insights', limit: 1, usage: 0.25, key: 'sk-ins' });
+  near.keys.set('k-someone', { name: 'Closedhand ' + someone, limit: 15, usage: 22.25, key: 'sk-some' });
+  db.rows.push({ owner_id: mine, key_id: 'k-mine' }, { owner_id: someone, key_id: 'k-someone' });
+  const ai = create({ db, env: env(), request: near.request });
+  assert.deepEqual(await ai.spendSplit([mine], new Date('2027-03-11T09:00:00Z')), { total: 30, own: 5.5, you: 2.25, others: 22.25 },
+    'a key closedhand.com did not make is the maintainer\'s own use, not Managed Models');
+  assert.ok(near.calls.some(c => c.startsWith('GET /v1/organizations/org-1/usage/history?api_key_id=k-own&start_time=' + encodeURIComponent('2027-03-01T00:00:00.000Z'))));
+  assert.deepEqual(await ai.spendSplit([], new Date('2027-03-11T09:00:00Z')), { total: 30, own: 5.5, you: 0.25, others: 24.25 }, 'with nobody marked, only closedhand.com\'s own key is the maintainer\'s');
+});
+
+// The maintainer's own account (a verified sign-in email in OPERATOR_EMAILS)
+// has Managed Models with no charge: a subscriber's monthly fair use, renewing
+// on the first of each month with the same carry-over, never free days, and
+// never stopped by the sweep or a subscription ending.
+const thisMonth = () => { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); };
+test('the maintainer\'s account gets a month of fair use, never free days, never stopped, and claiming again carries on', quiet(async () => {
+  const near = nearAi(), db = database();
+  const ai = create({ db, env: env({ OPERATOR_EMAILS: 'Keeper@Example.com' }), request: near.request });
+  const keeper = owner(db, 'g-keeper', 'keeper@example.com');
+  const given = await ai.forOwner(keeper, from());
+  assert.match(given.key, /^sk-/);
+  const [firstId, first] = [...near.keys][0];
+  assert.equal(first.limit, 15, 'a month of fair use, as a subscriber has');
+  assert.equal(db.grants.length, 0, 'never free days');
+  assert.deepEqual([db.rows[0].maintainer, db.rows[0].ends_at, db.rows[0].base_for.getTime()], [true, null, thisMonth().getTime()], 'its month runs from the first');
+  first.usage = 6;
+  db.rows[0].ends_at = null;
+  assert.equal(await ai.sweep(), 0);
+  assert.equal(await ai.end(keeper), true);
+  assert.equal(await ai.subscribe(keeper), true);
+  assert.equal(near.keys.get(firstId).limit, 15, 'neither the sweep, nor a subscription ending or starting, changes it');
+  const again = await ai.forOwner(keeper, from());
+  assert.ok(again.key && again.key !== given.key);
+  assert.ok(!near.keys.has(firstId), 'the old key is deleted');
+  assert.equal([...near.keys.values()][0].limit, 9, 'claiming again carries what was left');
+  assert.deepEqual(await create({ db, env: env({ OPERATOR_EMAILS: 'keeper@example.com' }), request: near.request }).usage(keeper), { limit: 15, used: 6 }, 'the same month, counted the same');
+  const now = create({ db, env: env({ OPERATOR_EMAILS: 'Keeper@Example.com' }), request: near.request });
+  assert.equal(await now.collect(keeper), null, 'its computer already has it');
+  const guest = await now.forOwner(owner(db, 'g-guest', 'guest@example.com'), from());
+  assert.ok(guest && [...near.keys.values()].at(-1).limit === 12, 'anyone else gets the usual free days');
+}));
+
+test('the maintainer\'s month renews on the first with the same carry-over, and a key held from before starts its first month at the hourly check', quiet(async () => {
+  const near = nearAi(), db = database();
+  const before = create({ db, env: env(), request: near.request });
+  const keeper = owner(db, 'g-keeper2', 'keeper@example.com');
+  await before.forOwner(keeper, from());
+  const [id, key] = [...near.keys][0];
+  assert.equal(key.limit, 12, 'free days, before closedhand.com knew whose it was');
+  key.usage = 4;
+  const ai = create({ db, env: env({ OPERATOR_EMAILS: 'keeper@example.com' }), request: near.request });
+  assert.equal(await ai.collect(keeper), null, 'nothing new to hand over');
+  assert.equal(near.keys.get(id).limit, 27, 'from the 4 used: a month of fair use and the 8 left, carried in');
+  assert.equal(db.rows[0].maintainer, true);
+  assert.equal(await ai.collect(keeper), null);
+  assert.equal(near.keys.get(id).limit, 27, 'the same month is not begun twice');
+  // A new month: from what is used now, with what the last one left, up to a month.
+  key.usage = 10;
+  db.rows[0].base_for = new Date(Date.UTC(2020, 0, 1));
+  await ai.collect(keeper);
+  assert.equal(near.keys.get(id).limit, 40, '10 used, 15 for the month and the 15 the last one left, the most that carries');
+  assert.deepEqual(await ai.usage(keeper), { limit: 30, used: 0 });
+  // No longer the maintainer's: the usual rules again, from what it used.
+  key.usage = 12.5;
+  assert.equal(await create({ db, env: env(), request: near.request }).collect(keeper), null);
+  assert.equal(db.rows[0].maintainer, false);
+  assert.equal(near.keys.get(id).limit, 12.5, 'stopped where it stands, like any ended period');
 }));

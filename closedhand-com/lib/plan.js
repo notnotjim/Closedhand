@@ -1,7 +1,8 @@
 // Where an account stands with Closedhand Managed Models, as its computer and
-// its account page are told (lib/addresses.js): its first month, a subscription,
-// ended (it had one or the other and neither runs now), or none (it never
-// had Managed Models; its own LLM provider is all it uses). Whether
+// its account page are told (lib/addresses.js): its free 14 days, a
+// subscription, ended (it had one or the other and neither runs now), none (it
+// never had Managed Models; its own LLM provider is all it uses), or the
+// maintainer's own (no charge, a month of fair use renewing on the 1st). Whether
 // Closedhand's own email is offered here rides along, so the computer can say
 // what the subscription includes.
 const LIVE = ['active', 'trialing', 'past_due'];
@@ -9,6 +10,11 @@ const LIVE = ['active', 'trialing', 'past_due'];
 async function planFor(db, env, ownerId, now = new Date(), includedAi = null) {
   const email = env.ASSISTANT_EMAIL_ENABLED === '1' && env.ASSISTANT_EMAIL_RELEASED === '1';
   if (!ownerId) return { name: 'none', email };
+  // The maintainer's own account has Managed Models with no charge, whatever
+  // Polar says (lib/maintainer.js): a month of fair use, renewing on the 1st.
+  if (await require('./maintainer').isMaintainer(db, env, ownerId)) {
+    return { name: 'maintainer', renews_at: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString(), email };
+  }
   const sub = (await db.query(
     'SELECT status, current_period_start, current_period_end, cancel_at_period_end, extended_for, started_at FROM plus_subscriptions WHERE owner_id = $1', [ownerId])).rows[0];
   const key = (await db.query('SELECT ends_at, stopped_at FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];

@@ -314,10 +314,12 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 #addresses #assistant-email { flex: 1; display: flex; flex-direction: column; }
 #addresses #assistant-email > div:first-child { flex: 1; display: flex; flex-direction: column; gap: 0.75rem; }
 #addresses #assistant-email .section-desc { margin: 0; }
-#addresses #assistant-email > div:first-child > button { align-self: flex-start; }
+/* The column's gap is the only space between its parts. */
+#addresses #assistant-email > div:first-child > :is(details:not(.address-foot), .assistant-email-address) { margin: 0; }
+#addresses #assistant-email > div:first-child > :is(button, a) { align-self: flex-start; }
 #addresses #assistant-email > [role=status]:empty { display: none; }
 #phone-desc { margin: 0; max-width: 68ch; color: var(--ui-muted); line-height: 1.65; }
-#phone-block a, #my-account-facts a, .platform-pills a, .notification-retry { color: var(--ui-accent, var(--accent)); text-underline-offset: 0.1875rem; }
+#phone-block a:not(.text-link), #my-account-facts a, .platform-pills a, .notification-retry { color: var(--ui-accent, var(--accent)); text-underline-offset: 0.1875rem; }
 .dashboard-copy-box { display: flex; align-items: center; gap: 1rem; margin-top: 1.25rem; padding: 0.5rem 0.5rem 0.5rem 1rem; max-width: 38.75rem; border: 1px solid var(--ui-border); border-radius: 0.5rem; background: var(--raised); }
 .dashboard-copy-box a { flex: 1; min-width: 0; font-size: 1rem; line-height: 1.6; overflow-wrap: anywhere; text-decoration: none; }
 .dashboard-link-path { white-space: nowrap; }
@@ -527,6 +529,9 @@ body.polar-open { overflow: hidden; }
 .quiet-link { background: none; border: 0; padding: 0; font: inherit; font-size: 0.8125rem; color: var(--muted); text-decoration: underline; text-underline-offset: 0.1875rem; cursor: pointer; }
 .quiet-link:hover { color: var(--fg); }
 .quiet-link:disabled { opacity: .5; cursor: default; }
+/* A link in running text: the sentence's own colour, underlined. */
+.text-link { color: var(--muted); text-decoration: underline; text-underline-offset: 0.1875rem; }
+.text-link:hover { color: var(--fg); }
 /* A main action set aside with hidden stays hidden, whatever display its look sets. */
 .cta[hidden] { display: none !important; }
 

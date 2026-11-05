@@ -8,7 +8,7 @@
   function mount(container, changed) {
     var $ = function (id) { return container.querySelector('#' + id); };
     var key = null, password = false, settled = false, state = {}, busy = false, checking = false;
-    var lastCheck = 0, generation = 0, actionError = null, completedReady = false, claiming = false, renaming = false, renamed = null, wasWaiting = false, signingIn = false;
+    var lastCheck = 0, generation = 0, actionError = null, completedReady = false, claiming = false, renaming = false, renamed = null, wasWaiting = false, signingIn = false, agreedHere = false;
     // closedhand.com hands the code straight back here, with the state from
     // this Closedhand's link, after its sign-in (closedhand-com/public/pair.js).
     var handed = null, signin = null;
@@ -79,7 +79,11 @@
       $('url-where').textContent = saved || reserved ? new URL(saved || reserved).hostname : '';
       $('url-rename-submit').disabled = renaming;
       $('url-rename-submit').textContent = renaming ? 'Saving…' : 'Save';
-      $('url-start').disabled = busy || !password;
+      // The Terms are agreed once, here, before either way of claiming.
+      var agreed = !!state.termsAccepted;
+      $('url-terms').hidden = agreed && !agreedHere;
+      if (agreedHere) $('url-terms-box').checked = true;
+      $('url-start').disabled = busy || !password || !agreed;
       $('url-start').textContent = busy ? 'Opening…' : waiting ? 'Open closedhand.com again' : signingIn && confirm ? 'Open the sign-in again' : 'Claim your personal URL';
       $('url-start').classList.toggle('is-quiet', waiting);
       $('url-start').formNoValidate = !!confirm;
@@ -133,6 +137,21 @@
         }
       }
     }
+    $('url-terms-box').addEventListener('change', async function () {
+      // Agreed is recorded, so it stays ticked.
+      if (!this.checked) { if (agreedHere) this.checked = true; return; }
+      var box = this;
+      box.disabled = true;
+      try {
+        var response = await fetch('/api/phone/accept-terms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(30000) });
+        var result = await response.json().catch(function () { return {}; });
+        if (!response.ok) throw new Error(result.error || 'Could not save that. Please try again.');
+        // A Google or Microsoft sign-in that was waiting has claimed it.
+        state = Object.assign({}, state, result, { termsAccepted: true });
+        agreedHere = true; actionError = null;
+      } catch (e) { box.checked = false; actionError = e.message; }
+      finally { box.disabled = false; display(); }
+    });
     $('url-form').addEventListener('submit', async function (event) {
       event.preventDefault();
       if (!password || busy) return;

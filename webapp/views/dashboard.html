@@ -2480,7 +2480,7 @@
               </div>
             </div>
             <div class="address-foot">
-            <p id="phone-change-line" hidden><a href="#" id="phone-change" onclick="toggleDashboardRename(event)">Change URL</a></p>
+            <p id="phone-change-line" hidden><a href="#" class="text-link" id="phone-change" onclick="toggleDashboardRename(event)">Change URL</a></p>
             <details id="phone-options" hidden>
               <summary>Link options</summary>
               <div class="dashboard-link-options">
@@ -2701,7 +2701,7 @@
                 </section>
                 <section class="choice-card" id="llm-managed" aria-labelledby="llm-managed-name" hidden>
                   <header class="choice-head"><h3 id="llm-managed-name">Closedhand Managed Models</h3><span class="plan-status" id="llm-managed-status"></span></header>
-                  <p class="account-action-desc"><span id="llm-managed-model">DeepSeek V4.1 Flash, uncensored</span>. It runs in sealed hardware, so nobody but you can read what you send or what it answers. When a better uncensored LLM is available, Closedhand switches to it for you.</p>
+                  <p class="account-action-desc"><span id="llm-managed-model">DeepSeek V4.1 Flash, uncensored</span>, in sealed hardware: nobody but you can read what you send or what comes back. When a better uncensored LLM is available, Closedhand switches to it for you. <a class="text-link" href="https://closedhand.com/managed-models" target="_blank" rel="noopener">More about Managed Models</a></p>
                   <!-- What the person's plan means for them, in one sentence; the
                        plan itself, Resume included, is in My Account. -->
                   <p class="account-action-desc" id="included-ai-plan"></p>
@@ -4667,7 +4667,7 @@
       a.href = '#account';
       a.onclick = function (e) { e.preventDefault(); openMyAccount(); };
       a.textContent = words;
-      a.style.cssText = 'color:var(--muted);text-decoration:underline;text-underline-offset:0.1875rem;';
+      a.className = 'text-link';
       return a;
     }
     function planDay(iso) { return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }); }
@@ -4685,14 +4685,15 @@
       var plan = data.plan || {}, inUse = data.state === 'in-use';
       var after = inUse ? ' After that Closedhand needs your own LLM provider to reply.' : '';
       var said, tail = " Your plan and this month's use are in ";
-      if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or subscribe again in '; tail = ''; }
-      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'They come with your free month, which ends on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
-      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'They come with your free month, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'They come with your free month.'; }
-      else if (plan.name === 'plus' && plan.ends_at) { said = 'They come with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + after; tail = ' Resume it in '; }
-      else if (plan.name === 'plus') { said = 'They come with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.'; }
+      if (plan.name === 'maintainer') { said = 'Closedhand Managed Models are on for your account as the maintainer, with no charge' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.'; tail = " This month's use is in "; }
+      else if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or subscribe again in '; tail = ''; }
+      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'Closedhand Managed Models come with your free 14 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
+      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'Closedhand Managed Models come with your free 14 days.'; }
+      else if (plan.name === 'plus' && plan.ends_at) { said = 'Closedhand Managed Models come with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + after; tail = ' Resume it in '; }
+      else if (plan.name === 'plus') { said = 'Closedhand Managed Models come with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.'; }
       else {
         var left = Date.parse(plan.ends_at) - Date.now();
-        said = left > 0 && left <= 7 * 86400000 ? 'They come with your first month, until ' + planDay(plan.ends_at) + '.' : 'They come with your first month.';
+        said = left > 0 && left <= 3 * 86400000 ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.ends_at) + '.' : 'Closedhand Managed Models come with your free 14 days.';
       }
       document.getElementById('included-ai-plan').replaceChildren(said + tail, accountLink('My Account'), '.');
     }
@@ -4703,7 +4704,7 @@
         var res = await fetch('/api/included-ai');
         data = res.ok ? await res.json() : null;
       } catch (e) {}
-      var theirs = !!(data && data.plan) && (data.plan.name === 'first-month' || data.plan.name === 'plus');
+      var theirs = !!(data && data.plan) && ['first-month', 'plus', 'maintainer'].includes(data.plan.name);
       includedState = data && data.state && (data.state === 'in-use' || theirs) ? data : null;
       llmStep = null;
       renderLlmOptions();
@@ -5065,12 +5066,25 @@
     // Closedhand Managed Models in My Account: where the plan stands and how
     // much of this month's fair use is used, as one bar and never an amount;
     // then the subscription, what it gives and the way in, or when it renews and the
-    // way to manage it. The first month's end is said in its last week only.
+    // way to manage it. The free days' end is said in their last three days only.
     async function renderMyPlan(account) {
       const $ = id => document.getElementById(id);
       const p = (account && account.plus) || {}, prices = p.prices || {}, plan = (account && account.plan) || {};
-      $("my-plan").hidden = !account || !(p.available || ["first-month", "plus", "ended"].includes(plan.name));
+      $("my-plan").hidden = !account || !(p.available || ["first-month", "plus", "ended", "maintainer"].includes(plan.name));
       if ($("my-plan").hidden) return;
+      // The maintainer's own account: Managed Models with no charge and this
+      // month's fair use, with nothing to buy, cancel or carry on.
+      if (plan.name === "maintainer") {
+        $("my-plan-status").hidden = true;
+        for (const id of ["my-plus-about", "my-plus-fine", "my-plus-get", "my-plus-extend", "my-plus-ways", "my-card-divider", "my-card-row", "my-plus-divider", "action-plus-cancel", "action-plus-keep"]) $(id).hidden = true;
+        const used = typeof account.used === "number";
+        $("my-fair-use").hidden = !used;
+        if (used) { const share = Math.round(account.used * 100); $("my-fair-use-fill").style.width = Math.max(1, share) + "%"; $("my-fair-use-track").setAttribute("aria-valuenow", String(share)); }
+        $("my-plan-state").textContent = "Closedhand Managed Models are on for your account as the maintainer, with no charge." + (plan.renews_at ? " This month's fair use renews on " + new Date(plan.renews_at).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) + "." : "");
+        $("my-plan-state").hidden = false;
+        await loadMyPayments(false);
+        return;
+      }
       const day = iso => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
       const state = [];
       // A status word as a connection has one: green while it runs, red once
@@ -5080,11 +5094,11 @@
       const wasPlus = plan.name === "ended" && plan.was === "plus";
       if (plan.name === "first-month") {
         const left = Date.parse(plan.ends_at) - Date.now();
-        state.push(left > 0 && left <= 7 * 86400000 ? "Your first month of Closedhand Managed Models stays on until " + day(plan.ends_at) + "." : "Your first month of Closedhand Managed Models is running.");
+        state.push(left > 0 && left <= 3 * 86400000 ? "Your free 14 days of Closedhand Managed Models run until " + day(plan.ends_at) + "." : "Your free 14 days of Closedhand Managed Models are running.");
       } else if (wasPlus) {
         status("Ended", "over");
         state.push(plan.ended_at ? "Your subscription ended on " + day(plan.ended_at) + "." : "Your subscription has ended.");
-      } else if (plan.name === "ended") state.push("Your first month of Closedhand Managed Models has ended.");
+      } else if (plan.name === "ended") state.push("Your free 14 days of Closedhand Managed Models have ended.");
       const running = (plan.name === "first-month" || plan.name === "plus") && typeof account.used === "number";
       $("my-fair-use").hidden = !running;
       if (running) {
@@ -5109,8 +5123,8 @@
         $("my-card-desc").textContent = card ? brand + " ending " + card.last4 + (card.expires ? ", expires " + card.expires : "") : "The card your subscription is paid with.";
         window._plusFacts = { until: p.ends_at || null, price: prices.plus || null, card: card ? "your " + brand + " ending " + card.last4 : null };
         // What cancelling would do, never what is happening: a running subscription renews.
-        // In its free month nothing has been charged, and cancelling keeps it so.
-        $("my-cancel-desc").textContent = p.trial ? "If you cancel, your free month runs until " + day(until) + " and nothing is charged."
+        // In its free days nothing has been charged, and cancelling keeps it so.
+        $("my-cancel-desc").textContent = p.trial ? "If you cancel, your free 14 days run until " + day(until) + " and nothing is charged."
           : until ? "If you cancel, your subscription stays on until " + day(until) + ", then ends." : "If you cancel, your subscription stays on to the end of the month you've paid for, then ends.";
         $("plus-cancel-text").textContent = p.trial ? "Your subscription ends on " + day(until) + " and nothing is charged. Until then you can resume your subscription."
           : "Your subscription ends on " + (until ? day(until) : "the last day you've paid for") + " and is not charged again. Until then you can resume your subscription.";
@@ -5124,13 +5138,13 @@
       $("my-plus-about").hidden = !p.available || p.active;
       if (p.available) {
         $("my-plus-about").textContent = "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own"
-          + (plan.email ? ", and to use Closedhand's own email with no monthly limit" : "") + ". They run in sealed hardware, so nobody but you can read what you send or what they answer, not even closedhand.com."
-          // Never had the free month: the subscription's first month is it (Polar's trial).
-          + (p.free_month ? " The first month is free, then " + (prices.plus || "a monthly price") + " a month." : "");
-        $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 first month free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
+          + (plan.email ? ", and for Closedhand's own email address" : "") + ". Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com."
+          // Never had the free days: the subscription's first 14 days are them (Polar's trial).
+          + (p.free_month ? " The first 14 days are free, then " + (prices.plus || "a monthly price") + " a month." : "");
+        $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 14 days free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
         $("my-plus-extend").textContent = "Carry on to the end of the month" + (prices.extend ? " \u00b7 " + prices.extend : "");
-        if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free month runs until " + day(p.ends_at) + ", then your subscription ends and nothing is charged."); }
-        else if (p.active && p.trial) { status("Free month", "on"); if (p.renews_at) state.push("Your free month runs until " + day(p.renews_at) + ", then your subscription renews at " + (prices.plus || "its monthly price") + " a month."); }
+        if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free 14 days run until " + day(p.ends_at) + ", then your subscription ends and nothing is charged."); }
+        else if (p.active && p.trial) { status("Free 14 days", "on"); if (p.renews_at) state.push("Your free 14 days run until " + day(p.renews_at) + ", then your subscription renews at " + (prices.plus || "its monthly price") + " a month."); }
         else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your subscription stays on until " + day(p.ends_at) + ", then ends."); }
         else if (p.active) { status("Active", "on"); if (p.renews_at) state.push("Renews on " + day(p.renews_at) + "."); }
         if (p.active && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
@@ -5250,7 +5264,7 @@
     async function plusWelcome() {
       const box = document.getElementById("plus-welcome"), state = document.getElementById("plus-welcome-state");
       myAccountSaid("");
-      document.getElementById("plus-welcome-what").textContent = "Closedhand Managed Models are yours every month, and Closedhand's own email has no monthly limit.";
+      document.getElementById("plus-welcome-what").textContent = "Closedhand Managed Models are yours every month, and so is Closedhand's own email address.";
       state.textContent = "Moving Closedhand onto Closedhand Managed Models now.";
       box.hidden = false;
       miniCelebration();

@@ -18,7 +18,8 @@ function fixture(respond = () => ({ state: 'off' }), at = {}) {
     history: { replaceState(_, __, url) { context.window.location.hash = ''; replaced.push(url); } } }, URL, URLSearchParams, AbortSignal, Date: { now: () => now },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
     navigator: { clipboard: { writeText: async text => copied.push(text) } }, document: { execCommand: () => true }, setTimeout: fn => fn(),
-    fetch: async (_, options) => { calls.push(options); const result = await respond(options); return { ok: !result.error, json: async () => result }; }
+    // The Terms are agreed already unless a test says otherwise (setup asks once).
+    fetch: async (_, options) => { calls.push(options); const answer = await respond(options); const result = answer && !answer.error && !('termsAccepted' in answer) ? { termsAccepted: true, ...answer } : answer; return { ok: !result.error, json: async () => result }; }
   };
   node('#url-rename-form').hidden = true; // as setup.html starts it
   vm.runInNewContext(source, context);
@@ -331,4 +332,35 @@ test('the paste-a-code box shows only where the code cannot come back by itself'
   const older = fixture(() => ({ state: 'pairing', enabled: true, pairingUrl: 'https://closedhand.com/phone-access/pair#ticket' }));
   await older.update();
   assert.equal(older.node('url-code-form').hidden, false, 'an older link still shows its code to paste');
+});
+
+test('the claim waits for the Terms, agreed once here; agreeing claims with a sign-in that was waiting', async () => {
+  let state = { state: 'off', serviceAvailable: true, termsAccepted: false };
+  const f = fixture(o => o.method === 'POST' ? { state: 'provisioning', enabled: true, ownershipConfirmed: true, addressName: 'amber-fox-42', termsAccepted: true, claimed: true } : state);
+  await f.update();
+  assert.equal(f.node('url-terms').hidden, false, 'asked before claiming');
+  assert.equal(f.node('url-start').disabled, true, 'no claim before agreeing');
+  f.node('url-terms-box').checked = true;
+  await f.node('url-terms-box').handlers.change.call(f.node('url-terms-box')); await tick();
+  const sent = f.calls.filter(c => c.method === 'POST');
+  assert.equal(sent.length, 1, 'agreed once');
+  assert.equal(f.node('url-form').hidden, true, 'the waiting sign-in claimed it');
+});
+
+test('ticked here, the agreement stays in view, ticked; agreed on an earlier visit, it is not asked again', async () => {
+  const f = fixture(o => o.method === 'POST' ? { termsAccepted: true } : { state: 'off', serviceAvailable: true, termsAccepted: false });
+  await f.update();
+  f.node('url-terms-box').checked = true;
+  await f.node('url-terms-box').handlers.change.call(f.node('url-terms-box')); await tick();
+  assert.equal(f.node('url-terms').hidden, false, 'nothing jumps away under the pointer');
+  assert.equal(f.node('url-terms-box').checked, true);
+  f.node('url-terms-box').checked = false;
+  await f.node('url-terms-box').handlers.change.call(f.node('url-terms-box')); await tick();
+  assert.equal(f.node('url-terms-box').checked, true, 'agreed is recorded, so it stays ticked');
+  assert.equal(f.calls.filter(c => c.method === 'POST').length, 1, 'and is not sent again');
+  assert.equal(f.node('url-start').disabled, false, 'the claim is open');
+  const later = fixture(() => ({ state: 'off', serviceAvailable: true, termsAccepted: true }));
+  await later.update();
+  assert.equal(later.node('url-terms').hidden, true);
+  assert.equal(later.node('url-start').disabled, false);
 });

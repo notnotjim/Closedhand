@@ -51,42 +51,61 @@
     bar.append(fill);
     return bar;
   }
-  function tile({ label, value, chip, bar, sub, tone }) {
+  // The maintainer's own share, beside a total that leaves it out: a small
+  // neutral tag, so real people's numbers are the ones that stand out.
+  const yours = text => el('span', 'chip', 'You ' + text);
+  function tile({ label, value, chip, you, bar, sub, tone }) {
     const t = el('div', 'tile' + (tone ? ' ' + tone : ''));
     t.append(el('p', 'tile-label', label));
     const line = el('p', 'tile-value', value);
     if (chip) line.append(el('span', 'chip up', chip));
+    if (you) line.append(yours(you));
     t.append(line);
     if (bar) t.append(bar);
     if (sub) t.append(el('p', 'tile-sub', sub));
     return t;
   }
 
-  // Managed Models by the one balance people depend on: every first month and
-  // every subscriber draws on NEAR AI's credit, and all of them
-  // stop when it runs out. This month's spend and who is using it go under it.
+  // Managed Models by the one balance people depend on: all free days and
+  // every subscriber draw on the provider's credit (NEAR AI, or OpenRouter),
+  // and all of them stop when it runs out. This month's spend and who is using
+  // it go under it.
+  let provider = 'The provider';
   function managedTile(m) {
+    provider = m.provider || provider;
     const c = m.credit, low = !!c && (c.left <= 0 || (c.days != null && c.days < 14));
-    const lasts = !c ? "NEAR AI didn't answer."
+    const lasts = !c ? `${provider} didn't answer.`
       : c.left <= 0 ? 'Used up, so Managed Models have stopped for everyone.'
       : c.days == null ? 'Nothing used in the last 30 days.'
       : c.days > 365 ? "Over a year at the last 30 days' pace."
       : `About ${n(c.days)} ${c.days === 1 ? 'day' : 'days'} at the last 30 days' pace.`;
-    return tile({ label: 'NEAR AI credit left', value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '',
-      sub: `${lasts} ${m.spentThisMonth == null ? '' : `${usd(m.spentThisMonth)} this month, `}` +
-        `${n(m.running)} first ${m.running === 1 ? 'month' : 'months'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} ${(m.plus.active || 0) === 1 ? 'subscription' : 'subscriptions'}.` });
+    const y = m.you || {}, yourPlus = (y.plus && y.plus.active) || 0;
+    const t = tile({ label: `${provider} credit left`, value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '',
+      sub: `${lasts} ${m.spentThisMonth == null ? '' : `${usd(m.spentThisMonth)} of Managed Models this month, `}` +
+        `${n(m.running)} free ${m.running === 1 ? 'period' : 'periods'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} ${(m.plus.active || 0) === 1 ? 'subscription' : 'subscriptions'}.` });
+    // The maintainer's share of it, and their own use with keys
+    // closedhand.com did not make, which is not Managed Models at all.
+    const mine = el('p', 'tile-sub');
+    const how = y.maintainer ? 'as the maintainer' : y.running ? 'free days' : yourPlus ? 'subscribed' : '';
+    if (m.spentYou || how) mine.append(yours(`${m.spentYou ? usd(m.spentYou) + ' of Managed Models' : ''}${m.spentYou && how ? ', ' : ''}${how}`), ' ');
+    if (m.ownUse) mine.append(`Your own ${provider} use, not Managed Models: ${usd(m.ownUse)} this month.`);
+    if (mine.childNodes.length) t.append(mine);
+    return t;
   }
 
   function drawTiles(d) {
+    // Everyone else's numbers, with the maintainer's beside them; the limit on
+    // personal URLs counts both.
     const a = d.accounts, u = d.urls, g = d.github, mac = g ? g.macTotal : 0, installs = d.installs.total, latest = g && g.macLatest;
+    const ya = a.you || {}, yu = u.you || {}, taken = (u.used || 0) + (yu.used || 0), full = u.limit > 0 && taken / u.limit >= 0.8;
     $('tiles').replaceChildren(
-      tile({ label: 'Closedhand accounts', value: n(a.total), chip: a.week ? `+${n(a.week)} this week` : '',
+      tile({ label: 'Closedhand accounts', value: n(a.total), chip: a.week ? `+${n(a.week)} this week` : '', you: ya.total ? n(ya.total) : '',
         bar: split([['Google', a.google, 'tone-a'], ['Microsoft', a.microsoft, 'tone-b']]),
-        sub: `${n(a.google)} Google, ${n(a.microsoft)} Microsoft` }),
-      tile({ label: 'Personal URLs taken', value: n(u.used), bar: meter(u.used, u.limit, u.limit > 0 && u.used / u.limit >= 0.8 ? 'tone-warn' : 'tone-b'),
-        sub: `of ${n(u.limit)}. Past ${n(u.limit)} nobody new can claim one.`, tone: u.limit > 0 && u.used / u.limit >= 0.8 ? 'warn' : '' }),
-      tile({ label: 'Online today', value: n(u.day), bar: meter(u.day, u.working, 'tone-today'),
-        sub: `of ${n(u.working)} personal ${u.working === 1 ? 'URL' : 'URLs'} working` }),
+        sub: `${n(a.google)} Google, ${n(a.microsoft)} Microsoft, not counting yours` }),
+      tile({ label: 'Personal URLs taken', value: n(u.used), you: yu.used ? n(yu.used) : '', bar: meter(taken, u.limit, full ? 'tone-warn' : 'tone-b'),
+        sub: `${n(taken)} of ${n(u.limit)} with yours. Past ${n(u.limit)} nobody new can claim one.`, tone: full ? 'warn' : '' }),
+      tile({ label: 'Online today', value: n(u.day), you: yu.day ? n(yu.day) : '', bar: meter(u.day, u.working, 'tone-today'),
+        sub: `of ${n(u.working)} personal ${u.working === 1 ? 'URL' : 'URLs'} working, not counting yours` }),
       tile({ label: 'Downloads', value: n(mac + installs),
         bar: split([['Mac app', mac, 'tone-a'], ['Install command', installs, 'tone-b']]),
         sub: g ? `${n(mac)} Mac app${latest ? ` (${n(latest.downloads)} of ${latest.version})` : ''}, ${n(installs)} install command` : `${n(installs)} install command. GitHub didn't answer.` }),
@@ -96,7 +115,9 @@
         sub: d.bugs.open ? 'Listed at the bottom' : 'All clear', tone: d.bugs.open ? 'warn' : 'good' }),
       tile({ label: 'GitHub stars', value: g ? n(g.stars) : 'n/a', sub: g ? `${n(g.forks)} ${g.forks === 1 ? 'fork' : 'forks'}` : "GitHub didn't answer" }),
       managedTile(d.managed),
-      tile({ label: 'Closedhand email', value: n(d.email.accounts), sub: `${d.email.accounts === 1 ? 'address' : 'addresses'} on, ${n(d.email.sent)} sent and ${n(d.email.received)} received this month` }),
+      tile({ label: 'Closedhand email', value: n(d.email.accounts), you: d.email.you && d.email.you.accounts ? n(d.email.you.accounts) : '',
+        sub: `${d.email.accounts === 1 ? 'address' : 'addresses'} on, ${n(d.email.sent)} sent and ${n(d.email.received)} received this month` +
+          (d.email.you && (d.email.you.sent || d.email.you.received) ? `, not counting your ${n(d.email.you.sent)} sent and ${n(d.email.you.received)} received` : '') }),
     );
   }
 
@@ -104,7 +125,7 @@
     const g = d.github, downloads = (g ? g.macTotal : 0) + d.installs.total;
     const steps = [
       ['Downloads', downloads, 'downloads', 'Mac app and install command together'],
-      ['Closedhand accounts', d.accounts.total, 'accounts', 'Signed in on closedhand.com'],
+      ['Closedhand accounts', d.accounts.total, 'accounts', 'Signed in on closedhand.com, not counting yours'],
       ['Personal URLs working', d.urls.working, 'working URLs', 'Claimed and connected'],
       ['Online this week', d.urls.week, '', 'Their computer connected in the last 7 days'],
     ];
@@ -134,7 +155,9 @@
     const max = Math.max(1, ...weeks.flatMap(w => SERIES.map(([k]) => w[k] || 0)));
     $('weeks-key').replaceChildren(...SERIES.map(([k, label, cls]) => {
       const li = el('li');
+      const mine = weeks.reduce((s, w) => s + (w['you_' + k] || 0), 0);
       li.append(el('i', cls), `${label}, ${n(weeks.reduce((s, w) => s + (w[k] || 0), 0))} in ${weeks.length} weeks`);
+      if (mine) li.append(' ', yours(n(mine)));
       return li;
     }));
     const chart = $('weeks');
@@ -153,7 +176,10 @@
     chart.setAttribute('aria-label', weeks.map(w => `Week of ${weekOf(w.week)}: ` + SERIES.map(([k, label]) => `${n(w[k] || 0)} ${label.toLowerCase()}`).join(', ')).join('. '));
   }
 
-  function drawGrid(u) {
+  // The squares are what closedhand.com can give out, so they count yours too.
+  function drawGrid(only) {
+    const y = only.you || {}, u = { ...only };
+    for (const k of ['working', 'day', 'week', 'month', 'setting_up', 'errors', 'used']) u[k] = (only[k] || 0) + (y[k] || 0);
     const limit = u.limit > 0 ? u.limit : 100, per = Math.max(1, Math.ceil(limit / 100)), cells = Math.ceil(limit / per);
     const at0 = v => Math.max(0, v || 0);
     const groups = [
@@ -178,7 +204,7 @@
     grid.setAttribute('aria-label', groups.map(([, label, count]) => `${n(count)} ${label.toLowerCase()}`).join(', ') + `, ${n(free)} free`);
     $('grid-note').textContent = (per === 1 ? `Each square is one of the ${n(limit)} personal URLs closedhand.com can give out.`
       : `Each square is ${n(per)} of the ${n(limit)} personal URLs closedhand.com can give out.`) +
-      ' Online means the computer running Closedhand connected.';
+      ' Online means the computer running Closedhand connected. Yours are among them.';
     const key = groups.filter(g => g[2]).map(([cls, label, count]) => {
       const li = el('li');
       li.append(el('i', 'tone-' + cls), `${n(count)} ${label.toLowerCase()}`);
@@ -196,7 +222,7 @@
   }
 
   // Everything held about one person, opened from their email. This
-  // month's Managed Models use is read from NEAR AI when it opens.
+  // month's Managed Models use is read from the provider when it opens.
   function firstMonth(p) {
     if (p.first_month_usd == null) return 'None';
     const ended = p.first_month_stopped || (p.first_month_until && new Date(p.first_month_until) <= Date.now());
@@ -220,14 +246,14 @@
     if (p.hostname) row('Last online', p.last_online ? `${when(p.last_online)} (${ago(p.last_online)})` : 'Never');
     if (p.renames) row('Renamed', `${n(p.renames)} ${p.renames === 1 ? 'time' : 'times'}`);
     row('Closedhand email', p.assistant_email ? `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month` : 'Off');
-    row('First month', firstMonth(p));
+    row('Free 14 days', firstMonth(p));
     row('Subscription', plusLine(p));
     if (p.first_month_usd != null || p.plus_status) {
-      const used = row('Managed Models use', 'Reading from NEAR AI…');
+      const used = row('Managed Models use', `Reading from ${provider}…`);
       fetch('/api/insights/person/' + encodeURIComponent(p.id), { cache: 'no-store' })
         .then(r => (r.ok ? r.json() : Promise.reject()))
-        .then(d => { used.textContent = d.usage ? `${usd(d.usage.used)} of ${usd(d.usage.limit)} (${pct(d.usage.used, d.usage.limit)}%)` : 'No key at NEAR AI'; })
-        .catch(() => { used.textContent = "NEAR AI didn't answer"; });
+        .then(d => { used.textContent = d.usage ? `${usd(d.usage.used)} of ${usd(d.usage.limit)} (${pct(d.usage.used, d.usage.limit)}%)` : `No key at ${provider}`; })
+        .catch(() => { used.textContent = `${provider} didn't answer`; });
     }
     row('Account id', p.id);
     return box;
@@ -259,14 +285,16 @@
       } else line.textContent = p.held_name ? `Name held: ${p.held_name}` : 'Signed in, nothing claimed';
       main.append(line);
       const chips = el('p', 'chips');
+      if (p.you) chips.append(el('span', 'chip', 'You'));
       chips.append(el('span', 'chip', p.provider === 'microsoft' ? 'Microsoft' : 'Google'));
       if (!p.email_verified) chips.append(el('span', 'chip warn', 'email unverified'));
       chips.append(el('span', 'chip', 'signed up ' + day(p.signed_up)));
       if (p.claimed) chips.append(el('span', 'chip', 'claimed ' + day(p.claimed)));
       if (p.renames) chips.append(el('span', 'chip', `renamed ${p.renames}x`));
       if (p.assistant_email) chips.append(el('span', 'chip', `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month`));
-      if (p.plus_status) chips.append(el('span', 'chip' + (p.plus_status === 'active' ? ' up' : ''), 'Subscription ' + p.plus_status));
-      else if (p.first_month_usd != null && !p.first_month_stopped && new Date(p.first_month_until) > Date.now()) chips.append(el('span', 'chip', 'first month to ' + day(p.first_month_until)));
+      if (p.maintainer) chips.append(el('span', 'chip', 'Managed Models as the maintainer'));
+      else if (p.plus_status) chips.append(el('span', 'chip' + (p.plus_status === 'active' ? ' up' : ''), 'Subscription ' + p.plus_status));
+      else if (p.first_month_usd != null && !p.first_month_stopped && new Date(p.first_month_until) > Date.now()) chips.append(el('span', 'chip', 'free days to ' + day(p.first_month_until)));
       main.append(chips);
       let more = open.has(p.id) ? details(p) : null;
       if (more) main.append(more);
@@ -331,7 +359,11 @@
       const d = await response.json();
       if (!d.signs || !d.signs.length) return;
       $('misuse-summary').textContent = d.summary || "Closedhand couldn't write a summary just now. The signs it found are below.";
-      $('misuse-signs').replaceChildren(...d.signs.map(text => el('li', 'misuse-sign', text)));
+      $('misuse-signs').replaceChildren(...d.signs.map((text, i) => {
+        const li = el('li', 'misuse-sign', text);
+        if (d.mine && d.mine[i]) li.append(' ', el('span', 'chip', 'You'));
+        return li;
+      }));
       $('misuse').hidden = false;
     } catch (_) { /* nothing shown */ }
   }

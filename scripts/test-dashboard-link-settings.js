@@ -121,7 +121,7 @@ test("the dashboard status route authenticates before reading only public addres
     app: { get: (_, fn) => { handler = fn; } },
     requireSetupAccess: async () => allowed,
     getRuntimeConf: async key => { reads++; assert.ok(["PHONE_PERMANENT_URL", "PHONE_ADDRESS_NAME"].includes(key)); return key === "PHONE_ADDRESS_NAME" ? "example" : address; },
-    require: name => { assert.equal(name, "./phone-registration"); return { validAddress: url => url === address, serviceAvailable: async () => false }; },
+    require: name => { assert.equal(name, "./phone-registration"); return { validAddress: url => url === address, serviceAvailable: async () => false, termsAccepted: async () => true }; },
     phoneAccess: { status: () => ({ enabled: false, state: "off", url: null }) },
   });
   vm.runInContext(region(source, 'app.get("/api/phone",', 'app.post("/api/phone",'), state);
@@ -133,6 +133,7 @@ test("the dashboard status route authenticates before reading only public addres
   await handler({}, response);
   assert.equal(output.savedUrl, address);
   assert.equal(output.addressName, "example");
+  assert.equal(output.termsAccepted, true, "whether the Terms were agreed, so setup asks once");
   assert.equal(reads, 2);
   assert.equal(output.enabled, false);
   assert.equal(output.serviceAvailable, false, "setup learns whether closedhand.com can give one out");
@@ -257,7 +258,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   assert.deepEqual([withAccount.el("my-plus-get").hidden, withAccount.el("my-card-row").hidden, withAccount.el("action-plus-cancel").hidden, withAccount.el("action-plus-keep").hidden, withAccount.el("my-plus-extend").hidden], [true, false, false, true, true]);
   assert.equal(withAccount.el("my-card-desc").textContent, "Visa ending 4242, expires 08/29", "the card it is paid with, shown");
   assert.equal(withAccount.el("my-cancel-desc").textContent, "If you cancel, your subscription stays on until 15 December, then ends.", "what cancelling would do, beside a plan that renews");
-  assert.match(html, /"If you cancel, your free month runs until " \+ day\(until\) \+ " and nothing is charged\."/, "a free month that renews isn't said to end");
+  assert.match(html, /"If you cancel, your free 14 days run until " \+ day\(until\) \+ " and nothing is charged\."/, "free days that renew aren't said to end");
   assert.equal(withAccount.el("plus-cancel-text").textContent, "Your subscription ends on 15 December and is not charged again. Until then you can resume your subscription.");
   assert.match(withAccount.el("delete-account-text").textContent, /^This deletes your Closedhand account: amber-fox-42\.closedhand\.ai stops working and closedhand\.com forgets your sign-in\. It also permanently deletes everything Closedhand keeps for you on your own computer/);
   const html2 = fs.readFileSync(require.resolve("../webapp/views/dashboard.html"), "utf8");
@@ -288,7 +289,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
     plus: { available: true, active: false, prices: { plus: "$10" } } } } }));
   await own.state.loadMyAccount();
   assert.equal(own.el("my-plan-state").hidden, true, "nothing said about a plan they don't have");
-  assert.equal(own.el("my-plus-about").textContent, "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own. They run in sealed hardware, so nobody but you can read what you send or what they answer, not even closedhand.com.");
+  assert.equal(own.el("my-plus-about").textContent, "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own. Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com.");
   assert.equal(own.el("my-plus-fine").textContent, "Cancel any time.");
   assert.equal(own.el("my-fair-use").hidden, true);
   assert.equal(own.el("my-plus-get").textContent, "Subscribe \u00b7 $10 a month");
@@ -296,7 +297,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
 
   const first = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "first-month", ends_at: day(20) }, used: 0.1, plus: { available: false } } } }));
   await first.state.loadMyAccount();
-  assert.equal(first.el("my-plan-state").textContent, "Your first month of Closedhand Managed Models is running.", "its end is said in its last week only");
+  assert.equal(first.el("my-plan-state").textContent, "Your free 14 days of Closedhand Managed Models are running.", "their end is said in their last three days only");
   assert.equal(first.el("my-plus-get").hidden, true, "nothing on sale, nothing offered");
 
   const without = accountPage(() => ({ body: { account: null } }));
@@ -356,7 +357,7 @@ test("Closedhand's two addresses are two matching cards side by side: its person
   const email = fs.readFileSync(require.resolve("../webapp/public/assistant-email.js"), "utf8");
   // Its own address, never read as the person's own one to verify.
   assert.match(email, /heading\.textContent = 'Closedhand’s email address';/);
-  assert.match(email, /'An email address of its own, like an assistant has\. Email it, forward things to it or CC it into a conversation\.'/);
+  assert.match(email, /'Email, forward or CC Closedhand into any conversation, as you would an assistant\.'/);
   assert.match(email, /button\(state\.pending \? 'Finish creating the address' : 'Create the address',/);
   assert.doesNotMatch(email, /'(Confirm|Enable) email address'|'Email address'/);
   assert.match(email, /allowance\.classList\.add\('address-foot'\);/);
@@ -476,7 +477,7 @@ test("Polar's own forms open over the whole window in a frame, and only Polar's 
   assert.equal(celebrated, 1, "subscribing is celebrated");
   assert.deepEqual(asked.at(-1), ["POST", "/api/plus/welcome"], "and Closedhand moves onto it at once");
   assert.equal(els["plus-welcome"].hidden, false);
-  assert.equal(els["plus-welcome-what"].textContent, "Closedhand Managed Models are yours every month, and Closedhand's own email has no monthly limit.");
+  assert.equal(els["plus-welcome-what"].textContent, "Closedhand Managed Models are yours every month, and so is Closedhand's own email address.");
   assert.equal(els["plus-welcome-state"].textContent, "Closedhand now runs on Closedhand Managed Models. Your own LLM provider stays in Settings, under Models.");
   assert.match(html, /<h3 id="llm-own-name">Your own LLM provider<\/h3>/, "and the way back to it is right there");
 
@@ -648,7 +649,7 @@ test("Usage costs: what the provider reported, else its listed price, with token
   assert.match(html, /const dayCost = usageManaged \? null : usageCost\(rows\.filter\(r => r\.day === day\)\);/, "each day's cost on the chart");
 });
 
-test("Models: a card for each way Closedhand can run, their own LLM provider first; one says In use, the other Not in use with the way to switch, and what the plan means in one sentence", () => {
+test("Models: a card for each way Closedhand can run, their own LLM provider first; one says In use, the other Not in use with the way to switch, and what the plan means in one sentence", async () => {
   const els = {};
   const classes = () => { const on = new Set(); return { toggle: (c, yes) => { if (yes) on.add(c); else on.delete(c); }, contains: (c) => on.has(c) }; };
   const el = (id) => (els[id] ||= { id, hidden: false, textContent: "", className: "", style: {}, classList: classes(), querySelector: () => null,
@@ -662,7 +663,7 @@ test("Models: a card for each way Closedhand can run, their own LLM provider fir
   box.state({ state: "available", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" }, own: ["DeepSeek"] });
   assert.deepEqual(look(), { own: "In use (plan-status on)", managed: "Not in use (plan-status over)", ownCard: true, managedCard: false }, "which runs, said plainly on each card");
   assert.deepEqual([els["byok-panel"].style.display, els["own-ai-switch"].hidden, els["included-ai-use"].hidden, els["included-ai-confirm"].hidden], ["", true, false, true]);
-  assert.equal(els["included-ai-plan"].textContent, "They come with your subscription, which you cancelled: it ends on 27 November. Resume it in My Account.", "the plan in one sentence; the plan itself is in My Account");
+  assert.equal(els["included-ai-plan"].textContent, "Closedhand Managed Models come with your subscription, which you cancelled: it ends on 27 November. Resume it in My Account.", "the plan in one sentence; the plan itself is in My Account");
   box.llmStepTo("managed");
   assert.deepEqual([els["included-ai-use"].hidden, els["included-ai-confirm"].hidden, look().own], [true, false, "In use (plan-status on)"], "looking is not switching");
   assert.equal(els["included-ai-confirm-text"].textContent, "Closedhand will run on Closedhand Managed Models from now on. Switch back before 27 November to keep Closedhand replying. DeepSeek stays saved here, so you can switch back in one click.");
@@ -685,7 +686,11 @@ test("Models: a card for each way Closedhand can run, their own LLM provider fir
   // Managed Models not theirs: no cards, just their own models.
   box.state(null);
   assert.deepEqual([els["llm-options"].classList.contains("alone"), els["llm-managed"].hidden, els["byok-panel"].style.display], [true, true, ""]);
-  assert.match(html, /var theirs = !!\(data && data\.plan\) && \(data\.plan\.name === 'first-month' \|\| data\.plan\.name === 'plus'\);/, "offered only while they are the person's");
+  assert.match(html, /var theirs = !!\(data && data\.plan\) && \['first-month', 'plus', 'maintainer'\]\.includes\(data\.plan\.name\);/, "offered only while they are the person's");
+  // The maintainer's, not in use: offered all the same.
+  box.fetch = async () => ({ ok: true, json: async () => ({ state: "available", plan: { name: "maintainer", renews_at: "2026-12-01T00:00:00.000Z" }, own: ["DeepSeek"] }) });
+  await box.loadIncludedAi();
+  assert.deepEqual([els["llm-managed"].hidden, look().managed], [false, "Not in use (plan-status over)"], "the maintainer's, offered while not in use too");
   assert.ok(html.indexOf('id="llm-own"') < html.indexOf('id="llm-managed"'), "their own LLM provider first");
   assert.match(html, /<button type="button" class="cta" id="included-ai-go" onclick="useIncludedAi\(\)">Let's go<\/button>/);
   assert.match(html, /if \(includedState && includedState\.state === 'in-use'\) llmStepTo\('own'\);/, "a key pasted in Connections opens the form while Managed Models run too");

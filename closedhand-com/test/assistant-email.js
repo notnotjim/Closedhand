@@ -56,7 +56,12 @@ function copy() {
   const id = crypto.randomUUID(), secret = crypto.randomBytes(32).toString('hex'), keys = p.keyPair();
   return { id, keys, auth: { Authorization: `Bearer ${id}.${secret}` } };
 }
-async function pair(c, cookie, name = 'Pete') {
+// Closedhand's own address comes with Closedhand Managed Models: everyone
+// signed in here has their free days, unless a test takes them away.
+const withManagedModels = () => db.query(
+  "INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) SELECT id, 'key-' || id, 12, now() + interval '14 days' FROM owners ON CONFLICT (owner_id) DO NOTHING");
+async function pair(c, cookie, name = 'Pete', managed = true) {
+  if (managed) await withManagedModels();
   const registered = await (await call('POST', '/api/assistant-mail-relay/register', { publicKey: c.keys.publicKey, name }, c.auth)).json();
   assert.match(registered.url, /^https:\/\/closedhand\.com\/assistant-email\/confirm#/);
   const ticket = registered.url.split('#')[1];
@@ -138,9 +143,53 @@ test('allowances are counted per owner, and an owner may run three copies', asyn
   const other = await signIn('google', google('g-al', 'al@example.com'));
   await pair(c, other.cookie);
   const status = await (await call('GET', '/api/assistant-mail-relay/status', null, c.auth)).json();
-  assert.equal(status.usage.sentLimit, 1000);
+  assert.equal(status.usage.sentLimit, undefined, 'no monthly allowance');
+  assert.equal(status.usage.dailySentLimit, 1000);
+  assert.equal(status.usage.entitled, true);
   assert.equal(status.usage.dailySent, 0);
   const sent = await call('POST', '/api/assistant-mail-relay/outbox', { id: crypto.randomUUID(), to: ['al@example.com'], subject: 'Hi', text: 'Hello.' }, c.auth);
   assert.equal(sent.status, 200);
   assert.equal((await (await call('GET', '/api/assistant-mail-relay/status', null, c.auth)).json()).usage.dailySent, 1);
+});
+
+test('without Closedhand Managed Models no new address is made, and one already made refuses mail with one plain line and sends nothing', async () => {
+  const off = "Closedhand's email address sends and receives mail only with Closedhand Managed Models, which this account doesn't have right now.";
+  const nia = await signIn('google', google('g-nia', 'nia@example.com'));
+  const first = await pair(copy(), nia.cookie, 'Pete', false);
+  assert.equal(first.status, 403, 'not without them');
+  assert.equal((await first.json()).managedModels, true);
+  const c = copy();
+  const { address } = await (await pair(c, nia.cookie)).json();
+  assert.match(address, /@assist\.closedhand\.ai$/, 'with their free days, it is made');
+  await db.query("UPDATE included_ai_keys SET stopped_at = now() WHERE owner_id = (SELECT id FROM owners WHERE subject = 'g-nia')");
+  const status = await (await call('GET', '/api/assistant-mail-relay/status', null, c.auth)).json();
+  assert.equal(status.address, address, 'the address stays with the account');
+  assert.equal(status.usage.entitled, false);
+  const sent = await call('POST', '/api/assistant-mail-relay/outbox', { id: crypto.randomUUID(), to: ['nia@example.com'], subject: 'Hi', text: 'Hello.' }, c.auth);
+  assert.equal(sent.status, 429);
+  assert.equal((await sent.json()).error, off, 'nothing is sent');
+  const event = { notificationType: 'Received', mail: { messageId: 'ses-off', timestamp: new Date().toISOString(), source: 'guest@example.com' },
+    receipt: { recipients: [address], dmarcVerdict: { status: 'PASS' }, spamVerdict: { status: 'PASS' }, virusVerdict: { status: 'PASS' } } };
+  await worker.receive(mailDb, event, Buffer.from('raw'), async () => { throw new Error('a refused email is never read'); });
+  const inbox = await (await call('GET', '/api/assistant-mail-relay/inbox', null, c.auth)).json();
+  assert.equal(inbox.messages.length, 1);
+  const note = p.open(inbox.messages[0].sealed, c.keys.privateKey, c.id);
+  assert.equal(note.subject, 'Email could not be received');
+  assert.equal(note.deliveryError, off, 'their Closedhand is told why, in one plain line');
+});
+
+test('the maintainer\'s own Managed Models bring Closedhand\'s own email address like any other', async () => {
+  {
+    const boss = await signIn('google', google('g-boss', 'boss@example.com'));
+    await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, base_usd, base_for, maintainer) SELECT id, 'key-boss', 0, 0, date_trunc('month', now()), true FROM owners WHERE subject = 'g-boss'");
+    const c = copy();
+    const made = await pair(c, boss.cookie, 'Pete', false);
+    assert.equal(made.status, 200, 'a new address, with no free days or subscription');
+    const status = await (await call('GET', '/api/assistant-mail-relay/status', null, c.auth)).json();
+    assert.equal(status.usage.entitled, true);
+    const sent = await call('POST', '/api/assistant-mail-relay/outbox', { id: crypto.randomUUID(), to: ['boss@example.com'], subject: 'Hi', text: 'Hello.' }, c.auth);
+    assert.equal(sent.status, 200, 'and mail moves');
+    const other = await signIn('google', google('g-ida', 'ida@example.com'));
+    assert.equal((await pair(copy(), other.cookie, 'Pete', false)).status, 403, 'nobody else\'s');
+  }
 });

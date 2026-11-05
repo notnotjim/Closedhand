@@ -57,7 +57,7 @@ Working on Closedhand itself? Build from source with `docker compose -f docker-c
 
 **Setup.** The setup page opens in your browser (or at **http://localhost:3000**) and ticks off each step as it sees it done:
 
-1. **Models.** Closedhand Managed Models, with a first month at no charge and no card needed, or your own LLM provider.
+1. **Models.** Closedhand Managed Models, with 14 days at no charge and no card needed, or your own LLM provider.
 2. **A password** for your dashboard.
 3. **Email and calendar.** Google, Microsoft or both. Google takes one sign-in through Closedhand's own Google app, or about five minutes through a free Google Cloud project of your own, which setup walks you through.
 4. **Your personal URL**, so you can open Closedhand from your phone or any browser.
@@ -89,7 +89,7 @@ By the time you say hello, Closedhand has already read your inbox and calendar.
 
 Closedhand is free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, NEAR AI, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does.
 
-If you'd rather not choose, Closedhand Managed Models run DeepSeek V4.1 Flash, uncensored. It runs in sealed hardware, so nobody but you can read what you send or what it answers. When a better uncensored LLM is available, Closedhand switches to it for you. They come with a first month at no charge, once per person, and then carry on with an optional monthly subscription. You can switch to your own LLM provider at any time.
+If you'd rather not choose, Closedhand Managed Models run DeepSeek V4.1 Flash, uncensored, in sealed hardware: nobody but you can read what you send or what comes back. When a better uncensored LLM is available, Closedhand switches to it for you. Closedhand Managed Models come with 14 days at no charge, once per person, and then carry on with an optional monthly subscription. You can switch to your own LLM provider at any time.
 
 ## Where it runs
 

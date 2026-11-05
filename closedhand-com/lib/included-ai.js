@@ -1,45 +1,55 @@
 // The AI that comes with Closedhand. When an account claims its personal URL,
-// closedhand.com makes it a NEAR AI key of its own (with its sign-in at NEAR,
-// lib/near-session.js) and hands it, once, to the computer that claimed. That
-// computer then talks to NEAR directly, encrypted into the sealed hardware the
-// model runs in, so no message ever passes through here; what stays here is
-// NEAR's id for the key and when its first month ends.
+// closedhand.com makes it a key of its own at the LLM provider Closedhand
+// Managed Models run on, and hands it, once, to the computer that claimed.
+// That computer then talks to the provider directly, so no message ever
+// passes through here; what stays here is the provider's id for the key and
+// when its free 14 days end.
 //
-// A key's spending limit is all NEAR holds it to: it has no monthly reset and
-// no list of models, so each paid month raises the limit by its fair use. An
-// account has one key: claiming again makes a new key with whatever was left
-// and the same end date, and deletes the old one. A new key takes NEAR up to
-// ten seconds to accept; the computer that gets one waits and checks again
-// (webapp/included-ai-setup.js).
+// The provider is one setting (INCLUDED_AI_PROVIDER): NEAR AI's private
+// inference (lib/included-ai-near.js), or OpenRouter's per-account keys
+// (lib/included-ai-openrouter.js), kept so Managed Models can move back.
+// Both make, read, limit and delete keys the same way; everything else here
+// is the same for either. Computers follow the provider closedhand.com names.
 //
-// The start is a first month, not an amount: the key has the fair-use ceiling
-// (INCLUDED_AI_FAIR_USE_USD), never reset, and the hourly sweep stops it when
-// the month (INCLUDED_AI_FIRST_MONTH_DAYS) is over, unless a subscription has
-// taken over. It is given once per person, ever (starter_grants keeps a
-// one-way fingerprint of the sign-in, also after the account is deleted), and
-// to at most a few people per internet connection a month, so nobody can
-// collect it by making account after account. How many start is never a
-// reason to refuse anyone: lib/capacity.js tells the maintainer in time to
-// raise the limits instead.
+// A key's limit is a lifetime total, never reset by the provider. An account
+// has one key: claiming again makes a new key with whatever was left and the
+// same end date, and deletes the old one.
 //
-// Closedhand picks the provider and models (INCLUDED_AI_MODELS) and can change
-// them without a release: each computer asks for the current pick every hour
+// The start is 14 free days (INCLUDED_AI_TRIAL_DAYS) with a ceiling of their
+// own (INCLUDED_AI_TRIAL_USD); the hourly sweep stops the key when they are
+// over, unless a subscription has taken over. They are given once per
+// person, ever (starter_grants keeps a one-way fingerprint of the sign-in,
+// also after the account is deleted), and to at most a few people per
+// internet connection a month, so nobody can collect them by making account
+// after account. How many start is never a reason to refuse anyone:
+// lib/capacity.js tells the maintainer in time to raise the limits instead.
+//
+// Closedhand picks the models (INCLUDED_AI_MODELS) and can change them
+// without a release: each computer asks for the current pick every hour
 // (current) and switches itself over.
-// Once the person has had it, from a connection that has had it often,
-// without a sign-in at NEAR, or with NEAR unreachable, the claim goes on
-// without a key and setup asks for an LLM provider instead.
+// Once the person has had the free days, from a connection that has had them
+// often, without the provider's settings, or with the provider unreachable,
+// the claim goes on without a key and setup asks for an LLM provider instead.
 //
-// The subscription (lib/plus.js) continues it: a subscriber's key gets a fair use
-// for each paid month, from the day of the month they subscribed (as Polar
-// renews it), doubled for a month they paid to carry on past it. A subscriber is never held to
-// the first month's limits; one whose account has no key gets one the next
-// time their computer asks (collect), and an ended subscription stops the key.
+// The subscription (lib/plus.js) continues it: a subscriber's key gets a
+// month's fair use (INCLUDED_AI_FAIR_USE_USD) for each paid month, from the
+// day of the month they subscribed (as Polar renews it), and another for a
+// month they paid to carry on past it. What the period before left unused
+// carries into a paid month as it begins, up to one month's fair use, so
+// nobody holds more than two months; the Terms say so, nothing else does. A
+// subscriber is never held to the free days' limits; one whose account has
+// no key gets one the next time their computer asks (collect), and an ended
+// subscription stops the key.
+//
+// The maintainer's own account (lib/maintainer.js) has Managed Models with no
+// charge and no Polar: the same monthly fair use as a subscriber, renewing on
+// the first of each month with the same carry-over, never free days, and never
+// stopped by the sweep or a subscription ending, whatever Polar says.
 const crypto = require('crypto');
+const { isMaintainer } = require('./maintainer');
 
-// NEAR counts money in nano-dollars.
-const NANO = 1e9;
-const nano = usd => Math.round(usd * NANO);
-const dollars = price => (price && Number.isFinite(Number(price.amount)) ? Number(price.amount) / 10 ** Number(price.scale ?? 9) : null);
+const BACKENDS = { near: './included-ai-near', openrouter: './included-ai-openrouter' };
+const cents = n => Math.round(n * 100) / 100;
 
 // The part of an address that is one connection: all of an IPv4 address, the
 // first half of an IPv6 one (a home gets a whole /64).
@@ -54,115 +64,76 @@ function connection(ip) {
 }
 
 function create({ db, env = process.env, request = fetch, notices = null }) {
-  const session = require('./near-session').create({ db, env, request, notices });
-  const fairUse = Number(env.INCLUDED_AI_FAIR_USE_USD || 20);
-  const firstMonthDays = Number(env.INCLUDED_AI_FIRST_MONTH_DAYS || 30);
+  const choice = String(env.INCLUDED_AI_PROVIDER || 'near').trim().toLowerCase();
+  const keys = BACKENDS[choice] ? require(BACKENDS[choice]).create({ db, env, request, notices }) : null;
+  const fairUse = Number(env.INCLUDED_AI_FAIR_USE_USD || 15);
+  const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 12);
+  const trialDays = Number(env.INCLUDED_AI_TRIAL_DAYS || 14);
   // Ten, so an office or a household sharing one connection all get theirs,
   // while one connection can't collect it again and again.
   const perConnection = Number(env.INCLUDED_AI_PER_CONNECTION || 10);
   const pepper = String(env.TOKEN_ENCRYPTION_KEY || '');
   const fingerprint = (kind, text) => crypto.createHmac('sha256', pepper).update('included-ai-' + kind + ':' + text).digest('hex');
   const list = value => String(value || '').split(',').map(s => s.trim()).filter(Boolean);
-  // Text only: NEAR's encryption carries words, so pictures and videos are
-  // described by the vision language model on the person's computer.
-  const models = list(env.INCLUDED_AI_MODELS || 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated');
+  const models = keys ? list(env.INCLUDED_AI_MODELS || keys.defaults.models) : [];
   // The chat model's name as the person reads it in Settings and setup.
-  const modelName = String(env.INCLUDED_AI_MODEL_NAME || 'DeepSeek V4.1 Flash, uncensored').trim().slice(0, 80);
-  const enabled = () => session.configured() && pepper.length >= 16 && fairUse > 0 && firstMonthDays > 0 && models.length > 0;
+  const modelName = keys ? String(env.INCLUDED_AI_MODEL_NAME || keys.defaults.name).trim().slice(0, 80) : '';
+  // Pictures and videos go to a model of their own where the provider has
+  // one; else the vision language model on the person's computer reads them.
+  const visionModel = keys && keys.defaults.vision ? String(env.INCLUDED_AI_VISION_MODEL ?? keys.defaults.vision).trim() : '';
+  const enabled = () => !!keys && keys.configured() && pepper.length >= 16 && fairUse > 0 && trialUsd > 0 && trialDays > 0 && models.length > 0;
 
-  async function api(path, method = 'GET', body, again = false) {
-    const response = await request(session.base + path, {
-      method,
-      headers: { Authorization: 'Bearer ' + await session.token(), 'User-Agent': session.agent, 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(15000),
-    });
-    // An access token NEAR stopped taking early is renewed, once.
-    if (response.status === 401 && !again) { session.forget(); return api(path, method, body, true); }
-    const text = await response.text();
-    let json = null;
-    try { json = text ? JSON.parse(text) : null; } catch (_) { /* not JSON */ }
-    if (!response.ok) throw Object.assign(new Error(`NEAR AI answered ${response.status} to ${method} ${path.split('?')[0]}`), { status: response.status });
-    return json;
-  }
-
-  // The organisation whose credit every key draws on, and the workspace the
-  // keys are made in: as set, else the only one there is.
-  let ids = null;
-  async function where() {
-    if (ids) return ids;
-    let org = String(env.NEAR_ORG_ID || '').trim(), workspace = String(env.NEAR_WORKSPACE_ID || '').trim();
-    if (!org) {
-      const orgs = (await api('/v1/organizations?limit=100'))?.organizations || [];
-      if (orgs.length !== 1) throw new Error(orgs.length ? 'NEAR AI has several organisations for this sign-in: set NEAR_ORG_ID' : 'NEAR AI has no organisation for this sign-in');
-      org = orgs[0].id;
-    }
-    if (!workspace) {
-      const spaces = (await api('/v1/organizations/' + encodeURIComponent(org) + '/workspaces?limit=100'))?.workspaces || [];
-      if (spaces.length !== 1) throw new Error(spaces.length ? 'NEAR AI has several workspaces here: set NEAR_WORKSPACE_ID' : 'NEAR AI has no workspace here');
-      workspace = spaces[0].id;
-    }
-    return (ids = { org: encodeURIComponent(org), workspace: encodeURIComponent(workspace) });
-  }
-
-  // A key as NEAR lists it, in dollars.
-  const shape = k => ({ id: k.id, name: String(k.name || ''), limit: dollars(k.spend_limit), usage: dollars(k.usage) || 0 });
-  // Every live key in the workspace (not deleted or switched off). NEAR has no
-  // way to read one key alone, only pages of them, so the list is kept five
-  // minutes for the account page and each computer's hourly look; a key not
-  // in it is looked for afresh.
-  let listed = { at: 0, keys: null };
-  async function keys({ fresh = false } = {}) {
-    if (!fresh && listed.keys && Date.now() - listed.at < 5 * 60000) return listed.keys;
-    const { workspace } = await where();
-    const found = new Map();
-    for (let offset = 0, page = 0; page < 1000; page++) {
-      const got = await api(`/v1/workspaces/${workspace}/api-keys?limit=100&offset=${offset}&order_by=created_at&order_direction=asc`);
-      const batch = got?.api_keys || [];
-      for (const k of batch) if (!k.deleted_at && k.is_active !== false && typeof k.id === 'string') found.set(k.id, shape(k));
-      offset += batch.length;
-      if (!batch.length || offset >= Number(got?.total ?? 0)) break;
-    }
-    listed = { at: Date.now(), keys: found };
-    return found;
-  }
-  const remember = k => { if (listed.keys && typeof k?.id === 'string') listed.keys.set(k.id, shape(k)); };
-
-  // A key as NEAR has it now, or null when it is gone.
-  async function keyNow(id, { fresh = false } = {}) {
-    return (await keys({ fresh })).get(id) || (fresh ? null : (await keys({ fresh: true })).get(id) || null);
-  }
-  async function drop(id) {
-    const { workspace } = await where();
-    await api(`/v1/workspaces/${workspace}/api-keys/${encodeURIComponent(id)}`, 'DELETE').catch(e => { if (e.status !== 404) throw e; });
-    listed.keys?.delete(id);
-  }
-  // Deletes a key at NEAR now; one that can't be deleted yet waits in
+  // Deletes a key at the provider now; one that can't be deleted yet waits in
   // retired_ai_keys for the hourly sweep, so it never stays live unlisted.
   async function discard(id) {
     try {
-      await drop(id);
+      await keys.drop(id);
       await db.query('DELETE FROM retired_ai_keys WHERE key_id = $1', [id]);
     } catch (error) {
       console.error('[included ai] a key waits to be deleted:', error.message);
       await db.query('INSERT INTO retired_ai_keys (key_id) VALUES ($1) ON CONFLICT DO NOTHING', [id]).catch(() => {});
     }
   }
-  const cents = n => Math.round(n * 100) / 100;
-  // A limit NEAR holds to: never 0 or none, which would mean no limit; at
-  // least a billionth of a dollar, the smallest it takes.
-  const atLeastANano = n => Math.max(1 / NANO, n);
-  async function setLimit(id, usd) {
-    const { workspace } = await where();
-    remember(await api(`/v1/workspaces/${workspace}/api-keys/${encodeURIComponent(id)}/spend-limit`, 'PATCH', { spendLimit: { amount: nano(atLeastANano(usd)), currency: 'USD' } }));
+  const makeKey = (ownerId, usd) => keys.makeKey('Closedhand ' + ownerId, usd);
+  const maintainer = ownerId => isMaintainer(db, env, ownerId);
+
+  // The maintainer's months run from the first of each calendar month (UTC).
+  const calendarMonth = (now = new Date()) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+  // The maintainer's key, made now: a month of fair use. Claiming again makes
+  // a new one that carries on from the key held, as a subscriber's does.
+  async function keyForMaintainer(ownerId) {
+    const held = (await db.query('SELECT * FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
+    const oldId = held && held.key_id;
+    const old = held && held.maintainer ? await keys.keyNow(oldId, { fresh: true }) : null;
+    const month = old && held.base_for ? Number(old.limit) - (Number(held.base_usd) || 0) : fairUse;
+    const left = old ? Math.max(0, Number(old.limit) - Number(old.usage)) : fairUse;
+    const made = await makeKey(ownerId, left);
+    const base = cents(left - month), since = old && held.base_for ? new Date(held.base_for) : calendarMonth(), carry = old ? Number(held.carry_usd) || 0 : 0;
+    const saved = held
+      ? await db.query('UPDATE included_ai_keys SET key_id = $2, base_usd = $3, base_for = $5, carry_usd = $6, maintainer = true, stopped_at = NULL, updated_at = now() WHERE owner_id = $1 AND key_id = $4 RETURNING owner_id',
+        [ownerId, made.id, base, oldId, since, carry])
+      : await db.query('INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, base_usd, base_for, maintainer) VALUES ($1, $2, 0, 0, $3, true) ON CONFLICT (owner_id) DO NOTHING RETURNING owner_id',
+        [ownerId, made.id, since]);
+    if (!saved.rowCount) { await discard(made.id); return null; }
+    if (oldId) await discard(oldId);
+    return { key: made.key, models: roles() };
   }
 
-  async function makeKey(ownerId, limit) {
-    const { workspace } = await where();
-    const made = await api(`/v1/workspaces/${workspace}/api-keys`, 'POST', { name: 'Closedhand ' + ownerId, spendLimit: { amount: nano(cents(limit)), currency: 'USD' } });
-    if (typeof made?.key !== 'string' || !made.key.startsWith('sk-') || typeof made.id !== 'string') throw new Error('NEAR AI did not return a key');
-    remember(made);
-    return { key: made.key, id: made.id };
+  // The maintainer's key held to this month: as the month begins, the same
+  // fair use from the use it has now, with the same carry-over. A key from
+  // before closedhand.com knew whose it was starts its first month now.
+  async function maintainerMonth(ownerId, held) {
+    const key = await keys.keyNow(held.key_id, { fresh: true });
+    if (!key) {
+      await db.query('DELETE FROM included_ai_keys WHERE owner_id = $1 AND key_id = $2', [ownerId, held.key_id]);
+      return;
+    }
+    const month = calendarMonth();
+    if (held.maintainer && !held.stopped_at && held.base_for && new Date(held.base_for).getTime() === month.getTime()) return;
+    const { base, carry } = await beginMonth(ownerId, held, key, month);
+    await keys.setLimit(held.key_id, base + fairUse + carry);
+    await db.query('UPDATE included_ai_keys SET maintainer = true, stopped_at = NULL, updated_at = now() WHERE owner_id = $1', [ownerId]);
   }
 
   // The one-way fingerprint of the account's sign-in, which starter_grants keeps.
@@ -171,8 +142,8 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return fingerprint('person', who && who.subject ? who.provider + ':' + who.subject : 'owner:' + ownerId);
   }
 
-  // Whether this person has had their one free month of Managed Models: given
-  // to this account, or to their sign-in on an account before.
+  // Whether this person has had their free days of Managed Models: given to
+  // this account, or to their sign-in on an account before.
   async function hadFreeMonth(ownerId) {
     if ((await db.query('SELECT 1 FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rowCount) return true;
     return (await db.query('SELECT 1 FROM starter_grants WHERE person_hash = $1', [await personOf(ownerId)])).rowCount > 0;
@@ -184,6 +155,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   async function forOwner(ownerId, { ip } = {}) {
     if (!enabled()) return null;
     try {
+      if (await maintainer(ownerId)) return await keyForMaintainer(ownerId);
       const held = (await db.query('SELECT * FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
       const sub = await subscription(ownerId);
       if (held) {
@@ -191,14 +163,15 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
         // key that carries on from the one held: what it used stays used.
         const oldId = held.key_id;
         if (!sub && (held.stopped_at || !held.ends_at || new Date(held.ends_at) <= new Date())) return null;
-        const old = await keyNow(oldId, { fresh: true });
+        const old = await keys.keyNow(oldId, { fresh: true });
         // What is left now goes to the new key. A subscriber keeps their key
         // for the months to come even with nothing left this month; their new
         // key's base is set so this month's fair use counts the same.
-        const left = old ? Math.max(0, Number(old.limit) - Number(old.usage)) : (sub ? allowanceFor(sub) : 0);
+        const month = old && held.base_for ? Number(old.limit) - (Number(held.base_usd) || 0) : sub ? allowanceFor(sub) + (Number(held.carry_usd) || 0) : 0;
+        const left = old ? Math.max(0, Number(old.limit) - Number(old.usage)) : (sub ? month : 0);
         if (!sub && !(left > 0.01)) return null;
-        const made = await makeKey(ownerId, atLeastANano(left));
-        const base = sub ? cents(left - allowanceFor(sub)) : held.base_usd;
+        const made = await makeKey(ownerId, left);
+        const base = sub ? cents(left - month) : held.base_usd;
         // Only the claim that still finds the key it read replaces it: two
         // at once can't both hand out a key, and the other's is deleted.
         const swapped = await db.query(
@@ -212,23 +185,23 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
       const person = await personOf(ownerId);
       const place = connection(ip) && fingerprint('connection', connection(ip));
       await db.query("UPDATE starter_grants SET network_hash = NULL WHERE network_hash IS NOT NULL AND granted_at < now() - interval '30 days'");
-      const refused = (await db.query('SELECT 1 FROM starter_grants WHERE person_hash = $1', [person])).rowCount ? 'this sign-in has had it'
+      const refused = (await db.query('SELECT 1 FROM starter_grants WHERE person_hash = $1', [person])).rowCount ? 'this sign-in has had them'
         : await full(place);
       if (refused) {
-        console.log('[included ai] no first month given: ' + refused);
+        console.log('[included ai] no free days given: ' + refused);
         return null;
       }
       // Held first, so two claims at once can't both have it.
       const given = await db.query(
         'INSERT INTO starter_grants (person_hash, network_hash, granted_usd) VALUES ($1, $2, $3) ON CONFLICT (person_hash) DO NOTHING RETURNING id',
-        [person, place, fairUse]);
+        [person, place, trialUsd]);
       if (!given.rowCount) return null;
       let made;
-      try { made = await makeKey(ownerId, fairUse); }
+      try { made = await makeKey(ownerId, trialUsd); }
       catch (error) { await db.query('DELETE FROM starter_grants WHERE id = $1', [given.rows[0].id]); throw error; }
       const saved = await db.query(
         'INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, $2, $3, now() + make_interval(days => $4)) ON CONFLICT (owner_id) DO NOTHING RETURNING owner_id',
-        [ownerId, made.id, fairUse, firstMonthDays]);
+        [ownerId, made.id, trialUsd, trialDays]);
       if (!saved.rowCount) { await discard(made.id); return null; }
       return { key: made.key, models: roles() };
     } catch (error) {
@@ -237,11 +210,11 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     }
   }
 
-  // Why no first month can go to this connection now, or null when it can.
+  // Why no free days can go to this connection now, or null when they can.
   async function full(place) {
     if (place && Number((await db.query(
       "SELECT count(*) AS n FROM starter_grants WHERE network_hash = $1 AND granted_at >= now() - interval '30 days'", [place])).rows[0].n) >= perConnection) {
-      return 'this connection has had it ' + perConnection + ' times in 30 days';
+      return 'this connection has had them ' + perConnection + ' times in 30 days';
     }
     return null;
   }
@@ -261,10 +234,10 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   }
   // The paid month a subscription is in, by the day it began.
   const monthOf = sub => (sub.current_period_start ? new Date(sub.current_period_start).getTime() : 0);
-  // This paid month's fair use: twice it when the person paid to carry on in it.
+  // This paid month's fair use: another month's when the person paid to carry on in it.
   const allowanceFor = sub => fairUse * (sub.extended_for && new Date(sub.extended_for).getTime() === monthOf(sub) ? 2 : 1);
 
-  // A subscriber's key, made now: no first-month limits apply. Saved first, so two
+  // A subscriber's key, made now: no free-days limits apply. Saved first, so two
   // requests at once can't both hand one out; the loser's key is deleted.
   async function keyForSubscriber(ownerId, sub) {
     const made = await makeKey(ownerId, allowanceFor(sub));
@@ -278,14 +251,28 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return { key: made.key, models: roles() };
   }
 
-  // A key for a subscriber whose account holds none (the first month was never
+  // A key for a subscriber whose account holds none (the free days were never
   // given, or the subscription came first), handed once to their computer
   // when it next asks. Null for anyone else. Never throws.
   async function collect(ownerId) {
     if (!enabled()) return null;
     try {
+      const held = (await db.query('SELECT * FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
+      if (await maintainer(ownerId)) {
+        // The maintainer's account: a key of its own, or the one it holds
+        // kept to this month, which its computer already has.
+        if (!held) return await keyForMaintainer(ownerId);
+        await maintainerMonth(ownerId, held);
+        return null;
+      }
       const sub = await subscription(ownerId);
-      if (!sub || (await db.query('SELECT 1 FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rowCount) return null;
+      // No longer the maintainer's: the usual rules again, from what it used.
+      if (held && held.maintainer) {
+        await db.query('UPDATE included_ai_keys SET maintainer = false WHERE owner_id = $1', [ownerId]);
+        if (sub) await subscribe(ownerId); else await end(ownerId);
+        return null;
+      }
+      if (!sub || held) return null;
       return await keyForSubscriber(ownerId, sub);
     } catch (error) {
       console.error('[included ai] no key collected:', error.message);
@@ -293,52 +280,70 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     }
   }
 
+  // A month that has just begun (a subscriber's or the maintainer's): from the
+  // use the key has now, with what the period before left unused carried in,
+  // up to one month's fair use. A key stopped at the end of a period kept what
+  // it left (end).
+  async function beginMonth(ownerId, held, key, month) {
+    const used = Number(key.usage || 0);
+    const unused = held.stopped_at ? Number(held.left_usd) || 0 : Math.max(0, Number(key.limit) - used);
+    const base = cents(used), carry = cents(Math.min(fairUse, unused));
+    await db.query('UPDATE included_ai_keys SET base_usd = $2, base_for = $3, carry_usd = $4, left_usd = NULL WHERE owner_id = $1', [ownerId, base, month, carry]);
+    return { base, carry };
+  }
+
   // The held key set to what the subscription gives this paid month: the
-  // use it had when the month began, plus the month's fair use (twice it when
-  // the person paid to carry on). A month that has just begun starts from the
-  // use the key has now, so whatever came before (a first month, the last
-  // paid month) never counts against it, and the whole fair use is there from
-  // the moment they pay. A renewal Polar is still retrying a card for gives
-  // no new month: the last one's limit stands until it is paid. False when
-  // the account holds no key yet (its computer collects one).
+  // use it had when the month began, plus the month's fair use (another
+  // month's when the person paid to carry on), plus what the period before
+  // left unused, up to one month's fair use. A month that has just begun
+  // starts from the use the key has now, so whatever came before never counts
+  // against it, and the whole fair use is there from the moment they pay. A
+  // renewal Polar is still retrying a card for gives no new month: the last
+  // one's limit stands until it is paid. False when the account holds no key
+  // yet (its computer collects one).
   async function subscribe(ownerId) {
     if (!enabled()) return false;
+    // The maintainer's months are their own, whatever Polar says.
+    if (await maintainer(ownerId)) return true;
     const sub = await subscription(ownerId);
-    const held = (await db.query('SELECT key_id, base_usd, base_for FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
+    const held = (await db.query('SELECT * FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!sub || !held) return false;
-    const key = await keyNow(held.key_id, { fresh: true });
+    const key = await keys.keyNow(held.key_id, { fresh: true });
     if (!key) {
-      // Gone at NEAR: the row goes too, and their computer collects a new key.
+      // Gone at the provider: the row goes too, and their computer collects a new key.
       await db.query('DELETE FROM included_ai_keys WHERE owner_id = $1 AND key_id = $2', [ownerId, held.key_id]);
       return false;
     }
-    let base = Number(held.base_usd) || 0;
+    let base = Number(held.base_usd) || 0, carry = Number(held.carry_usd) || 0;
     if (!held.base_for || new Date(held.base_for).getTime() !== monthOf(sub)) {
       if (sub.status === 'past_due' && held.base_for) return true;
-      base = cents(Number(key.usage || 0));
-      await db.query('UPDATE included_ai_keys SET base_usd = $2, base_for = $3 WHERE owner_id = $1', [ownerId, base, new Date(monthOf(sub))]);
+      ({ base, carry } = await beginMonth(ownerId, held, key, new Date(monthOf(sub))));
     }
-    await setLimit(held.key_id, base + allowanceFor(sub));
+    await keys.setLimit(held.key_id, base + allowanceFor(sub) + carry);
     await db.query('UPDATE included_ai_keys SET stopped_at = NULL, updated_at = now() WHERE owner_id = $1', [ownerId]);
     return true;
   }
 
-  // An ended first month or subscription stops the key where it stands: its
-  // limit becomes what it has used, never reset. False when there is no key.
+  // Ended free days or an ended subscription stop the key where it stands:
+  // its limit becomes what it has used, never reset, and what it left unused
+  // is kept for a subscription that comes later. False when there is no key.
   async function end(ownerId) {
     if (!enabled()) return false;
-    const held = (await db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
+    if (await maintainer(ownerId)) return true;
+    const held = (await db.query('SELECT key_id, stopped_at FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!held) return false;
-    const key = await keyNow(held.key_id, { fresh: true });
-    if (key) await setLimit(held.key_id, Number(key.usage || 0));
-    await db.query('UPDATE included_ai_keys SET stopped_at = now(), updated_at = now() WHERE owner_id = $1', [ownerId]);
+    const key = await keys.keyNow(held.key_id, { fresh: true });
+    const left = key && !held.stopped_at ? cents(Math.max(0, Number(key.limit) - Number(key.usage || 0))) : null;
+    if (key) await keys.setLimit(held.key_id, Number(key.usage || 0));
+    await db.query('UPDATE included_ai_keys SET stopped_at = now(), left_usd = COALESCE($2, left_usd), updated_at = now() WHERE owner_id = $1', [ownerId, left]);
     return true;
   }
 
-  // Run hourly: the sign-in at NEAR is renewed, a first month that has run
-  // out, with no subscription to take over, stops its key, and keys replaced
-  // or left by a deleted account are deleted at NEAR. Subscription months
-  // follow Polar's own renewals (lib/plus.js).
+  // Run hourly: the provider is settled (NEAR's sign-in renewed, OpenRouter's
+  // guardrail brought up to date), free days that have run out, with no
+  // subscription to take over, stop their key, and keys replaced or left by a
+  // deleted account are deleted at the provider. Subscription months follow
+  // Polar's own renewals (lib/plus.js).
   async function sweep() {
     if (!enabled()) return 0;
     await settle();
@@ -347,12 +352,12 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
         WHERE k.stopped_at IS NULL AND k.ends_at IS NOT NULL AND k.ends_at <= now()
           AND NOT EXISTS (SELECT 1 FROM plus_subscriptions s WHERE s.owner_id = k.owner_id AND s.status IN ('active', 'trialing', 'past_due'))
         ORDER BY k.ends_at LIMIT 200`)).rows;
-    for (const { owner_id: ownerId } of ended) await end(ownerId).catch(e => console.error('[included ai] first month not stopped:', e.message));
-    // Keys replaced or left by a deleted account, deleted at NEAR.
+    for (const { owner_id: ownerId } of ended) await end(ownerId).catch(e => console.error('[included ai] free days not stopped:', e.message));
+    // Keys replaced or left by a deleted account, deleted at the provider.
     const retired = (await db.query('SELECT key_id FROM retired_ai_keys ORDER BY tries, retired_at LIMIT 200')).rows;
     for (const { key_id: id } of retired) {
       try {
-        await drop(id);
+        await keys.drop(id);
         await db.query('DELETE FROM retired_ai_keys WHERE key_id = $1', [id]);
       } catch (error) {
         console.error('[included ai] a retired key is not deleted yet:', error.message);
@@ -362,46 +367,33 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return ended.length;
   }
 
-  // The sign-in at NEAR, renewed as closedhand.com starts and each hour, so
-  // one NEAR stopped taking is told to the maintainer before anyone needs a key.
+  // As closedhand.com starts and each hour, so a provider that stopped
+  // working is told to the maintainer before anyone needs a key.
   async function settle() {
-    if (enabled()) await session.token().catch(e => console.error('[included ai] NEAR AI sign-in not renewed:', e.message));
+    if (enabled()) await keys.settle().catch(e => console.error(`[included ai] ${keys.label} not settled:`, e.message));
   }
 
-  // Every key in the workspace, with what each has used, for the maintainer
+  // Every key at the provider, with what each has used, for the maintainer
   // (lib/misuse.js), read afresh.
-  async function allKeys() {
-    return [...(await keys({ fresh: true })).values()];
-  }
-  // This calendar month's spend at NEAR, across every key.
-  async function spentThisMonth(now = new Date()) {
-    const { org } = await where();
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-    const rows = (await api(`/v1/organizations/${org}/usage/by-model?period=custom&start=${encodeURIComponent(start)}`))?.data || [];
-    return cents(rows.reduce((total, r) => total + Number(r.total_cost || 0), 0) / NANO);
-  }
-  // What is left of the organisation's credit at NEAR, which every key draws
-  // on: when it runs out, every first month and every subscriber stops at
-  // once. With the days it lasts at the pace of the last 30 days, counted from
-  // the first day with any use so a young account's pace isn't spread thin.
-  async function credit(now = new Date()) {
-    const { org } = await where();
-    const start = new Date(now.getTime() - 30 * 86400000).toISOString();
-    const [balance, series] = await Promise.all([
-      api(`/v1/organizations/${org}/usage/balance`),
-      api(`/v1/organizations/${org}/usage/timeseries?granularity=day&start=${encodeURIComponent(start)}`).catch(() => null),
-    ]);
-    const limits = Array.isArray(balance?.credit_limits) ? balance.credit_limits : null;
-    const nanoLeft = balance?.remaining != null ? Number(balance.remaining) : limits ? limits.reduce((t, l) => t + Number(l.available || 0), 0) : NaN;
-    const left = nanoLeft / NANO;
-    if (!Number.isFinite(left)) return null;
-    const rows = (series?.data || []).filter(r => Number(r.cost_usd) > 0);
-    const used = rows.reduce((total, r) => total + Number(r.cost_usd), 0);
-    if (!(used > 0)) return { left: cents(left), days: null };
-    const first = Math.min(...rows.map(r => Date.parse(String(r.date).slice(0, 10) + 'T00:00:00Z')));
-    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const span = Math.min(30, Math.max(1, Math.round((today - first) / 86400000)));
-    return { left: cents(left), days: Math.max(0, Math.floor(left / (used / span))) };
+  const allKeys = () => keys.allKeys();
+  // This calendar month's spend at the provider, across every key.
+  const spentThisMonth = now => keys.spentThisMonth(now);
+  // What is left of the credit every key draws on: when it runs out, every
+  // free period and every subscriber stops at once.
+  const credit = now => keys.credit(now);
+
+  // This month's spend at the provider, apart, for the insights page: the
+  // maintainer's own use with keys closedhand.com did not make (not Managed
+  // Models at all), the maintainer's own Managed Models (their accounts' keys
+  // and closedhand.com's own), and everyone else's.
+  const MADE = /^Closedhand (?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|insights)$/;
+  async function spendSplit(ownerIds = [], now = new Date()) {
+    const [total, all, held] = await Promise.all([spentThisMonth(now), allKeys(),
+      ownerIds.length ? db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = ANY($1::uuid[])', [ownerIds]) : { rows: [] }]);
+    const ownIds = all.filter(k => !MADE.test(k.name)).map(k => k.id);
+    const youIds = [...held.rows.map(r => r.key_id), ...all.filter(k => k.name === OPERATOR_KEY).map(k => k.id)];
+    const [own, you] = await Promise.all([keys.spentByKeys(ownIds, now), keys.spentByKeys(youIds, now)]);
+    return { total, own, you, others: cents(Math.max(0, total - own - you)) };
   }
 
   // closedhand.com's own key, for the insights page's summary of possible
@@ -413,25 +405,25 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     if (!enabled()) return null;
     if (!operatorKey) operatorKey = (async () => {
       for (const k of await allKeys()) if (k.name === OPERATOR_KEY) await discard(k.id);
-      return (await makeKey('insights', 1)).key;
+      return (await keys.makeKey(OPERATOR_KEY, 1, { monthly: true })).key;
     })().catch(error => { operatorKey = null; throw error; });
-    return { key: await operatorKey, model: roles().chat, base: session.base + '/v1' };
+    return { key: await operatorKey, model: roles().chat, base: keys.chat.base, headers: keys.chat.headers, label: keys.label };
   }
 
   // Which provider and models do which job: the person's computer uses these
   // as given.
   function roles() {
-    return { provider: 'near', chat: models[0], background: models[1] || models[0], name: modelName };
+    return { provider: keys.provider, chat: models[0], background: models[1] || models[0], ...(visionModel ? { vision: visionModel } : {}), name: modelName };
   }
 
   // Deleting an account deletes its key. Its row goes with the account.
   async function forget(ownerId) {
     const held = (await db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!held || !enabled()) return;
-    await drop(held.key_id).catch(e => console.error('[included ai] could not delete a key:', e.message));
+    await keys.drop(held.key_id).catch(e => console.error('[included ai] could not delete a key:', e.message));
   }
 
-  // How much of the account's fair use is used, as NEAR counts it (a
+  // How much of the account's fair use is used, as the provider counts it (a
   // subscriber's this paid month), or null without a key. Never shown as an
   // amount: the account page only says when most of it is used, and the
   // computer is told it so Closedhand can say so in time.
@@ -439,7 +431,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     if (!enabled()) return null;
     const held = (await db.query('SELECT key_id, base_usd FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!held) return null;
-    const key = await keyNow(held.key_id);
+    const key = await keys.keyNow(held.key_id);
     const base = Number(held.base_usd) || 0;
     const limit = Number(key?.limit) - base, used = Number(key?.usage) - base;
     return key && Number.isFinite(limit) && limit > 0 && Number.isFinite(used) ? { limit: cents(limit), used: cents(Math.max(0, used)) } : null;
@@ -451,7 +443,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return enabled() ? roles() : null;
   }
 
-  return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, credit, forOperator, usage, fairUse };
+  return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
 }
 
 module.exports = { create };

@@ -77,6 +77,10 @@ function world({ polarFails = null, managed = true } = {}) {
   };
   const env = {
     NEAR_REFRESH_TOKEN: managed ? SIGN_IN : '', NEAR_USER_AGENT: managed ? BROWSER : '', TOKEN_ENCRYPTION_KEY: 'k'.repeat(44),
+    // A paid month's fair use in round numbers; a free key below has a limit of 10.
+    INCLUDED_AI_FAIR_USE_USD: '20',
+    // The maintainer's own account (lib/maintainer.js), invented.
+    OPERATOR_EMAILS: 'keeper@example.com',
     POLAR_ACCESS_TOKEN: 'polar-token', POLAR_WEBHOOK_SECRET: SECRET, POLAR_PLUS_PRODUCT_ID: PLUS, POLAR_EXTEND_PRODUCT_ID: EXTEND,
   };
   const includedAi = require('../lib/included-ai').create({ db, env, request });
@@ -142,7 +146,7 @@ test('checkout, carrying on and the portal go to Polar for this account only', a
   assert.equal(await w.plus.checkout({ id: p.id, email: 'person@example.com' }), 'https://polar.sh/checkout/fixture-1111');
   const asked = w.calls.at(-1);
   assert.equal(asked.url, 'https://api.polar.sh/v1/checkouts/');
-  assert.deepEqual(asked.body, { products: [PLUS], trial_interval: 'month', trial_interval_count: 1, external_customer_id: p.id, customer_email: 'person@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: p.id } }, 'never had the free month: the subscription starts with it');
+  assert.deepEqual(asked.body, { products: [PLUS], trial_interval: 'day', trial_interval_count: 14, external_customer_id: p.id, customer_email: 'person@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: p.id } }, 'never had the free month: the subscription starts with it');
   await w.plus.extend({ id: p.id });
   assert.deepEqual(w.calls.at(-1).body.products, [EXTEND]);
   assert.equal(w.calls.at(-1).body.allow_trial, false, 'carrying on is never free');
@@ -165,12 +169,12 @@ test('subscribing sets the key to a paid month of fair use; carrying on doubles 
 
   await w.plus.handle(subscription('subscription.active', p.id));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 23, 'the whole fair use, leaving out the 3 the first month used');
+  assert.equal((await heldKey(w, p.id)).limit, 30, 'the whole fair use and the 7 the free days left, leaving out the 3 they used');
   assert.deepEqual(await w.plus.state(p.id), { available: true, active: true, renews_at: '2026-12-01T00:00:00.000Z', extended: false, nearly: false });
 
   assert.equal(await w.plus.handle(paid(p.id)), 'carried on to the end of the month');
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 43);
+  assert.equal((await heldKey(w, p.id)).limit, 50, 'another month of fair use');
   assert.equal((await w.plus.state(p.id)).extended, true);
   assert.equal(await w.plus.handle(paid(p.id, PLUS)), 'paid', 'a payment for the subscription itself carries nothing on');
   assert.deepEqual(w.state.refunds, []);
@@ -179,7 +183,7 @@ test('subscribing sets the key to a paid month of fair use; carrying on doubles 
   await w.plus.handle(subscription('subscription.canceled', p.id, { cancel: true }));
   await settled(p.id);
   assert.deepEqual(await w.plus.state(p.id), { available: true, active: true, ends_at: '2026-12-01T00:00:00.000Z', extended: true, nearly: false });
-  assert.equal((await heldKey(w, p.id)).limit, 43, 'still on until it ends');
+  assert.equal((await heldKey(w, p.id)).limit, 50, 'still on until it ends');
   // An older event arriving late changes nothing.
   assert.equal(await w.plus.handle(subscription('subscription.updated', p.id, { at: '2020-01-01T00:00:00Z' })), 'older than what is known');
 
@@ -234,7 +238,7 @@ test('each renewal on the day they subscribed starts a new paid month of fair us
   const p = await person({ freeKey: {} }, w);
   await w.plus.handle(subscription('subscription.active', p.id, { start: '2026-11-15T00:00:00Z', end: '2026-12-15T00:00:00Z' }));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 20, 'no reset on the 1st: the month is theirs');
+  assert.equal((await heldKey(w, p.id)).limit, 30, 'no reset on the 1st: the month is theirs, with the 10 the free days left');
   (await heldKey(w, p.id)).usage = 18;
   w.state.near.down = true;
   await w.plus.handle(paid(p.id));
@@ -242,19 +246,19 @@ test('each renewal on the day they subscribed starts a new paid month of fair us
   assert.equal((await db.query('SELECT key_synced FROM plus_subscriptions WHERE owner_id = $1', [p.id])).rows[0].key_synced, false, 'not set while NEAR is down');
   w.state.near.down = false;
   await w.plus.sweep();
-  assert.equal((await heldKey(w, p.id)).limit, 40, 'carried on in this paid month');
+  assert.equal((await heldKey(w, p.id)).limit, 50, 'carried on in this paid month');
   assert.equal((await w.plus.state(p.id)).extended, true);
   // Polar renews on the 15th: a whole new fair use from what is used now; carrying on stays with the month it was bought in.
   (await heldKey(w, p.id)).usage = 31;
   await w.plus.handle(subscription('subscription.updated', p.id, { start: '2026-12-15T00:00:00Z', end: '2027-01-15T00:00:00Z' }));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 51, 'what was used before stays used');
+  assert.equal((await heldKey(w, p.id)).limit, 70, 'what was used before stays used; the 19 left over carries in');
   assert.equal((await w.plus.state(p.id)).extended, false);
   // The same month told again changes nothing.
   (await heldKey(w, p.id)).usage = 40;
   await w.plus.handle(subscription('subscription.updated', p.id, { start: '2026-12-15T00:00:00Z', end: '2027-01-15T00:00:00Z' }));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 51);
+  assert.equal((await heldKey(w, p.id)).limit, 70);
 }));
 
 test('a renewal Polar is still retrying a card for gives no new month until it is paid', async () => {
@@ -265,10 +269,10 @@ test('a renewal Polar is still retrying a card for gives no new month until it i
   (await heldKey(w, p.id)).usage = 20;
   await w.plus.handle(subscription('subscription.updated', p.id, { status: 'past_due', start: '2026-12-15T00:00:00Z', end: '2027-01-15T00:00:00Z' }));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 20, 'the last paid month stands');
+  assert.equal((await heldKey(w, p.id)).limit, 30, 'the last paid month stands');
   await w.plus.handle(subscription('subscription.updated', p.id, { status: 'active', start: '2026-12-15T00:00:00Z', end: '2027-01-15T00:00:00Z' }));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 40, 'paid: the new month begins');
+  assert.equal((await heldKey(w, p.id)).limit, 50, 'paid: the new month begins, with the 10 the last one left');
 });
 
 test('a renewal that never reached closedhand.com is read from Polar by the hourly sweep', quiet(async () => {
@@ -281,7 +285,7 @@ test('a renewal that never reached closedhand.com is read from Polar by the hour
   const start = new Date(Date.now() - 2 * 3600000).toISOString(), end = new Date(Date.now() + 29 * 86400000).toISOString();
   w.state.polarMonths.set('sub_late', { start, end });
   await w.plus.sweep();
-  assert.equal((await heldKey(w, p.id)).limit, 40, 'the renewal Polar made is honoured');
+  assert.equal((await heldKey(w, p.id)).limit, 50, 'the renewal Polar made is honoured');
   assert.equal(new Date((await db.query('SELECT current_period_end FROM plus_subscriptions WHERE owner_id = $1', [p.id])).rows[0].current_period_end).toISOString(), end);
 }));
 
@@ -292,7 +296,7 @@ test('a new subscription is not undone by the old one ending late', async () => 
   await w.plus.handle(subscription('subscription.revoked', p.id, { id: 'sub_old', status: 'canceled' }));
   await settled(p.id);
   assert.equal((await w.plus.state(p.id)).active, true);
-  assert.equal((await heldKey(w, p.id)).limit, 20);
+  assert.equal((await heldKey(w, p.id)).limit, 30);
 });
 
 test('deleting an account stops its subscription at Polar first, and waits when Polar can not be reached', async () => {
@@ -340,10 +344,10 @@ test('the account page is told when most of this month\'s fair use is used, neve
   await settled(p.id);
   assert.equal((await w.plus.state(p.id)).nearly, false);
   const [, key] = [...w.keys][0];
-  key.usage = 17;
+  key.usage = 25;
   const now = await w.afresh().state(p.id);
   assert.equal(now.nearly, true);
-  assert.ok(!JSON.stringify(now).includes('17'), 'no amount reaches the page');
+  assert.ok(!JSON.stringify(now).includes('25'), 'no amount reaches the page');
 });
 
 // Money: nothing here may hand out more Managed Models than was paid for or
@@ -367,10 +371,10 @@ test('claiming again never starts a subscriber\'s fair use again; the next paid 
   assert.equal(w.keys.has(before), false, 'the old key is deleted at NEAR');
   assert.deepEqual(await retired(), [], 'and nothing waits');
   assert.deepEqual(await w.includedAi.usage(p.id), { limit: 20, used: 15 }, 'the same paid month, counted the same');
-  // Renewed: the new key's month is whole.
+  // Renewed: the new key's month is whole, with the 5 the last one left.
   await w.plus.handle(subscription('subscription.updated', p.id, { start: '2026-12-01T00:00:00Z', end: '2027-01-01T00:00:00Z' }));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 20);
+  assert.equal((await heldKey(w, p.id)).limit, 25);
 });
 
 test('claims at once hand out one key, and no other key stays live', quiet(async () => {
@@ -405,17 +409,62 @@ test('a key whose account goes is deleted at NEAR, however it goes and even when
   assert.deepEqual(await retired(), []);
 }));
 
-test('paying after a used-up first month gives the whole fair use at once', async () => {
+test('paying after used-up free days gives the whole fair use at once', async () => {
   const w = world();
   const p = await person({ freeKey: { usage: 10 } }, w);
   await w.plus.handle(subscription('subscription.active', p.id));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 30, 'the 10 the first month used is left out');
+  assert.equal((await heldKey(w, p.id)).limit, 30, 'the 10 the free days used is left out, and they left nothing');
   const row = (await db.query('SELECT base_usd, base_for FROM included_ai_keys WHERE owner_id = $1', [p.id])).rows[0];
   assert.deepEqual([Number(row.base_usd), new Date(row.base_for).toISOString()], [10, '2026-11-01T00:00:00.000Z']);
   await w.plus.handle(subscription('subscription.updated', p.id));
   await settled(p.id);
   assert.equal((await heldKey(w, p.id)).limit, 30, 'the same on every later event this paid month');
+});
+
+// What the period before left unused carries into a paid month as it begins,
+// up to one month's fair use; the Terms say so, nothing else does.
+test('a paid month begins with what the period before left, up to one month of fair use, even after the free days stopped', async () => {
+  const w = world();
+  const rich = await person({ freeKey: {} }, w);
+  w.keys.get(rich.key).limit = 60;
+  await w.plus.handle(subscription('subscription.active', rich.id));
+  await settled(rich.id);
+  assert.equal((await heldKey(w, rich.id)).limit, 40, 'never more than two months at once');
+  assert.deepEqual(await w.includedAi.usage(rich.id), { limit: 40, used: 0 });
+  const later = await person({ freeKey: { usage: 4 } }, w);
+  await w.includedAi.end(later.id);
+  assert.equal(w.keys.get(later.key).limit, 4, 'the free days stop where they stand');
+  await w.plus.handle(subscription('subscription.active', later.id));
+  await settled(later.id);
+  assert.equal((await heldKey(w, later.id)).limit, 30, 'subscribing later still brings the 6 they left');
+  const row = (await db.query('SELECT carry_usd, left_usd FROM included_ai_keys WHERE owner_id = $1', [later.id])).rows[0];
+  assert.deepEqual([Number(row.carry_usd), row.left_usd], [6, null], 'carried in once');
+});
+
+// The maintainer's own account: a month of fair use with no charge, whatever
+// its Polar subscription does.
+test('the maintainer\'s key keeps its month whatever their Polar subscription does, and the sweep leaves it', async () => {
+  const w = world();
+  const id = (await db.query("INSERT INTO owners (provider, subject, email, email_verified) VALUES ('google', 'g-keeper-plus', 'keeper@example.com', true) RETURNING id")).rows[0].id;
+  const key = crypto.randomUUID();
+  w.keys.set(key, { name: 'Closedhand ' + id, key: 'sk-' + crypto.randomBytes(16).toString('hex'), limit: 10, usage: 0 });
+  await db.query('INSERT INTO included_ai_keys (owner_id, key_id, granted_usd) VALUES ($1, $2, 10)', [id, key]);
+  assert.equal(await w.includedAi.collect(id), null, 'its computer has the key');
+  assert.equal(w.keys.get(key).limit, 30, 'its first month: 20 of fair use and the 10 left, carried in');
+  await w.plus.handle(subscription('subscription.active', id, { id: 'sub_keeper' }));
+  await settled(id);
+  assert.equal(w.keys.get(key).limit, 30, 'a subscription changes nothing');
+  w.keys.get(key).usage = 7;
+  await w.plus.handle(subscription('subscription.revoked', id, { id: 'sub_keeper', status: 'canceled', cancel: true }));
+  await settled(id);
+  assert.equal(w.keys.get(key).limit, 30, 'nor does its ending');
+  await db.query("UPDATE included_ai_keys SET ends_at = now() - interval '1 day' WHERE owner_id = $1", [id]);
+  await w.includedAi.sweep();
+  assert.equal(w.keys.get(key).limit, 30, 'and the sweep leaves it');
+  const row = (await db.query('SELECT maintainer, stopped_at FROM included_ai_keys WHERE owner_id = $1', [id])).rows[0];
+  assert.deepEqual([row.maintainer, row.stopped_at], [true, null]);
+  assert.equal((await require('../lib/plan').planFor(db, { OPERATOR_EMAILS: 'keeper@example.com' }, id)).name, 'maintainer');
 });
 
 test('a month that ends caps the key at what it used, never at 0', async () => {
@@ -438,7 +487,7 @@ test('subscription changes wait while Managed Models are switched off, and are m
   const on = world();
   on.keys.set(p.key, kept);
   await on.plus.sweep();
-  assert.equal(on.keys.get(p.key).limit, 20);
+  assert.equal(on.keys.get(p.key).limit, 30);
 });
 
 // A Polar order, as its webhooks carry it.
@@ -496,11 +545,11 @@ test('a payment given back in full stops what it paid for; part given back, or a
   await settled(p.id);
   await w.plus.handle(order('order.paid', p.id, { product: EXTEND, id: 'ord_more' }));
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 40);
+  assert.equal((await heldKey(w, p.id)).limit, 50);
   assert.equal(await w.plus.handle(order('order.refunded', p.id, { product: EXTEND, id: 'ord_more', status: 'partially_refunded' })), 'nothing to stop');
   assert.equal(await w.plus.handle(order('order.refunded', p.id, { product: EXTEND, id: 'ord_more', status: 'refunded' })), 'given back, carry-on ended');
   await settled(p.id);
-  assert.equal((await heldKey(w, p.id)).limit, 20, 'back to fair use');
+  assert.equal((await heldKey(w, p.id)).limit, 30, 'back to the month\'s fair use');
   const old = new Date(Date.now() - 45 * 86400000).toISOString();
   assert.equal(await w.plus.handle(order('order.refunded', p.id, { sub: 'sub_r', status: 'refunded', at: old })), 'an earlier month, nothing to stop');
   assert.equal(w.state.polarSubs.get('sub_r'), undefined);

@@ -13,7 +13,7 @@ async function main(args) {
     const includedAi = require('../lib/included-ai').create({ db, env: process.env, request: fetch });
     const misuse = require('../lib/misuse').create({ db, env: process.env, includedAi });
     if (args.includes('--try')) {
-      return 'Summary of an invented sign: ' + (await misuse.summary(['example-name has used 60% of its first month ($12.00) in 2 days.']) || 'none written');
+      return 'Summary of an invented sign: ' + (await misuse.summary(['example-name has used 60% of its free days ($7.20) in 2 days.']) || 'none written');
     }
     const { signs, summary } = await misuse.report();
     if (!signs.length) return 'Nothing to report.';

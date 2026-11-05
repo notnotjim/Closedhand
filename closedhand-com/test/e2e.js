@@ -148,7 +148,7 @@ test('signing in keeps only the email: names and pictures the provider sends are
   await signIn('google', { ...google('g-named', 'named@example.com'), name: 'Pat Example', picture: 'https://example.com/pat.png' });
   await signIn('microsoft', { ...microsoft('22222222-2222-4333-8444-555555555555', '77777777-7777-4888-9999-000000000000', 'ms-named@example.com'), name: 'Sam Example' });
   const columns = (await db.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'owners' AND table_schema = current_schema() ORDER BY 1")).rows.map(r => r.column_name);
-  assert.deepEqual(columns, ['created_at', 'email', 'email_verified', 'id', 'provider', 'subject', 'updated_at'], 'the email, and whether the provider vouches for it');
+  assert.deepEqual(columns, ['created_at', 'email', 'email_verified', 'id', 'provider', 'subject', 'terms_accepted_at', 'terms_version', 'updated_at'], 'the email, whether the provider vouches for it, and which Terms were agreed when');
   assert.doesNotMatch(JSON.stringify((await db.query('SELECT * FROM owners')).rows), /Pat Example|Sam Example|pat\.png/);
 });
 
@@ -216,8 +216,14 @@ test('personal URL: request, confirm, type the code, build, connect, and every r
   assert.equal((await json('POST', '/api/phone-enrollment/claim', { code: approved.code }, newCopy().auth)).status, 409, 'another copy cannot use the code');
   const wrong = await json('POST', '/api/phone-enrollment/claim', { code: approved.code === 'ABC234' ? 'ABC235' : 'ABC234' }, copy.auth);
   assert.equal(wrong.status, 400); assert.match((await wrong.json()).error, /does not match/);
-  const done = await (await json('POST', '/api/phone-enrollment/claim', { code: approved.code.slice(0, 3).toLowerCase() + ' ' + approved.code.slice(3) }, copy.auth)).json();
+  const done = await (await json('POST', '/api/phone-enrollment/claim', { code: approved.code.slice(0, 3).toLowerCase() + ' ' + approved.code.slice(3), acceptedTerms: true }, copy.auth)).json();
   assert.deepEqual(done, { state: 'pending', url: 'https://alex.closedhand.ai' }, 'typed with a space and in lower case still works');
+  // The setup page asked for the Terms once, before claiming: kept with the account.
+  const terms = (await db.query("SELECT terms_version, terms_accepted_at FROM owners o JOIN addresses a ON a.owner_id = o.id WHERE a.hostname = 'alex.closedhand.ai'")).rows[0];
+  assert.equal(terms.terms_version, require('../lib/addresses').TERMS_VERSION);
+  assert.ok(terms.terms_accepted_at, 'and when');
+  const updated = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'views', 'terms.html'), 'utf8').match(/Last updated: (\d{1,2} [A-Z][a-z]+ \d{4})/)[1];
+  assert.equal(new Date(updated + ' UTC').toISOString().slice(0, 10), require('../lib/addresses').TERMS_VERSION, 'the version is the Terms\' last update');
   assert.equal((await json('POST', '/api/phone-enrollment/claim', { code: approved.code }, copy.auth)).status, 409, 'a code works once');
   const signUps = async () => (await db.query("SELECT text FROM operator_notices WHERE text LIKE 'Closedhand: new sign-up%'")).rows.map(r => r.text);
   assert.deepEqual(await signUps(), ['Closedhand: new sign-up, alex@example.com (Microsoft), took alex.closedhand.ai. 1 person has a personal URL now.'], 'the maintainer hears who signed up');
@@ -777,7 +783,7 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   if (held) assert.ok(data.people.some(p => p.hostname === held.hostname && p.email === held.email && p.last_online), 'a claimed personal URL shows with its owner');
   assert.ok(Array.isArray(data.reports) && data.reports.length > 0, 'recent bug reports are listed');
   assert.ok(!/tunnel_token|secret_hash|key_id/.test(text), 'connection secrets and Managed Models keys never reach the page');
-  assert.ok(me.id && 'first_month_usd' in me && 'plus_status' in me && 'more_sign_ins' in me, 'each row carries its first month, subscription and other sign-ins');
+  assert.ok(me.id && 'first_month_usd' in me && 'plus_status' in me && 'more_sign_ins' in me, 'each row carries its free days, subscription and other sign-ins');
   assert.equal(typeof data.managed.running, 'number');
   assert.equal(typeof data.managed.allowance, 'number');
   assert.equal(typeof data.managed.plus, 'object');
@@ -788,8 +794,15 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   assert.ok('usage' in await person.json(), 'one person\'s use, read when their row opens');
   assert.equal((await fetch(base + '/api/insights/person/' + me.id)).status, 404, 'hidden from anyone else');
   assert.equal((await fetch(base + '/api/insights/person/' + me.id, { headers: { cookie: (await signIn('google', google('insights-other', 'someone@example.com'))).cookie } })).status, 404);
-  assert.equal(data.accounts.total, owners);
-  assert.equal(data.accounts.google + data.accounts.microsoft, owners);
+  // The maintainer's own account is marked, and every total leaves it out with its share beside it.
+  assert.equal(me.you, true, 'the maintainer\'s own row is marked');
+  assert.ok(data.people.filter(p => p.you).every(p => p.email === 'operator@example.com' && p.email_verified), 'only a verified operator email is theirs');
+  assert.equal(data.accounts.total + data.accounts.you.total, owners);
+  assert.equal(data.people.filter(p => p.you).length, data.accounts.you.total);
+  assert.equal(data.accounts.google + data.accounts.microsoft, data.accounts.total);
+  assert.ok('you' in data.urls && 'you' in data.managed && 'you' in data.email, 'each with the maintainer\'s share beside it');
+  assert.equal(typeof data.managed.you.maintainer, 'number', 'the maintainer\'s own Managed Models, counted apart from free days and subscriptions');
+  assert.ok(data.weeks.every(w => 'you_accounts' in w && 'you_claimed' in w));
   assert.equal(data.installs.total, before + 2);
   assert.equal(data.weeks.length, 8);
   assert.equal(data.weeks.at(-1).installs >= 2, true, 'this week counts today\'s fetches');
@@ -838,9 +851,12 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     assert.deepEqual(done.included_ai.models, { provider: 'near', chat: MODEL, background: MODEL, name: 'DeepSeek V4.1 Flash, uncensored' });
     const row = (await db.query("SELECT k.* FROM included_ai_keys k JOIN owners o ON o.id = k.owner_id WHERE o.subject = 'g-quinn'")).rows[0];
     assert.ok(keys.has(row.key_id), 'NEAR\'s id for the key');
-    assert.equal(Number(row.granted_usd), 20);
-    assert.equal([...keys.values()][0].limit, 20, 'the first month has the fair-use ceiling');
-    assert.ok(new Date(row.ends_at) > new Date(Date.now() + 29 * 24 * 3600 * 1000), 'and ends in a month');
+    // Quinn is the maintainer here (OPERATOR_EMAILS): Managed Models with no
+    // charge, a month of fair use as a subscriber has, never free days.
+    assert.equal(Number(row.granted_usd), 0);
+    assert.equal(row.maintainer, true);
+    assert.equal(row.ends_at, null, 'no end');
+    assert.equal([...keys.values()][0].limit, 15, 'a month of fair use');
     assert.ok(!JSON.stringify(row).includes(done.included_ai.key), 'the key itself is not kept');
     assert.equal([...keys.values()][0].name, 'Closedhand ' + row.owner_id, 'named by the account, not its email');
     // The computer can ask which models are current, and only a known computer.
@@ -849,8 +865,9 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     await db.query("DELETE FROM operator_notices WHERE text LIKE 'Closedhand: new sign-up%'");
     const asked = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
     assert.deepEqual(asked.models, done.included_ai.models);
-    assert.deepEqual(asked.plan, { name: 'first-month', ends_at: new Date(row.ends_at).toISOString(), email: false }, 'and that it is in its first month');
-    assert.deepEqual(asked.usage, { limit: 20, used: 0 }, 'and how much of its fair use is used, which a NEAR key can\'t read itself');
+    const firstOfNext = (() => { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString(); })();
+    assert.deepEqual(asked.plan, { name: 'maintainer', renews_at: firstOfNext, email: false }, 'and that it is the maintainer\'s, renewing on the first');
+    assert.deepEqual(asked.usage, { limit: 15, used: 0 }, 'and how much of its fair use is used, which a NEAR key can\'t read itself');
     assert.equal(asked.key, undefined);
     assert.equal(asked.notices, undefined, 'nothing waiting for the maintainer yet');
     assert.deepEqual((await (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json()).plan, asked.plan, 'the account page is told the same');
@@ -864,19 +881,20 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     assert.deepEqual(await (await call('POST', '/api/phone-enrollment/account/delete', {}, copy.auth)).json(), { deleted: true });
     assert.equal(keys.size, 0);
     assert.equal((await db.query('SELECT 1 FROM included_ai_keys WHERE key_id = $1', [row.key_id])).rowCount, 0);
-    // The free use was given once, to that sign-in: claiming again with it,
-    // as a new account, brings no key. Only fingerprints are kept for that.
+    // The maintainer never takes free days (test/included-ai.js covers free
+    // days given once per sign-in): claiming again, as a new account, brings
+    // the maintainer's Managed Models again.
     const grants = (await db.query('SELECT * FROM starter_grants')).rows;
-    assert.equal(grants.length, 1);
-    assert.ok(!JSON.stringify(grants).includes('g-quinn') && !JSON.stringify(grants).includes('127.0.0.1'), 'no sign-in or address kept as such');
+    assert.equal(grants.length, 0);
     const again = newCopy();
     const second = (await (await call('POST', '/api/phone-enrollment/register', { name: 'quinn-again', port: 3000, confirm: 'code' }, again.auth)).json()).ticket;
     const back = await signIn('google', google('g-quinn', 'quinn@example.com'));
     const { code: code2 } = await (await call('POST', '/api/phone-enrollment/approve', { ticket: second }, signedIn(back.cookie))).json();
     const reclaimed = await (await call('POST', '/api/phone-enrollment/claim', { code: code2 }, again.auth)).json();
     assert.equal(reclaimed.url, 'https://quinn-again.closedhand.ai', 'the claim itself goes on');
-    assert.equal(reclaimed.included_ai, undefined);
-    assert.equal(keys.size, 0);
+    assert.match(reclaimed.included_ai.key, /^sk-/);
+    assert.equal(keys.size, 1);
+    assert.equal([...keys.values()][0].limit, 15);
   } finally { other.close(); }
 });
 
@@ -957,7 +975,7 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
     assert.equal((await call('POST', '/api/plus/checkout', {}, { cookie: owner.cookie })).status, 403, 'only from closedhand.com');
     const checkout = await (await call('POST', '/api/plus/checkout', {}, signedIn(owner.cookie))).json();
     assert.equal(checkout.url, 'https://sandbox.polar.sh/checkout/fixture');
-    assert.deepEqual(polar.at(-1).body, { products: [PLUS], trial_interval: 'month', trial_interval_count: 1, external_customer_id: ownerId, customer_email: 'rowan@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: ownerId } });
+    assert.deepEqual(polar.at(-1).body, { products: [PLUS], trial_interval: 'day', trial_interval_count: 14, external_customer_id: ownerId, customer_email: 'rowan@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: ownerId } });
 
     const subscription = (status, extra = {}) => ({ id: 'sub_rowan', status, product_id: PLUS, customer_id: 'cus_rowan', customer: { id: 'cus_rowan', external_id: ownerId },
       current_period_start: '2026-11-01T00:00:00Z', current_period_end: '2026-12-01T00:00:00Z', cancel_at_period_end: false, modified_at: new Date(Date.now() + (++n) * 1000).toISOString(), ...extra });
@@ -972,7 +990,7 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
     assert.deepEqual(first.prices, { plus: '$10', extend: '$8' }, 'what the subscription costs, for Closedhand to say when asked');
     assert.match(first.key, /^sk-[a-f0-9]{32}$/);
     const [, made] = [...keys][0];
-    assert.equal(made.limit, 20);
+    assert.equal(made.limit, 15, 'a paid month of fair use');
     assert.equal((await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json()).key, undefined, 'handed over once');
     assert.equal((await db.query("SELECT count(*) AS n FROM included_ai_keys WHERE owner_id = $1 AND key_id = $2", [ownerId, [...keys.keys()][0]])).rows[0].n, '1');
     const manage = await (await call('POST', '/api/plus/manage', {}, signedIn(owner.cookie))).json();
@@ -1002,9 +1020,9 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
     // NEAR's list of keys is kept five minutes: read as if they had passed.
     const later = async fn => { const now = Date.now; Date.now = () => now() + 6 * 60000; try { return await fn(); } finally { Date.now = now; } };
     const page = await later(async () => (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json());
-    assert.equal(page.used, 0.25, "this month's fair use, as a share for the page's one bar");
+    assert.equal(page.used, 0.33, "this month's fair use, as a share for the page's one bar");
     const mine = (await (await call('GET', '/api/phone-enrollment/account', undefined, copy.auth)).json()).account;
-    assert.deepEqual([mine.used, mine.plan.name, mine.plus.active], [0.25, 'plus', true], 'My Account shows the same, from the computer');
+    assert.deepEqual([mine.used, mine.plan.name, mine.plus.active], [0.33, 'plus', true], 'My Account shows the same, from the computer');
     assert.deepEqual(mine.plus.card, { brand: 'visa', last4: '4242', expires: '08/29' }, 'the card the subscription is paid with: the default one');
     made.usage = 0;
 
@@ -1048,12 +1066,12 @@ test("Railway's sign-in for Go always-on goes straight back to the Closedhand th
   assert.equal((await fetch(`${base}/railway/return`, { redirect: 'manual' })).status, 404);
 });
 
-test('the accounts tool shows each recent account\'s first month and subscription, never an email', async () => {
+test('the accounts tool shows each recent account\'s free days and subscription, never an email', async () => {
   const { recent } = require('../tools/accounts');
   const id = (await db.query("INSERT INTO owners (provider, subject, email) VALUES ('google', 'g-tool-ivy', 'ivy@example.com') RETURNING id")).rows[0].id;
   await db.query(`INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, 'key-tool-ivy', 5, now() + interval '30 days')`, [id]);
   const out = await recent(db, { usage: async (o) => (o === id ? { used: 1.25, limit: 5 } : null), spentThisMonth: async () => 9.5 }, 1);
-  assert.match(out, /google  no personal URL  first month \$5\.00 from \d{4}-\d{2}-\d{2} \d{2}:\d{2} to \d{4}-\d{2}-\d{2} \d{2}:\d{2}, used \$1\.25 of \$5\.00  no subscription/);
+  assert.match(out, /google  no personal URL  free days \$5\.00 from \d{4}-\d{2}-\d{2} \d{2}:\d{2} to \d{4}-\d{2}-\d{2} \d{2}:\d{2}, used \$1\.25 of \$5\.00  no subscription/);
   assert.match(out, /NEAR AI spend this month across every key: \$9\.50/);
   assert.doesNotMatch(out, /ivy@example\.com|key-tool-ivy/, 'no email, no key');
 });

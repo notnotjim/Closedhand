@@ -1301,7 +1301,7 @@ app.get("/api/phone", async (req, res) => {
   // Whether closedhand.com can give out a personal URL right now: setup
   // offers to carry on without one only when it can't.
   const serviceAvailable = await require("./phone-registration").serviceAvailable();
-  res.set("Cache-Control", "no-store").json({ ...phoneAccess.status(), savedUrl, addressName: await getRuntimeConf("PHONE_ADDRESS_NAME") || null, serviceAvailable });
+  res.set("Cache-Control", "no-store").json({ ...phoneAccess.status(), savedUrl, addressName: await getRuntimeConf("PHONE_ADDRESS_NAME") || null, serviceAvailable, termsAccepted: await require("./phone-registration").termsAccepted() });
 });
 app.post("/api/phone", async (req, res) => {
   if (!(await requireSetupAccess(req, res))) return;
@@ -1323,6 +1323,21 @@ app.post("/api/phone/claim", async (req, res) => {
     res.json(phoneAccess.status());
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+// Agreeing to the Terms and Privacy policy on the setup page, once, before
+// the personal URL is claimed; a Google or Microsoft sign-in that was waiting
+// for it claims straight away.
+app.post("/api/phone/accept-terms", async (req, res) => {
+  if (!(await requireSetupAccess(req, res))) return;
+  try {
+    await require("./phone-registration").acceptTerms();
+    const waiting = claimAwaitingTerms && Date.now() - claimAwaitingTerms.at < 50 * 60000 ? claimAwaitingTerms : null;
+    claimAwaitingTerms = null;
+    const url = waiting ? await claimPersonalUrlWith(waiting.provider, waiting.idToken).catch(() => null) : null;
+    res.json({ ...phoneAccess.status(), termsAccepted: true, claimed: !!url });
+  } catch (e) {
+    res.status(500).json({ error: "Could not save that. Please try again." });
   }
 });
 // Rename the personal URL (Settings, or Change in setup). The old name sends
@@ -3010,12 +3025,18 @@ async function connectMcpHandler(req, res) {
 // Closedhand account too, so whichever one the person connected works on
 // closedhand.com. Mail is connected either way; a claim that fails leaves the
 // usual way to get one on the setup page.
+// The claim waits for the person to agree to the Terms on the setup page:
+// the sign-in is held here, in memory, for most of the hour it lasts, and
+// agreeing then claims with it, still with no second sign-in.
+let claimAwaitingTerms = null;
 async function claimPersonalUrlWith(provider, idToken) {
   const registration = require("./phone-registration");
   if (await getRuntimeConf("PHONE_PERMANENT_URL") || registration.status().ownershipConfirmed) {
     await registration.addSignIn(provider, idToken).catch((e) => console.error("[personal url] sign-in not added:", e.message));
     return null;
   }
+  if (!(await registration.termsAccepted())) { claimAwaitingTerms = { provider, idToken, at: Date.now() }; return null; }
+  claimAwaitingTerms = null;
   if (!(await registration.serviceAvailable())) return null;
   const claimed = await registration.claimWithSignIn(provider, idToken);
   if (!claimed) return null;

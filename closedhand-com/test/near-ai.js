@@ -12,13 +12,13 @@ const BROWSER = 'Mozilla/5.0 (Macintosh) TestBrowser/1.0';
 // NEAR AI as far as Closedhand uses it: a sign-in whose refresh token is
 // replaced each time it is used, keys in one workspace with a spending limit
 // and what they have used, and the organisation's credit and spend.
-function nearAi({ balance = { remaining: 0 }, series = [], byModel = [], ends = 30 } = {}) {
+function nearAi({ balance = { remaining: 0 }, series = [], byModel = [], ends = 30, history = {} } = {}) {
   const keys = new Map(), calls = [];
   // down: unreachable; deleteFails: refuses to delete keys; refuse: no longer
   // takes the sign-in.
   const state = { refresh: SIGN_IN, access: null, renewals: 0, refuse: false, down: false, deleteFails: false };
   const reply = (status, body) => new Response(status === 204 ? null : body === undefined ? '' : JSON.stringify(body), { status });
-  const price = usd => ({ amount: Math.round(usd * 1e9), scale: 9, currency: 'USD' });
+  const price = usd => (usd == null ? null : { amount: Math.round(usd * 1e9), scale: 9, currency: 'USD' });
   const shown = (id, k) => ({ id, name: k.name, key_prefix: k.key.slice(0, 6), workspace_id: 'ws-1', created_by_user_id: 'u-1', created_at: new Date().toISOString(), is_active: true, spend_limit: price(k.limit), usage: price(k.usage) });
   const request = async (url, opts = {}) => {
     const method = opts.method || 'GET', where = url.replace('https://cloud-api.near.ai', '');
@@ -62,6 +62,12 @@ function nearAi({ balance = { remaining: 0 }, series = [], byModel = [], ends = 
     if (method === 'GET' && where === '/v1/organizations/org-1/usage/balance') return reply(200, balance);
     if (method === 'GET' && where.startsWith('/v1/organizations/org-1/usage/timeseries?granularity=day&start=')) return series ? reply(200, { data: series }) : reply(403, { error: { message: 'forbidden', type: 'forbidden' } });
     if (method === 'GET' && where.startsWith('/v1/organizations/org-1/usage/by-model?period=custom&start=')) return reply(200, { period: 'custom', data: byModel });
+    // Each request's cost, for one key, a page at a time (history: key id -> costs in dollars).
+    m = where.match(/^\/v1\/organizations\/org-1\/usage\/history\?api_key_id=([^&]+)&start_time=[^&]+&limit=1000&offset=(\d+)$/);
+    if (m && method === 'GET') {
+      const all = (history[decodeURIComponent(m[1])] || []).map((usd, i) => ({ id: 'u' + i, api_key_id: m[1], total_cost: Math.round(usd * 1e9) }));
+      return reply(200, { data: all.slice(Number(m[2]), Number(m[2]) + 1000), total: all.length, limit: 1000, offset: Number(m[2]) });
+    }
     throw new Error('unexpected ' + method + ' ' + url);
   };
   return { request, keys, calls, state };

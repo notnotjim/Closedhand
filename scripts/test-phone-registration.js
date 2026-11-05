@@ -118,7 +118,7 @@ test('the code from closedhand.com is checked, tidied and sent only by this copy
   assert.equal(calls.length, 0, 'nothing sent for a malformed code');
   assert.equal((await client.claim(' abc-234 ')).state, 'pending');
   assert.ok(calls[0].url.endsWith('/api/phone-enrollment/claim'));
-  assert.deepEqual(JSON.parse(calls[0].options.body), { code: 'ABC234' });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { code: 'ABC234', acceptedTerms: false }, 'with whether the Terms were agreed on the setup page');
   assert.match(calls[0].options.headers.Authorization, /^Bearer [a-f0-9-]{36}\.[a-f0-9]{64}$/);
   assert.equal(client.status().ownershipConfirmed, true);
   const refused = registration({}, async () => ({ ok: false, json: async () => ({ error: 'That code does not match. Check the code on closedhand.com and try again.' }) }));
@@ -192,6 +192,8 @@ test('the Closedhand account: shown only as closedhand.com states it, and delete
       plan: { name: 'plus', email: true, ends_at: null, renews_at: '2026-12-01T00:00:00.000Z' }, used: 0.42,
       plus: { available: true, active: true, extended: false, nearly: false, ends_at: null, renews_at: null, prices: { plus: '$10', extend: null }, card: { brand: null, last4: '4242', expires: '08/29' } } });
   assert.equal(plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', used: 7, plan: { name: 'gold' } } })).account()).used, null, 'a share is between none and all');
+  assert.deepEqual(plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', used: 0.2, plan: { name: 'maintainer', email: true, renews_at: '2026-12-01T00:00:00Z' } } })).account()).plan,
+    { name: 'maintainer', email: true, ends_at: null, renews_at: '2026-12-01T00:00:00.000Z' }, "the maintainer's plan reaches My Account");
   assert.equal(await registration({ ...saved }, reply({ account: { provider: 'google', email: 'a@example.com', url: 'https://evil.example' } })).account(), null, 'never an address it cannot verify');
   assert.equal(await registration({ ...saved }, reply({ account: null })).account(), null);
   // A computer that never asked for a personal URL has no account, and never makes an identity to find out.
@@ -217,7 +219,7 @@ test('claiming with the Google or Microsoft sign-in sends it once, by this copy,
     const done = await client.claimWithSignIn(provider, 'id.token.here');
     assert.equal(done.url, 'https://amber-fox-42.closedhand.ai');
     assert.ok(calls[0].url.endsWith('/api/phone-enrollment/claim-' + provider));
-    assert.deepEqual(JSON.parse(calls[0].options.body), { idToken: 'id.token.here', port: 3000 });
+    assert.deepEqual(JSON.parse(calls[0].options.body), { idToken: 'id.token.here', port: 3000, acceptedTerms: false });
     assert.match(calls[0].options.headers.Authorization, /^Bearer [a-f0-9-]{36}\.[a-f0-9]{64}$/);
     assert.equal(values.PHONE_ADDRESS_NAME, 'amber-fox-42'); assert.equal(values.PHONE_ENROLLMENT, '2');
     assert.equal(client.status().ownershipConfirmed, true);

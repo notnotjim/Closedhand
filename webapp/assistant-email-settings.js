@@ -32,7 +32,11 @@ function register(app, db, userId) {
     const remote = account?.address ? await call(account, 'status') : null;
     const connections = account ? mustWrite(await db.from('connections').select('service,tokens,metadata').eq('user_id', owner)) : [];
     const ownerAddresses = account ? p.ownerAddresses(account, connections) : [];
-    res.json({ available: true, ownerAddresses, usage: remote?.usage || null, servicePaused: !!remote?.paused, name: profile.settings?.bot_name || 'Closedhand', address: account?.address || null, ownerEmail: account?.owner_email || null, enabled: !!account?.enabled, pending: !!account && !account.address, lastSyncAt: account?.last_sync_at, error: account?.last_error, threads, attention });
+    // Closedhand's own address comes with Managed Models: as closedhand.com
+    // says for an address it holds, else by the plan it last told this computer.
+    const plan = profile.settings?.included_ai?.plan;
+    const entitled = typeof remote?.usage?.entitled === 'boolean' ? remote.usage.entitled : ['first-month', 'plus', 'maintainer'].includes(plan?.name);
+    res.json({ available: true, entitled, ownerAddresses, usage: remote?.usage || null, servicePaused: !!remote?.paused, name: profile.settings?.bot_name || 'Closedhand', address: account?.address || null, ownerEmail: account?.owner_email || null, enabled: !!account?.enabled, pending: !!account && !account.address, lastSyncAt: account?.last_sync_at, error: account?.last_error, threads, attention });
   }));
   app.post('/api/assistant-email/enable', wrap(async (req, res, owner) => {
     if (!await available()) return res.status(503).json({ error: 'Closedhand’s email address is coming soon.' });
