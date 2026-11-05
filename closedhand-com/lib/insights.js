@@ -4,6 +4,8 @@
 // of it is shown. Anyone not signed in with an email in OPERATOR_EMAILS that
 // Google has verified gets the ordinary not-found page, so the page doesn't
 // show that it exists.
+const { fairUseMonth } = require('./months');
+
 const REPO = 'notnotjim/Closedhand';
 const INSTALL_SCRIPT = `https://raw.githubusercontent.com/${REPO}/main/install.sh`;
 // The route-building Worker stops making personal URLs at this many DNS
@@ -111,6 +113,8 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       FROM included_ai_keys WHERE {who}`);
     const plusOf = async who => Object.fromEntries((await db.query(`SELECT status, count(*)::int AS n FROM plus_subscriptions WHERE ${who} GROUP BY status`, [mine])).rows.map(r => [r.status, r.n]));
     const [plus, plusYou] = await Promise.all([plusOf('NOT (owner_id = ANY($1::uuid[]))'), plusOf('owner_id = ANY($1::uuid[])')]);
+    // Plans paid ahead running now (lib/ahead.js), everyone else's.
+    const ahead = (await db.query('SELECT count(*)::int AS n FROM ahead_plans WHERE ended_at IS NULL AND ends_at > now() AND NOT (owner_id = ANY($1::uuid[]))', [mine])).rows[0].n;
     const accounts = await both(`SELECT count(*)::int AS total,
         count(*) FILTER (WHERE provider = 'google')::int AS google,
         count(*) FILTER (WHERE provider = 'microsoft')::int AS microsoft,
@@ -159,7 +163,8 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
         (SELECT json_agg(json_build_object('provider', s.provider, 'email', s.email) ORDER BY s.created_at) FROM owner_sign_ins s WHERE s.owner_id = o.id) AS more_sign_ins,
         CASE WHEN k.maintainer THEN NULL ELSE k.granted_usd::float END AS first_month_usd, k.granted_at AS first_month_from, k.ends_at AS first_month_until, k.stopped_at AS first_month_stopped,
         coalesce(k.maintainer, false) AS maintainer,
-        p.status AS plus_status, p.started_at AS plus_since, p.current_period_end AS plus_until, p.cancel_at_period_end AS plus_cancels, (p.extended_for IS NOT NULL AND p.extended_for = p.current_period_start) AS plus_extended,
+        ap.ends_at AS ahead_until,
+        p.status AS plus_status, p.started_at AS plus_since, p.current_period_end AS plus_until, p.cancel_at_period_end AS plus_cancels, p.every_months AS plus_every, p.current_period_start AS plus_from, p.extended_for AS plus_extended_for,
         a.hostname, a.state, a.activated_at AS claimed, a.last_seen_at AS last_online,
         (SELECT h.hostname FROM held_names h WHERE h.owner_id = o.id ORDER BY h.created_at DESC LIMIT 1) AS held_name,
         (SELECT count(*)::int FROM retired_names r WHERE r.owner_id = o.id) AS renames,
@@ -168,12 +173,18 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       LEFT JOIN addresses a ON a.owner_id = o.id
       LEFT JOIN included_ai_keys k ON k.owner_id = o.id
       LEFT JOIN plus_subscriptions p ON p.owner_id = o.id
+      LEFT JOIN ahead_plans ap ON ap.owner_id = o.id AND ap.ended_at IS NULL AND ap.ends_at > now()
       LEFT JOIN LATERAL (SELECT string_agg(address, ', ' ORDER BY created_at) AS addresses, min(owner_email) AS owner_email
         FROM mail_relay_accounts WHERE owner_id = o.id AND enabled) m ON true
       LEFT JOIN mail_relay_usage u ON m.owner_email IS NOT NULL
         AND u.owner_key = encode(sha256(convert_to(lower(m.owner_email), 'UTF8')), 'hex')
         AND u.period = date_trunc('month', now() at time zone 'UTC')::date
-      ORDER BY o.created_at DESC LIMIT 2000`, [mine])).rows;
+      ORDER BY o.created_at DESC LIMIT 2000`, [mine])).rows.map(({ plus_from: from, plus_extended_for: extendedFor, ...p }) => {
+        // Carried on this month of fair use, which in a subscription every 6
+        // or 12 months is one month of its period.
+        const month = fairUseMonth({ current_period_start: from, current_period_end: p.plus_until, every_months: p.plus_every });
+        return { ...p, plus_extended: !!month && !!extendedFor && new Date(extendedFor).getTime() === month.from.getTime() };
+      });
     const reports = (await db.query(`SELECT created_at, status, left(comment, 400) AS comment, app_version, platform, resolved_at
       FROM bug_reports ORDER BY created_at DESC LIMIT 50`)).rows;
     return {
@@ -187,7 +198,7 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       bugs,
       email: { accounts: email.accounts, sent: Math.max(0, email.all_sent - email.you_sent), received: Math.max(0, email.all_received - email.you_received),
         you: { accounts: email.you_accounts, sent: email.you_sent, received: email.you_received } },
-      managed: { ...firstMonths, plus, you: { ...firstMonths.you, plus: plusYou }, ...await fromNear(mine) },
+      managed: { ...firstMonths, plus, ahead, you: { ...firstMonths.you, plus: plusYou }, ...await fromNear(mine) },
       github: await githubCounts(),
     };
   }

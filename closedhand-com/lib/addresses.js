@@ -291,7 +291,7 @@ async function agreed(db, ownerId, body) {
   if (body?.acceptedTerms === true) await db.query('UPDATE owners SET terms_version = $2, terms_accepted_at = now() WHERE id = $1', [ownerId, TERMS_VERSION]);
 }
 
-function register(app, { db, sessions, secret, baseUrl, env = process.env, request = fetch, includedAi = require('./included-ai').create({ db, env, request }), plus = null, notices = null }) {
+function register(app, { db, sessions, secret, baseUrl, env = process.env, request = fetch, includedAi = require('./included-ai').create({ db, env, request }), plus = null, ahead = null, notices = null }) {
   const { planFor } = require('./plan');
   const enabled = () => env.PHONE_ENROLLMENT_ENABLED === '1';
   // A claim's answer, with the included AI's key when one is given.
@@ -511,8 +511,8 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const plan = await planFor(db, env, ownerId, undefined, includedAi);
     // A subscriber's key, or the maintainer's, collected once; the maintainer's
     // is also kept to its month here.
-    const key = plan.name === 'plus' || plan.name === 'maintainer' ? await includedAi.collect(ownerId) : null;
-    const usage = ['plus', 'first-month', 'maintainer'].includes(plan.name) ? await includedAi.usage(ownerId).catch(() => null) : null;
+    const key = ['plus', 'maintainer', 'ahead'].includes(plan.name) ? await includedAi.collect(ownerId) : null;
+    const usage = ['plus', 'first-month', 'maintainer', 'ahead'].includes(plan.name) ? await includedAi.usage(ownerId).catch(() => null) : null;
     const told = notices ? await notices.collect(ownerId) : [];
     // What the subscription costs where the computer is, so Closedhand can say when asked.
     const prices = plus ? await plus.prices(req.headers['cf-ipcountry']).catch(() => null) : null;
@@ -600,16 +600,33 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       res.status(503).json({ error: 'Could not reach the payment service just now. Please try again.' });
     }
   }));
+  // Paying, each way: the subscription (every month, or every 6 or 12), paying
+  // ahead in crypto (lib/ahead.js), or carrying on past this month's fair use
+  // the way the plan is paid. A payment that charges at once needs the box
+  // ticked first.
   forPlus('post', 'checkout', async (ownerId, origin, req, res) => {
     const owner = (await db.query('SELECT id, email FROM owners WHERE id = $1', [ownerId])).rows[0];
     const now = await plus.state(ownerId);
+    const agreed = req.body?.agreed === true;
+    const crypto = async (what) => {
+      if (!ahead) return res.status(503).json({ error: 'Paying in crypto is not available just now.' });
+      try { return res.json({ url: await ahead.checkout(owner, { ...what, agreed }) }); }
+      catch (e) { if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message }); throw e; }
+    };
     if (req.body?.kind === 'extend') {
+      if (now.ahead_until) return crypto({ extend: true });
       if (!now.active) return res.status(409).json({ error: 'Carrying on past fair use is part of the subscription.' });
       if (now.extended) return res.status(409).json({ error: 'You can already carry on to the end of this month.' });
+      if (!agreed) return res.status(400).json({ error: plus.AGREE });
       return res.json({ url: await plus.extend(owner, origin) });
     }
+    if (req.body?.kind === 'ahead') return crypto({ months: req.body.months });
     if (now.active) return res.status(409).json({ error: 'You already subscribe to Managed Models.' });
-    res.json({ url: await plus.checkout(owner, origin) });
+    if (now.ahead_until) return res.status(409).json({ error: 'Closedhand Managed Models are paid ahead in crypto for your account, so there is no subscription by card to start.' });
+    const every = Number(req.body?.months || 1);
+    const why = await plus.cannotSubscribe(owner, every, agreed);
+    if (why) return res.status(400).json({ error: why });
+    res.json({ url: await plus.checkout(owner, origin, every) });
   });
   forPlus('post', 'card', async (ownerId, origin, req, res) => {
     const session = await plus.cardSession(ownerId);
@@ -662,14 +679,24 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   async function detailsOf(owner, country, { card: withCard = false } = {}) {
     const plusState = plus ? await plus.state(owner) : null;
     const plusPrices = plusState?.available ? await plus.prices(country) : null;
+    // A subscription every 6 or 12 months: its own price, for what resuming would charge.
+    if (plusPrices && plusState.every) plusPrices.every = (await plus.longerPrices(country)).find(o => o.months === plusState.every)?.price || null;
     // The card only for My Account, which shows it: closedhand.com's own pages
     // ask for the account on every view, and each card read opens a Polar session.
     const card = withCard && plusState?.active ? await plus.cardOnFile(owner).catch(() => null) : null;
     const plan = await planFor(db, env, owner, undefined, includedAi);
-    const running = ['first-month', 'plus', 'maintainer'].includes(plan.name);
+    const running = ['first-month', 'plus', 'maintainer', 'ahead'].includes(plan.name);
+    // The other ways to pay where the person is, for an account without a
+    // subscription by card: the subscription every 6 or 12 months (not beside
+    // a plan paid in crypto), and paying ahead in crypto, with carrying on in
+    // crypto while such a plan runs.
+    const open = plusState?.available && plan.name !== 'maintainer' && !plusState.active;
+    const longer = open && !plusState.ahead_until ? await plus.longerPrices(country) : [];
+    const coins = open && ahead ? ahead.options() : {};
+    const ways = { ...(longer.length ? { longer } : {}), ...(coins.crypto?.length ? { crypto: coins.crypto, ...(plusState.ahead_until ? { crypto_extend: coins.extend } : {}) } : {}) };
     const usage = running ? await includedAi.usage(owner).catch(() => null) : null;
     const used = usage ? Math.round(Math.min(1, Math.max(0, usage.used / usage.limit)) * 100) / 100 : null;
-    return { signIns: await signInsOf(db, owner), ...(plusState ? { plus: { ...plusState, ...(plusPrices ? { prices: plusPrices } : {}), ...(card ? { card } : {}) } } : {}), ...(plan.name ? { plan } : {}), ...(used !== null ? { used } : {}) };
+    return { signIns: await signInsOf(db, owner), ...(plusState ? { plus: { ...plusState, ...(plusPrices ? { prices: plusPrices } : {}), ...(card ? { card } : {}), ...ways } } : {}), ...(plan.name ? { plan } : {}), ...(used !== null ? { used } : {}) };
   }
 
   // Who is signed in here, and their personal URL: "url" once it works (to

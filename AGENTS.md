@@ -209,14 +209,15 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   Closedhand switches to it for you." The company running that hardware (NEAR AI) is named only
   on the Privacy page, never elsewhere in the app, on the site or in chat.
 - Closedhand Managed Models are one product with one name: 14 free days set up for the person,
-  then a monthly subscription that keeps them going. Closedhand's own email address comes with
+  then a subscription that keeps them going, renewing every month or every 6 or 12 months, or
+  3, 6 or 9 months paid ahead in crypto, which never renew by themselves. Closedhand's own email address comes with
   them and works only while they are the person's. The paid part is "the subscription" (or "your subscription"), never a name of its
-  own: there is no "Closedhand+". The code and its tables still say plus.
+  own: there is no "Closedhand+"; paying in crypto is "paying ahead" or "paid ahead". The code and its tables still say plus.
 - Closedhand Managed Models are never money in anything people read but the subscription's
-  price: no credit, balances, dollars of use, tokens or top-ups. People see a plan (14 free days
-  set up for them, or a subscription renewing or ending on a day) and, where the account is shown,
-  one plain bar of this month's fair use with no amount; chat tells them about use only near the
-  fair-use ceiling. Credit exists only behind the scenes (closedhand.com's key limits).
+  prices and paying ahead's: no credit, balances, dollars of use, tokens or top-ups. People see a plan (14 free days
+  set up for them, a subscription renewing or ending on a day, or paid ahead until a day) and, where the account is shown,
+  one plain bar of this month's fair use with no amount, saying in how many days it renews once most
+  is used; chat tells them about use only near the fair-use ceiling. Credit exists only behind the scenes (closedhand.com's key limits).
 - Each thing has one home, and a way to it never repeats what it shows. My Account opens from
   the dashboard's account menu at its top right (with Sign out) and the foot of Settings as a
   popup over the web chat: the panel slides away first and comes back as it was left. It holds the Closedhand account (its sign-ins and

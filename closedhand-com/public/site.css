@@ -28,8 +28,20 @@ a { color: inherit; }
 .card .fair-use-label { margin: 0 0 .375rem; font-size: .8125rem; color: var(--muted); }
 .fair-use-track { height: .5rem; border-radius: 1rem; background: rgba(var(--fg-rgb),0.08); overflow: hidden; }
 .fair-use-track span { display: block; height: 100%; width: 0; border-radius: 1rem; background: var(--ok); }
+.card .fair-use-renews { margin: .5rem 0 0; font-size: .8125rem; }
 
 .stack { display: grid; gap: .625rem; }
+/* The other ways to pay (account page): the longer subscriptions as plain
+   buttons, crypto behind a quiet link; and, above every button that charges
+   at once, agreeing that what is paid for starts straight away. */
+.ahead { margin-top: 1.375rem; padding-top: 1.25rem; border-top: 1px solid rgba(var(--fg-rgb),0.08); }
+.ahead .stack + .link-button, .ahead .link-button + .stack, .ahead .stack + .ahead-label { margin-top: .75rem; }
+.card .ahead > p:first-child { margin-bottom: .75rem; }
+.card .ahead-label { margin: .875rem 0 .5rem; font-size: .8125rem; }
+.link-button { display: inline; padding: 0; border: 0; background: none; color: var(--muted); font: 400 .875rem/1.6 var(--font-ui); text-decoration: underline; text-underline-offset: .1875rem; cursor: pointer; }
+.link-button:hover { color: var(--fg); }
+.agree { display: flex; align-items: flex-start; gap: .625rem; margin: 0 0 1rem; font-weight: 400; font-size: .8125rem; color: var(--muted); cursor: pointer; }
+.agree input { width: 1.125rem; height: 1.125rem; margin: .125rem 0 0; flex: 0 0 1.125rem; accent-color: var(--accent-strong); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: .625rem; width: 100%; min-height: 3rem; padding: .75rem 1.125rem; border-radius: .75rem; font: 500 .9375rem/1.2 var(--font-ui); text-decoration: none; cursor: pointer; border: 1px solid rgba(var(--fg-rgb),0.16); background: rgba(var(--fg-rgb),0.04); color: var(--fg); transition: background 0.15s, border-color 0.15s, transform 0.15s; }
 .btn:hover { background: rgba(var(--fg-rgb),0.08); border-color: rgba(var(--fg-rgb),0.28); }
 .btn:disabled { opacity: 0.55; cursor: default; }

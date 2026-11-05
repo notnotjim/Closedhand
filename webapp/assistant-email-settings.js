@@ -35,7 +35,7 @@ function register(app, db, userId) {
     // Closedhand's own address comes with Managed Models: as closedhand.com
     // says for an address it holds, else by the plan it last told this computer.
     const plan = profile.settings?.included_ai?.plan;
-    const entitled = typeof remote?.usage?.entitled === 'boolean' ? remote.usage.entitled : ['first-month', 'plus', 'maintainer'].includes(plan?.name);
+    const entitled = typeof remote?.usage?.entitled === 'boolean' ? remote.usage.entitled : ['first-month', 'plus', 'maintainer', 'ahead'].includes(plan?.name);
     res.json({ available: true, entitled, ownerAddresses, usage: remote?.usage || null, servicePaused: !!remote?.paused, name: profile.settings?.bot_name || 'Closedhand', address: account?.address || null, ownerEmail: account?.owner_email || null, enabled: !!account?.enabled, pending: !!account && !account.address, lastSyncAt: account?.last_sync_at, error: account?.last_error, threads, attention });
   }));
   app.post('/api/assistant-email/enable', wrap(async (req, res, owner) => {

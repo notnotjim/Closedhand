@@ -89,7 +89,7 @@ By the time you say hello, Closedhand has already read your inbox and calendar.
 
 Closedhand is free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, NEAR AI, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does.
 
-If you'd rather not choose, Closedhand Managed Models run DeepSeek V4.1 Flash, uncensored, in sealed hardware: nobody but you can read what you send or what comes back. When a better uncensored LLM is available, Closedhand switches to it for you. Closedhand Managed Models come with 14 days at no charge, once per person, and then carry on with an optional monthly subscription. You can switch to your own LLM provider at any time.
+If you'd rather not choose, Closedhand Managed Models run DeepSeek V4.1 Flash, uncensored, in sealed hardware: nobody but you can read what you send or what comes back. When a better uncensored LLM is available, Closedhand switches to it for you. Closedhand Managed Models come with 14 days at no charge, once per person, and then carry on with an optional subscription, monthly or every 6 or 12 months, or paid ahead in crypto for 3, 6 or 9 months. You can switch to your own LLM provider at any time.
 
 ## Where it runs
 

@@ -33,6 +33,13 @@ main.managed { width: min(100%, 62rem); padding-top: 3.5rem; }
 .mm-point h3::before { content: ""; position: absolute; left: -.125rem; top: 0; width: 2.25rem; height: .4375rem; background: var(--accent);
   -webkit-mask: url(/brush-underline.svg) center / 100% 100% no-repeat; mask: url(/brush-underline.svg) center / 100% 100% no-repeat; }
 .mm-point p { margin: 0; font-size: 1rem; line-height: 1.6; }
+/* What Managed Models cost: each price on its own lines above what it means. */
+.mm-amount { display: block; margin-bottom: .5rem; font-weight: 600; color: var(--ui-text); }
+.mm-crypto { margin: 1.125rem 0 0; }
+.mm-link { padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: .9375rem; text-decoration: underline; text-underline-offset: .1875rem; cursor: pointer; }
+.mm-link:hover { color: var(--ui-text); }
+.mm-crypto-list { margin-top: 1rem; }
+.mm-note { margin: 1.125rem 0 0; font-size: .9375rem; color: var(--muted); }
 
 /* How it compares: Managed Models' column in the accent. */
 .mm-table-wrap { border-radius: 1rem; border: 1px solid var(--ui-border); background: rgba(var(--raised-rgb),0.7); overflow: hidden; }

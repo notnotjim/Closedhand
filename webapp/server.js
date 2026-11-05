@@ -2065,8 +2065,12 @@ app.get("/api/included-ai", async (req, res) => {
     const { PROVIDERS } = require("./provider-names");
     const ownConnections = Object.values((inUse ? settings.own_model_config : settings.model_config)?.connections || {});
     const own = [...new Set(ownConnections.map((c) => PROVIDERS[c?.provider]).filter(Boolean))];
-    // The subscription's price, as closedhand.com shows it, for what resuming would charge.
-    res.json({ state: inUse ? "in-use" : "available", name: settings.included_ai?.name || null, plan: settings.included_ai?.plan || null, price: settings.included_ai?.prices?.plus || null, ownKept: !!settings.own_model_config?.connections, own });
+    // The subscription's price, as closedhand.com shows it, for what resuming
+    // would charge; and whether most of this month's fair use is used, never
+    // how much, so Settings can say when it renews.
+    const fair = await included.credit(settings);
+    res.json({ state: inUse ? "in-use" : "available", name: settings.included_ai?.name || null, plan: settings.included_ai?.plan || null, price: settings.included_ai?.prices?.plus || null,
+      nearly: !!fair && fair.used >= fair.limit * included.NEARLY_USED, ownKept: !!settings.own_model_config?.connections, own });
   } catch (e) {
     res.status(503).json({ error: "Could not read Closedhand Managed Models just now." });
   }
@@ -2096,7 +2100,7 @@ const plusAction = (action, args) => async (req, res) => {
   try { res.json(await require("./phone-registration").plus(action, args(req))); }
   catch (e) { res.status(400).json({ error: e.message || "Could not reach the payment service just now. Please try again." }); }
 };
-app.post("/api/plus/checkout", plusAction("checkout", (req) => ({ kind: req.body?.kind })));
+app.post("/api/plus/checkout", plusAction("checkout", (req) => ({ kind: req.body?.kind, months: req.body?.months, agreed: req.body?.agreed === true })));
 app.post("/api/plus/card", plusAction("card", () => ({})));
 // Cancelling or resuming changes the plan Settings shows, so it is asked for
 // again at once rather than at the next hourly check.

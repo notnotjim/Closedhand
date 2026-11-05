@@ -856,7 +856,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     assert.equal(Number(row.granted_usd), 0);
     assert.equal(row.maintainer, true);
     assert.equal(row.ends_at, null, 'no end');
-    assert.equal([...keys.values()][0].limit, 15, 'a month of fair use');
+    assert.equal([...keys.values()][0].limit, 20, 'a month of fair use');
     assert.ok(!JSON.stringify(row).includes(done.included_ai.key), 'the key itself is not kept');
     assert.equal([...keys.values()][0].name, 'Closedhand ' + row.owner_id, 'named by the account, not its email');
     // The computer can ask which models are current, and only a known computer.
@@ -866,8 +866,8 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     const asked = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
     assert.deepEqual(asked.models, done.included_ai.models);
     const firstOfNext = (() => { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString(); })();
-    assert.deepEqual(asked.plan, { name: 'maintainer', renews_at: firstOfNext, email: false }, 'and that it is the maintainer\'s, renewing on the first');
-    assert.deepEqual(asked.usage, { limit: 15, used: 0 }, 'and how much of its fair use is used, which a NEAR key can\'t read itself');
+    assert.deepEqual(asked.plan, { name: 'maintainer', renews_at: firstOfNext, fair_use_renews_at: firstOfNext, email: false }, 'and that it is the maintainer\'s, renewing on the first');
+    assert.deepEqual(asked.usage, { limit: 20, used: 0 }, 'and how much of its fair use is used, which a NEAR key can\'t read itself');
     assert.equal(asked.key, undefined);
     assert.equal(asked.notices, undefined, 'nothing waiting for the maintainer yet');
     assert.deepEqual((await (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json()).plan, asked.plan, 'the account page is told the same');
@@ -894,7 +894,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     assert.equal(reclaimed.url, 'https://quinn-again.closedhand.ai', 'the claim itself goes on');
     assert.match(reclaimed.included_ai.key, /^sk-/);
     assert.equal(keys.size, 1);
-    assert.equal([...keys.values()][0].limit, 15);
+    assert.equal([...keys.values()][0].limit, 20);
   } finally { other.close(); }
 });
 
@@ -986,11 +986,11 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
 
     // The computer learns its plan and collects its key, once.
     const first = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
-    assert.deepEqual(first.plan, { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', extended: false, email: false });
+    assert.deepEqual(first.plan, { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', fair_use_renews_at: '2026-12-01T00:00:00.000Z', extended: false, email: false });
     assert.deepEqual(first.prices, { plus: '$10', extend: '$8' }, 'what the subscription costs, for Closedhand to say when asked');
     assert.match(first.key, /^sk-[a-f0-9]{32}$/);
     const [, made] = [...keys][0];
-    assert.equal(made.limit, 15, 'a paid month of fair use');
+    assert.equal(made.limit, 20, 'a paid month of fair use');
     assert.equal((await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json()).key, undefined, 'handed over once');
     assert.equal((await db.query("SELECT count(*) AS n FROM included_ai_keys WHERE owner_id = $1 AND key_id = $2", [ownerId, [...keys.keys()][0]])).rows[0].n, '1');
     const manage = await (await call('POST', '/api/plus/manage', {}, signedIn(owner.cookie))).json();
@@ -1011,18 +1011,23 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
     assert.equal((await call('GET', '/api/phone-enrollment/plus/invoice?id=22222222-2222-4333-8444-555555555555', undefined, copy.auth)).status, 404, "never another customer's");
     assert.equal((await call('POST', '/api/plus/checkout', {}, signedIn(owner.cookie))).status, 409, 'already subscribed');
     assert.equal((await plusTap(owner.cookie)).headers.get('location'), 'https://sandbox.polar.sh/portal/fixture', 'running: to manage it');
+    // Carrying on from Closedhand's chat goes to the account page, where the
+    // box comes first: it charges at once.
     const tapped = await tap(owner.cookie);
     assert.equal(tapped.status, 302);
-    assert.equal(tapped.headers.get('location'), 'https://sandbox.polar.sh/checkout/fixture', "one tap from Closedhand's chat to Polar's page");
+    assert.equal(tapped.headers.get('location'), '/account', "from Closedhand's chat to the account page");
+    assert.equal((await tap(null)).headers.get('location'), '/account', 'signed out too: it asks to sign in');
+    assert.equal((await call('POST', '/api/plus/extend', {}, signedIn(owner.cookie))).status, 400, 'not without the box ticked');
+    assert.equal((await call('POST', '/api/phone-enrollment/plus/checkout', { kind: 'extend' }, copy.auth)).status, 400, 'nor from My Account');
+    assert.equal((await (await call('POST', '/api/plus/extend', { agreed: true }, signedIn(owner.cookie))).json()).url, 'https://sandbox.polar.sh/checkout/fixture');
     assert.deepEqual(polar.at(-1).body.products, [EXTEND]);
-    assert.equal((await tap(null)).headers.get('location'), '/account?then=carry-on', 'signed out: sign in first, then on');
     made.usage = 5;
     // NEAR's list of keys is kept five minutes: read as if they had passed.
     const later = async fn => { const now = Date.now; Date.now = () => now() + 6 * 60000; try { return await fn(); } finally { Date.now = now; } };
     const page = await later(async () => (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json());
-    assert.equal(page.used, 0.33, "this month's fair use, as a share for the page's one bar");
+    assert.equal(page.used, 0.25, "this month's fair use, as a share for the page's one bar");
     const mine = (await (await call('GET', '/api/phone-enrollment/account', undefined, copy.auth)).json()).account;
-    assert.deepEqual([mine.used, mine.plan.name, mine.plus.active], [0.33, 'plus', true], 'My Account shows the same, from the computer');
+    assert.deepEqual([mine.used, mine.plan.name, mine.plus.active], [0.25, 'plus', true], 'My Account shows the same, from the computer');
     assert.deepEqual(mine.plus.card, { brand: 'visa', last4: '4242', expires: '08/29' }, 'the card the subscription is paid with: the default one');
     made.usage = 0;
 

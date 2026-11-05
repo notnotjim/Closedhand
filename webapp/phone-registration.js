@@ -220,34 +220,56 @@ async function account() {
   const provider = (p) => p === 'microsoft' ? 'microsoft' : 'google';
   const text = (v) => typeof v === 'string' ? v.slice(0, 200) : null;
   const date = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null;
-  const plan = found.plan && ['first-month', 'plus', 'ended', 'none', 'maintainer'].includes(found.plan.name) ? found.plan : null;
+  const plan = found.plan && ['first-month', 'plus', 'ended', 'none', 'maintainer', 'ahead'].includes(found.plan.name) ? found.plan : null;
   const plus = found.plus && typeof found.plus === 'object' ? found.plus : null;
   const prices = plus?.prices && typeof plus.prices === 'object' ? plus.prices : {};
   return {
     provider: provider(found.provider), email: text(found.email), url: new URL(found.url).origin,
     signIns: (Array.isArray(found.signIns) ? found.signIns : []).slice(0, 10).map((s) => ({ provider: provider(s?.provider), email: text(s?.email) })),
     plan: plan ? { name: plan.name, email: plan.email === true, ends_at: date(plan.ends_at), renews_at: date(plan.renews_at),
+      fair_use_renews_at: date(plan.fair_use_renews_at), ...(plan.extended === true ? { extended: true } : {}),
       ...(plan.trial === true ? { trial: true } : {}), ...(plan.plus_trial === true ? { plus_trial: true } : {}),
-      ...(plan.name === 'ended' ? { was: ['plus', 'first-month'].includes(plan.was) ? plan.was : null, ended_at: date(plan.ended_at) } : {}) } : null,
+      ...(plan.name === 'ended' ? { was: ['plus', 'first-month', 'ahead'].includes(plan.was) ? plan.was : null, ended_at: date(plan.ended_at) } : {}) } : null,
     used: typeof found.used === 'number' && found.used >= 0 && found.used <= 1 ? found.used : null,
     plus: plus ? { available: plus.available === true, active: plus.active === true, extended: plus.extended === true, nearly: plus.nearly === true,
       ...(plus.trial === true ? { trial: true } : {}), ...(plus.free_month === true ? { free_month: true } : {}),
-      ends_at: date(plus.ends_at), renews_at: date(plus.renews_at), prices: { plus: text(prices.plus), extend: text(prices.extend) },
+      ends_at: date(plus.ends_at), renews_at: date(plus.renews_at), prices: { plus: text(prices.plus), extend: text(prices.extend), ...(text(prices.every) ? { every: text(prices.every) } : {}) },
+      ...([6, 12].includes(plus.every) ? { every: plus.every } : {}),
+      // Paid ahead in crypto until when; the other ways to pay, each length
+      // with its price and its price a month; and carrying on in crypto.
+      ...(date(plus.ahead_until) ? { ahead_until: date(plus.ahead_until) } : {}),
+      longer: lengths(plus.longer), crypto: lengths(plus.crypto),
+      ...(typeof plus.crypto_extend === 'string' ? { crypto_extend: plus.crypto_extend.slice(0, 20) } : {}),
       card: plus.card && /^\d{4}$/.test(String(plus.card.last4)) ? { brand: /^[A-Za-z ]{1,20}$/.test(String(plus.card.brand)) ? plus.card.brand : null, last4: plus.card.last4,
         expires: /^\d{2}\/\d{2}$/.test(String(plus.card.expires)) ? plus.card.expires : null } : null } : null,
   };
+}
+// A way to pay as closedhand.com offers it (the subscription every 6 or 12
+// months, or paying ahead in crypto): each length a whole number of months
+// with its price and its price a month.
+function lengths(given) {
+  return (Array.isArray(given) ? given : []).slice(0, 4)
+    .filter((o) => Number.isInteger(o?.months) && o.months > 0 && o.months <= 24 && typeof o.price === 'string')
+    .map((o) => ({ months: o.months, price: o.price.slice(0, 20), monthly: typeof o.monthly === 'string' ? o.monthly.slice(0, 20) : null }));
 }
 // The subscription in My Account, through closedhand.com: Polar's forms to frame
 // here (only from Polar's own addresses), cancelling or keeping it, what was
 // paid and its invoices. Each answer is taken only in the shape it should have.
 const POLAR = /^https:\/\/([a-z]+\.)?polar\.sh\//;
+// A crypto payment's page, on closedhand.com's own payment server.
+const CRYPTO_PAGE = /^https:\/\/closedhand\.com\/pay\/[A-Za-z0-9]{8,64}$/;
 const ORDER = /^[0-9a-f-]{36}$/;
-async function plus(action, { kind, cancel, id } = {}) {
+async function plus(action, { kind, cancel, id, months, agreed } = {}) {
   if (!(await getConf('PHONE_INSTALL_ID'))) throw new Error('Claim your personal URL first.');
   const unexpected = () => new Error('Could not reach the payment service just now. Please try again.');
+  // Subscribing (every month, 6 or 12), paying ahead in crypto, or carrying
+  // on the way the plan is paid: Polar's page, or closedhand.com's own crypto
+  // payment page.
   if (action === 'checkout') {
-    const { url } = await call('plus/checkout', 'POST', { kind: kind === 'extend' ? 'extend' : 'plus' });
-    if (!POLAR.test(String(url))) throw unexpected();
+    const what = ['extend', 'ahead'].includes(kind) ? kind : 'plus';
+    const { url } = await call('plus/checkout', 'POST', { kind: what, ...(what === 'extend' ? {} : { months: Number(months) || 1 }), agreed: agreed === true });
+    const pages = { plus: [POLAR], extend: [POLAR, CRYPTO_PAGE], ahead: [CRYPTO_PAGE] }[what];
+    if (!pages.some((page) => page.test(String(url)))) throw unexpected();
     return { url };
   }
   if (action === 'card') {
@@ -262,8 +284,12 @@ async function plus(action, { kind, cancel, id } = {}) {
   if (action === 'payments') {
     const { payments } = await call('plus/payments');
     const date = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null;
-    return (Array.isArray(payments) ? payments : []).slice(0, 24).filter((p) => ORDER.test(String(p?.id)))
-      .map((p) => ({ id: p.id, at: date(p.at), what: p.what === 'extend' ? 'extend' : 'plus', amount: typeof p.amount === 'string' ? p.amount.slice(0, 20) : null, refunded: p.refunded === true }));
+    // A crypto payment has no invoice to fetch: its id is BTCPay's, kept apart.
+    const crypto = (p) => p?.crypto === true && /^btcpay:[A-Za-z0-9]{8,64}$/.test(String(p?.id));
+    return (Array.isArray(payments) ? payments : []).slice(0, 24).filter((p) => ORDER.test(String(p?.id)) || crypto(p))
+      .map((p) => ({ id: p.id, at: date(p.at), what: ['extend', 'ahead'].includes(p.what) ? p.what : 'plus',
+        ...(p.what !== 'extend' && Number.isInteger(p.months) && p.months > 0 && p.months <= 24 ? { months: p.months } : {}), ...(crypto(p) ? { crypto: true } : {}),
+        amount: typeof p.amount === 'string' ? p.amount.slice(0, 20) : null, refunded: p.refunded === true }));
   }
   if (action === 'invoice') {
     if (!ORDER.test(String(id))) throw new Error('That invoice is not there.');

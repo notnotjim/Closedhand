@@ -221,17 +221,20 @@ test("the dashboard offers a personal URL to a Closedhand without one, and nothi
 function accountPage(respond) {
   const elements = {};
   const el = id => elements[id] ||= { id, hidden: true, disabled: false, textContent: "", dataset: {}, style: {}, attrs: {}, classList: { add() {}, remove() {} },
-    setAttribute(k, v) { this.attrs[k] = v; },
+    setAttribute(k, v) { this.attrs[k] = v; }, focus() {}, replaceWith(other) { this.replacedBy = other; },
+    replaceChildren(...kids) { this.children = kids; this.textContent = kids.map(k => k.textContent).join(" | "); },
     append(...parts) { this.textContent += parts.map(p => typeof p === "string" ? p : p.textContent).join(""); } };
   const calls = [];
   const state = vm.createContext({
     URL, window: { location: {} },
-    document: { getElementById: el, createElement: () => ({ textContent: "", append(...parts) { this.textContent += parts.map(p => typeof p === "string" ? p : p.textContent).join(""); } }), querySelector: () => null },
-    fetch: async (url, options = {}) => { calls.push([options.method || "GET", url]); const r = respond(url, options); return { ok: !r.status || r.status < 400, json: async () => r.body }; },
+    document: { getElementById: el, createElement: () => ({ textContent: "", focus() {}, addEventListener(type, fn) { this.on = fn; }, append(...parts) { this.textContent += parts.map(p => typeof p === "string" ? p : p.textContent).join(""); } }), querySelector: () => null },
+    fetch: async (url, options = {}) => { calls.push([options.method || "GET", url, ...(options.body ? [options.body] : [])]); const r = respond(url, options); return { ok: !r.status || r.status < 400, json: async () => r.body }; },
     showToast: message => calls.push(["toast", message]),
     hostText: (computer) => computer,
   });
   vm.runInContext(region(html, "    function cancelAccountAction(action)", "    function switchTab(tabName)"), state);
+  // When this month's fair use renews, said as Settings says it.
+  vm.runInContext(region(html, "    function fairUseRenewsIn(iso)", "    // A date months away"), state);
   return { state, el, calls };
 }
 test("My Account shows the Closedhand account whole, and Delete account says exactly what goes", async () => {
@@ -262,7 +265,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   assert.equal(withAccount.el("plus-cancel-text").textContent, "Your subscription ends on 15 December and is not charged again. Until then you can resume your subscription.");
   assert.match(withAccount.el("delete-account-text").textContent, /^This deletes your Closedhand account: amber-fox-42\.closedhand\.ai stops working and closedhand\.com forgets your sign-in\. It also permanently deletes everything Closedhand keeps for you on your own computer/);
   const html2 = fs.readFileSync(require.resolve("../webapp/views/dashboard.html"), "utf8");
-  for (const [id, call] of [["my-plus-get", "openPolar\\('checkout', 'plus'\\)"], ["my-plus-extend", "openPolar\\('checkout', 'extend'\\)"]]) {
+  for (const [id, call] of [["my-plus-get", "payFor\\('plus', 1, this\\)"], ["my-plus-extend", "payFor\\('extend', 0, this\\)"]]) {
     assert.match(html2, new RegExp(`id="${id}" hidden onclick="${call}"`), id);
   }
   // Rows like Your data's: Change, and Cancel with a word to type, as Delete account has.
@@ -295,6 +298,66 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   assert.equal(own.el("my-plus-get").textContent, "Subscribe \u00b7 $10 a month");
   assert.equal(own.el("my-plus-get").hidden, false);
 
+  // Paid ahead in crypto: until when, this month's fair use with when it
+  // renews once most is used, carrying on in crypto, no subscription by card
+  // to start, and paying ahead again in crypto, each only once the box is ticked.
+  const crypto = [{ months: 3, price: "$90", monthly: "$30" }], longer = [{ months: 6, price: "$162", monthly: "$27" }, { months: 12, price: "$288", monthly: "$24" }];
+  const soon = new Date(Date.now() + 5 * 86400000 + 3600000).toISOString(), soonDay = new Date(soon).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+  const paid = accountPage((url) => url === "/api/plus/checkout" ? { body: { url: "https://closedhand.com/pay/InvFixture0001" } } : { body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai",
+    plan: { name: "ahead", ends_at: "2027-05-06T09:00:00.000Z", fair_use_renews_at: soon }, used: 0.85,
+    plus: { available: true, active: false, nearly: true, ahead_until: "2027-05-06T09:00:00.000Z", crypto, crypto_extend: "$30", prices: { plus: "$30", extend: "$30" } } } } });
+  await paid.state.loadMyAccount();
+  assert.deepEqual([paid.el("my-plan-status").textContent, paid.el("my-plan-status").className], ["Paid ahead", "plan-status on"]);
+  assert.equal(paid.el("my-plan-state").textContent, "Closedhand Managed Models are paid until 6 May 2027. You've used most of this month's fair use.");
+  assert.equal(paid.el("my-fair-use").hidden, false, "this month's fair use, as one bar");
+  assert.equal(paid.el("my-fair-use-renews").textContent, "This month's fair use renews in 6 days (" + soonDay + ").", "most of it used: in how many days it renews");
+  assert.equal(paid.el("my-plus-get").hidden, true, "no subscription by card beside a plan paid in crypto");
+  assert.deepEqual([paid.el("my-plus-extend").hidden, paid.el("my-plus-extend").textContent], [false, "Carry on to the end of the month \u00b7 $30"], "carrying on, in crypto");
+  assert.equal(paid.el("my-agree").hidden, false, "the box above it");
+  assert.equal(paid.el("my-ahead-about").textContent, "Pay ahead again in crypto to move the end on, priced in US dollars.");
+  assert.equal(paid.el("my-ahead-crypto").hidden, false, "straight there, with a plan paid in crypto");
+  assert.equal(paid.el("my-ahead-crypto").textContent, "3 months \u00b7 $90 ($30 a month)");
+  paid.el("my-agree-box").checked = false;
+  await paid.el("my-ahead-crypto").children[0].on();
+  await paid.state.payFor("extend", 0, paid.el("my-plus-extend"));
+  assert.deepEqual(paid.calls.filter(c => c[0] === "toast"), [["toast", "Tick the box first: this payment starts straight away."], ["toast", "Tick the box first: this payment starts straight away."]], "nothing goes ahead until the box is ticked");
+  assert.ok(!paid.calls.some(c => c[1] === "/api/plus/checkout"));
+  paid.el("my-agree-box").checked = true;
+  await paid.state.payFor("extend", 0, paid.el("my-plus-extend"));
+  assert.deepEqual(paid.calls.at(-1), ["POST", "/api/plus/checkout", JSON.stringify({ kind: "extend", agreed: true })]);
+  assert.deepEqual([paid.el("my-plus-extend").replacedBy.href, paid.el("my-plus-extend").replacedBy.textContent], ["https://closedhand.com/pay/InvFixture0001", "Open the payment page to carry on"], "the payment page, in a tab of its own");
+
+  // No subscription: monthly the main way, every 6 or 12 months beside it,
+  // crypto behind a quiet link.
+  const fresh = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "none" }, plus: { available: true, active: false, longer, crypto, prices: { plus: "$30" } } } } }));
+  await fresh.state.loadMyAccount();
+  assert.equal(fresh.el("my-plus-get").hidden, false, "the monthly subscription stays the main way");
+  assert.equal(fresh.el("my-agree").hidden, false, "it charges at once without free days first");
+  assert.equal(fresh.el("my-ahead-about").textContent, "Or subscribe every 6 or 12 months, for less a month.");
+  assert.equal(fresh.el("my-longer").textContent, "Every 6 months \u00b7 $162 ($27 a month) | Every 12 months \u00b7 $288 ($24 a month)");
+  assert.deepEqual([fresh.el("my-ahead-crypto").hidden, fresh.el("my-ahead-crypto-line").hidden], [true, false], "crypto behind its quiet link");
+  fresh.state.openPolar = (...args) => fresh.calls.push(["polar", JSON.stringify(args)]);
+  await fresh.el("my-longer").children[0].on();
+  assert.deepEqual(fresh.calls.filter(c => c[0] === "toast" || c[0] === "polar"), [["toast", "Tick the box first: this payment starts straight away."]]);
+  fresh.el("my-agree-box").checked = true;
+  await fresh.el("my-longer").children[1].on();
+  assert.deepEqual(fresh.calls.at(-1), ["polar", JSON.stringify(["checkout", "plus", { months: 12, agreed: true }])], "Polar's form for every 12 months");
+  // The free days first: nothing is charged now, so no box to tick for it.
+  const free = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "none" }, plus: { available: true, active: false, free_month: true, prices: { plus: "$30" } } } } }));
+  await free.state.loadMyAccount();
+  assert.equal(free.el("my-agree").hidden, true, "nothing on show charges at once");
+  free.state.openPolar = (...args) => free.calls.push(["polar", JSON.stringify(args)]);
+  await free.state.payFor("plus", 1, free.el("my-plus-get"));
+  assert.deepEqual(free.calls.at(-1), ["polar", JSON.stringify(["checkout", "plus", { months: 1, agreed: false }])]);
+  // Subscribed every 6 months: said with its year, and the rest is My Account's as for any subscription.
+  const six = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "plus", every: 6, renews_at: "2027-05-06T09:00:00.000Z", fair_use_renews_at: soon }, used: 0.3,
+    plus: { available: true, active: true, every: 6, renews_at: "2027-05-06T09:00:00.000Z", longer, crypto, prices: { plus: "$30", extend: "$30", every: "$162" } } } } }));
+  await six.state.loadMyAccount();
+  assert.equal(six.el("my-plan-state").textContent, "Renews every 6 months, next on 6 May 2027.");
+  assert.equal(six.el("my-fair-use-renews").hidden, true, "not before most is used");
+  assert.equal(six.el("my-ahead").hidden, true, "the other ways are for an account without a subscription");
+  assert.equal(six.el("my-keep-desc").textContent, "Your subscription will carry on past the time you've paid for and renew every 6 months.");
+
   const first = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "first-month", ends_at: day(20) }, used: 0.1, plus: { available: false } } } }));
   await first.state.loadMyAccount();
   assert.equal(first.el("my-plan-state").textContent, "Your free 14 days of Closedhand Managed Models are running.", "their end is said in their last three days only");
@@ -322,7 +385,7 @@ test("Settings ends with My Account, the account's one home, and Usage is part o
   assert.ok(html.indexOf("classList.add('in-slideover')") < html.indexOf("<body"), "marked before anything is drawn");
   assert.doesNotMatch(html, /Welcome, <span|class="header-row"/, "no header that only the panel hid");
   assert.match(html, /\(window\.parent !== window \? window\.top : window\)\.location\.href = '\/';/, "signing out leaves the whole page");
-  assert.match(html, /\} else if \(\/\^account\(\\\/\(welcome\|extended\)\)\?\$\/\.test\(resolved\)\) \{\n\s*if \(inAccountPopup\(\)\) setAccountMode\(true\); else switchTab\('account'\);\n\s*if \(resolved === 'account\/welcome'\) plusWelcome\(\); else myAccountSaid\(resolved\.split\('\/'\)\[1\]\);/, "closedhand.com/account opens it, back from Polar too");
+  assert.match(html, /\} else if \(\/\^account\(\\\/\(welcome\|extended\|ahead\|carrying\)\)\?\$\/\.test\(resolved\)\) \{\n\s*if \(inAccountPopup\(\)\) setAccountMode\(true\); else switchTab\('account'\);\n\s*if \(resolved === 'account\/welcome'\) plusWelcome\(\); else myAccountSaid\(resolved\.split\('\/'\)\[1\]\);/, "closedhand.com/account opens it, back from Polar too");
 });
 test("Delete account stops when closedhand.com can't be reached, and deletes anyway only when asked", async () => {
   const page = accountPage((url) => url.includes("anyway=1") ? { body: { success: true, redirect: "/" } }
@@ -686,7 +749,7 @@ test("Models: a card for each way Closedhand can run, their own LLM provider fir
   // Managed Models not theirs: no cards, just their own models.
   box.state(null);
   assert.deepEqual([els["llm-options"].classList.contains("alone"), els["llm-managed"].hidden, els["byok-panel"].style.display], [true, true, ""]);
-  assert.match(html, /var theirs = !!\(data && data\.plan\) && \['first-month', 'plus', 'maintainer'\]\.includes\(data\.plan\.name\);/, "offered only while they are the person's");
+  assert.match(html, /var theirs = !!\(data && data\.plan\) && \['first-month', 'plus', 'maintainer', 'ahead'\]\.includes\(data\.plan\.name\);/, "offered only while they are the person's");
   // The maintainer's, not in use: offered all the same.
   box.fetch = async () => ({ ok: true, json: async () => ({ state: "available", plan: { name: "maintainer", renews_at: "2026-12-01T00:00:00.000Z" }, own: ["DeepSeek"] }) });
   await box.loadIncludedAi();

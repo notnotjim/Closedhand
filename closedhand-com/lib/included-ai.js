@@ -32,14 +32,20 @@
 // the claim goes on without a key and setup asks for an LLM provider instead.
 //
 // The subscription (lib/plus.js) continues it: a subscriber's key gets a
-// month's fair use (INCLUDED_AI_FAIR_USE_USD) for each paid month, from the
-// day of the month they subscribed (as Polar renews it), and another for a
-// month they paid to carry on past it. What the period before left unused
+// month's fair use (INCLUDED_AI_FAIR_USE_USD) for each month, from the day of
+// the month they subscribed (as Polar renews it; a subscription paid every 6
+// or 12 months has a month's fair use for each month of its period), and
+// another for a month they paid to carry on past it. What the month before left unused
 // carries into a paid month as it begins, up to one month's fair use, so
 // nobody holds more than two months; the Terms say so, nothing else does. A
 // subscriber is never held to the free days' limits; one whose account has
 // no key gets one the next time their computer asks (collect), and an ended
 // subscription stops the key.
+//
+// Paying ahead in crypto (lib/ahead.js) is the same in every way but how it
+// is paid: each month of a plan has the same fair use, from the day the plan
+// began, carrying on past it the same, and a plan that ends stops the key. A
+// plan running stands in for a subscription wherever one is asked about.
 //
 // The maintainer's own account (lib/maintainer.js) has Managed Models with no
 // charge and no Polar: the same monthly fair use as a subscriber, renewing on
@@ -47,6 +53,7 @@
 // stopped by the sweep or a subscription ending, whatever Polar says.
 const crypto = require('crypto');
 const { isMaintainer } = require('./maintainer');
+const { monthIn, fairUseMonth } = require('./months');
 
 const BACKENDS = { near: './included-ai-near', openrouter: './included-ai-openrouter' };
 const cents = n => Math.round(n * 100) / 100;
@@ -66,7 +73,7 @@ function connection(ip) {
 function create({ db, env = process.env, request = fetch, notices = null }) {
   const choice = String(env.INCLUDED_AI_PROVIDER || 'near').trim().toLowerCase();
   const keys = BACKENDS[choice] ? require(BACKENDS[choice]).create({ db, env, request, notices }) : null;
-  const fairUse = Number(env.INCLUDED_AI_FAIR_USE_USD || 15);
+  const fairUse = Number(env.INCLUDED_AI_FAIR_USE_USD || 20);
   const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 12);
   const trialDays = Number(env.INCLUDED_AI_TRIAL_DAYS || 14);
   // Ten, so an office or a household sharing one connection all get theirs,
@@ -227,14 +234,21 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   }
 
   // The account's subscription while it gives access (Polar keeps
-  // access through a failed payment it is still retrying), or null.
+  // access through a failed payment it is still retrying), else its plan paid
+  // ahead while it runs, in the same shape. current_period_start is the day
+  // this month of fair use began: a monthly subscription's paid month, the
+  // month of a longer one's period, or of a plan by the day it began. Null
+  // when neither.
   async function subscription(ownerId) {
-    return (await db.query(
-      "SELECT status, current_period_start, extended_for FROM plus_subscriptions WHERE owner_id = $1 AND status IN ('active', 'trialing', 'past_due')", [ownerId])).rows[0] || null;
+    const sub = (await db.query(
+      "SELECT status, current_period_start, current_period_end, every_months, extended_for FROM plus_subscriptions WHERE owner_id = $1 AND status IN ('active', 'trialing', 'past_due')", [ownerId])).rows[0];
+    if (sub) return { status: sub.status, current_period_start: fairUseMonth(sub)?.from || null, extended_for: sub.extended_for };
+    const plan = (await db.query('SELECT starts_at, extended_for FROM ahead_plans WHERE owner_id = $1 AND starts_at <= now() AND ends_at > now() AND ended_at IS NULL', [ownerId])).rows[0];
+    return plan ? { status: 'active', current_period_start: monthIn(plan.starts_at).from, extended_for: plan.extended_for, ahead: true } : null;
   }
-  // The paid month a subscription is in, by the day it began.
+  // The month of fair use a subscription is in, by the day it began.
   const monthOf = sub => (sub.current_period_start ? new Date(sub.current_period_start).getTime() : 0);
-  // This paid month's fair use: another month's when the person paid to carry on in it.
+  // This month's fair use: another month's when the person paid to carry on in it.
   const allowanceFor = sub => fairUse * (sub.extended_for && new Date(sub.extended_for).getTime() === monthOf(sub) ? 2 : 1);
 
   // A subscriber's key, made now: no free-days limits apply. Saved first, so two
@@ -330,6 +344,8 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   async function end(ownerId) {
     if (!enabled()) return false;
     if (await maintainer(ownerId)) return true;
+    // A plan paid ahead runs on whatever else ends.
+    if ((await subscription(ownerId))?.ahead) return subscribe(ownerId);
     const held = (await db.query('SELECT key_id, stopped_at FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!held) return false;
     const key = await keys.keyNow(held.key_id, { fresh: true });
@@ -351,6 +367,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
       `SELECT k.owner_id FROM included_ai_keys k
         WHERE k.stopped_at IS NULL AND k.ends_at IS NOT NULL AND k.ends_at <= now()
           AND NOT EXISTS (SELECT 1 FROM plus_subscriptions s WHERE s.owner_id = k.owner_id AND s.status IN ('active', 'trialing', 'past_due'))
+          AND NOT EXISTS (SELECT 1 FROM ahead_plans p WHERE p.owner_id = k.owner_id AND p.ended_at IS NULL AND p.ends_at > now())
         ORDER BY k.ends_at LIMIT 200`)).rows;
     for (const { owner_id: ownerId } of ended) await end(ownerId).catch(e => console.error('[included ai] free days not stopped:', e.message));
     // Keys replaced or left by a deleted account, deleted at the provider.

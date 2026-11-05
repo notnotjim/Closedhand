@@ -65,8 +65,9 @@ function database() {
       if (sql.startsWith('UPDATE included_ai_keys SET stopped_at = now()')) { const r = rows.find(r => r.owner_id === args[0]); r.stopped_at = new Date(); if (args[1] != null) r.left_usd = args[1]; return result([]); }
       if (sql.includes('FROM included_ai_keys k')) return result(rows.filter(r => !r.stopped_at && r.ends_at && r.ends_at <= new Date()).map(r => ({ owner_id: r.owner_id })));
       if (sql.startsWith('SELECT provider, subject FROM owners') || sql.startsWith('SELECT email, email_verified FROM owners')) return result(owners.has(args[0]) ? [owners.get(args[0])] : []);
-      // The subscription is test/plus.js's: nobody here subscribes.
+      // The subscription is test/plus.js's, paying ahead test/ahead.js's: nobody here does either.
       if (sql.includes('FROM plus_subscriptions')) return result([]);
+      if (sql.includes('FROM ahead_plans')) return result([]);
       if (sql.startsWith('UPDATE starter_grants SET network_hash = NULL')) { for (const g of grants) if (Date.now() - g.granted_at > 30 * DAY) g.network_hash = null; return result([]); }
       if (sql.startsWith('SELECT 1 FROM starter_grants WHERE person_hash')) return result(grants.filter(g => g.person_hash === args[0]));
       if (sql.includes('FROM starter_grants WHERE network_hash')) return result([{ n: grants.filter(g => g.network_hash === args[0] && Date.now() - g.granted_at < 30 * DAY).length }]);
@@ -84,7 +85,8 @@ function database() {
 const DAY = 24 * 3600 * 1000;
 // An account signed in with an invented Google account.
 const ACCOUNT_KEY = 'k'.repeat(44);
-const env = (more = {}) => ({ NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, ...more });
+// A paid month's fair use set to 15 here, so the sums below read plainly; unset, it is 20.
+const env = (more = {}) => ({ NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, INCLUDED_AI_FAIR_USE_USD: '15', ...more });
 let people = 0;
 const owner = (db, subject = 'g-' + (++people), email = null) => { const id = crypto.randomUUID(); db?.owners.set(id, { provider: 'google', subject, email, email_verified: !!email }); return id; };
 // Each claim from its own connection unless a test says otherwise.
@@ -428,6 +430,10 @@ test('this month\'s spend, apart: the maintainer\'s own keys closedhand.com did 
 // on the first of each month with the same carry-over, never free days, and
 // never stopped by the sweep or a subscription ending.
 const thisMonth = () => { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); };
+test('a month of fair use is 20 unless set', () => {
+  assert.equal(create({ db: database(), env: env({ INCLUDED_AI_FAIR_USE_USD: '' }) }).fairUse, 20);
+});
+
 test('the maintainer\'s account gets a month of fair use, never free days, never stopped, and claiming again carries on', quiet(async () => {
   const near = nearAi(), db = database();
   const ai = create({ db, env: env({ OPERATOR_EMAILS: 'Keeper@Example.com' }), request: near.request });

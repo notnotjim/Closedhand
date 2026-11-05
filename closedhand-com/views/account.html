@@ -50,22 +50,34 @@
     </section>
 
     <!-- Closedhand Managed Models (account.js): the plan, this month's fair
-         use as its one bar, and the subscription. Shown with the account when
-         the account has Managed Models or the subscription is on sale. -->
+         use as its one bar (with when it renews once most is used), and the
+         ways to pay: the subscription every month, 6 months or 12, carrying on
+         past fair use, and paying ahead in crypto behind a quiet link. Every
+         payment that charges at once needs the box ticked first. Shown with
+         the account when the account has Managed Models or they are on sale. -->
     <section class="card" id="plus" hidden>
       <h2>Closedhand Managed Models</h2>
       <p id="plus-state" hidden></p>
       <div class="fair-use" id="fair-use" hidden>
         <p class="fair-use-label">This month's fair use</p>
         <div class="fair-use-track" id="fair-use-track" role="meter" aria-label="This month's fair use, used" aria-valuemin="0" aria-valuemax="100"><span id="fair-use-fill"></span></div>
+        <p class="fair-use-renews" id="fair-use-renews" hidden></p>
       </div>
       <p id="plus-about"></p>
+      <label class="agree" id="agree" hidden><input type="checkbox" id="agree-box"> <span>I agree that what I pay for now starts straight away and can't be refunded once started.</span></label>
       <div class="stack">
         <button class="btn btn-primary" id="plus-get" type="button" hidden></button>
         <button class="btn btn-primary" id="plus-extend" type="button" hidden></button>
         <button class="btn" id="plus-manage" type="button" hidden>Manage subscription</button>
       </div>
       <p class="fine" id="plus-fine"></p>
+      <div class="ahead" id="ahead" hidden>
+        <p id="ahead-about" hidden></p>
+        <div class="stack" id="plus-longer" hidden></div>
+        <button class="link-button" id="ahead-crypto-show" type="button" hidden>Pay with crypto</button>
+        <p class="ahead-label" id="ahead-crypto-label" hidden></p>
+        <div class="stack" id="ahead-crypto" hidden></div>
+      </div>
     </section>
     </div>
 

@@ -19,13 +19,16 @@ async function usage(db, account) {
 }
 // Closedhand's own email address comes with Closedhand Managed Models: it
 // works while the account's free 14 days run, its subscription gives access,
-// or it is the maintainer's own (reserve_mail_relay_usage
-// checks the same, migration 023).
+// a plan paid ahead runs, or it is the maintainer's own (reserve_mail_relay_usage
+// checks the same, migrations 023 and 026).
 async function entitled(db, ownerId) {
   if (!ownerId) return false;
   if (mustWrite(await db.from('plus_subscriptions').select('status').eq('owner_id', ownerId).in('status', ['active', 'trialing', 'past_due']).maybeSingle())) return true;
   const key = mustWrite(await db.from('included_ai_keys').select('ends_at,maintainer').eq('owner_id', ownerId).is('stopped_at', null).maybeSingle());
-  return !!key && (key.maintainer === true || (!!key.ends_at && new Date(key.ends_at) > new Date()));
+  if (key && (key.maintainer === true || (!!key.ends_at && new Date(key.ends_at) > new Date()))) return true;
+  // Paid ahead (lib/ahead.js), while the plan runs.
+  const now = new Date().toISOString();
+  return !!mustWrite(await db.from('ahead_plans').select('ends_at').eq('owner_id', ownerId).is('ended_at', null).lte('starts_at', now).gt('ends_at', now).maybeSingle());
 }
 async function monitor(db, notify, cutoff) {
   const month = new Date().toISOString().slice(0,7) + '-01';

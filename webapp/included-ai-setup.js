@@ -128,23 +128,26 @@ async function useOwn() {
 const NEW_KEY_WAIT = 5000;
 
 // The plan closedhand.com gives this computer's account, as Closedhand keeps
-// it: what it is, when it ends or renews, whether this month was carried on,
-// and whether Closedhand's own email comes with it. An ended plan remembers
+// it: what it is, when it ends or renews, how many months a subscription
+// renews every, when this month's fair use renews, whether this month was
+// carried on, and whether Closedhand's own email comes with it. An ended plan remembers
 // what it was, so the words for it fit. Anything unknown keeps what was known.
-const PLANS = ["first-month", "plus", "ended", "none", "maintainer"];
+const PLANS = ["first-month", "plus", "ended", "none", "maintainer", "ahead"];
 function cleanPlan(plan, previous) {
   if (!plan || !PLANS.includes(plan.name)) return previous || null;
   const date = (value) => typeof value === "string" && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : null;
   const out = { name: plan.name, email: plan.email === true };
   if (date(plan.ends_at)) out.ends_at = date(plan.ends_at);
   if (date(plan.renews_at)) out.renews_at = date(plan.renews_at);
+  if (date(plan.fair_use_renews_at)) out.fair_use_renews_at = date(plan.fair_use_renews_at);
+  if (plan.name === "plus" && [6, 12].includes(plan.every)) out.every = plan.every;
   if (plan.extended === true) out.extended = true;
   // A subscription in its free first month; or, never had the free month, able to start with one.
   if (plan.name === "plus" && plan.trial === true) out.trial = true;
   if (plan.name !== "plus" && plan.plus_trial === true) out.plus_trial = true;
   if (plan.name === "ended") {
-    const was = ["first-month", "plus"].includes(plan.was) ? plan.was : previous?.name === "ended" ? previous.was : previous?.name;
-    if (was === "first-month" || was === "plus") out.was = was;
+    const was = ["first-month", "plus", "ahead"].includes(plan.was) ? plan.was : previous?.name === "ended" ? previous.was : previous?.name;
+    if (["first-month", "plus", "ahead"].includes(was)) out.was = was;
     if (date(plan.ended_at)) out.ended_at = date(plan.ended_at);
   }
   return out;

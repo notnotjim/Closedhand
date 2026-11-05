@@ -98,7 +98,7 @@ test('notices go to the maintainer\'s own Closedhand once, and by email when it 
   assert.equal(await notices.create({ db, env: { ...env, MAIL_FROM: '' }, request }).emailStale(), 0, 'no sender, no email');
 });
 
-test('the plan says where an account stands: free days, subscribed, ended or none', async () => {
+test('the plan says where an account stands: free days, subscribed, ended or none, and when this month\'s fair use renews', async () => {
   const env = { ASSISTANT_EMAIL_ENABLED: '1', ASSISTANT_EMAIL_RELEASED: '1' };
   const now = new Date('2026-11-10T12:00:00Z');
   const none = await person(), first = await person(), over = await person(), plus = await person(), leaving = await person();
@@ -109,14 +109,24 @@ test('the plan says where an account stands: free days, subscribed, ended or non
   assert.equal((await planFor(db, env, over, now)).name, 'ended');
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_start, current_period_end, extended_for, started_at) VALUES ($1, 'sub_a', 'active', '2026-11-01T00:00:00Z', '2026-12-01T00:00:00Z', '2026-11-01T00:00:00Z', now())", [plus]);
   await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, base_usd) VALUES ($1, $2, 0, 12.5)", [plus, crypto.randomBytes(32).toString('hex')]);
-  assert.deepEqual(await planFor(db, env, plus, now), { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', extended: true, email: true }, 'carried on in this paid month');
+  assert.deepEqual(await planFor(db, env, plus, now), { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', fair_use_renews_at: '2026-12-01T00:00:00.000Z', extended: true, email: true }, 'carried on in this paid month');
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_end, cancel_at_period_end, started_at) VALUES ($1, 'sub_b', 'active', '2026-12-01T00:00:00Z', true, now())", [leaving]);
-  assert.deepEqual(await planFor(db, env, leaving, now), { name: 'plus', ends_at: '2026-12-01T00:00:00.000Z', extended: false, email: true });
+  assert.deepEqual(await planFor(db, env, leaving, now), { name: 'plus', ends_at: '2026-12-01T00:00:00.000Z', extended: false, email: true }, 'cancelled: no more fair use to come');
+  // Every 6 months: the fair use renews each month of the period, and the
+  // last month of a cancelled one has none to come.
+  const six = await person(), sixEnding = await person();
+  await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_start, current_period_end, every_months, extended_for, started_at) VALUES ($1, 'sub_six', 'active', '2026-09-15T00:00:00Z', '2027-03-15T00:00:00Z', 6, '2026-09-15T00:00:00Z', now())", [six]);
+  assert.deepEqual(await planFor(db, env, six, now), { name: 'plus', every: 6, renews_at: '2027-03-15T00:00:00.000Z', fair_use_renews_at: '2026-11-15T00:00:00.000Z', extended: false, email: true },
+    'in its second month, renewing on the 15th; carried on in its first month, not this one');
+  await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_start, current_period_end, every_months, cancel_at_period_end, started_at) VALUES ($1, 'sub_six_b', 'active', '2026-05-20T00:00:00Z', '2026-11-20T00:00:00Z', 6, true, now())", [sixEnding]);
+  assert.deepEqual(await planFor(db, env, sixEnding, now), { name: 'plus', every: 6, ends_at: '2026-11-20T00:00:00.000Z', extended: false, email: true });
+  await db.query('UPDATE plus_subscriptions SET cancel_at_period_end = false WHERE owner_id = $1', [sixEnding]);
+  assert.equal((await planFor(db, env, sixEnding, now)).fair_use_renews_at, '2026-11-20T00:00:00.000Z', 'renewing: the next period begins the next month');
   await db.query("UPDATE plus_subscriptions SET status = 'canceled' WHERE owner_id = $1", [leaving]);
   assert.equal((await planFor(db, env, leaving, now)).name, 'ended', 'an ended subscription without a key');
   const boss = await person('Boss@Example.com');
   const maintained = { ...env, OPERATOR_EMAILS: 'boss@example.com' };
-  assert.deepEqual(await planFor(db, maintained, boss, now), { name: 'maintainer', renews_at: '2026-12-01T00:00:00.000Z', email: true },
+  assert.deepEqual(await planFor(db, maintained, boss, now), { name: 'maintainer', renews_at: '2026-12-01T00:00:00.000Z', fair_use_renews_at: '2026-12-01T00:00:00.000Z', email: true },
     'the maintainer\'s own account: no charge, a month of fair use renewing on the first');
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_end, cancel_at_period_end, started_at) VALUES ($1, 'sub_boss', 'active', '2026-11-27T00:00:00Z', true, now())", [boss]);
   assert.equal((await planFor(db, maintained, boss, now)).name, 'maintainer', 'whatever Polar says');

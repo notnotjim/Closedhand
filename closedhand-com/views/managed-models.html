@@ -40,7 +40,7 @@
       <p class="lead">Closedhand Managed Models give your Closedhand assistant <span data-model>DeepSeek V4.1 Flash, uncensored</span>, running in sealed hardware. There’s nothing to set up and one price a month, and your first <span data-days>14</span> days are free, with no card.</p>
       <div class="mm-actions" data-actions>
         <a class="dl" data-download href="https://github.com/notnotjim/Closedhand/releases/latest" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>Download Closedhand for Mac</a>
-        <a class="dl" data-subscribe href="/subscribe" hidden>Subscribe for <span data-price>$20</span> a month</a>
+        <a class="dl" data-subscribe href="/subscribe" hidden>Subscribe for <span data-price>$30</span> a month</a>
       </div>
     </section>
 
@@ -64,7 +64,7 @@
           <tbody>
             <tr><th scope="row">Who can read what you write</th><td data-label="The big AI assistants">The company, which keeps it and may train on it</td><td data-label="Your own LLM provider">The provider, under its own terms</td><td data-label="Closedhand Managed Models" class="ours">Nobody but you</td></tr>
             <tr><th scope="row">How the LLM answers</th><td data-label="The big AI assistants">Within its company’s rules</td><td data-label="Your own LLM provider">Depends on the model you pick</td><td data-label="Closedhand Managed Models" class="ours">Uncensored</td></tr>
-            <tr><th scope="row">What you pay</th><td data-label="The big AI assistants">$20 a month</td><td data-label="Your own LLM provider">Pay as you go, topping up credit</td><td data-label="Closedhand Managed Models" class="ours"><span data-price>$20</span> a month, nothing to top up</td></tr>
+            <tr><th scope="row">What you pay</th><td data-label="The big AI assistants">$20 a month</td><td data-label="Your own LLM provider">Pay as you go, topping up credit</td><td data-label="Closedhand Managed Models" class="ours"><span data-price>$30</span> a month, nothing to top up</td></tr>
             <tr><th scope="row">Setting up</th><td data-label="The big AI assistants">An account</td><td data-label="Your own LLM provider">An account, a card and a few settings</td><td data-label="Closedhand Managed Models" class="ours">Nothing: Managed Models come with Closedhand</td></tr>
             <tr><th scope="row">An email address for your assistant</th><td data-label="The big AI assistants">No</td><td data-label="Your own LLM provider">No</td><td data-label="Closedhand Managed Models" class="ours">Yes</td></tr>
           </tbody>
@@ -79,6 +79,20 @@
         <li><h3>Claim your personal URL in setup</h3><p>Managed Models start straight away, free for <span data-days>14</span> days, with no card.</p></li>
         <li><h3>Subscribe when you’re ready</h3><p>Managed Models carry on without a break, for one price a month.</p></li>
       </ol>
+    </section>
+
+    <!-- What Managed Models cost, where the person is (managed-models.js):
+         the subscription monthly, and every 6 or 12 months, and crypto
+         behind a quiet link. Choosing is in My Account, its one home. -->
+    <section class="mm-section" aria-labelledby="mm-cost">
+      <h2 id="mm-cost">What Managed Models cost</h2>
+      <div class="mm-grid">
+        <div class="mm-point"><h3>Monthly</h3><p><span class="mm-amount"><span data-price>$30</span> a month</span>The first <span data-days>14</span> days are free. Cancel any time.</p></div>
+        <div class="mm-point" data-longer hidden><h3>Every 6 or 12 months</h3><p><span class="mm-amount" data-longer-list></span>For less a month, renewing until you cancel. Cancelling stops the next renewal.</p></div>
+      </div>
+      <p class="mm-crypto" data-crypto hidden><button type="button" class="mm-link" data-crypto-show>Pay with crypto</button></p>
+      <div class="mm-point mm-crypto-list" data-crypto-list hidden><h3>Pay ahead in crypto</h3><p><span class="mm-amount" data-crypto-months></span>Paid once and never renewed, priced in US dollars and paid to closedhand.com’s own payment server, with no name or email asked for.</p></div>
+      <p class="mm-note" data-ways-note hidden>Paying every 6 or 12 months, or in crypto, is in <a href="/account">My Account</a> once you have Closedhand.</p>
     </section>
 
     <section class="mm-section" aria-labelledby="mm-questions">
@@ -98,7 +112,7 @@
       <p>No card, nothing to set up. Your Closedhand assistant, with an LLM nobody but you can read.</p>
       <div class="mm-actions" data-actions>
         <a class="dl" data-download href="https://github.com/notnotjim/Closedhand/releases/latest" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>Download Closedhand for Mac</a>
-        <a class="dl" data-subscribe href="/subscribe" hidden>Subscribe for <span data-price>$20</span> a month</a>
+        <a class="dl" data-subscribe href="/subscribe" hidden>Subscribe for <span data-price>$30</span> a month</a>
       </div>
     </section>
   </main>

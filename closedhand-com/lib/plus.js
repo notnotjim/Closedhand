@@ -1,14 +1,20 @@
-// The Managed Models subscription: Closedhand Managed Models carried on after the free month, for a
-// monthly payment. Polar sells it (it is the merchant of record: it takes the
-// card, charges tax and handles refunds), so nothing about a payment is kept
-// here, only what the subscription allows. The person subscribes from their
-// account on closedhand.com; Polar tells closedhand.com what happened through
-// signed webhooks; the account's NEAR AI key (included-ai.js) is then set
-// to the fair-use ceiling, or stopped when the subscription ends. Managing or
-// cancelling happens in Polar's customer portal. Past fair use, a one-time
-// purchase carries the person on to the end of the month.
+// The Managed Models subscription: Closedhand Managed Models carried on after the free month, paid
+// every month, every 6 months or every 12 (one product for each, for less a
+// month the longer it is), renewing until cancelled. Polar sells it (it is
+// the merchant of record: it takes the card, charges tax and handles refunds),
+// so nothing about a payment is kept here, only what the subscription allows.
+// The person subscribes from their account on closedhand.com; Polar tells
+// closedhand.com what happened through signed webhooks; the account's NEAR AI
+// key (included-ai.js) is then set to the fair-use ceiling, or stopped when the
+// subscription ends. However long the paid period, the fair use is a month's
+// and renews each month of it (lib/months.js fairUseMonth). Cancelling stops
+// the next renewal and the period paid runs to its end. Managing or cancelling
+// happens in Polar's customer portal. Past fair use, a one-time purchase
+// carries the person on to the end of the month. Paying ahead in crypto
+// instead is lib/ahead.js.
 const crypto = require('crypto');
 const { equal } = require('./session');
+const { fairUseMonth } = require('./months');
 
 const LIVE = ['active', 'trialing', 'past_due'];
 // Most of a month's fair use: the account page offers carrying on from here.
@@ -54,7 +60,10 @@ function verify(headers, raw, secret, now = Date.now()) {
   });
 }
 
-function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 'https://closedhand.com' }) {
+// What the person agrees to before a payment that charges at once.
+const AGREE = 'Tick the box first: this payment starts straight away.';
+
+function create({ db, env = process.env, request = fetch, includedAi, ahead = null, baseUrl = 'https://closedhand.com' }) {
   const API = env.POLAR_SERVER === 'sandbox' ? 'https://sandbox-api.polar.sh' : 'https://api.polar.sh';
   // Where Polar's own forms are served, to frame in My Account.
   const WEB = env.POLAR_SERVER === 'sandbox' ? 'https://sandbox.polar.sh' : 'https://polar.sh';
@@ -62,7 +71,13 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   const webhookSecret = String(env.POLAR_WEBHOOK_SECRET || '');
   const plusProduct = String(env.POLAR_PLUS_PRODUCT_ID || '');
   const extendProduct = String(env.POLAR_EXTEND_PRODUCT_ID || '');
+  // The subscription renewing every 6 or 12 months: a product for each.
+  const longProducts = { 6: String(env.POLAR_6_MONTHS_PRODUCT_ID || ''), 12: String(env.POLAR_12_MONTHS_PRODUCT_ID || '') };
+  // How many months a subscription product renews every, or 0 for any other product.
+  const everyOf = product => !product ? 0 : product === plusProduct ? 1 : Number(Object.keys(longProducts).find(m => longProducts[m] === product)) || 0;
   const enabled = () => !!(token && webhookSecret && plusProduct && includedAi?.enabled());
+  const longerOn = () => enabled() && !!longProducts[6] && !!longProducts[12];
+  const ours = product => !!product && (everyOf(product) > 0 || product === extendProduct);
 
   async function api(path, method = 'GET', body) {
     const response = await request(API + path, {
@@ -119,15 +134,22 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     const sub = ownerId ? await row(ownerId) : null;
     const active = !!sub && LIVE.includes(sub.status);
     const until = sub?.current_period_end ? new Date(sub.current_period_end).toISOString() : null;
-    const used = active ? await includedAi.usage(ownerId).catch(() => null) : null;
+    const plan = ahead && ownerId ? await ahead.running(ownerId) : null;
+    const used = active || plan ? await includedAi.usage(ownerId).catch(() => null) : null;
+    const month = active ? fairUseMonth(sub) : null;
     return {
       available: enabled(),
       active,
+      // Renewing every 6 or 12 months rather than every month.
+      ...(active && Number(sub.every_months) > 1 ? { every: Number(sub.every_months) } : {}),
+      // Paid ahead in crypto, until when.
+      ...(plan ? { ahead_until: new Date(plan.ends_at).toISOString() } : {}),
       // In its free first month, or able to start with one.
       ...(active && sub.status === 'trialing' ? { trial: true } : {}),
       ...(ownerId && await freeMonth(ownerId) ? { free_month: true } : {}),
       ...(active && until ? (sub.cancel_at_period_end ? { ends_at: until } : { renews_at: until }) : {}),
-      extended: active && !!sub.extended_for && !!sub.current_period_start && new Date(sub.extended_for).getTime() === new Date(sub.current_period_start).getTime(),
+      // This month of fair use carried on already, by card or in crypto.
+      extended: active ? !!month && !!sub.extended_for && new Date(sub.extended_for).getTime() === month.from.getTime() : !!plan && ahead.extended(plan),
       nearly: !!used && used.used >= used.limit * NEARLY_USED,
     };
   }
@@ -139,7 +161,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   async function priceList() {
     if (priced.list && Date.now() - priced.at < 3600000) return priced.list;
     const list = {};
-    for (const [name, id] of [['plus', plusProduct], ['extend', extendProduct]]) {
+    for (const [name, id] of [['plus', plusProduct], ['extend', extendProduct], ['6', longProducts[6]], ['12', longProducts[12]]]) {
       if (!id) continue;
       const product = await api('/v1/products/' + encodeURIComponent(id));
       list[name] = {};
@@ -169,6 +191,26 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     }
   }
 
+  // The subscription every 6 or 12 months where the person is: each with its
+  // price and what that comes to a month. Empty when off or unreadable.
+  async function longerPrices(country) {
+    if (!longerOn()) return [];
+    try {
+      const list = await priceList();
+      const want = currencyFor(country), out = [];
+      for (const months of [6, 12]) {
+        const amounts = list[String(months)];
+        if (!amounts) continue;
+        const currency = amounts[want] !== undefined ? want : amounts.usd !== undefined ? 'usd' : Object.keys(amounts)[0];
+        if (currency) out.push({ months, price: money(amounts[currency], currency), monthly: money(Math.round(amounts[currency] / months), currency) });
+      }
+      return out;
+    } catch (e) {
+      console.error('[plus] prices:', e.message);
+      return [];
+    }
+  }
+
   // "£6", "€7" or "$8": an amount in cents, as people in that currency write it.
   function money(cents, currency) {
     if (!Number.isInteger(cents) || typeof currency !== 'string') return null;
@@ -189,7 +231,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   async function freeMonth(ownerId) {
     return enabled() && !!ownerId && !(await row(ownerId)) && !(await includedAi.hadFreeMonth(ownerId));
   }
-  async function checkoutFor(owner, product, back, origin, trial = false) {
+  async function checkoutFor(owner, product, back, origin, trial = false, extra = {}) {
     const made = await api('/v1/checkouts/', 'POST', {
       products: [product],
       ...(trial ? { trial_interval: 'day', trial_interval_count: includedAi.trialDays } : { allow_trial: false }),
@@ -197,13 +239,25 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       ...(owner.email ? { customer_email: owner.email } : {}),
       success_url: baseUrl + '/account?plus=' + back,
       ...(origin ? { embed_origin: origin } : {}),
-      metadata: { owner_id: owner.id },
+      metadata: { owner_id: owner.id, ...extra },
     });
     if (typeof made?.url !== 'string' || !made.url.startsWith('https://')) throw new Error('Polar did not return a checkout');
     return made.url;
   }
-  const checkout = async (owner, origin) => checkoutFor(owner, plusProduct, 'welcome', origin, await freeMonth(owner.id));
+  // Subscribing every month, or every 6 or 12 months. Only the monthly one
+  // starts with the free days, for someone who never had them.
+  const checkout = async (owner, origin, every = 1) => every === 1
+    ? checkoutFor(owner, plusProduct, 'welcome', origin, await freeMonth(owner.id))
+    : checkoutFor(owner, longProducts[every], 'welcome', origin);
   const extend = (owner, origin) => checkoutFor(owner, extendProduct, 'extended', origin);
+  // Why subscribing this way can't start now, as words for the person, or
+  // null when it can: the lengths there are, and agreeing first to a payment
+  // that charges at once (any but the monthly one with free days first).
+  async function cannotSubscribe(owner, every, agreed) {
+    if (![1, 6, 12].includes(every) || (every > 1 && !longerOn())) return 'Choose every month, every 6 months or every 12 months.';
+    if (agreed !== true && !(every === 1 && await freeMonth(owner.id))) return AGREE;
+    return null;
+  }
 
   // My Account's subscription, asked for by the person's computer. Each answers
   // null when there is nothing to do it to.
@@ -249,24 +303,30 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       [ownerId, sub.polar_subscription_id, now?.cancel_at_period_end === true]);
     return state(ownerId);
   }
-  // What this account paid for, newest first: when, which and how much.
+  // The customer Polar knows this account as, from its subscription, or null.
+  const customerOf = async ownerId => (await row(ownerId))?.polar_customer_id || null;
+  // What this account paid for, newest first: when, which and how much, by
+  // card and in crypto.
   async function payments(ownerId) {
-    const sub = await row(ownerId);
-    if (!sub?.polar_customer_id) return [];
-    const list = await api('/v1/orders/?customer_id=' + encodeURIComponent(sub.polar_customer_id) + '&sorting=-created_at&limit=24');
-    return (list?.items || [])
-      .filter(o => typeof o.id === 'string' && [plusProduct, extendProduct].includes(o.product_id) && ['paid', 'refunded', 'partially_refunded'].includes(o.status))
-      .map(o => ({ id: o.id, at: o.created_at, what: o.product_id === extendProduct ? 'extend' : 'plus', amount: money(o.total_amount, o.currency), refunded: o.status === 'refunded' }));
+    const customer = await customerOf(ownerId);
+    const list = customer ? await api('/v1/orders/?customer_id=' + encodeURIComponent(customer) + '&sorting=-created_at&limit=24') : null;
+    const card = (list?.items || [])
+      .filter(o => typeof o.id === 'string' && ours(o.product_id) && ['paid', 'refunded', 'partially_refunded'].includes(o.status))
+      .map(o => ({ id: o.id, at: o.created_at, what: o.product_id === extendProduct ? 'extend' : 'plus',
+        ...(everyOf(o.product_id) > 1 ? { months: everyOf(o.product_id) } : {}), amount: money(o.total_amount, o.currency), refunded: o.status === 'refunded' }));
+    const coins = ahead ? await ahead.cryptoPayments(ownerId) : [];
+    return [...card, ...coins].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 24);
   }
   // One payment's invoice to download, made the first time it is asked for;
   // its receipt when Polar can't make an invoice for it.
   async function invoice(ownerId, orderId, wait = ms => new Promise(r => setTimeout(r, ms))) {
-    const sub = await row(ownerId);
-    if (!sub?.polar_customer_id || !/^[0-9a-f-]{36}$/.test(String(orderId))) return null;
+    if (!/^[0-9a-f-]{36}$/.test(String(orderId))) return null;
+    const customer = await customerOf(ownerId);
+    if (!customer) return null;
     const path = '/v1/orders/' + encodeURIComponent(orderId);
     let order;
     try { order = await api(path); } catch (e) { if (e.status === 404) return null; throw e; }
-    if (order?.customer_id !== sub.polar_customer_id) return null;
+    if (order?.customer_id !== customer) return null;
     let made = order.is_invoice_generated === true;
     if (!made) {
       try { await api(path + '/invoice', 'POST'); made = true; }
@@ -316,7 +376,8 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   async function handle(event) {
     const type = String(event?.type || ''), data = event?.data || {};
     if (type.startsWith('subscription.')) {
-      if (data.product_id !== plusProduct) return 'another product';
+      const every = everyOf(data.product_id);
+      if (!every) return 'another product';
       const ownerId = await ownerOf(data);
       const status = String(data.status || '');
       if (typeof data.id !== 'string') return 'no account';
@@ -337,17 +398,18 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       // A newer event wins; an older one for the same subscription, or an
       // ended old subscription after a new one began, changes nothing.
       const saved = await db.query(
-        `INSERT INTO plus_subscriptions (owner_id, polar_customer_id, polar_subscription_id, status, current_period_end, cancel_at_period_end, started_at, key_synced, event_at, updated_at, current_period_start)
-         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = ANY($8::text[]) THEN now() END, false, $7, now(), $9)
+        `INSERT INTO plus_subscriptions (owner_id, polar_customer_id, polar_subscription_id, status, current_period_end, cancel_at_period_end, started_at, key_synced, event_at, updated_at, current_period_start, every_months)
+         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = ANY($8::text[]) THEN now() END, false, $7, now(), $9, $10)
          ON CONFLICT (owner_id) DO UPDATE SET polar_customer_id = EXCLUDED.polar_customer_id, polar_subscription_id = EXCLUDED.polar_subscription_id,
            status = EXCLUDED.status, current_period_start = EXCLUDED.current_period_start, current_period_end = EXCLUDED.current_period_end, cancel_at_period_end = EXCLUDED.cancel_at_period_end,
+           every_months = EXCLUDED.every_months,
            started_at = COALESCE(plus_subscriptions.started_at, EXCLUDED.started_at), key_synced = false, event_at = EXCLUDED.event_at, updated_at = now()
          WHERE (plus_subscriptions.polar_subscription_id = EXCLUDED.polar_subscription_id
                 AND (plus_subscriptions.event_at IS NULL OR EXCLUDED.event_at IS NULL OR EXCLUDED.event_at >= plus_subscriptions.event_at))
             OR (plus_subscriptions.polar_subscription_id <> EXCLUDED.polar_subscription_id
                 AND (EXCLUDED.status = ANY($8::text[]) OR NOT plus_subscriptions.status = ANY($8::text[])))
          RETURNING owner_id`,
-        [ownerId, data.customer_id || data.customer?.id || null, data.id, status, data.current_period_end || null, data.cancel_at_period_end === true, at, LIVE, data.current_period_start || null]);
+        [ownerId, data.customer_id || data.customer?.id || null, data.id, status, data.current_period_end || null, data.cancel_at_period_end === true, at, LIVE, data.current_period_start || null, every]);
       if (!saved.rowCount) return 'older than what is known';
       syncLater(ownerId);
       return 'subscription ' + status;
@@ -357,9 +419,9 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     // can't carry anything on. Sent again, the same order changes nothing.
     if (type === 'order.paid') {
       const product = data.product_id || data.product?.id;
-      if (!product || (product !== plusProduct && product !== extendProduct)) return 'another product';
+      if (!ours(product)) return 'another product';
       const ownerId = await ownerOf(data);
-      if (product === plusProduct) {
+      if (everyOf(product)) {
         if (!ownerId || (data.subscription_id && await holdsAnother(ownerId, data.subscription_id))) {
           if (data.subscription_id) await revoke(data.subscription_id);
           await refund(data, ownerId ? 'duplicate' : 'other');
@@ -367,12 +429,13 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
         }
         return 'paid';
       }
-      // Carrying on is for the paid month running now.
-      const updated = ownerId && await db.query(
-        `UPDATE plus_subscriptions SET extended_for = current_period_start, extended_order = $3, key_synced = false, updated_at = now()
-          WHERE owner_id = $1 AND status = ANY($2::text[]) AND current_period_start IS NOT NULL
-            AND (extended_for IS DISTINCT FROM current_period_start OR extended_order = $3) RETURNING owner_id`,
-        [ownerId, LIVE, String(data.id || '')]);
+      // Carrying on is for the month of fair use running now.
+      const held = ownerId && await row(ownerId);
+      const month = held && LIVE.includes(held.status) ? fairUseMonth(held) : null;
+      const updated = month && await db.query(
+        `UPDATE plus_subscriptions SET extended_for = $4, extended_order = $3, key_synced = false, updated_at = now()
+          WHERE owner_id = $1 AND status = ANY($2::text[]) AND (extended_for IS DISTINCT FROM $4 OR extended_order = $3) RETURNING owner_id`,
+        [ownerId, LIVE, String(data.id || ''), month.from]);
       if (!updated?.rowCount) {
         await refund(data, ownerId ? 'duplicate' : 'other');
         return 'nothing to carry on, given back';
@@ -385,11 +448,11 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     // stops the key), or this month's carry-on. Part given back changes nothing.
     if (type === 'order.refunded') {
       const product = data.product_id || data.product?.id;
-      if (data.status !== 'refunded' || !product || (product !== plusProduct && product !== extendProduct)) return 'nothing to stop';
+      if (data.status !== 'refunded' || !ours(product)) return 'nothing to stop';
       const ownerId = await ownerOf(data);
       const held = ownerId && await row(ownerId);
       if (!held) return 'no account';
-      if (product === plusProduct) {
+      if (everyOf(product)) {
         if (!data.subscription_id || held.polar_subscription_id !== data.subscription_id || !LIVE.includes(held.status)) return 'nothing to stop';
         const sub = await atPolar(data.subscription_id);
         const from = Date.parse(sub?.current_period_start || '');
@@ -428,6 +491,16 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     }
     const unsynced = (await db.query('SELECT owner_id FROM plus_subscriptions WHERE NOT key_synced ORDER BY updated_at LIMIT 50')).rows;
     for (const { owner_id: ownerId } of unsynced) await sync(ownerId).catch(e => console.error('[plus] sweep:', e.message));
+    // A subscription paid for 6 or 12 months begins each month's fair use as
+    // that month begins.
+    const long = (await db.query(
+      `SELECT s.owner_id, s.current_period_start, s.current_period_end, s.every_months, k.base_for FROM plus_subscriptions s
+         JOIN included_ai_keys k ON k.owner_id = s.owner_id WHERE s.status = ANY($1::text[]) AND s.every_months > 1 LIMIT 500`, [LIVE])).rows;
+    for (const held of long) {
+      const month = fairUseMonth(held);
+      if (!month || (held.base_for && new Date(held.base_for).getTime() === month.from.getTime())) continue;
+      await includedAi.subscribe(held.owner_id).catch(e => console.error('[plus] month not begun:', e.message));
+    }
     return unsynced.length;
   }
 
@@ -464,39 +537,35 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       }
     });
     route('/api/plus/checkout', async (owner, req, res) => {
-      if ((await state(owner.id)).active) return res.status(409).json({ error: 'You already subscribe to Managed Models.' });
+      const now = await state(owner.id);
+      if (now.active) return res.status(409).json({ error: 'You already subscribe to Managed Models.' });
+      if (now.ahead_until) return res.status(409).json({ error: 'Closedhand Managed Models are paid ahead in crypto for your account, so there is no subscription by card to start.' });
       const address = (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount;
       if (!address) return res.status(409).json({ error: 'Claim your personal URL from Closedhand on your computer first.' });
-      res.json({ url: await checkout(owner) });
+      const every = Number(req.body?.months || 1);
+      const why = await cannotSubscribe(owner, every, req.body?.agreed);
+      if (why) return res.status(400).json({ error: why });
+      res.json({ url: await checkout(owner, undefined, every) });
     });
     route('/api/plus/extend', async (owner, req, res) => {
       const now = await state(owner.id);
-      if (!now.active) return res.status(409).json({ error: 'Carrying on past fair use is part of the subscription.' });
+      if (!now.active) return res.status(409).json({ error: 'Carrying on by card is for a subscription by card.' });
       if (now.extended || !extendProduct) return res.status(409).json({ error: 'You can already carry on to the end of this month.' });
+      if (req.body?.agreed !== true) return res.status(400).json({ error: AGREE });
       res.json({ url: await extend(owner) });
     });
-    // Carrying on, from the link in Closedhand's chat: signed in with a
-    // subscription running and not yet carried on this month, one tap goes
-    // straight to Polar's page to pay; signed out, it is sign in first, then
-    // on. Anything else goes to the account page, which says where things stand.
-    app.get('/carry-on', async (req, res) => {
+    // Carrying on, from the link in Closedhand's chat: the account page,
+    // which opens My Account where the person's Closedhand answers. Paying to
+    // carry on starts straight away, so the box is ticked there first.
+    app.get('/carry-on', (req, res) => {
       res.set('Cache-Control', 'no-store');
-      try {
-        const ownerId = sessions.owner(req);
-        if (!ownerId) return res.redirect(302, '/account?then=carry-on');
-        const owner = enabled() && extendProduct && (await db.query('SELECT id, email FROM owners WHERE id = $1', [ownerId])).rows[0];
-        const now = owner ? await state(owner.id) : null;
-        if (!now?.active || now.extended) return res.redirect(302, '/account');
-        res.redirect(302, await extend(owner));
-      } catch (e) {
-        console.error('[plus] carry-on:', e.message);
-        res.redirect(302, '/account');
-      }
+      res.redirect(302, '/account');
     });
     // Subscribing, from the link in Closedhand's chat: signed in, one tap
     // goes to Polar's page, to manage the subscription while it runs or else
-    // to take it out; signed out, it is sign in first, then on. Anything else
-    // goes to the account page, which says why.
+    // to take it out with the free days first; signed out, it is sign in
+    // first, then on. Anything else goes to the account page, which says why,
+    // and where subscribing that charges at once has its box to tick first.
     app.get('/subscribe', async (req, res) => {
       res.set('Cache-Control', 'no-store');
       try {
@@ -506,7 +575,9 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
         if (!owner) return res.redirect(302, '/account');
         // The maintainer's own account has Managed Models for good: nothing to buy.
         if (await require('./maintainer').isMaintainer(db, env, owner.id)) return res.redirect(302, '/account');
-        if ((await state(owner.id)).active) return res.redirect(302, await portal(owner));
+        const now = await state(owner.id);
+        if (now.active) return res.redirect(302, await portal(owner));
+        if (now.ahead_until || !now.free_month) return res.redirect(302, '/account');
         const address = (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount;
         if (!address) return res.redirect(302, '/account');
         res.redirect(302, await checkout(owner));
@@ -515,10 +586,11 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
         res.redirect(302, '/account');
       }
     });
-    // What the Managed Models page shows (views/managed-models.html): the price
-    // where the person is, the LLM Closedhand picks for them, and, when they
-    // are signed in with a Closedhand of their own, whether to offer
-    // subscribing (nothing when they already have it).
+    // What the Managed Models page shows (views/managed-models.html): the
+    // prices where the person is (monthly, every 6 or 12 months, and in
+    // crypto), the LLM Closedhand picks for them, and, when they are signed in
+    // with a Closedhand of their own, whether to offer subscribing (nothing
+    // when they already have it).
     app.get('/api/managed-models', async (req, res) => {
       res.set('Cache-Control', 'no-store');
       try {
@@ -529,9 +601,11 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
         const now = closedhand && !mine ? await state(owner.id) : null;
         res.json({
           price: (await prices(req.get('cf-ipcountry')))?.plus || null,
+          longer: await longerPrices(req.get('cf-ipcountry')),
+          crypto: ahead ? ahead.options().crypto || [] : [],
           model: includedAi?.current()?.name || null,
           days: includedAi?.trialDays || 14,
-          subscribe: !!now && now.available && !now.active,
+          subscribe: !!now && now.available && !now.active && !now.ahead_until,
           subscribed: !!now?.active || !!mine,
           ...(now?.free_month ? { freeDays: true } : {}),
         });
@@ -563,7 +637,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     });
   }
 
-  return { enabled, state, prices, checkout, extend, portal, cardSession, cardOnFile, setCancel, payments, invoice, row, handle, sweep, sync, forget, register };
+  return { enabled, state, prices, longerPrices, checkout, cannotSubscribe, extend, portal, cardSession, cardOnFile, setCancel, payments, invoice, row, handle, sweep, sync, forget, register, AGREE };
 }
 
 module.exports = { create, verify, signingKeys, currencyFor };

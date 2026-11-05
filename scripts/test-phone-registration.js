@@ -189,11 +189,26 @@ test('the Closedhand account: shown only as closedhand.com states it, and delete
     plus: { available: true, active: true, nearly: 'yes', renews_at: 'soon', prices: { plus: '$10', extend: { a: 1 } }, card: { brand: '<b>visa</b>', last4: '4242', expires: '08/29', number: '4242424242424242' } } } })).account()),
     { provider: 'microsoft', email: 'a@example.com', url: 'https://amber-fox-42.closedhand.ai',
       signIns: [{ provider: 'microsoft', email: 'a@example.com' }, { provider: 'google', email: null }],
-      plan: { name: 'plus', email: true, ends_at: null, renews_at: '2026-12-01T00:00:00.000Z' }, used: 0.42,
-      plus: { available: true, active: true, extended: false, nearly: false, ends_at: null, renews_at: null, prices: { plus: '$10', extend: null }, card: { brand: null, last4: '4242', expires: '08/29' } } });
+      plan: { name: 'plus', email: true, ends_at: null, renews_at: '2026-12-01T00:00:00.000Z', fair_use_renews_at: null }, used: 0.42,
+      plus: { available: true, active: true, extended: false, nearly: false, ends_at: null, renews_at: null, prices: { plus: '$10', extend: null }, longer: [], crypto: [], card: { brand: null, last4: '4242', expires: '08/29' } } });
+  // The other ways to pay: each length a whole number of months with its prices, nothing else.
+  const open = plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', plan: { name: 'none', email: true },
+    plus: { available: true, active: false, longer: [{ months: 6, price: '$162', monthly: '$27' }, { months: 'twelve', price: '$288' }], crypto: [{ months: 3, price: '$90', monthly: '$30', script: '<b>' }] } } })).account());
+  assert.deepEqual([open.plus.longer, open.plus.crypto], [[{ months: 6, price: '$162', monthly: '$27' }], [{ months: 3, price: '$90', monthly: '$30' }]], 'a length that is not a number of months is left out');
+  // Every 6 months: how often, its own price, and when this month's fair use renews.
+  const longer = plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai',
+    plan: { name: 'plus', email: true, renews_at: '2027-05-06T00:00:00Z', fair_use_renews_at: '2026-12-06T00:00:00Z', extended: true },
+    plus: { available: true, active: true, every: 6, renews_at: '2027-05-06T00:00:00Z', prices: { plus: '$30', extend: '$30', every: '$162' } } } })).account());
+  assert.deepEqual([longer.plan.fair_use_renews_at, longer.plan.extended, longer.plus.every, longer.plus.prices.every], ['2026-12-06T00:00:00.000Z', true, 6, '$162']);
+  assert.equal(plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', plus: { available: true, every: 5 } } })).account()).plus.every, undefined, 'only 6 or 12');
+  // Paid ahead in crypto, and carrying on that way.
+  const paidAhead = plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', plan: { name: 'ahead', email: true, ends_at: '2027-05-06T00:00:00Z', fair_use_renews_at: '2026-12-06T00:00:00Z' },
+    plus: { available: true, active: false, ahead_until: '2027-05-06T00:00:00Z', crypto: [{ months: 3, price: '$90', monthly: '$30' }], crypto_extend: '$30' } } })).account());
+  assert.deepEqual(paidAhead.plan, { name: 'ahead', email: true, ends_at: '2027-05-06T00:00:00.000Z', renews_at: null, fair_use_renews_at: '2026-12-06T00:00:00.000Z' }, 'a plan paid ahead reaches My Account');
+  assert.deepEqual([paidAhead.plus.ahead_until, paidAhead.plus.crypto_extend], ['2027-05-06T00:00:00.000Z', '$30']);
   assert.equal(plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', used: 7, plan: { name: 'gold' } } })).account()).used, null, 'a share is between none and all');
-  assert.deepEqual(plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', used: 0.2, plan: { name: 'maintainer', email: true, renews_at: '2026-12-01T00:00:00Z' } } })).account()).plan,
-    { name: 'maintainer', email: true, ends_at: null, renews_at: '2026-12-01T00:00:00.000Z' }, "the maintainer's plan reaches My Account");
+  assert.deepEqual(plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', used: 0.2, plan: { name: 'maintainer', email: true, renews_at: '2026-12-01T00:00:00Z', fair_use_renews_at: '2026-12-01T00:00:00Z' } } })).account()).plan,
+    { name: 'maintainer', email: true, ends_at: null, renews_at: '2026-12-01T00:00:00.000Z', fair_use_renews_at: '2026-12-01T00:00:00.000Z' }, "the maintainer's plan reaches My Account");
   assert.equal(await registration({ ...saved }, reply({ account: { provider: 'google', email: 'a@example.com', url: 'https://evil.example' } })).account(), null, 'never an address it cannot verify');
   assert.equal(await registration({ ...saved }, reply({ account: null })).account(), null);
   // A computer that never asked for a personal URL has no account, and never makes an identity to find out.
@@ -275,7 +290,15 @@ test("the subscription in My Account: Polar's forms only from Polar, and each an
   const reply = answer => async (url, options) => { calls.push([options.method, url, options.body]); return { ok: !answer.error, json: async () => answer }; };
   const plus = (answer, ...args) => registration({ ...saved }, reply(answer)).plus(...args);
   assert.deepEqual(plain(await plus({ url: 'https://polar.sh/checkout/polar_c_x' }, 'checkout', { kind: 'extend' })), { url: 'https://polar.sh/checkout/polar_c_x' });
-  assert.deepEqual(calls.at(-1), ['POST', 'https://closedhand.com/api/phone-enrollment/plus/checkout', '{"kind":"extend"}']);
+  assert.deepEqual(calls.at(-1), ['POST', 'https://closedhand.com/api/phone-enrollment/plus/checkout', '{"kind":"extend","agreed":false}']);
+  // Subscribing every 6 months, with the box ticked; carrying on in crypto; paying ahead in crypto.
+  await plus({ url: 'https://polar.sh/checkout/polar_c_y' }, 'checkout', { kind: 'plus', months: '6', agreed: true });
+  assert.equal(calls.at(-1)[2], '{"kind":"plus","months":6,"agreed":true}');
+  assert.deepEqual(plain(await plus({ url: 'https://closedhand.com/pay/InvFixture0001' }, 'checkout', { kind: 'extend', agreed: true })), { url: 'https://closedhand.com/pay/InvFixture0001' }, 'carrying on in crypto opens the crypto payment page');
+  assert.deepEqual(plain(await plus({ url: 'https://closedhand.com/pay/InvFixture0002' }, 'checkout', { kind: 'ahead', months: 3, agreed: 'yes' })), { url: 'https://closedhand.com/pay/InvFixture0002' });
+  assert.equal(calls.at(-1)[2], '{"kind":"ahead","months":3,"agreed":false}', 'only a true agrees');
+  await assert.rejects(plus({ url: 'https://polar.sh/checkout/polar_c_z' }, 'checkout', { kind: 'ahead', months: 3, agreed: true }), /payment service/, 'crypto only on its own page');
+  await assert.rejects(plus({ url: 'https://closedhand.com/pay/InvFixture0003' }, 'checkout', { kind: 'plus', agreed: true }), /payment service/, 'the subscription only on Polar');
   await assert.rejects(plus({ url: 'https://evil.example.com/polar.sh/' }, 'checkout', { kind: 'plus' }), /payment service/, 'a form from anywhere but Polar is never framed');
   await assert.rejects(plus({ url: 'https://polar.sh.evil.example.com/x' }, 'checkout', {}), /payment service/);
   assert.deepEqual(plain(await plus({ token: 'polar_cst_x', web: 'https://sandbox.polar.sh' }, 'card')), { token: 'polar_cst_x', web: 'https://sandbox.polar.sh' });

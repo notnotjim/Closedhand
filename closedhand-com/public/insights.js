@@ -82,7 +82,7 @@
     const y = m.you || {}, yourPlus = (y.plus && y.plus.active) || 0;
     const t = tile({ label: `${provider} credit left`, value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '',
       sub: `${lasts} ${m.spentThisMonth == null ? '' : `${usd(m.spentThisMonth)} of Managed Models this month, `}` +
-        `${n(m.running)} free ${m.running === 1 ? 'period' : 'periods'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} ${(m.plus.active || 0) === 1 ? 'subscription' : 'subscriptions'}.` });
+        `${n(m.running)} free ${m.running === 1 ? 'period' : 'periods'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} ${(m.plus.active || 0) === 1 ? 'subscription' : 'subscriptions'}${m.ahead ? `, ${n(m.ahead)} paid ahead in crypto` : ''}.` });
     // The maintainer's share of it, and their own use with keys
     // closedhand.com did not make, which is not Managed Models at all.
     const mine = el('p', 'tile-sub');
@@ -231,7 +231,7 @@
   }
   function plusLine(p) {
     if (!p.plus_status) return 'None';
-    return `${p.plus_status}` + (p.plus_since ? ` since ${when(p.plus_since)}` : '') +
+    return `${p.plus_status}` + (p.plus_every > 1 ? `, every ${p.plus_every} months` : '') + (p.plus_since ? ` since ${when(p.plus_since)}` : '') +
       (p.plus_until ? `, ${p.plus_cancels ? 'ends' : 'renews'} ${when(p.plus_until)}` : '') +
       (p.plus_extended ? ', carried on past fair use this month' : '');
   }
@@ -293,6 +293,7 @@
       if (p.renames) chips.append(el('span', 'chip', `renamed ${p.renames}x`));
       if (p.assistant_email) chips.append(el('span', 'chip', `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month`));
       if (p.maintainer) chips.append(el('span', 'chip', 'Managed Models as the maintainer'));
+      else if (p.ahead_until) chips.append(el('span', 'chip up', 'paid ahead in crypto to ' + day(p.ahead_until)));
       else if (p.plus_status) chips.append(el('span', 'chip' + (p.plus_status === 'active' ? ' up' : ''), 'Subscription ' + p.plus_status));
       else if (p.first_month_usd != null && !p.first_month_stopped && new Date(p.first_month_until) > Date.now()) chips.append(el('span', 'chip', 'free days to ' + day(p.first_month_until)));
       main.append(chips);

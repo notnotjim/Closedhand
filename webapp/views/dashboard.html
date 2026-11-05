@@ -1200,6 +1200,18 @@
     @media (max-width: 600px) { .account-facts { grid-template-columns: 1fr; gap: 2px 0; } .account-facts dd { margin-bottom: 0.5rem; } }
     .fair-use { margin: 0; }
     .fair-use + #my-plus-about { margin-top: 0.875rem; }
+    /* The other ways to pay in My Account: each length an outlined button,
+       crypto behind a quiet link; and, above every button that charges at
+       once, agreeing that what is paid for starts straight away. */
+    .my-ahead { margin-top: 1.125rem; padding-top: 1rem; border-top: 1px solid var(--ui-border, rgba(var(--fg-rgb),0.12)); }
+    .my-ahead .account-action-desc { margin: 0; }
+    .my-ahead-ways { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.625rem; }
+    .my-ahead-ways[hidden] { display: none; }
+    .my-ahead-crypto-line { margin: 0.75rem 0 0; font-size: 0.8125rem; }
+    .my-ahead-agree { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0.875rem 0 0; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
+    .my-ahead-agree[hidden] { display: none; }
+    .fair-use-renews { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--muted); }
+    .my-ahead-agree input { width: 0.875rem; height: 0.875rem; margin: 0.1875rem 0 0; flex: 0 0 0.875rem; accent-color: var(--accent-strong); }
     .fair-use-label { margin: 0 0 0.375rem; font-size: 0.8125rem; color: var(--muted); }
     .fair-use-track { height: 0.5rem; border-radius: 1rem; background: rgba(var(--fg-rgb),0.08); overflow: hidden; }
     .fair-use-track span { display: block; height: 100%; width: 0; border-radius: 1rem; background: var(--ok); }
@@ -2833,13 +2845,27 @@
                 <div class="fair-use" id="my-fair-use" hidden>
                   <p class="fair-use-label">This month's fair use</p>
                   <div class="fair-use-track" id="my-fair-use-track" role="meter" aria-label="This month's fair use, used" aria-valuemin="0" aria-valuemax="100"><span id="my-fair-use-fill"></span></div>
+                  <p class="fair-use-renews" id="my-fair-use-renews" hidden></p>
                 </div>
                 <p class="account-action-desc" id="my-plus-about"></p>
+                <!-- Before any button below that charges at once. -->
+                <label class="my-ahead-agree" id="my-agree" hidden><input type="checkbox" id="my-agree-box"> <span>I agree that what I pay for now starts straight away and can't be refunded once started.</span></label>
                 <div class="my-plus-ways" id="my-plus-ways">
-                  <button type="button" class="cta" id="my-plus-get" hidden onclick="openPolar('checkout', 'plus')"></button>
-                  <button type="button" class="cta" id="my-plus-extend" hidden onclick="openPolar('checkout', 'extend')"></button>
+                  <button type="button" class="cta" id="my-plus-get" hidden onclick="payFor('plus', 1, this)"></button>
+                  <button type="button" class="cta" id="my-plus-extend" hidden onclick="payFor('extend', 0, this)"></button>
                 </div>
                 <p class="account-action-desc" id="my-plus-fine"></p>
+                <!-- The other ways to pay: the subscription every 6 or 12 months
+                     in Polar's form here, and paying ahead in crypto (closedhand.com
+                     lib/ahead.js) on closedhand.com's own payment page, behind a
+                     quiet link unless a plan paid in crypto runs. -->
+                <div class="my-ahead" id="my-ahead" hidden>
+                  <p class="account-action-desc" id="my-ahead-about"></p>
+                  <div class="my-ahead-ways" id="my-longer"></div>
+                  <p class="my-ahead-crypto-line" id="my-ahead-crypto-line"><a href="#" class="text-link" onclick="showAheadCrypto(event)">Pay with crypto</a></p>
+                  <p class="my-ahead-crypto-line" id="my-ahead-crypto-label" hidden>In crypto, paid once and never renewed, priced in US dollars:</p>
+                  <div class="my-ahead-ways" id="my-ahead-crypto" hidden></div>
+                </div>
               </div>
               <!-- A subscription running: the card it is paid with, and cancelling
                    or keeping it, as rows straight in the card like Your data's. -->
@@ -4670,7 +4696,14 @@
       a.className = 'text-link';
       return a;
     }
-    function planDay(iso) { return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }); }
+    // "This month's fair use renews in 12 days (6 December).", in My Account
+    // and Settings alike.
+    function fairUseRenewsIn(iso) {
+      const days = Math.max(1, Math.ceil((Date.parse(iso) - Date.now()) / 86400000));
+      return "This month's fair use renews in " + days + (days === 1 ? " day" : " days") + " (" + new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) + ").";
+    }
+    // A date months away (a plan paid ahead, a subscription every 6 or 12 months) says its year.
+    function planDay(iso) { return new Date(iso).toLocaleDateString('en-GB', Date.parse(iso) - Date.now() > 62 * 86400000 ? { day: 'numeric', month: 'long', year: 'numeric' } : { day: 'numeric', month: 'long' }); }
     // The person's own LLM providers by name: one, or each their models use
     // ("DeepSeek and OpenAI").
     function ownNames(data) {
@@ -4685,12 +4718,15 @@
       var plan = data.plan || {}, inUse = data.state === 'in-use';
       var after = inUse ? ' After that Closedhand needs your own LLM provider to reply.' : '';
       var said, tail = " Your plan and this month's use are in ";
+      // Most of this month's fair use used: in how many days it renews, as My Account says.
+      var renew = data.nearly && plan.fair_use_renews_at ? ' ' + fairUseRenewsIn(plan.fair_use_renews_at) : '';
       if (plan.name === 'maintainer') { said = 'Closedhand Managed Models are on for your account as the maintainer, with no charge' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.'; tail = " This month's use is in "; }
+      else if (plan.name === 'ahead') { said = 'Closedhand Managed Models are paid ahead until ' + planDay(plan.ends_at) + '.' + renew + after; }
       else if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or subscribe again in '; tail = ''; }
       else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'Closedhand Managed Models come with your free 14 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
       else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'Closedhand Managed Models come with your free 14 days.'; }
-      else if (plan.name === 'plus' && plan.ends_at) { said = 'Closedhand Managed Models come with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + after; tail = ' Resume it in '; }
-      else if (plan.name === 'plus') { said = 'Closedhand Managed Models come with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.'; }
+      else if (plan.name === 'plus' && plan.ends_at) { said = 'Closedhand Managed Models come with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + renew + after; tail = ' Resume it in '; }
+      else if (plan.name === 'plus') { said = 'Closedhand Managed Models come with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.' + renew; }
       else {
         var left = Date.parse(plan.ends_at) - Date.now();
         said = left > 0 && left <= 3 * 86400000 ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.ends_at) + '.' : 'Closedhand Managed Models come with your free 14 days.';
@@ -4704,7 +4740,7 @@
         var res = await fetch('/api/included-ai');
         data = res.ok ? await res.json() : null;
       } catch (e) {}
-      var theirs = !!(data && data.plan) && ['first-month', 'plus', 'maintainer'].includes(data.plan.name);
+      var theirs = !!(data && data.plan) && ['first-month', 'plus', 'maintainer', 'ahead'].includes(data.plan.name);
       includedState = data && data.state && (data.state === 'in-use' || theirs) ? data : null;
       llmStep = null;
       renderLlmOptions();
@@ -5064,96 +5100,176 @@
     }
 
     // Closedhand Managed Models in My Account: where the plan stands and how
-    // much of this month's fair use is used, as one bar and never an amount;
-    // then the subscription, what it gives and the way in, or when it renews and the
-    // way to manage it. The free days' end is said in their last three days only.
+    // much of this month's fair use is used, as one bar and never an amount,
+    // with when it renews once most is used; then the ways to pay, or when
+    // the subscription renews and the way to manage it. The free days' end is
+    // said in their last three days only.
+    // The account as last shown, for the ways to pay to read.
+    var myAccountShown = null;
     async function renderMyPlan(account) {
       const $ = id => document.getElementById(id);
+      myAccountShown = account;
       const p = (account && account.plus) || {}, prices = p.prices || {}, plan = (account && account.plan) || {};
-      $("my-plan").hidden = !account || !(p.available || ["first-month", "plus", "ended", "maintainer"].includes(plan.name));
+      $("my-plan").hidden = !account || !(p.available || ["first-month", "plus", "ended", "maintainer", "ahead"].includes(plan.name));
+      $("my-ahead").hidden = true;
+      $("my-agree").hidden = true;
       if ($("my-plan").hidden) return;
+      const day = iso => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+      const longDay = iso => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      // This month's fair use as a bar, and once most is used, in how many
+      // days it renews, the same words for every plan.
+      const bar = (renews) => {
+        const shown = typeof account.used === "number";
+        $("my-fair-use").hidden = !shown;
+        if (!shown) return;
+        const share = Math.round(account.used * 100);
+        // Never drawn empty: a little use still shows as a sliver, so the bar
+        // doesn't look broken (closedhand.com's account page does the same).
+        $("my-fair-use-fill").style.width = Math.max(1, share) + "%";
+        $("my-fair-use-track").setAttribute("aria-valuenow", String(share));
+        $("my-fair-use-renews").textContent = account.used >= 0.8 && renews ? fairUseRenewsIn(renews) : "";
+        $("my-fair-use-renews").hidden = !$("my-fair-use-renews").textContent;
+      };
       // The maintainer's own account: Managed Models with no charge and this
       // month's fair use, with nothing to buy, cancel or carry on.
       if (plan.name === "maintainer") {
         $("my-plan-status").hidden = true;
         for (const id of ["my-plus-about", "my-plus-fine", "my-plus-get", "my-plus-extend", "my-plus-ways", "my-card-divider", "my-card-row", "my-plus-divider", "action-plus-cancel", "action-plus-keep"]) $(id).hidden = true;
-        const used = typeof account.used === "number";
-        $("my-fair-use").hidden = !used;
-        if (used) { const share = Math.round(account.used * 100); $("my-fair-use-fill").style.width = Math.max(1, share) + "%"; $("my-fair-use-track").setAttribute("aria-valuenow", String(share)); }
-        $("my-plan-state").textContent = "Closedhand Managed Models are on for your account as the maintainer, with no charge." + (plan.renews_at ? " This month's fair use renews on " + new Date(plan.renews_at).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) + "." : "");
+        // Its state says when the fair use renews, always.
+        bar(null);
+        $("my-plan-state").textContent = "Closedhand Managed Models are on for your account as the maintainer, with no charge." + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + "." : "");
         $("my-plan-state").hidden = false;
         await loadMyPayments(false);
         return;
       }
-      const day = iso => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
       const state = [];
       // A status word as a connection has one: green while it runs, red once
       // cancelled, plain once over; the sentence beside it says what it means.
       const status = (word, kind) => { $("my-plan-status").textContent = word; $("my-plan-status").className = "plan-status " + kind; $("my-plan-status").hidden = !word; };
       status("", "");
       const wasPlus = plan.name === "ended" && plan.was === "plus";
-      if (plan.name === "first-month") {
+      const crypto = !!p.ahead_until;
+      if (plan.name === "ahead") {
+        status("Paid ahead", "on");
+        state.push("Closedhand Managed Models are paid until " + longDay(plan.ends_at) + ".");
+      } else if (plan.name === "first-month") {
         const left = Date.parse(plan.ends_at) - Date.now();
         state.push(left > 0 && left <= 3 * 86400000 ? "Your free 14 days of Closedhand Managed Models run until " + day(plan.ends_at) + "." : "Your free 14 days of Closedhand Managed Models are running.");
       } else if (wasPlus) {
         status("Ended", "over");
         state.push(plan.ended_at ? "Your subscription ended on " + day(plan.ended_at) + "." : "Your subscription has ended.");
       } else if (plan.name === "ended") state.push("Your free 14 days of Closedhand Managed Models have ended.");
-      const running = (plan.name === "first-month" || plan.name === "plus") && typeof account.used === "number";
-      $("my-fair-use").hidden = !running;
-      if (running) {
-        const share = Math.round(account.used * 100);
-        // Never drawn empty: a little use still shows as a sliver, so the bar
-        // doesn't look broken (closedhand.com's account page does the same).
-        $("my-fair-use-fill").style.width = Math.max(1, share) + "%";
-        $("my-fair-use-track").setAttribute("aria-valuenow", String(share));
-      }
+      if (["first-month", "plus", "ahead"].includes(plan.name)) bar(plan.fair_use_renews_at); else $("my-fair-use").hidden = true;
       $("my-plus-about").hidden = $("my-plus-fine").hidden = !p.available;
-      $("my-plus-get").hidden = !p.available || p.active;
-      $("my-plus-extend").hidden = !(p.available && p.active && p.nearly && !p.extended);
+      $("my-plus-get").hidden = !p.available || p.active || crypto;
+      // Carrying on, the way the plan is paid: by card, or in crypto.
+      const extendPrice = crypto ? p.crypto_extend : prices.extend;
+      $("my-plus-extend").hidden = !(p.available && (p.active || (crypto && extendPrice)) && p.nearly && !p.extended);
       // No buttons, no empty space where they would be.
       $("my-plus-ways").hidden = $("my-plus-get").hidden && $("my-plus-extend").hidden;
       // Running: the card and cancelling or keeping, each named, never "it".
       const subscribed = !!(p.available && p.active);
+      // A date months away says its year.
+      const when = iso => (p.every ? longDay : day)(iso);
       for (const id of ["my-card-divider", "my-card-row", "my-plus-divider", "action-plus-cancel", "action-plus-keep"]) $(id).hidden = !subscribed;
       if (subscribed) {
         const until = p.ends_at || p.renews_at;
         const card = p.card;
         const brand = card && card.brand ? ({ visa: "Visa", mastercard: "Mastercard", amex: "American Express", discover: "Discover", jcb: "JCB", unionpay: "UnionPay", diners: "Diners Club" })[card.brand.toLowerCase()] || card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : "Card";
         $("my-card-desc").textContent = card ? brand + " ending " + card.last4 + (card.expires ? ", expires " + card.expires : "") : "The card your subscription is paid with.";
-        window._plusFacts = { until: p.ends_at || null, price: prices.plus || null, card: card ? "your " + brand + " ending " + card.last4 : null };
+        window._plusFacts = { until: p.ends_at || null, price: (p.every ? prices.every : prices.plus) || null, every: p.every || 0, card: card ? "your " + brand + " ending " + card.last4 : null };
         // What cancelling would do, never what is happening: a running subscription renews.
         // In its free days nothing has been charged, and cancelling keeps it so.
         $("my-cancel-desc").textContent = p.trial ? "If you cancel, your free 14 days run until " + day(until) + " and nothing is charged."
-          : until ? "If you cancel, your subscription stays on until " + day(until) + ", then ends." : "If you cancel, your subscription stays on to the end of the month you've paid for, then ends.";
+          : until ? "If you cancel, your subscription stays on until " + when(until) + ", then ends." : "If you cancel, your subscription stays on to the end of the time you've paid for, then ends.";
         $("plus-cancel-text").textContent = p.trial ? "Your subscription ends on " + day(until) + " and nothing is charged. Until then you can resume your subscription."
-          : "Your subscription ends on " + (until ? day(until) : "the last day you've paid for") + " and is not charged again. Until then you can resume your subscription.";
-        $("my-keep-desc").textContent = "Your subscription will carry on past " + (p.ends_at ? day(p.ends_at) : "the month you've paid for") + " and renew every month.";
+          : "Your subscription ends on " + (until ? when(until) : "the last day you've paid for") + " and is not charged again. Until then you can resume your subscription.";
+        $("my-keep-desc").textContent = "Your subscription will carry on past " + (p.ends_at ? when(p.ends_at) : "the time you've paid for") + " and renew every " + (p.every ? p.every + " months" : "month") + ".";
         $("action-plus-cancel").hidden = !!p.ends_at;
         $("action-plus-keep").hidden = !p.ends_at;
         // Any confirmation left open closes; then hidden decides which row shows.
         cancelAccountAction("plus-cancel");
         $("action-plus-cancel").style.display = "";
       }
-      $("my-plus-about").hidden = !p.available || p.active;
+      $("my-plus-about").hidden = !p.available || p.active || crypto;
+      renderWays(p, crypto, p.available && !p.active);
       if (p.available) {
         $("my-plus-about").textContent = "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own"
           + (plan.email ? ", and for Closedhand's own email address" : "") + ". Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com."
           // Never had the free days: the subscription's first 14 days are them (Polar's trial).
           + (p.free_month ? " The first 14 days are free, then " + (prices.plus || "a monthly price") + " a month." : "");
         $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 14 days free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
-        $("my-plus-extend").textContent = "Carry on to the end of the month" + (prices.extend ? " \u00b7 " + prices.extend : "");
+        $("my-plus-extend").textContent = "Carry on to the end of the month" + (extendPrice ? " \u00b7 " + extendPrice : "");
         if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free 14 days run until " + day(p.ends_at) + ", then your subscription ends and nothing is charged."); }
         else if (p.active && p.trial) { status("Free 14 days", "on"); if (p.renews_at) state.push("Your free 14 days run until " + day(p.renews_at) + ", then your subscription renews at " + (prices.plus || "its monthly price") + " a month."); }
-        else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your subscription stays on until " + day(p.ends_at) + ", then ends."); }
-        else if (p.active) { status("Active", "on"); if (p.renews_at) state.push("Renews on " + day(p.renews_at) + "."); }
-        if (p.active && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
-        $("my-plus-fine").textContent = p.active ? "" : "Cancel any time.";
+        else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your subscription stays on until " + when(p.ends_at) + ", then ends."); }
+        else if (p.active) { status("Active", "on"); if (p.renews_at) state.push((p.every ? "Renews every " + p.every + " months, next on " : "Renews on ") + when(p.renews_at) + "."); }
+        if ((p.active || crypto) && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
+        $("my-plus-fine").textContent = p.active || crypto ? "" : "Cancel any time.";
         $("my-plus-fine").hidden = !$("my-plus-fine").textContent;
+        // The box shows above any button that charges at once.
+        $("my-agree").hidden = $("my-plus-extend").hidden && ($("my-plus-get").hidden || !!p.free_month) && $("my-ahead").hidden;
       }
       $("my-plan-state").textContent = state.join(" ");
       $("my-plan-state").hidden = !state.length;
-      await loadMyPayments(!!(account && p.available && (p.active || plan.name === "ended")));
+      await loadMyPayments(!!(account && p.available && (p.active || crypto || plan.name === "ended")));
+    }
+
+    // The other ways to pay: the subscription every 6 or 12 months, each an
+    // outlined button with its price and what that comes to a month, and
+    // paying ahead in crypto behind a quiet link, or straight there while a
+    // plan paid in crypto runs. Nothing goes ahead until the box is ticked.
+    function renderWays(p, crypto, offered) {
+      const $ = id => document.getElementById(id);
+      const longer = p.longer || [], coins = p.crypto || [];
+      $("my-ahead").hidden = !offered || (!longer.length && !coins.length);
+      if ($("my-ahead").hidden) return;
+      $("my-ahead-about").textContent = crypto ? "Pay ahead again in crypto to move the end on, priced in US dollars." : longer.length ? "Or subscribe every 6 or 12 months, for less a month." : "";
+      $("my-ahead-about").hidden = !$("my-ahead-about").textContent;
+      const button = (option, label, kind) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "account-action-btn";
+        b.textContent = label + " \u00b7 " + option.price + (option.monthly ? " (" + option.monthly + " a month)" : "");
+        b.addEventListener("click", () => payFor(kind, option.months, b));
+        return b;
+      };
+      $("my-longer").replaceChildren(...longer.map(o => button(o, "Every " + o.months + " months", "plus")));
+      $("my-longer").hidden = !longer.length;
+      $("my-ahead-crypto").replaceChildren(...coins.map(o => button(o, o.months + " months", "ahead")));
+      $("my-ahead-crypto").hidden = !crypto;
+      $("my-ahead-crypto-line").hidden = crypto || !coins.length;
+      $("my-ahead-crypto-label").hidden = true;
+    }
+    function showAheadCrypto(event) {
+      event.preventDefault();
+      for (const [id, hide] of [["my-ahead-crypto", false], ["my-ahead-crypto-label", false], ["my-ahead-crypto-line", true]]) document.getElementById(id).hidden = hide;
+    }
+    // Paying: subscribing (every month, 6 or 12), carrying on, or paying
+    // ahead in crypto. By card in Polar's form over this page; in crypto on
+    // closedhand.com's own payment page: once its invoice is made, the button
+    // becomes the way there, opened in a tab of its own. Anything that
+    // charges at once waits for the box: all but the monthly subscription
+    // with its free days first.
+    async function payFor(kind, months, button) {
+      const p = (myAccountShown && myAccountShown.plus) || {};
+      const free = kind === "plus" && months === 1 && !!p.free_month;
+      const agree = document.getElementById("my-agree-box");
+      if (!free && !agree.checked) { showToast("Tick the box first: this payment starts straight away.", true); agree.focus(); return; }
+      const crypto = kind === "ahead" || (kind === "extend" && !!p.ahead_until);
+      if (!crypto) return openPolar("checkout", kind, { ...(kind === "plus" ? { months } : {}), agreed: !free });
+      button.disabled = true;
+      try {
+        const r = await fetch("/api/plus/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, ...(months ? { months } : {}), agreed: true }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.url) throw new Error(d.error);
+        const go = document.createElement("a");
+        go.href = d.url; go.target = "_blank"; go.rel = "noopener"; go.className = button.className;
+        go.textContent = kind === "extend" ? "Open the payment page to carry on" : "Open the payment page for " + months + " months";
+        button.replaceWith(go);
+        go.focus();
+      } catch (e) {
+        showToast(e.message || "Could not reach the payment service just now. Please try again.", true);
+      } finally { button.disabled = false; }
     }
 
     // What was paid for Managed Models, newest first, each with its invoice.
@@ -5166,10 +5282,11 @@
       for (const p of shown) {
         const li = document.createElement("li"), what = document.createElement("span"), get = document.createElement("button");
         what.textContent = [p.at ? new Date(p.at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : null,
-          p.what === "extend" ? "Carry on to the end of the month" : "Managed Models", p.amount, p.refunded ? "Refunded" : null].filter(Boolean).join(" \u00b7 ");
+          (p.what === "extend" ? "Carry on to the end of the month" : "Managed Models" + (p.months ? ", " + p.months + " months" : "")) + (p.crypto ? " in crypto" : ""), p.amount, p.refunded ? "Refunded" : null].filter(Boolean).join(" \u00b7 ");
         get.type = "button"; get.className = "quiet-link"; get.textContent = "Invoice";
         get.onclick = () => openInvoice(p.id, get);
-        li.append(what, get);
+        // A crypto payment's record is closedhand.com's own: no invoice to fetch.
+        li.append(...(p.crypto ? [what] : [what, get]));
         list.append(li);
       }
       box.hidden = !shown.length;
@@ -5202,9 +5319,11 @@
       // and to which card, from wherever it is pressed. Nothing is charged now.
       if (!cancel) {
         const facts = window._plusFacts || {}, plan = (includedState && includedState.plan) || {};
-        const until = facts.until || (plan.name === "plus" && plan.ends_at), price = facts.price || (includedState && includedState.price);
-        const text = "Your subscription renews " + (until ? "on " + new Date(until).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : "when the month you've paid for ends")
-          + ", charging " + (price || "its monthly price") + " to " + (facts.card || "the card it's paid with") + ", then every month until you cancel. Nothing is charged now.";
+        // A subscription every 6 or 12 months says so, with its own price.
+        const every = facts.every || (plan.name === "plus" && plan.every) || 0;
+        const until = facts.until || (plan.name === "plus" && plan.ends_at), price = facts.price || (!every && includedState && includedState.price);
+        const text = "Your subscription renews " + (until ? "on " + new Date(until).toLocaleDateString("en-GB", { day: "numeric", month: "long", ...(every ? { year: "numeric" } : {}) }) : "when the time you've paid for ends")
+          + ", charging " + (price || "its price") + " to " + (facts.card || "the card it's paid with") + ", then every " + (every ? every + " months" : "month") + " until you cancel. Nothing is charged now.";
         if (!(await askFirst(button, { text, yes: "Resume subscription" }))) return;
       }
       button.disabled = true;
@@ -5225,13 +5344,13 @@
     // Polar's own form, to pay or change the card, over the whole window
     // (polar-form.js): shown by the web chat when this is its panel or popup.
     var polarOpen = false;
-    async function openPolar(what, kind) {
+    async function openPolar(what, kind, extra) {
       if (polarOpen) return;
       polarOpen = true;
       let src, type;
       try {
         const card = what === "card";
-        const r = await fetch(card ? "/api/plus/card" : "/api/plus/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(card ? {} : { kind }) });
+        const r = await fetch(card ? "/api/plus/card" : "/api/plus/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(card ? {} : { kind, ...(extra || {}) }) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error);
         if (card) {
@@ -5327,7 +5446,9 @@
     // Back from Polar's page, through closedhand.com: what just happened.
     function myAccountSaid(back) {
       const said = document.getElementById("my-account-said");
-      said.textContent = back === "extended" ? "Done: you can carry on to the end of the month." : back === "card" ? "The card for your subscription is changed." : "";
+      said.textContent = back === "extended" ? "Done: you can carry on to the end of the month." : back === "card" ? "The card for your subscription is changed."
+        : back === "ahead" ? "Thank you. Closedhand Managed Models are paid ahead once the payment is confirmed, usually within the hour."
+        : back === "carrying" ? "Thank you. You can carry on to the end of the month once the payment is confirmed, usually within the hour." : "";
       said.hidden = !said.textContent;
     }
 
@@ -9906,7 +10027,7 @@
         setTimeout(function() { document.getElementById('phone-block').scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200);
       } else if (['connections', 'upcoming', 'agents', 'projects', 'pages', 'settings', 'brain'].includes(resolved)) {
         switchTab(resolved);
-      } else if (/^account(\/(welcome|extended))?$/.test(resolved)) {
+      } else if (/^account(\/(welcome|extended|ahead|carrying))?$/.test(resolved)) {
         if (inAccountPopup()) setAccountMode(true); else switchTab('account');
         if (resolved === 'account/welcome') plusWelcome(); else myAccountSaid(resolved.split('/')[1]);
       } else if (/^projects\/[0-9a-f-]{36}(\/edit)?$/i.test(resolved)) {

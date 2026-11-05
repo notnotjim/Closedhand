@@ -28,12 +28,13 @@ async function credit(settings) {
 const NEARLY_USED = 0.8;
 
 // What a period of fair use is called, so each is warned about once: a first
-// month by when it ends, a subscription by when its paid month renews or ends,
-// and again once the person paid to carry on in it. None otherwise.
+// month by when it ends, a month of a subscription or of a plan paid ahead by
+// when its fair use renews or the plan ends, and again once the person paid
+// to carry on in it. None otherwise.
 function period(plan) {
   if (plan?.name === "first-month") return "first-month:" + (plan.ends_at || "");
-  if (plan?.name === "plus") return "plus:" + (plan.renews_at || plan.ends_at || "") + (plan.extended ? ":extended" : "");
-  if (plan?.name === "maintainer") return "maintainer:" + (plan.renews_at || "");
+  if (plan?.name === "plus" || plan?.name === "ahead") return plan.name + ":" + (plan.fair_use_renews_at || plan.ends_at || "") + (plan.extended ? ":extended" : "");
+  if (plan?.name === "maintainer") return "maintainer:" + (plan.fair_use_renews_at || "");
   return null;
 }
 
@@ -44,18 +45,19 @@ function day(iso, timeZone) {
   try { return at.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone }); }
   catch (_) { return at.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }); }
 }
-// When a subscription's fair use comes back: the day it renews. A
-// cancelled one runs to the end of its paid month and has no renewal to name.
+// When this month's fair use comes back: the day it renews. A plan in its
+// last month has no renewal to name.
 function until(plan, timeZone) {
-  return plan?.renews_at ? `so I can't reply until ${day(plan.renews_at, timeZone)}` : "so I can't reply for now";
+  return plan?.fair_use_renews_at ? `so I can't reply until ${day(plan.fair_use_renews_at, timeZone)}` : "so I can't reply for now";
 }
 // Subscribing in one tap (closedhand.com/subscribe): signed in there,
 // straight to Polar's page to take it out.
 function account(web) {
   return web ? "[closedhand.com/subscribe](https://closedhand.com/subscribe)" : "closedhand.com/subscribe";
 }
-// Carrying on to the end of the month: one tap to Polar's page to pay
-// (closedhand.com/carry-on), on the words in the web chat.
+// Carrying on to the end of the month: My Account, through
+// closedhand.com/carry-on, where the box is ticked first; on the words in the
+// web chat.
 function carryOn(web, first) {
   const words = (first ? "C" : "c") + "arry on to the end of the month";
   return web ? `[${words}](https://closedhand.com/carry-on)` : `${words} at closedhand.com/carry-on`;
@@ -72,20 +74,23 @@ function dashboard(link, web) {
 // is no model left to write them. Their own LLM provider comes first: that is
 // what Closedhand is built for, free ones included.
 function endingText(plan, link, web, timeZone) {
+  // Paid ahead: paying ahead again, or the monthly subscription, carries on.
+  if (plan?.name === "ahead") return `Closedhand Managed Models are paid until ${day(plan.ends_at, timeZone)}. To carry on without a break, pay ahead again in My Account before then, or connect your own LLM provider in the ${dashboard(link, web)} (free ones work too).`;
   return `Closedhand Managed Models, the LLM I've been using since you set me up, stays on until ${day(plan?.ends_at, timeZone)}. After that, connect your own LLM provider in the ${dashboard(link, web)} (free ones work too), or keep Managed Models with a subscription${plan?.email ? ", which also keeps Closedhand's own email address," : ""} at ${account(web)}.`;
 }
 function nearlyUsedText(plan, link, web) {
   // The maintainer's own: nothing to pay, so their own LLM provider is the way on.
   if (plan?.name === "maintainer") return `You've used most of this month's fair use of Managed Models. To carry on without a break, connect your own LLM provider in the ${dashboard(link, web)}.`;
-  if (plan?.name === "plus" && plan.extended) return `You've used most of this month's fair use of Managed Models. To carry on without a break, connect your own LLM provider in the ${dashboard(link, web)}.`;
-  if (plan?.name === "plus") return `You've used most of this month's fair use of Managed Models. To carry on without a break, ${carryOn(web)}, or connect your own LLM provider in the ${dashboard(link, web)}.`;
+  if ((plan?.name === "plus" || plan?.name === "ahead") && plan.extended) return `You've used most of this month's fair use of Managed Models. To carry on without a break, connect your own LLM provider in the ${dashboard(link, web)}.`;
+  if (plan?.name === "plus" || plan?.name === "ahead") return `You've used most of this month's fair use of Managed Models. To carry on without a break, ${carryOn(web)}, or connect your own LLM provider in the ${dashboard(link, web)}.`;
   return `You've used most of the fair use of Closedhand Managed Models. To carry on without a break, connect your own LLM provider in the ${dashboard(link, web)} (free ones work too), or keep Managed Models with a subscription at ${account(web)}.`;
 }
 // The key was refused for its limit: by what the plan was last known to be.
 function usedUpText(plan, link, web, timeZone) {
   if (plan?.name === "maintainer") return `You've reached this month's fair use of Managed Models, ${until(plan, timeZone)}. Connect your own LLM provider in the ${dashboard(link, web)} to carry on before then.`;
-  if (plan?.name === "plus" && plan.extended) return `You've reached this month's fair use of Managed Models, ${until(plan, timeZone)}. Connect your own LLM provider in the ${dashboard(link, web)} to carry on${plan.renews_at ? " before then" : ""}.`;
-  if (plan?.name === "plus") return `You've reached this month's fair use of Managed Models, ${until(plan, timeZone)}. ${carryOn(web, true)}, or connect your own LLM provider in the ${dashboard(link, web)}.`;
+  if ((plan?.name === "plus" || plan?.name === "ahead") && plan.extended) return `You've reached this month's fair use of Managed Models, ${until(plan, timeZone)}. Connect your own LLM provider in the ${dashboard(link, web)} to carry on${plan.fair_use_renews_at ? " before then" : ""}.`;
+  if (plan?.name === "plus" || plan?.name === "ahead") return `You've reached this month's fair use of Managed Models, ${until(plan, timeZone)}. ${carryOn(web, true)}, or connect your own LLM provider in the ${dashboard(link, web)}.`;
+  if (plan?.name === "ended" && plan.was === "ahead") return `Closedhand Managed Models paid ahead have ended, so I can't reply for now. Connect your own LLM provider in the ${dashboard(link, web)} (free ones work too) and I'll carry on, or pay ahead again or subscribe at ${account(web)}.`;
   if (plan?.name === "ended" && plan.was === "plus") return `Your subscription to Managed Models has ended, so I can't reply for now. Connect your own LLM provider in the ${dashboard(link, web)} (free ones work too) and I'll carry on, or subscribe again at ${account(web)}.`;
   if (plan?.name === "ended") return `Closedhand Managed Models have ended, so I can't reply for now. Connect your own LLM provider in the ${dashboard(link, web)} (free ones work too) and I'll carry on, or keep Managed Models with a subscription at ${account(web)}.`;
   return `You've reached the fair use of Closedhand Managed Models, so I can't reply for now. Connect your own LLM provider in the ${dashboard(link, web)} (free ones work too) and I'll carry on, or keep Managed Models with a subscription at ${account(web)}.`;

@@ -80,8 +80,10 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   }
   // Only bug reports and assistant email replies (which may carry
   // attachments) are large; every other request is small. Polar's webhooks
-  // are kept as they came, to check their signature (lib/plus.js).
+  // and BTCPay's are kept as they came, to check their signature (lib/plus.js,
+  // lib/ahead.js).
   app.use('/api/plus/webhook', express.raw({ type: '*/*', limit: '256kb' }));
+  app.use('/api/ahead/btcpay', express.raw({ type: '*/*', limit: '256kb' }));
   app.use('/api/bug-intake', express.json({ limit: '8mb' }));
   app.use('/api/assistant-mail-relay/outbox', express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '32kb' }));
@@ -132,11 +134,13 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   // reach the maintainer's own Closedhand through those routes too.
   const notices = require('./lib/operator-notices').create({ db, env, request });
   const includedAi = require('./lib/included-ai').create({ db, env, request, notices });
-  const plus = require('./lib/plus').create({ db, env, request, includedAi, baseUrl });
+  const ahead = require('./lib/ahead').create({ db, env, request, includedAi, baseUrl });
+  const plus = require('./lib/plus').create({ db, env, request, includedAi, ahead, baseUrl });
   const capacity = require('./lib/capacity').create({ db, env, notices, includedAi });
   const backup = require('./lib/backup').create({ db, env, notices });
-  require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, notices });
+  require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, ahead, notices });
   plus.register(app, { sessions });
+  ahead.register(app, { sessions });
   require('./lib/bugs').register(app, { db, secret: env.BUG_RECEIPT_SECRET || secret });
   require('./lib/insights').register(app, { db, sessions, render, env, request, includedAi });
 
@@ -175,12 +179,14 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
     res.status(status).json({ error: status === 413 ? 'That request is too large.' : status < 500 ? 'That request could not be read.' : 'Something went wrong. Please try again.' });
   });
   // Run hourly: free days that have run out and months carried on past
-  // fair use end, keys are brought in line with their subscriptions, the
+  // fair use end, keys are brought in line with their subscriptions and plans
+  // paid ahead (a new month's fair use, or one that has ended), the
   // maintainer is told what needs raising, a notice their computer has not
   // collected for a day goes by email, and once a day the database is backed up.
   async function hourly() {
     await includedAi.sweep().catch(e => console.error('[included ai] sweep:', e.message));
     await plus.sweep().catch(e => console.error('[plus] sweep:', e.message));
+    await ahead.sweep().catch(e => console.error('[ahead] sweep:', e.message));
     await capacity.check().catch(e => console.error('[capacity] check:', e.message));
     await notices.emailStale().catch(e => console.error('[operator] notices:', e.message));
     await backup.daily().catch(e => console.error('[backup] daily:', e.message));
