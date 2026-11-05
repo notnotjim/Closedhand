@@ -3,7 +3,7 @@
 // card, charges tax and handles refunds), so nothing about a payment is kept
 // here, only what the subscription allows. The person subscribes from their
 // account on closedhand.com; Polar tells closedhand.com what happened through
-// signed webhooks; the account's OpenRouter key (included-ai.js) is then set
+// signed webhooks; the account's NEAR AI key (included-ai.js) is then set
 // to the fair-use ceiling, or stopped when the subscription ends. Managing or
 // cancelling happens in Polar's customer portal. Past fair use, a one-time
 // purchase carries the person on to the end of the month.
@@ -409,7 +409,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   // Run hourly: a subscription whose paid month should have rolled over an
   // hour ago is read from Polar again, in case its renewal (or its end) never
   // reached closedhand.com; then any key not yet set to match its
-  // subscription (OpenRouter was unreachable) is tried again.
+  // subscription (NEAR AI was unreachable) is tried again.
   async function sweep() {
     if (!enabled()) return 0;
     const overdue = (await db.query(

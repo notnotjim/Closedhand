@@ -63,16 +63,16 @@
   }
 
   // Managed Models by the one balance people depend on: every first month and
-  // every subscriber draws on OpenRouter's credit, and all of them
+  // every subscriber draws on NEAR AI's credit, and all of them
   // stop when it runs out. This month's spend and who is using it go under it.
   function managedTile(m) {
     const c = m.credit, low = !!c && (c.left <= 0 || (c.days != null && c.days < 14));
-    const lasts = !c ? "OpenRouter didn't answer."
+    const lasts = !c ? "NEAR AI didn't answer."
       : c.left <= 0 ? 'Used up, so Managed Models have stopped for everyone.'
       : c.days == null ? 'Nothing used in the last 30 days.'
       : c.days > 365 ? "Over a year at the last 30 days' pace."
       : `About ${n(c.days)} ${c.days === 1 ? 'day' : 'days'} at the last 30 days' pace.`;
-    return tile({ label: 'OpenRouter credit left', value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '',
+    return tile({ label: 'NEAR AI credit left', value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '',
       sub: `${lasts} ${m.spentThisMonth == null ? '' : `${usd(m.spentThisMonth)} this month, `}` +
         `${n(m.running)} first ${m.running === 1 ? 'month' : 'months'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} ${(m.plus.active || 0) === 1 ? 'subscription' : 'subscriptions'}.` });
   }
@@ -196,7 +196,7 @@
   }
 
   // Everything held about one person, opened from their email. This
-  // month's Managed Models use is read from OpenRouter when it opens.
+  // month's Managed Models use is read from NEAR AI when it opens.
   function firstMonth(p) {
     if (p.first_month_usd == null) return 'None';
     const ended = p.first_month_stopped || (p.first_month_until && new Date(p.first_month_until) <= Date.now());
@@ -223,11 +223,11 @@
     row('First month', firstMonth(p));
     row('Subscription', plusLine(p));
     if (p.first_month_usd != null || p.plus_status) {
-      const used = row('Managed Models use', 'Reading from OpenRouter…');
+      const used = row('Managed Models use', 'Reading from NEAR AI…');
       fetch('/api/insights/person/' + encodeURIComponent(p.id), { cache: 'no-store' })
         .then(r => (r.ok ? r.json() : Promise.reject()))
-        .then(d => { used.textContent = d.usage ? `${usd(d.usage.used)} of ${usd(d.usage.limit)} (${pct(d.usage.used, d.usage.limit)}%)` : 'No key at OpenRouter'; })
-        .catch(() => { used.textContent = "OpenRouter didn't answer"; });
+        .then(d => { used.textContent = d.usage ? `${usd(d.usage.used)} of ${usd(d.usage.limit)} (${pct(d.usage.used, d.usage.limit)}%)` : 'No key at NEAR AI'; })
+        .catch(() => { used.textContent = "NEAR AI didn't answer"; });
     }
     row('Account id', p.id);
     return box;

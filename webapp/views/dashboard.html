@@ -2701,8 +2701,7 @@
                 </section>
                 <section class="choice-card" id="llm-managed" aria-labelledby="llm-managed-name" hidden>
                   <header class="choice-head"><h3 id="llm-managed-name">Closedhand Managed Models</h3><span class="plan-status" id="llm-managed-status"></span></header>
-                  <p class="account-action-desc">Closedhand picks the best LLM for each job, from any provider, and switches when a better one is out.</p>
-                  <p class="account-action-desc">Managed Models only ever uses LLM providers that do not store or train on your data or conversations.</p>
+                  <p class="account-action-desc"><span id="llm-managed-model">DeepSeek V4.1 Flash, uncensored</span>. It runs in sealed hardware, so nobody but you can read what you send or what it answers. When a better uncensored LLM is available, Closedhand switches to it for you.</p>
                   <!-- What the person's plan means for them, in one sentence; the
                        plan itself, Resume included, is in My Account. -->
                   <p class="account-action-desc" id="included-ai-plan"></p>
@@ -4720,6 +4719,7 @@
       var status = function (el, word, kind) { el.textContent = word || ''; el.className = 'plan-status ' + (kind || ''); el.hidden = !word; };
       $('llm-options').classList.toggle('alone', !data);
       $('llm-managed').hidden = !data;
+      if (data && data.name) $('llm-managed-model').textContent = data.name;
       $('llm-own').classList.toggle('in-use', !!data && !inUse);
       $('llm-managed').classList.toggle('in-use', inUse);
       status($('llm-own-status'), data ? (inUse ? 'Not in use' : 'In use') : '', inUse ? 'over' : 'on');
@@ -5124,7 +5124,7 @@
       $("my-plus-about").hidden = !p.available || p.active;
       if (p.available) {
         $("my-plus-about").textContent = "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own"
-          + (plan.email ? ", and to use Closedhand's own email with no monthly limit" : "") + ". They run through OpenRouter, only on LLM providers that do not store or train on your data or conversations."
+          + (plan.email ? ", and to use Closedhand's own email with no monthly limit" : "") + ". They run in sealed hardware, so nobody but you can read what you send or what they answer, not even closedhand.com."
           // Never had the free month: the subscription's first month is it (Polar's trial).
           + (p.free_month ? " The first month is free, then " + (prices.plus || "a monthly price") + " a month." : "");
         $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 first month free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
@@ -8486,9 +8486,9 @@
       note.hidden = !said;
       note.textContent = said;
     }
-    // Where the LLM says before anything is sent that little is left
-    // (OpenRouter, Managed Models included): a team may pause partway, and
-    // carries on by itself when there is more.
+    // Where it is known before anything is sent that little is left
+    // (Managed Models, by what closedhand.com last said; OpenRouter): a team
+    // may pause partway, and carries on by itself when there is more.
     var _teamLow = null, _teamLeft = null;
     function lowNote() {
       if (_teamLow === 'free') return 'Your LLM\'s free plan has ' + _teamLeft + ' requests left today, and a team can use that many quickly. If they run out, the team pauses and carries on by itself when they\'re back.';

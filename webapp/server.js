@@ -2051,7 +2051,7 @@ app.get("/api/included-ai", async (req, res) => {
     const ownConnections = Object.values((inUse ? settings.own_model_config : settings.model_config)?.connections || {});
     const own = [...new Set(ownConnections.map((c) => PROVIDERS[c?.provider]).filter(Boolean))];
     // The subscription's price, as closedhand.com shows it, for what resuming would charge.
-    res.json({ state: inUse ? "in-use" : "available", plan: settings.included_ai?.plan || null, price: settings.included_ai?.prices?.plus || null, ownKept: !!settings.own_model_config?.connections, own });
+    res.json({ state: inUse ? "in-use" : "available", name: settings.included_ai?.name || null, plan: settings.included_ai?.plan || null, price: settings.included_ai?.prices?.plus || null, ownKept: !!settings.own_model_config?.connections, own });
   } catch (e) {
     res.status(503).json({ error: "Could not read Closedhand Managed Models just now." });
   }
@@ -5544,17 +5544,20 @@ app.get("/api/team-note", async (req, res) => {
     let host = "";
     try { host = new URL(conn?.baseUrl || "").hostname; } catch (_) {}
     const local = ["localhost", "127.0.0.1", "[::1]", "host.docker.internal"].includes(host) || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
-    // How much is left, where the provider says before anything is sent
-    // (OpenRouter's key check, Managed Models included), so the form can say
-    // a team may pause partway. Other providers don't say; nothing is shown.
+    // How much is left, where it is known before anything is sent (Managed
+    // Models by what closedhand.com last said, OpenRouter by its key check),
+    // so the form can say a team may pause partway. Other providers don't
+    // say; nothing is shown.
     let low = null, left = null;
-    if (host === "openrouter.ai" && conn?.apiKey) {
+    const fair = managed ? await require("./included-ai").credit(settings) : null;
+    if (fair && fair.left / fair.limit < 0.1) low = "fair-use";
+    else if (!managed && host === "openrouter.ai" && conn?.apiKey) {
       try {
         const r = await fetch("https://openrouter.ai/api/v1/key", { headers: { Authorization: "Bearer " + conn.apiKey }, signal: AbortSignal.timeout(5000) });
         const k = r.ok ? (await r.json())?.data || {} : {};
         const free = k.free_model_daily_requests;
         if (/:free$/.test(String(conn.model || "")) && free && Number.isFinite(Number(free.remaining)) && Number(free.remaining) < 50) { low = "free"; left = Number(free.remaining); }
-        else if (Number(k.limit) > 0 && Number.isFinite(Number(k.limit_remaining)) && Number(k.limit_remaining) / Number(k.limit) < 0.1) low = managed ? "fair-use" : "credit";
+        else if (Number(k.limit) > 0 && Number.isFinite(Number(k.limit_remaining)) && Number(k.limit_remaining) / Number(k.limit) < 0.1) low = "credit";
       } catch (_) { /* no answer: nothing to say */ }
     }
     res.json({ kind: managed ? "managed" : local ? "local" : "provider", low, left });

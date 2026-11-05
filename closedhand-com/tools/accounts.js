@@ -1,6 +1,6 @@
 // Recent Closedhand accounts and what each has of Closedhand Managed Models:
 // its first month (allowance, when it began and ends, spend so far) and
-// its subscription, with this month's OpenRouter spend across every key. For the
+// its subscription, with this month's NEAR AI spend across every key. For the
 // maintainer. Reads only; never prints an email or a key.
 //
 // Run inside the closedhand-com service:
@@ -35,7 +35,7 @@ async function recent(db, includedAi, days = 7) {
   const live = (await db.query('SELECT count(*)::int n, coalesce(sum(granted_usd), 0) total FROM included_ai_keys WHERE stopped_at IS NULL')).rows[0];
   lines.push(`Keys running now: ${live.n}, allowances totalling ${usd(live.total)}`);
   const spent = await includedAi.spentThisMonth().catch(() => null);
-  lines.push(`OpenRouter spend this month across every key: ${spent == null ? 'could not be read' : usd(spent)}`);
+  lines.push(`NEAR AI spend this month across every key: ${spent == null ? 'could not be read' : usd(spent)}`);
   return lines.join('\n');
 }
 

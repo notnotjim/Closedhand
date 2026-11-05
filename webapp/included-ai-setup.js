@@ -2,33 +2,28 @@
 // computer, when claiming the personal URL brings its key
 // (phone-registration.js). The key is kept sealed, then checked and saved as
 // the models the way a key the person pastes in is (model-config.js), so it
-// works exactly like their own. A person who has set up an LLM provider of
-// their own keeps it; the included key waits beside it.
-const KEY = /^sk-or-v1-[A-Za-z0-9]{20,200}$/;
+// works exactly like their own: through NEAR AI, the provider closedhand.com
+// names today, that is private inference (near-private.js), and pictures go to
+// the vision language model on this computer. A person who has set up an LLM
+// provider of their own keeps it; the included key waits beside it.
+const KEY = /^sk-[A-Za-z0-9_-]{20,200}$/;
 const MODEL = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9._:-]+$/i;
+// A provider closedhand.com names, one whose address Closedhand knows.
+const knownProvider = (name) => typeof name === "string" && Object.prototype.hasOwnProperty.call(require("./model-policy").BASES, name);
 
-// A model's name as people know it ("DeepSeek V4.1 Flash"), from OpenRouter's
-// public list, else its ID's last part. Remembered, since it rarely changes.
-const names = new Map();
-async function modelName(id) {
-  if (!MODEL.test(String(id || ""))) return null;
-  if (names.has(id)) return names.get(id);
-  let name = null;
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/models/" + id.split("/").map(encodeURIComponent).join("/") + "/endpoints",
-      { headers: { "HTTP-Referer": "https://closedhand.com", "X-Title": "Closedhand" }, signal: AbortSignal.timeout(8000), redirect: "error" });
-    if (response.ok) name = String((await response.json())?.data?.name || "").replace(/^[^:]{1,40}:\s*/, "").trim().slice(0, 80) || null;
-  } catch (_) { /* the fallback below */ }
-  if (name) names.set(id, name);
-  return name || id.split("/").pop();
+// The chat model's name as people read it ("DeepSeek V4.1 Flash,
+// uncensored"), as closedhand.com gives it, else its ID's last part.
+function modelName(models) {
+  const given = typeof models?.name === "string" ? models.name.replace(/[<>]/g, "").trim().slice(0, 80) : "";
+  return given || String(models?.chat || "").split("/").pop();
 }
 
-// Which model does which job, as closedhand.com gave them: support falls
-// back to the chat model; pictures and videos go to their own only when one
-// is given.
+// Which provider and models do which job, as closedhand.com gave them:
+// support falls back to the chat model; pictures and videos go to their own
+// only when one is given.
 function pickOf(models) {
   const valid = (id) => MODEL.test(String(id || ""));
-  return { chat: models.chat, background: valid(models.background) ? models.background : models.chat, ...(valid(models.vision) ? { vision: models.vision } : {}) };
+  return { provider: models.provider, chat: models.chat, background: valid(models.background) ? models.background : models.chat, ...(valid(models.vision) ? { vision: models.vision } : {}), name: modelName(models) };
 }
 
 async function settings() {
@@ -44,17 +39,17 @@ async function settings() {
 // model check. keep: what is already known about it (its plan).
 async function receive(included, { keep = {} } = {}) {
   const chat = included?.models?.chat;
-  if (!KEY.test(String(included?.key || "")) || !MODEL.test(String(chat || ""))) return false;
+  if (!KEY.test(String(included?.key || "")) || !MODEL.test(String(chat || "")) || !knownProvider(included.models.provider)) return false;
   const models = pickOf(included.models);
   const { supabase } = require("./db");
   const { getAdminUserId } = require("./admin");
   await require("./settings-patch").patchSettings(supabase, getAdminUserId(), { set: {
     included_api_key: require("./model-policy").sealKey(included.key),
-    included_ai: { ...keep, models, name: await modelName(chat), at: new Date().toISOString() },
+    included_ai: { ...keep, models, name: models.name, at: new Date().toISOString() },
   } });
   // A check that fails is recorded, so setup asks for an LLM provider instead
   // of waiting for one that will not come.
-  use({ unlessOwn: true }).catch(async (e) => {
+  use({ unlessOwn: true, fresh: true }).catch(async (e) => {
     console.error("[included ai] the models were not set up:", e.message);
     await require("./settings-patch").patchSettings(supabase, getAdminUserId(), { set: { included_ai: { ...keep, models, at: new Date().toISOString(), error: String(e.message || "check failed").slice(0, 200) } } }).catch(() => {});
   });
@@ -62,26 +57,40 @@ async function receive(included, { keep = {} } = {}) {
 }
 
 // Use the included key for the models. unlessOwn: leave an LLM provider the
-// person set up themselves in place.
-async function use({ unlessOwn = false } = {}) {
+// person set up themselves in place. fresh: the key was only just made.
+async function use({ unlessOwn = false, fresh = false } = {}) {
   const before = await settings();
   const key = require("./model-policy").openKey(before.included_api_key);
   const models = before.included_ai?.models;
-  if (!key || !models?.chat) throw new Error("This Closedhand has no Managed Models to switch to.");
+  if (!key || !models?.chat || !knownProvider(models.provider)) throw new Error("This Closedhand has no Managed Models to switch to.");
   const own = () => unlessOwn && !!before.model_config && !before.model_config.included;
   if (own()) return false;
   const modelConfig = require("./model-config");
   const input = {
-    primary: { provider: "openrouter", apiKey: key }, model: models.chat,
+    primary: { provider: models.provider, apiKey: key }, model: models.chat,
     backgroundMode: models.background === models.chat ? "same" : "separate", backgroundModel: models.background,
   };
+  // NEAR takes a few seconds to accept a key it has just made (seven to nine
+  // when tried): refused then, it is checked again a few times before giving up.
+  let waits = fresh ? 4 : 0;
+  const prepare = async (vision) => {
+    for (;;) {
+      try { return await modelConfig.prepare({ ...input, ...vision }, before); }
+      catch (error) {
+        if (!waits || error.status !== 401) throw error;
+        waits--;
+        await new Promise((resolve) => setTimeout(resolve, NEW_KEY_WAIT));
+      }
+    }
+  };
   // Pictures and videos by the model Closedhand picks for them, checked with
-  // a real image and clip; else by the chat LLM when it reads images; else
-  // without, so an image check never stops the models being used.
+  // a real image and clip; else by the chat LLM when it reads images; else by
+  // the vision language model on this computer, so an image check never stops
+  // the models being used.
   const tries = [...(models.vision ? [{ visionMode: "separate", visionModel: models.vision }] : []), { visionMode: "same" }, { visionMode: "off" }];
   let config;
   for (const vision of tries) {
-    try { config = await modelConfig.prepare({ ...input, ...vision }, before); break; }
+    try { config = await prepare(vision); break; }
     catch (error) { if (!error.visionNeeded || vision.visionMode === "off") throw error; }
   }
   config.included = true;
@@ -116,6 +125,8 @@ async function useOwn() {
   return true;
 }
 
+const NEW_KEY_WAIT = 5000;
+
 // The plan closedhand.com gives this computer's account, as Closedhand keeps
 // it: what it is, when it ends or renews, whether this month was carried on,
 // and whether Closedhand's own email comes with it. An ended plan remembers
@@ -131,9 +142,6 @@ function cleanPlan(plan, previous) {
   // A subscription in its free first month; or, never had the free month, able to start with one.
   if (plan.name === "plus" && plan.trial === true) out.trial = true;
   if (plan.name !== "plus" && plan.plus_trial === true) out.plus_trial = true;
-  // A subscription: the key's use when this paid month began, which this
-  // month's fair use counts from (included-ai.js credit).
-  if (plan.name === "plus" && Number.isFinite(Number(plan.base)) && plan.base !== null && plan.base !== "") out.base = Number(plan.base);
   if (plan.name === "ended") {
     const was = ["first-month", "plus"].includes(plan.was) ? plan.was : previous?.name === "ended" ? previous.was : previous?.name;
     if (was === "first-month" || was === "plus") out.was = was;
@@ -155,18 +163,22 @@ function keptNotices(given, before) {
 }
 
 // Every hour this computer asks closedhand.com about Closedhand Managed
-// Models for it (phone-registration.js): the models Closedhand picks, switched
-// to when they change (if they are in use) and named; its account's plan, for
-// what Closedhand says and the dashboard shows; a key waiting for it, kept as a
-// claim's is; and notices for its account, left for the bot to send
-// (included-credit.js). True when anything changed.
+// Models for it (phone-registration.js): the provider and models Closedhand
+// picks, switched to when they change (if they are in use) and named; its
+// account's plan, for what Closedhand says and the dashboard shows, and how
+// much of its fair use is used, in dollars, never shown (included-ai.js
+// credit); a key waiting for it, kept as a claim's is; and notices for its
+// account, left for the bot to send (included-credit.js). True when anything
+// changed.
 async function refresh() {
   const answer = await require("./phone-registration").includedAiState();
   if (!answer) return false;
   const before = await settings();
   const had = before.included_ai || {};
   const plan = cleanPlan(answer.plan, had.plan);
-  const pick = MODEL.test(String(answer.models?.chat || "")) ? pickOf(answer.models) : null;
+  const pick = MODEL.test(String(answer.models?.chat || "")) && knownProvider(answer.models?.provider) ? pickOf(answer.models) : null;
+  const amount = (v) => Number.isFinite(Number(v)) && v !== null && v !== "" && Number(v) >= 0 ? Math.round(Number(v) * 100) / 100 : null;
+  const usage = answer.usage && amount(answer.usage.limit) > 0 && amount(answer.usage.used) !== null ? { limit: amount(answer.usage.limit), used: amount(answer.usage.used) } : null;
   const { supabase } = require("./db");
   const { getAdminUserId } = require("./admin");
   const patch = (set) => require("./settings-patch").patchSettings(supabase, getAdminUserId(), { set });
@@ -178,16 +190,17 @@ async function refresh() {
   // A key closedhand.com kept for this computer (a subscriber's account held
   // none): taken once, and set up exactly as a claim's.
   if (pick && KEY.test(String(answer.key || ""))) {
-    await receive({ key: answer.key, models: pick }, { keep: { ...(plan ? { plan } : {}), ...(prices ? { prices } : {}) } });
+    await receive({ key: answer.key, models: pick }, { keep: { ...(plan ? { plan } : {}), ...(prices ? { prices } : {}), ...(usage ? { usage } : {}) } });
     return true;
   }
   const next = { ...had };
   if (plan && JSON.stringify(plan) !== JSON.stringify(had.plan)) next.plan = plan;
   if (prices && JSON.stringify(prices) !== JSON.stringify(had.prices)) next.prices = prices;
+  if (usage && JSON.stringify(usage) !== JSON.stringify(had.usage)) next.usage = usage;
   let switchTo = false;
-  if (before.included_api_key && pick && (had.models?.chat !== pick.chat || had.models?.background !== pick.background || had.models?.vision !== pick.vision || !had.name)) {
+  if (before.included_api_key && pick && (had.models?.provider !== pick.provider || had.models?.chat !== pick.chat || had.models?.background !== pick.background || had.models?.vision !== pick.vision || had.name !== pick.name)) {
     next.models = pick;
-    next.name = await modelName(pick.chat);
+    next.name = pick.name;
     switchTo = !!before.model_config?.included;
   }
   const changed = JSON.stringify(next) !== JSON.stringify(had);

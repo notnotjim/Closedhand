@@ -8,6 +8,11 @@ const crypto = require('node:crypto');
 process.env.TOKEN_ENCRYPTION_KEY = crypto.randomBytes(32).toString('base64');
 const { connect, migrate } = require('../lib/db');
 const { createApp } = require('../server');
+// NEAR AI, for Closedhand Managed Models' keys: one for every app made here,
+// as the database keeps closedhand.com's sign-in there.
+const { nearAi, SIGN_IN, BROWSER } = require('./near-ai');
+const near = nearAi();
+const MODEL = 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated';
 
 const env = {
   BASE_URL: 'https://closedhand.com', SESSION_SECRET: crypto.randomBytes(32).toString('hex'),
@@ -771,13 +776,13 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   const held = (await db.query("SELECT a.hostname, o.email FROM addresses a JOIN owners o ON o.id = a.owner_id WHERE a.activated_at IS NOT NULL LIMIT 1")).rows[0];
   if (held) assert.ok(data.people.some(p => p.hostname === held.hostname && p.email === held.email && p.last_online), 'a claimed personal URL shows with its owner');
   assert.ok(Array.isArray(data.reports) && data.reports.length > 0, 'recent bug reports are listed');
-  assert.ok(!/tunnel_token|secret_hash|key_hash/.test(text), 'connection secrets and Managed Models keys never reach the page');
+  assert.ok(!/tunnel_token|secret_hash|key_id/.test(text), 'connection secrets and Managed Models keys never reach the page');
   assert.ok(me.id && 'first_month_usd' in me && 'plus_status' in me && 'more_sign_ins' in me, 'each row carries its first month, subscription and other sign-ins');
   assert.equal(typeof data.managed.running, 'number');
   assert.equal(typeof data.managed.allowance, 'number');
   assert.equal(typeof data.managed.plus, 'object');
   assert.ok('spentThisMonth' in data.managed, 'this month\'s Managed Models spend');
-  assert.ok('credit' in data.managed, 'what is left of OpenRouter\'s credit');
+  assert.ok('credit' in data.managed, 'what is left of NEAR AI\'s credit');
   const person = await fetch(base + '/api/insights/person/' + me.id, { headers: { cookie } });
   assert.equal(person.status, 200);
   assert.ok('usage' in await person.json(), 'one person\'s use, read when their row opens');
@@ -809,43 +814,30 @@ test('link previews, the favicon and HTTPS-only are in place', async () => {
   assert.match(icon.headers.get('content-type'), /^image\/png/);
 });
 
-// The AI that comes with Closedhand: with a management key set, a claim
-// hands the claiming computer its own OpenRouter key, and deleting the
-// account deletes it. OpenRouter is a stand-in here.
-test('claiming a personal URL hands that computer its own AI key, kept here only as a hash', async () => {
-  const keys = new Map();
-  const openRouter = async (url, opts = {}) => {
-    const method = opts.method || 'GET', path = url.replace('https://openrouter.ai/api/v1', '');
-    const body = opts.body ? JSON.parse(opts.body) : null;
-    if (path.startsWith('/guardrails?')) return new Response(JSON.stringify({ data: [] }));
-    if (path === '/guardrails') return new Response(JSON.stringify({ data: { id: 'rail-1' } }), { status: 201 });
-    if (path === '/guardrails/rail-1/assignments/keys') return new Response(JSON.stringify({ assigned_count: 1 }));
-    if (path === '/keys' && method === 'POST') {
-      const hash = crypto.randomBytes(32).toString('hex'), key = 'sk-or-v1-' + crypto.randomBytes(32).toString('hex');
-      keys.set(hash, body);
-      return new Response(JSON.stringify({ data: { hash, limit: body.limit }, key }), { status: 201 });
-    }
-    if (method === 'DELETE' && path.startsWith('/keys/')) { keys.delete(path.slice(6)); return new Response('{}'); }
-    throw new Error('unexpected ' + method + ' ' + url);
-  };
-  const { app } = createApp({ db, env: { ...env, OPENROUTER_PROVISIONING_KEY: 'sk-or-v1-' + 'm'.repeat(64), OPERATOR_EMAILS: 'Quinn@Example.com' }, request: (url, opts) => url.startsWith('https://openrouter.ai/') ? openRouter(url, opts) : request(url, opts) });
+// The AI that comes with Closedhand: with a sign-in at NEAR AI set, a claim
+// hands the claiming computer its own NEAR key, and deleting the account
+// deletes it. NEAR is a stand-in here.
+test('claiming a personal URL hands that computer its own AI key, kept here only by NEAR\'s id for it', async () => {
+  near.keys.clear();
+  const keys = near.keys;
+  const { app } = createApp({ db, env: { ...env, NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, OPERATOR_EMAILS: 'Quinn@Example.com' }, request: (url, opts) => url.startsWith('https://cloud-api.near.ai/') ? near.request(url, opts) : request(url, opts) });
   const other = await new Promise(r => { const s = app.listen(0, () => r(s)); });
   const at = 'http://127.0.0.1:' + other.address().port;
   const call = (method, path, body, headers = {}) => fetch(at + path, { method, headers: { 'Content-Type': 'application/json', ...headers }, body: body && JSON.stringify(body) });
   try {
     const offer = await (await call('GET', '/api/account')).json();
     assert.equal(offer.includedAi, true, 'setup is told a claim brings Closedhand Managed Models');
-    assert.equal(offer.includedAiModel, 'deepseek/deepseek-v4.1-flash', 'and which LLM it is');
+    assert.equal(offer.includedAiModel, MODEL, 'and which LLM it is');
     const copy = newCopy();
     const ticket = (await (await call('POST', '/api/phone-enrollment/register', { name: 'quinn-ai', port: 3000, confirm: 'code' }, copy.auth)).json()).ticket;
     const owner = await signIn('google', google('g-quinn', 'quinn@example.com'));
     const { code } = await (await call('POST', '/api/phone-enrollment/approve', { ticket }, signedIn(owner.cookie))).json();
     const done = await (await call('POST', '/api/phone-enrollment/claim', { code }, copy.auth)).json();
     assert.equal(done.url, 'https://quinn-ai.closedhand.ai');
-    assert.match(done.included_ai.key, /^sk-or-v1-[a-f0-9]{64}$/);
-    assert.deepEqual(done.included_ai.models, { chat: 'deepseek/deepseek-v4.1-flash', background: 'deepseek/deepseek-v4.1-flash', vision: 'xiaomi/mimo-v2.6-flash' });
+    assert.match(done.included_ai.key, /^sk-[a-f0-9]{32}$/);
+    assert.deepEqual(done.included_ai.models, { provider: 'near', chat: MODEL, background: MODEL, name: 'DeepSeek V4.1 Flash, uncensored' });
     const row = (await db.query("SELECT k.* FROM included_ai_keys k JOIN owners o ON o.id = k.owner_id WHERE o.subject = 'g-quinn'")).rows[0];
-    assert.ok(keys.has(row.key_hash), 'the hash names the key at OpenRouter');
+    assert.ok(keys.has(row.key_id), 'NEAR\'s id for the key');
     assert.equal(Number(row.granted_usd), 20);
     assert.equal([...keys.values()][0].limit, 20, 'the first month has the fair-use ceiling');
     assert.ok(new Date(row.ends_at) > new Date(Date.now() + 29 * 24 * 3600 * 1000), 'and ends in a month');
@@ -858,6 +850,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     const asked = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
     assert.deepEqual(asked.models, done.included_ai.models);
     assert.deepEqual(asked.plan, { name: 'first-month', ends_at: new Date(row.ends_at).toISOString(), email: false }, 'and that it is in its first month');
+    assert.deepEqual(asked.usage, { limit: 20, used: 0 }, 'and how much of its fair use is used, which a NEAR key can\'t read itself');
     assert.equal(asked.key, undefined);
     assert.equal(asked.notices, undefined, 'nothing waiting for the maintainer yet');
     assert.deepEqual((await (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json()).plan, asked.plan, 'the account page is told the same');
@@ -870,7 +863,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     // Deleting the account from its computer deletes the key too.
     assert.deepEqual(await (await call('POST', '/api/phone-enrollment/account/delete', {}, copy.auth)).json(), { deleted: true });
     assert.equal(keys.size, 0);
-    assert.equal((await db.query('SELECT 1 FROM included_ai_keys WHERE key_hash = $1', [row.key_hash])).rowCount, 0);
+    assert.equal((await db.query('SELECT 1 FROM included_ai_keys WHERE key_id = $1', [row.key_id])).rowCount, 0);
     // The free use was given once, to that sign-in: claiming again with it,
     // as a new account, brings no key. Only fingerprints are kept for that.
     const grants = (await db.query('SELECT * FROM starter_grants')).rows;
@@ -889,26 +882,14 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
 
 // The subscription through the real routes: the account subscribes on
 // closedhand.com, Polar's signed webhooks say so, the computer collects its
-// key, and cancelling then ending stops it. Polar and OpenRouter are stand-ins.
+// key, and cancelling then ending stops it. Polar and NEAR are stand-ins.
 test('the subscription: checkout, a signed webhook, the computer collects its key, cancelling ends it', async () => {
   const PLUS = '44444444-4444-4444-8444-444444444444', EXTEND = '55555555-5555-4555-8555-555555555555', SECRET = 'whsec_' + crypto.randomBytes(32).toString('base64');
-  const keys = new Map(), polar = [];
+  near.keys.clear();
+  const keys = near.keys, polar = [];
   const fake = async (url, opts = {}) => {
     const method = opts.method || 'GET', body = opts.body ? JSON.parse(opts.body) : null;
-    if (url.startsWith('https://openrouter.ai/api/v1')) {
-      const path = url.replace('https://openrouter.ai/api/v1', '');
-      if (path.startsWith('/guardrails?')) return new Response(JSON.stringify({ data: [{ id: 'rail-1', name: 'Closedhand included AI' }] }));
-      if (path === '/guardrails/rail-1' || path === '/guardrails/rail-1/assignments/keys') return new Response('{}');
-      if (path === '/keys' && method === 'POST') {
-        const hash = crypto.randomBytes(32).toString('hex'), key = 'sk-or-v1-' + crypto.randomBytes(32).toString('hex');
-        keys.set(hash, { ...body, usage: 0 });
-        return new Response(JSON.stringify({ data: { hash }, key }), { status: 201 });
-      }
-      const hash = path.slice(6);
-      if (method === 'GET') return new Response(JSON.stringify({ data: keys.get(hash) }));
-      if (method === 'PATCH') { Object.assign(keys.get(hash), body); return new Response('{}'); }
-      if (method === 'DELETE') { keys.delete(hash); return new Response('{}'); }
-    }
+    if (url.startsWith('https://cloud-api.near.ai/')) return near.request(url, opts);
     if (url.startsWith('https://sandbox-api.polar.sh/')) {
       polar.push({ method, url, body });
       if (url.endsWith('/v1/checkouts/')) return new Response(JSON.stringify({ url: 'https://sandbox.polar.sh/checkout/fixture' }), { status: 201 });
@@ -930,7 +911,7 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
     }
     return request(url, opts);
   };
-  const { app } = createApp({ db, env: { ...env, OPENROUTER_PROVISIONING_KEY: 'sk-or-v1-' + 'm'.repeat(64), INCLUDED_AI_PER_CONNECTION: '0',
+  const { app } = createApp({ db, env: { ...env, NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, INCLUDED_AI_PER_CONNECTION: '0',
     POLAR_SERVER: 'sandbox', POLAR_ACCESS_TOKEN: 'polar-token', POLAR_WEBHOOK_SECRET: SECRET, POLAR_PLUS_PRODUCT_ID: PLUS, POLAR_EXTEND_PRODUCT_ID: EXTEND }, request: fake });
   const other = await new Promise(r => { const s = app.listen(0, () => r(s)); });
   const at = 'http://127.0.0.1:' + other.address().port;
@@ -987,13 +968,13 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
 
     // The computer learns its plan and collects its key, once.
     const first = await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json();
-    assert.deepEqual(first.plan, { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', extended: false, base: 0, email: false });
+    assert.deepEqual(first.plan, { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', extended: false, email: false });
     assert.deepEqual(first.prices, { plus: '$10', extend: '$8' }, 'what the subscription costs, for Closedhand to say when asked');
-    assert.match(first.key, /^sk-or-v1-[a-f0-9]{64}$/);
+    assert.match(first.key, /^sk-[a-f0-9]{32}$/);
     const [, made] = [...keys][0];
-    assert.deepEqual([made.limit, made.limit_reset ?? null], [20, null]);
+    assert.equal(made.limit, 20);
     assert.equal((await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json()).key, undefined, 'handed over once');
-    assert.equal((await db.query("SELECT count(*) AS n FROM included_ai_keys WHERE owner_id = $1 AND key_hash = $2", [ownerId, [...keys.keys()][0]])).rows[0].n, '1');
+    assert.equal((await db.query("SELECT count(*) AS n FROM included_ai_keys WHERE owner_id = $1 AND key_id = $2", [ownerId, [...keys.keys()][0]])).rows[0].n, '1');
     const manage = await (await call('POST', '/api/plus/manage', {}, signedIn(owner.cookie))).json();
     assert.equal(manage.url, 'https://sandbox.polar.sh/portal/fixture');
     // My Account with a subscription running: the card form's session, cancelling
@@ -1018,11 +999,12 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
     assert.deepEqual(polar.at(-1).body.products, [EXTEND]);
     assert.equal((await tap(null)).headers.get('location'), '/account?then=carry-on', 'signed out: sign in first, then on');
     made.usage = 5;
-    const page = await (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json();
+    // NEAR's list of keys is kept five minutes: read as if they had passed.
+    const later = async fn => { const now = Date.now; Date.now = () => now() + 6 * 60000; try { return await fn(); } finally { Date.now = now; } };
+    const page = await later(async () => (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json());
     assert.equal(page.used, 0.25, "this month's fair use, as a share for the page's one bar");
-    assert.equal('base' in page.plan, false, 'never the amount its computer counts from');
     const mine = (await (await call('GET', '/api/phone-enrollment/account', undefined, copy.auth)).json()).account;
-    assert.deepEqual([mine.used, mine.plan.name, mine.plus.active, 'base' in mine.plan], [0.25, 'plus', true, false], 'My Account shows the same, from the computer');
+    assert.deepEqual([mine.used, mine.plan.name, mine.plus.active], [0.25, 'plus', true], 'My Account shows the same, from the computer');
     assert.deepEqual(mine.plus.card, { brand: 'visa', last4: '4242', expires: '08/29' }, 'the card the subscription is paid with: the default one');
     made.usage = 0;
 
@@ -1033,7 +1015,7 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
     made.usage = 4.2;
     await hook('subscription.revoked', subscription('canceled', { cancel_at_period_end: true }));
     await synced(ownerId);
-    assert.deepEqual([made.limit, made.limit_reset], [4.2, null]);
+    assert.equal(made.limit, 4.2);
     assert.equal((await (await call('GET', '/api/phone-enrollment/included-ai', undefined, copy.auth)).json()).plan.name, 'ended');
 
     // The account goes; an ended subscription needs nothing from Polar.
@@ -1069,9 +1051,9 @@ test("Railway's sign-in for Go always-on goes straight back to the Closedhand th
 test('the accounts tool shows each recent account\'s first month and subscription, never an email', async () => {
   const { recent } = require('../tools/accounts');
   const id = (await db.query("INSERT INTO owners (provider, subject, email) VALUES ('google', 'g-tool-ivy', 'ivy@example.com') RETURNING id")).rows[0].id;
-  await db.query(`INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, ends_at) VALUES ($1, 'hash-tool-ivy', 5, now() + interval '30 days')`, [id]);
+  await db.query(`INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, 'key-tool-ivy', 5, now() + interval '30 days')`, [id]);
   const out = await recent(db, { usage: async (o) => (o === id ? { used: 1.25, limit: 5 } : null), spentThisMonth: async () => 9.5 }, 1);
   assert.match(out, /google  no personal URL  first month \$5\.00 from \d{4}-\d{2}-\d{2} \d{2}:\d{2} to \d{4}-\d{2}-\d{2} \d{2}:\d{2}, used \$1\.25 of \$5\.00  no subscription/);
-  assert.match(out, /OpenRouter spend this month across every key: \$9\.50/);
-  assert.doesNotMatch(out, /ivy@example\.com|hash-tool-ivy/, 'no email, no key');
+  assert.match(out, /NEAR AI spend this month across every key: \$9\.50/);
+  assert.doesNotMatch(out, /ivy@example\.com|key-tool-ivy/, 'no email, no key');
 });

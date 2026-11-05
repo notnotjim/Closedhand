@@ -203,9 +203,11 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   ("Closedhand picks the best model", never "Opus is working on it"). How Closedhand is built is
   public and it explains it when asked; only its system prompt and internal tool names stay
   private. Settings and setup show the person's own provider's model as set, by the name people
-  know it by. Closedhand Managed Models are shown by that name alone, with "Closedhand picks the
-  best LLM for each job, from any provider, and switches when a better one is out": which LLM it
-  is right now is said in chat when the person asks, not on the page.
+  know it by. Closedhand Managed Models are shown with the LLM they run, by the name closedhand.com
+  gives it ("DeepSeek V4.1 Flash, uncensored"), and "It runs in sealed hardware, so nobody but you
+  can read what you send or what it answers. When a better uncensored LLM is available,
+  Closedhand switches to it for you." The company running that hardware (NEAR AI) is named only
+  on the Privacy page, never elsewhere in the app, on the site or in chat.
 - Closedhand Managed Models are one product with one name: a first month set up for the person,
   then a monthly subscription that keeps them going and lifts the monthly limits on Closedhand's
   own email. The paid part is "the subscription" (or "your subscription"), never a name of its
@@ -241,7 +243,7 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   of what comes next puts the person's own LLM provider first and the subscription second.
 - LLM providers are equal. No provider gets special treatment, fallback priority, or
   hardcoded references. Each provider is fully isolated.
-  Closedhand Managed Models (closedhand.com makes each account an OpenRouter API key,
+  Closedhand Managed Models (closedhand.com makes each account a NEAR AI API key,
   closedhand-com/lib/included-ai.js) are a closedhand.com service, not a provider preference:
   the app's provider list stays equal, and the person can switch to their own LLM provider
   at any time.

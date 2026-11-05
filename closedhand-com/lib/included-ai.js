@@ -1,14 +1,16 @@
 // The AI that comes with Closedhand. When an account claims its personal URL,
-// closedhand.com makes it an OpenRouter key of its own (OpenRouter's
-// provisioning API) and hands it, once, to the computer that claimed. That
-// computer then talks to OpenRouter directly, so no message ever passes
-// through here; what stays here is the key's hash and when its first month
-// ends.
+// closedhand.com makes it a NEAR AI key of its own (with its sign-in at NEAR,
+// lib/near-session.js) and hands it, once, to the computer that claimed. That
+// computer then talks to NEAR directly, encrypted into the sealed hardware the
+// model runs in, so no message ever passes through here; what stays here is
+// NEAR's id for the key and when its first month ends.
 //
-// Every key is attached to one guardrail: it can use only the models
-// Closedhand chose, and only on providers that keep nothing. An account has
-// one key: claiming again makes a new key with whatever was left and the same
-// end date, and deletes the old one.
+// A key's spending limit is all NEAR holds it to: it has no monthly reset and
+// no list of models, so each paid month raises the limit by its fair use. An
+// account has one key: claiming again makes a new key with whatever was left
+// and the same end date, and deletes the old one. A new key takes NEAR up to
+// ten seconds to accept; the computer that gets one waits and checks again
+// (webapp/included-ai-setup.js).
 //
 // The start is a first month, not an amount: the key has the fair-use ceiling
 // (INCLUDED_AI_FAIR_USE_USD), never reset, and the hourly sweep stops it when
@@ -20,14 +22,12 @@
 // reason to refuse anyone: lib/capacity.js tells the maintainer in time to
 // raise the limits instead.
 //
-// Closedhand picks the models (INCLUDED_AI_MODELS) and can change them without
-// a release: each computer asks for the current pick a few times a day
-// (current) and switches itself over. Models being switched away from stay
-// allowed for that while (INCLUDED_AI_RETIRING_MODELS), so no computer is cut
-// off between the change and its next look.
+// Closedhand picks the provider and models (INCLUDED_AI_MODELS) and can change
+// them without a release: each computer asks for the current pick every hour
+// (current) and switches itself over.
 // Once the person has had it, from a connection that has had it often,
-// without a provisioning key, or with OpenRouter unreachable, the claim goes
-// on without a key and setup asks for an LLM provider instead.
+// without a sign-in at NEAR, or with NEAR unreachable, the claim goes on
+// without a key and setup asks for an LLM provider instead.
 //
 // The subscription (lib/plus.js) continues it: a subscriber's key gets a fair use
 // for each paid month, from the day of the month they subscribed (as Polar
@@ -36,8 +36,10 @@
 // time their computer asks (collect), and an ended subscription stops the key.
 const crypto = require('crypto');
 
-const API = 'https://openrouter.ai/api/v1';
-const GUARDRAIL = 'Closedhand included AI';
+// NEAR counts money in nano-dollars.
+const NANO = 1e9;
+const nano = usd => Math.round(usd * NANO);
+const dollars = price => (price && Number.isFinite(Number(price.amount)) ? Number(price.amount) / 10 ** Number(price.scale ?? 9) : null);
 
 // The part of an address that is one connection: all of an IPv4 address, the
 // first half of an IPv6 one (a home gets a whole /64).
@@ -51,8 +53,8 @@ function connection(ip) {
   return full.slice(0, 4).map(part => parseInt(part || '0', 16).toString(16)).join(':');
 }
 
-function create({ db, env = process.env, request = fetch }) {
-  const managementKey = String(env.OPENROUTER_PROVISIONING_KEY || '');
+function create({ db, env = process.env, request = fetch, notices = null }) {
+  const session = require('./near-session').create({ db, env, request, notices });
   const fairUse = Number(env.INCLUDED_AI_FAIR_USE_USD || 20);
   const firstMonthDays = Number(env.INCLUDED_AI_FIRST_MONTH_DAYS || 30);
   // Ten, so an office or a household sharing one connection all get theirs,
@@ -61,91 +63,106 @@ function create({ db, env = process.env, request = fetch }) {
   const pepper = String(env.TOKEN_ENCRYPTION_KEY || '');
   const fingerprint = (kind, text) => crypto.createHmac('sha256', pepper).update('included-ai-' + kind + ':' + text).digest('hex');
   const list = value => String(value || '').split(',').map(s => s.trim()).filter(Boolean);
-  const models = list(env.INCLUDED_AI_MODELS || 'deepseek/deepseek-v4.1-flash');
-  // Pictures and videos go to a model of their own: one that watches a video
-  // and hears its sound, served by hosts that keep nothing. Empty: the chat
-  // model reads pictures, and videos are watched through frames.
-  const visionModel = String(env.INCLUDED_AI_VISION_MODEL ?? 'xiaomi/mimo-v2.6-flash').trim();
-  const allowed = [...new Set([...models, ...(visionModel ? [visionModel] : []), ...list(env.INCLUDED_AI_RETIRING_MODELS)])];
-  const enabled = () => managementKey.startsWith('sk-or-') && pepper.length >= 16 && fairUse > 0 && firstMonthDays > 0 && models.length > 0;
+  // Text only: NEAR's encryption carries words, so pictures and videos are
+  // described by the vision language model on the person's computer.
+  const models = list(env.INCLUDED_AI_MODELS || 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated');
+  // The chat model's name as the person reads it in Settings and setup.
+  const modelName = String(env.INCLUDED_AI_MODEL_NAME || 'DeepSeek V4.1 Flash, uncensored').trim().slice(0, 80);
+  const enabled = () => session.configured() && pepper.length >= 16 && fairUse > 0 && firstMonthDays > 0 && models.length > 0;
 
-  async function api(path, method = 'GET', body) {
-    const response = await request(API + path, {
+  async function api(path, method = 'GET', body, again = false) {
+    const response = await request(session.base + path, {
       method,
-      headers: { Authorization: 'Bearer ' + managementKey, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://closedhand.com', 'X-Title': 'Closedhand' },
+      headers: { Authorization: 'Bearer ' + await session.token(), 'User-Agent': session.agent, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(15000),
     });
+    // An access token NEAR stopped taking early is renewed, once.
+    if (response.status === 401 && !again) { session.forget(); return api(path, method, body, true); }
     const text = await response.text();
     let json = null;
     try { json = text ? JSON.parse(text) : null; } catch (_) { /* not JSON */ }
-    if (!response.ok) throw Object.assign(new Error(`OpenRouter answered ${response.status} to ${method} ${path.split('?')[0]}`), { status: response.status });
+    if (!response.ok) throw Object.assign(new Error(`NEAR AI answered ${response.status} to ${method} ${path.split('?')[0]}`), { status: response.status });
     return json;
   }
 
-  // The one guardrail every key made here is attached to, made the first time
-  // and brought up to date with the chosen models after each start.
-  let guardrailId = null;
-  async function guardrail() {
-    if (guardrailId) return guardrailId;
-    const rules = {
-      allowed_models: allowed,
-      enforce_zdr_anthropic: true, enforce_zdr_openai: true, enforce_zdr_google: true, enforce_zdr_xai: true, enforce_zdr_other: true,
-      allow_safety_retention_google: false, allow_safety_retention_other: false,
-      enable_free_model_training: false, enable_paid_model_training: false, enable_free_model_publication: false,
-    };
-    const listed = await api('/guardrails?limit=100');
-    const found = (listed?.data || []).find(g => g.name === GUARDRAIL);
-    if (found) {
-      await api('/guardrails/' + found.id, 'PATCH', rules);
-      guardrailId = found.id;
-    } else {
-      const made = await api('/guardrails', 'POST', { name: GUARDRAIL, description: 'Keys made for Closedhand accounts: the models Closedhand chose, on providers that keep nothing.', ...rules });
-      guardrailId = made?.data?.id || made?.id || null;
+  // The organisation whose credit every key draws on, and the workspace the
+  // keys are made in: as set, else the only one there is.
+  let ids = null;
+  async function where() {
+    if (ids) return ids;
+    let org = String(env.NEAR_ORG_ID || '').trim(), workspace = String(env.NEAR_WORKSPACE_ID || '').trim();
+    if (!org) {
+      const orgs = (await api('/v1/organizations?limit=100'))?.organizations || [];
+      if (orgs.length !== 1) throw new Error(orgs.length ? 'NEAR AI has several organisations for this sign-in: set NEAR_ORG_ID' : 'NEAR AI has no organisation for this sign-in');
+      org = orgs[0].id;
     }
-    if (!guardrailId) throw new Error('OpenRouter did not return the guardrail');
-    return guardrailId;
+    if (!workspace) {
+      const spaces = (await api('/v1/organizations/' + encodeURIComponent(org) + '/workspaces?limit=100'))?.workspaces || [];
+      if (spaces.length !== 1) throw new Error(spaces.length ? 'NEAR AI has several workspaces here: set NEAR_WORKSPACE_ID' : 'NEAR AI has no workspace here');
+      workspace = spaces[0].id;
+    }
+    return (ids = { org: encodeURIComponent(org), workspace: encodeURIComponent(workspace) });
   }
 
-  // Keys already given can use the models chosen since: the guardrail is
-  // brought up to date as closedhand.com starts, before any computer asks
-  // which models to use, and again by the sweep if that failed.
-  async function settle() {
-    if (enabled()) await guardrail().catch(e => console.error('[included ai] guardrail not updated:', e.message));
+  // A key as NEAR lists it, in dollars.
+  const shape = k => ({ id: k.id, name: String(k.name || ''), limit: dollars(k.spend_limit), usage: dollars(k.usage) || 0 });
+  // Every live key in the workspace (not deleted or switched off). NEAR has no
+  // way to read one key alone, only pages of them, so the list is kept five
+  // minutes for the account page and each computer's hourly look; a key not
+  // in it is looked for afresh.
+  let listed = { at: 0, keys: null };
+  async function keys({ fresh = false } = {}) {
+    if (!fresh && listed.keys && Date.now() - listed.at < 5 * 60000) return listed.keys;
+    const { workspace } = await where();
+    const found = new Map();
+    for (let offset = 0, page = 0; page < 1000; page++) {
+      const got = await api(`/v1/workspaces/${workspace}/api-keys?limit=100&offset=${offset}&order_by=created_at&order_direction=asc`);
+      const batch = got?.api_keys || [];
+      for (const k of batch) if (!k.deleted_at && k.is_active !== false && typeof k.id === 'string') found.set(k.id, shape(k));
+      offset += batch.length;
+      if (!batch.length || offset >= Number(got?.total ?? 0)) break;
+    }
+    listed = { at: Date.now(), keys: found };
+    return found;
   }
+  const remember = k => { if (listed.keys && typeof k?.id === 'string') listed.keys.set(k.id, shape(k)); };
 
-  // A key as OpenRouter has it now, or null when it is gone.
-  async function keyNow(hash) {
-    try { return (await api('/keys/' + hash))?.data || null; }
-    catch (error) { if (error.status === 404) return null; throw error; }
+  // A key as NEAR has it now, or null when it is gone.
+  async function keyNow(id, { fresh = false } = {}) {
+    return (await keys({ fresh })).get(id) || (fresh ? null : (await keys({ fresh: true })).get(id) || null);
   }
-  // Deletes a key at OpenRouter now; one that can't be deleted yet waits in
+  async function drop(id) {
+    const { workspace } = await where();
+    await api(`/v1/workspaces/${workspace}/api-keys/${encodeURIComponent(id)}`, 'DELETE').catch(e => { if (e.status !== 404) throw e; });
+    listed.keys?.delete(id);
+  }
+  // Deletes a key at NEAR now; one that can't be deleted yet waits in
   // retired_ai_keys for the hourly sweep, so it never stays live unlisted.
-  async function discard(hash) {
+  async function discard(id) {
     try {
-      await api('/keys/' + hash, 'DELETE').catch(e => { if (e.status !== 404) throw e; });
-      await db.query('DELETE FROM retired_ai_keys WHERE key_hash = $1', [hash]);
+      await drop(id);
+      await db.query('DELETE FROM retired_ai_keys WHERE key_id = $1', [id]);
     } catch (error) {
       console.error('[included ai] a key waits to be deleted:', error.message);
-      await db.query('INSERT INTO retired_ai_keys (key_hash) VALUES ($1) ON CONFLICT DO NOTHING', [hash]).catch(() => {});
+      await db.query('INSERT INTO retired_ai_keys (key_id) VALUES ($1) ON CONFLICT DO NOTHING', [id]).catch(() => {});
     }
   }
   const cents = n => Math.round(n * 100) / 100;
-  // A limit OpenRouter holds to: never 0, whose meaning it doesn't promise.
-  const atLeastACent = n => Math.max(0.01, cents(n));
+  // A limit NEAR holds to: never 0 or none, which would mean no limit; at
+  // least a billionth of a dollar, the smallest it takes.
+  const atLeastANano = n => Math.max(1 / NANO, n);
+  async function setLimit(id, usd) {
+    const { workspace } = await where();
+    remember(await api(`/v1/workspaces/${workspace}/api-keys/${encodeURIComponent(id)}/spend-limit`, 'PATCH', { spendLimit: { amount: nano(atLeastANano(usd)), currency: 'USD' } }));
+  }
 
-  async function makeKey(ownerId, limit, { monthly = false } = {}) {
-    const made = await api('/keys', 'POST', { name: 'Closedhand ' + ownerId, limit: Math.round(limit * 100) / 100, ...(monthly ? { limit_reset: 'monthly' } : {}) });
-    const key = made?.key, hash = made?.data?.hash;
-    if (typeof key !== 'string' || !key.startsWith('sk-or-') || typeof hash !== 'string') throw new Error('OpenRouter did not return a key');
-    try {
-      await api('/guardrails/' + await guardrail() + '/assignments/keys', 'POST', { key_hashes: [hash] });
-    } catch (error) {
-      // A key without its guardrail could use any model: it never leaves here.
-      await api('/keys/' + hash, 'DELETE').catch(() => {});
-      throw error;
-    }
-    return { key, hash };
+  async function makeKey(ownerId, limit) {
+    const { workspace } = await where();
+    const made = await api(`/v1/workspaces/${workspace}/api-keys`, 'POST', { name: 'Closedhand ' + ownerId, spendLimit: { amount: nano(cents(limit)), currency: 'USD' } });
+    if (typeof made?.key !== 'string' || !made.key.startsWith('sk-') || typeof made.id !== 'string') throw new Error('NEAR AI did not return a key');
+    remember(made);
+    return { key: made.key, id: made.id };
   }
 
   // The one-way fingerprint of the account's sign-in, which starter_grants keeps.
@@ -172,23 +189,23 @@ function create({ db, env = process.env, request = fetch }) {
       if (held) {
         // Claiming again (another computer, or setup run again) makes a new
         // key that carries on from the one held: what it used stays used.
-        const oldHash = held.key_hash;
+        const oldId = held.key_id;
         if (!sub && (held.stopped_at || !held.ends_at || new Date(held.ends_at) <= new Date())) return null;
-        const old = await keyNow(oldHash);
+        const old = await keyNow(oldId, { fresh: true });
         // What is left now goes to the new key. A subscriber keeps their key
         // for the months to come even with nothing left this month; their new
         // key's base is set so this month's fair use counts the same.
-        const left = old ? Math.max(0, Number(old.limit_remaining ?? (Number(old.limit) - Number(old.usage)))) : (sub ? allowanceFor(sub) : 0);
+        const left = old ? Math.max(0, Number(old.limit) - Number(old.usage)) : (sub ? allowanceFor(sub) : 0);
         if (!sub && !(left > 0.01)) return null;
-        const made = await makeKey(ownerId, atLeastACent(left));
+        const made = await makeKey(ownerId, atLeastANano(left));
         const base = sub ? cents(left - allowanceFor(sub)) : held.base_usd;
         // Only the claim that still finds the key it read replaces it: two
         // at once can't both hand out a key, and the other's is deleted.
         const swapped = await db.query(
-          'UPDATE included_ai_keys SET key_hash = $2, base_usd = $3, updated_at = now() WHERE owner_id = $1 AND key_hash = $4 RETURNING owner_id',
-          [ownerId, made.hash, base, oldHash]);
-        if (!swapped.rowCount) { await discard(made.hash); return null; }
-        await discard(oldHash);
+          'UPDATE included_ai_keys SET key_id = $2, base_usd = $3, updated_at = now() WHERE owner_id = $1 AND key_id = $4 RETURNING owner_id',
+          [ownerId, made.id, base, oldId]);
+        if (!swapped.rowCount) { await discard(made.id); return null; }
+        await discard(oldId);
         return { key: made.key, models: roles() };
       }
       if (sub) return await keyForSubscriber(ownerId, sub);
@@ -210,9 +227,9 @@ function create({ db, env = process.env, request = fetch }) {
       try { made = await makeKey(ownerId, fairUse); }
       catch (error) { await db.query('DELETE FROM starter_grants WHERE id = $1', [given.rows[0].id]); throw error; }
       const saved = await db.query(
-        'INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, ends_at) VALUES ($1, $2, $3, now() + make_interval(days => $4)) ON CONFLICT (owner_id) DO NOTHING RETURNING owner_id',
-        [ownerId, made.hash, fairUse, firstMonthDays]);
-      if (!saved.rowCount) { await discard(made.hash); return null; }
+        'INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, $2, $3, now() + make_interval(days => $4)) ON CONFLICT (owner_id) DO NOTHING RETURNING owner_id',
+        [ownerId, made.id, fairUse, firstMonthDays]);
+      if (!saved.rowCount) { await discard(made.id); return null; }
       return { key: made.key, models: roles() };
     } catch (error) {
       console.error('[included ai] no key made:', error.message);
@@ -252,10 +269,10 @@ function create({ db, env = process.env, request = fetch }) {
   async function keyForSubscriber(ownerId, sub) {
     const made = await makeKey(ownerId, allowanceFor(sub));
     const saved = await db.query(
-      'INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, base_usd, base_for) VALUES ($1, $2, 0, 0, $3) ON CONFLICT (owner_id) DO NOTHING RETURNING owner_id',
-      [ownerId, made.hash, new Date(monthOf(sub))]);
+      'INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, base_usd, base_for) VALUES ($1, $2, 0, 0, $3) ON CONFLICT (owner_id) DO NOTHING RETURNING owner_id',
+      [ownerId, made.id, new Date(monthOf(sub))]);
     if (!saved.rowCount) {
-      await discard(made.hash);
+      await discard(made.id);
       return null;
     }
     return { key: made.key, models: roles() };
@@ -287,12 +304,12 @@ function create({ db, env = process.env, request = fetch }) {
   async function subscribe(ownerId) {
     if (!enabled()) return false;
     const sub = await subscription(ownerId);
-    const held = (await db.query('SELECT key_hash, base_usd, base_for FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
+    const held = (await db.query('SELECT key_id, base_usd, base_for FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!sub || !held) return false;
-    const key = await keyNow(held.key_hash);
+    const key = await keyNow(held.key_id, { fresh: true });
     if (!key) {
-      // Gone at OpenRouter: the row goes too, and their computer collects a new key.
-      await db.query('DELETE FROM included_ai_keys WHERE owner_id = $1 AND key_hash = $2', [ownerId, held.key_hash]);
+      // Gone at NEAR: the row goes too, and their computer collects a new key.
+      await db.query('DELETE FROM included_ai_keys WHERE owner_id = $1 AND key_id = $2', [ownerId, held.key_id]);
       return false;
     }
     let base = Number(held.base_usd) || 0;
@@ -301,7 +318,7 @@ function create({ db, env = process.env, request = fetch }) {
       base = cents(Number(key.usage || 0));
       await db.query('UPDATE included_ai_keys SET base_usd = $2, base_for = $3 WHERE owner_id = $1', [ownerId, base, new Date(monthOf(sub))]);
     }
-    await api('/keys/' + held.key_hash, 'PATCH', { limit: atLeastACent(base + allowanceFor(sub)), limit_reset: null });
+    await setLimit(held.key_id, base + allowanceFor(sub));
     await db.query('UPDATE included_ai_keys SET stopped_at = NULL, updated_at = now() WHERE owner_id = $1', [ownerId]);
     return true;
   }
@@ -310,18 +327,18 @@ function create({ db, env = process.env, request = fetch }) {
   // limit becomes what it has used, never reset. False when there is no key.
   async function end(ownerId) {
     if (!enabled()) return false;
-    const held = (await db.query('SELECT key_hash FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
+    const held = (await db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!held) return false;
-    const key = await keyNow(held.key_hash);
-    if (key) await api('/keys/' + held.key_hash, 'PATCH', { limit: atLeastACent(Math.floor(Number(key.usage || 0) * 100) / 100), limit_reset: null });
+    const key = await keyNow(held.key_id, { fresh: true });
+    if (key) await setLimit(held.key_id, Number(key.usage || 0));
     await db.query('UPDATE included_ai_keys SET stopped_at = now(), updated_at = now() WHERE owner_id = $1', [ownerId]);
     return true;
   }
 
-  // Run hourly: a first month that has run out, with no subscription to take
-  // over, stops its key, and keys replaced or left by a deleted account are
-  // deleted at OpenRouter. Subscription months follow Polar's own renewals
-  // (lib/plus.js).
+  // Run hourly: the sign-in at NEAR is renewed, a first month that has run
+  // out, with no subscription to take over, stops its key, and keys replaced
+  // or left by a deleted account are deleted at NEAR. Subscription months
+  // follow Polar's own renewals (lib/plus.js).
   async function sweep() {
     if (!enabled()) return 0;
     await settle();
@@ -331,48 +348,55 @@ function create({ db, env = process.env, request = fetch }) {
           AND NOT EXISTS (SELECT 1 FROM plus_subscriptions s WHERE s.owner_id = k.owner_id AND s.status IN ('active', 'trialing', 'past_due'))
         ORDER BY k.ends_at LIMIT 200`)).rows;
     for (const { owner_id: ownerId } of ended) await end(ownerId).catch(e => console.error('[included ai] first month not stopped:', e.message));
-    // Keys replaced or left by a deleted account, deleted at OpenRouter.
-    const retired = (await db.query('SELECT key_hash FROM retired_ai_keys ORDER BY tries, retired_at LIMIT 200')).rows;
-    for (const { key_hash: hash } of retired) {
+    // Keys replaced or left by a deleted account, deleted at NEAR.
+    const retired = (await db.query('SELECT key_id FROM retired_ai_keys ORDER BY tries, retired_at LIMIT 200')).rows;
+    for (const { key_id: id } of retired) {
       try {
-        await api('/keys/' + hash, 'DELETE').catch(e => { if (e.status !== 404) throw e; });
-        await db.query('DELETE FROM retired_ai_keys WHERE key_hash = $1', [hash]);
+        await drop(id);
+        await db.query('DELETE FROM retired_ai_keys WHERE key_id = $1', [id]);
       } catch (error) {
         console.error('[included ai] a retired key is not deleted yet:', error.message);
-        await db.query('UPDATE retired_ai_keys SET tries = tries + 1 WHERE key_hash = $1', [hash]);
+        await db.query('UPDATE retired_ai_keys SET tries = tries + 1 WHERE key_id = $1', [id]);
       }
     }
     return ended.length;
   }
 
-  // Every key of the OpenRouter account, with what each has used, for the
-  // maintainer (lib/capacity.js, lib/misuse.js). OpenRouter lists keys a page
-  // of up to 100 at a time.
+  // The sign-in at NEAR, renewed as closedhand.com starts and each hour, so
+  // one NEAR stopped taking is told to the maintainer before anyone needs a key.
+  async function settle() {
+    if (enabled()) await session.token().catch(e => console.error('[included ai] NEAR AI sign-in not renewed:', e.message));
+  }
+
+  // Every key in the workspace, with what each has used, for the maintainer
+  // (lib/misuse.js), read afresh.
   async function allKeys() {
-    const all = [];
-    for (let offset = 0, page = 0; page < 100; page++) {
-      const keys = (await api('/keys?offset=' + offset))?.data || [];
-      all.push(...keys);
-      if (!keys.length) break;
-      offset += keys.length;
-    }
-    return all;
+    return [...(await keys({ fresh: true })).values()];
   }
-  // This month's OpenRouter spend across every key of the account.
-  async function spentThisMonth() {
-    return cents((await allKeys()).reduce((total, k) => total + Number(k.usage_monthly || 0), 0));
+  // This calendar month's spend at NEAR, across every key.
+  async function spentThisMonth(now = new Date()) {
+    const { org } = await where();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const rows = (await api(`/v1/organizations/${org}/usage/by-model?period=custom&start=${encodeURIComponent(start)}`))?.data || [];
+    return cents(rows.reduce((total, r) => total + Number(r.total_cost || 0), 0) / NANO);
   }
-  // What is left of the OpenRouter account's credit, which every key draws on:
-  // when it runs out, every first month and every subscriber stops
-  // at once. With the days it lasts at the pace of the last 30 days, as
-  // OpenRouter reports them a completed UTC day at a time, counted from the
-  // first day with any use so a young account's pace isn't spread thin.
+  // What is left of the organisation's credit at NEAR, which every key draws
+  // on: when it runs out, every first month and every subscriber stops at
+  // once. With the days it lasts at the pace of the last 30 days, counted from
+  // the first day with any use so a young account's pace isn't spread thin.
   async function credit(now = new Date()) {
-    const [credits, activity] = await Promise.all([api('/credits'), api('/activity').catch(() => null)]);
-    const left = Number(credits?.data?.total_credits) - Number(credits?.data?.total_usage);
+    const { org } = await where();
+    const start = new Date(now.getTime() - 30 * 86400000).toISOString();
+    const [balance, series] = await Promise.all([
+      api(`/v1/organizations/${org}/usage/balance`),
+      api(`/v1/organizations/${org}/usage/timeseries?granularity=day&start=${encodeURIComponent(start)}`).catch(() => null),
+    ]);
+    const limits = Array.isArray(balance?.credit_limits) ? balance.credit_limits : null;
+    const nanoLeft = balance?.remaining != null ? Number(balance.remaining) : limits ? limits.reduce((t, l) => t + Number(l.available || 0), 0) : NaN;
+    const left = nanoLeft / NANO;
     if (!Number.isFinite(left)) return null;
-    const rows = activity?.data || [];
-    const used = rows.reduce((total, r) => total + Number(r.usage || 0), 0);
+    const rows = (series?.data || []).filter(r => Number(r.cost_usd) > 0);
+    const used = rows.reduce((total, r) => total + Number(r.cost_usd), 0);
     if (!(used > 0)) return { left: cents(left), days: null };
     const first = Math.min(...rows.map(r => Date.parse(String(r.date).slice(0, 10) + 'T00:00:00Z')));
     const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -381,46 +405,48 @@ function create({ db, env = process.env, request = fetch }) {
   }
 
   // closedhand.com's own key, for the insights page's summary of possible
-  // misuse (lib/misuse.js): made when first needed, behind the same guardrail,
-  // a dollar a month at most. One left by an earlier start is deleted.
+  // misuse (lib/misuse.js): made when first needed, a dollar at most. One
+  // left by an earlier start is deleted.
   const OPERATOR_KEY = 'Closedhand insights';
   let operatorKey = null;
   async function forOperator() {
     if (!enabled()) return null;
     if (!operatorKey) operatorKey = (async () => {
-      for (const k of await allKeys()) if (k.name === OPERATOR_KEY && k.hash) await discard(k.hash);
-      return (await makeKey('insights', 1, { monthly: true })).key;
+      for (const k of await allKeys()) if (k.name === OPERATOR_KEY) await discard(k.id);
+      return (await makeKey('insights', 1)).key;
     })().catch(error => { operatorKey = null; throw error; });
-    return { key: await operatorKey, model: roles().chat };
+    return { key: await operatorKey, model: roles().chat, base: session.base + '/v1' };
   }
 
-  // Which model does which job: the person's computer uses these as given.
+  // Which provider and models do which job: the person's computer uses these
+  // as given.
   function roles() {
-    return { chat: models[0], background: models[1] || models[0], ...(visionModel ? { vision: visionModel } : {}) };
+    return { provider: 'near', chat: models[0], background: models[1] || models[0], name: modelName };
   }
 
   // Deleting an account deletes its key. Its row goes with the account.
   async function forget(ownerId) {
-    const held = (await db.query('SELECT key_hash FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
+    const held = (await db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!held || !enabled()) return;
-    await api('/keys/' + held.key_hash, 'DELETE').catch(e => console.error('[included ai] could not delete a key:', e.message));
+    await drop(held.key_id).catch(e => console.error('[included ai] could not delete a key:', e.message));
   }
 
-  // How much of the account's fair use is used, as OpenRouter counts it (a
-  // subscriber's this paid month), or null without a key. Never
-  // shown as an amount: the account page only says when most of it is used.
+  // How much of the account's fair use is used, as NEAR counts it (a
+  // subscriber's this paid month), or null without a key. Never shown as an
+  // amount: the account page only says when most of it is used, and the
+  // computer is told it so Closedhand can say so in time.
   async function usage(ownerId) {
     if (!enabled()) return null;
-    const held = (await db.query('SELECT key_hash, base_usd FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
+    const held = (await db.query('SELECT key_id, base_usd FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     if (!held) return null;
-    const key = (await api('/keys/' + held.key_hash))?.data;
+    const key = await keyNow(held.key_id);
     const base = Number(held.base_usd) || 0;
     const limit = Number(key?.limit) - base, used = Number(key?.usage) - base;
-    return Number.isFinite(limit) && limit > 0 && Number.isFinite(used) ? { limit, used } : null;
+    return key && Number.isFinite(limit) && limit > 0 && Number.isFinite(used) ? { limit: cents(limit), used: cents(Math.max(0, used)) } : null;
   }
 
-  // The models in use now, for computers checking whether Closedhand has
-  // switched them.
+  // The provider and models in use now, for computers checking whether
+  // Closedhand has switched them.
   function current() {
     return enabled() ? roles() : null;
   }

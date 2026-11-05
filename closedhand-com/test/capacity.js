@@ -102,15 +102,15 @@ test('the plan says where an account stands: first month, subscribed, ended or n
   const now = new Date('2026-11-10T12:00:00Z');
   const none = await person(), first = await person(), over = await person(), plus = await person(), leaving = await person();
   assert.deepEqual(await planFor(db, {}, none, now), { name: 'none', email: false, plus_trial: true }, 'never had Managed Models: a subscription would start with the free month');
-  await db.query("INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, ends_at) VALUES ($1, $2, 20, '2026-11-20T00:00:00Z')", [first, crypto.randomBytes(32).toString('hex')]);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, $2, 20, '2026-11-20T00:00:00Z')", [first, crypto.randomBytes(32).toString('hex')]);
   assert.deepEqual(await planFor(db, env, first, now), { name: 'first-month', ends_at: '2026-11-20T00:00:00.000Z', email: true }, 'in the one free month: none to come');
-  await db.query("INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, ends_at) VALUES ($1, $2, 20, '2026-11-01T00:00:00Z')", [over, crypto.randomBytes(32).toString('hex')]);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, ends_at) VALUES ($1, $2, 20, '2026-11-01T00:00:00Z')", [over, crypto.randomBytes(32).toString('hex')]);
   assert.equal((await planFor(db, env, over, now)).name, 'ended');
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_start, current_period_end, extended_for, started_at) VALUES ($1, 'sub_a', 'active', '2026-11-01T00:00:00Z', '2026-12-01T00:00:00Z', '2026-11-01T00:00:00Z', now())", [plus]);
-  await db.query("INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, base_usd) VALUES ($1, $2, 0, 12.5)", [plus, crypto.randomBytes(32).toString('hex')]);
-  assert.deepEqual(await planFor(db, env, plus, now), { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', extended: true, base: 12.5, email: true }, 'the use its paid month counts from');
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, base_usd) VALUES ($1, $2, 0, 12.5)", [plus, crypto.randomBytes(32).toString('hex')]);
+  assert.deepEqual(await planFor(db, env, plus, now), { name: 'plus', renews_at: '2026-12-01T00:00:00.000Z', extended: true, email: true }, 'carried on in this paid month');
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, current_period_end, cancel_at_period_end, started_at) VALUES ($1, 'sub_b', 'active', '2026-12-01T00:00:00Z', true, now())", [leaving]);
-  assert.deepEqual(await planFor(db, env, leaving, now), { name: 'plus', ends_at: '2026-12-01T00:00:00.000Z', extended: false, base: 0, email: true });
+  assert.deepEqual(await planFor(db, env, leaving, now), { name: 'plus', ends_at: '2026-12-01T00:00:00.000Z', extended: false, email: true });
   await db.query("UPDATE plus_subscriptions SET status = 'canceled' WHERE owner_id = $1", [leaving]);
   assert.equal((await planFor(db, env, leaving, now)).name, 'ended', 'an ended subscription without a key');
 });
@@ -172,11 +172,16 @@ test('personal URLs nearing the limit are told at 75%, 90% and 100%, and again o
   await db.query('DELETE FROM addresses');
 });
 
-// Possible misuse (lib/misuse.js), with OpenRouter's keys and its LLM stood in.
-function misuseWorld(keys, answer = 'A household on one connection, probably harmless.', env = {}) {
+// Possible misuse (lib/misuse.js), with NEAR AI's keys, its spend and its LLM stood in.
+function misuseWorld(keys, answer = 'A household on one connection, probably harmless.', env = {}, spent = 0) {
   const asked = [];
-  const includedAi = { enabled: () => true, allKeys: async () => keys, forOperator: async () => ({ key: 'sk-or-v1-operator', model: 'deepseek/deepseek-v4.1-flash' }) };
-  const request = async (url, opts) => { asked.push(JSON.parse(opts.body)); return new Response(JSON.stringify({ choices: [{ message: { content: answer } }] }), { status: 200 }); };
+  const includedAi = { enabled: () => true, allKeys: async () => keys, spentThisMonth: async () => spent,
+    forOperator: async () => ({ key: 'sk-operator', model: 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated', base: 'https://cloud-api.near.ai/v1' }) };
+  const request = async (url, opts) => {
+    assert.equal(url, 'https://cloud-api.near.ai/v1/chat/completions');
+    asked.push(JSON.parse(opts.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: answer } }] }), { status: 200 });
+  };
   return { asked, misuse: require('../lib/misuse').create({ db, env: { INCLUDED_AI_PER_CONNECTION: '3', ...env }, includedAi, request }) };
 }
 const hex = () => crypto.randomBytes(32).toString('hex');
@@ -194,8 +199,8 @@ test('possible misuse: nothing to report shows nothing and asks no LLM', async (
 test('possible misuse: spend on pace past the monthly budget is named, by how far into the month it is', async () => {
   await fresh();
   await db.query('DELETE FROM included_ai_keys; DELETE FROM retired_ai_keys; DELETE FROM addresses; DELETE FROM starter_grants');
-  const { misuse } = misuseWorld([{ hash: hex(), name: 'Closedhand insights', limit: 100, usage: 40, usage_monthly: 40 }], undefined, { OPENROUTER_MONTHLY_BUDGET_USD: '100' });
-  assert.deepEqual((await misuse.report(new Date(Date.UTC(2026, 10, 10)))).signs, ['OpenRouter spend is $40.00 so far this month, on pace for $133.33 against the $100.00 budget.']);
+  const { misuse } = misuseWorld([{ id: hex(), name: 'Closedhand insights', limit: 100, usage: 40 }], undefined, { INCLUDED_AI_MONTHLY_BUDGET_USD: '100' }, 40);
+  assert.deepEqual((await misuse.report(new Date(Date.UTC(2026, 10, 10)))).signs, ['NEAR AI spend is $40.00 so far this month, on pace for $133.33 against the $100.00 budget.']);
   assert.deepEqual((await misuse.report(new Date(Date.UTC(2026, 10, 20)))).signs, [], 'not past it later in the month');
 });
 
@@ -207,43 +212,52 @@ test('possible misuse: fast use, unused first months, full connections and loose
   const fast = await person('fast@example.com'), fastKey = hex();
   await urls(1, fast);
   await db.query("UPDATE addresses SET hostname = 'amber-lake-12.closedhand.ai', last_seen_at = now() WHERE owner_id = $1", [fast]);
-  await db.query("INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, granted_at, ends_at) VALUES ($1, $2, 20, now() - interval '2 days', now() + interval '28 days')", [fast, fastKey]);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, granted_at, ends_at) VALUES ($1, $2, 20, now() - interval '2 days', now() + interval '28 days')", [fast, fastKey]);
   // slow: $3 of $20 in ten days; never flagged.
   const slow = await person(), slowKey = hex();
   await urls(1, slow);
   await db.query('UPDATE addresses SET last_seen_at = now() WHERE owner_id = $1', [slow]);
-  await db.query("INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, granted_at) VALUES ($1, $2, 20, now() - interval '10 days')", [slow, slowKey]);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, granted_at) VALUES ($1, $2, 20, now() - interval '10 days')", [slow, slowKey]);
   // idle: a first month a day old whose personal URL never came online.
   const idle = await person(), idleKey = hex();
-  await db.query("INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd, granted_at) VALUES ($1, $2, 20, now() - interval '1 day')", [idle, idleKey]);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, granted_at) VALUES ($1, $2, 20, now() - interval '1 day')", [idle, idleKey]);
   // Three first months from one connection.
   for (let i = 0; i < 3; i++) await db.query("INSERT INTO starter_grants (person_hash, network_hash, granted_usd, granted_at) VALUES ($1, 'net-1', 20, now() - interval '1 day')", [hex()]);
   // A replaced key waiting to be deleted is not loose; one nobody holds is.
   const waiting = hex(), loose = hex();
-  await db.query('INSERT INTO retired_ai_keys (key_hash, tries) VALUES ($1, 4)', [waiting]);
+  await db.query('INSERT INTO retired_ai_keys (key_id, tries) VALUES ($1, 4)', [waiting]);
+  // A subscriber two days into a paid month whose key had used $10 before it:
+  // $16 of this month's $20 is fast too.
+  const paid = await person(), paidKey = hex();
+  await urls(1, paid);
+  await db.query("UPDATE addresses SET hostname = 'quiet-fern-40.closedhand.ai', last_seen_at = now() WHERE owner_id = $1", [paid]);
+  await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status, started_at) VALUES ($1, 'sub_fast', 'active', now())", [paid]);
+  await db.query("INSERT INTO included_ai_keys (owner_id, key_id, granted_usd, base_usd, base_for) VALUES ($1, $2, 0, 10, now() - interval '2 days')", [paid, paidKey]);
   const keys = [
-    { hash: fastKey, name: 'Closedhand ' + fast, limit: 20, usage: 15, usage_monthly: 15, limit_reset: null },
-    { hash: slowKey, name: 'Closedhand ' + slow, limit: 20, usage: 3, usage_monthly: 3, limit_reset: null },
-    { hash: idleKey, name: 'Closedhand ' + idle, limit: 20, usage: 0, usage_monthly: 0, limit_reset: null },
-    { hash: waiting, name: 'Closedhand ' + crypto.randomUUID(), limit: 5, usage: 1, usage_monthly: 1 },
-    { hash: loose, name: 'Closedhand ' + crypto.randomUUID(), limit: 20, usage: 4.5, usage_monthly: 4.5 },
-    { hash: hex(), name: 'Closedhand insights', limit: 1, usage: 0.01, usage_monthly: 0.01 },
+    { id: fastKey, name: 'Closedhand ' + fast, limit: 20, usage: 15 },
+    { id: slowKey, name: 'Closedhand ' + slow, limit: 20, usage: 3 },
+    { id: idleKey, name: 'Closedhand ' + idle, limit: 20, usage: 0 },
+    { id: paidKey, name: 'Closedhand ' + paid, limit: 30, usage: 26 },
+    { id: waiting, name: 'Closedhand ' + crypto.randomUUID(), limit: 5, usage: 1 },
+    { id: loose, name: 'Closedhand ' + crypto.randomUUID(), limit: 20, usage: 4.5 },
+    { id: hex(), name: 'Closedhand insights', limit: 1, usage: 0.01 },
   ];
   const { asked, misuse } = misuseWorld(keys, 'One connection has had three first months \u2014 maybe a household.');
   const got = await misuse.report(now);
   assert.deepEqual(got.signs, [
-    '1 OpenRouter key is live that no account holds, with $4.50 used this month.',
+    '1 NEAR AI key is live that no account holds, with $4.50 used.',
     'amber-lake-12 has used 75% of its first month ($15.00) in 2 days.',
+    "quiet-fern-40 has used 80% of this month's subscription fair use ($16.00) in 2 days.",
     `account ${idle.slice(0, 8)} got a first month, but its personal URL has never come online.`,
     '1 internet connection has reached the most first months one connection may have (3 in 30 days).',
-    '1 replaced or deleted key has not been deleted at OpenRouter after 3 tries.',
+    '1 replaced or deleted key has not been deleted at NEAR AI after 3 tries.',
   ]);
   assert.equal(got.summary, 'One connection has had three first months, maybe a household.', 'no dashes');
   assert.equal(asked.length, 1);
-  assert.equal(asked[0].model, 'deepseek/deepseek-v4.1-flash');
-  assert.deepEqual(asked[0].reasoning, { enabled: false }, 'a short answer, without thinking');
+  assert.equal(asked[0].model, 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated');
+  assert.deepEqual(asked[0].chat_template_kwargs, { enable_thinking: false }, 'a short answer, without thinking');
   assert.doesNotMatch(JSON.stringify(asked[0]), /@example\.com/, 'never an email');
   await misuse.report(now);
   assert.equal(asked.length, 1, 'the same signs are summed up once');
-  await db.query('DELETE FROM included_ai_keys; DELETE FROM retired_ai_keys; DELETE FROM addresses; DELETE FROM starter_grants');
+  await db.query('DELETE FROM included_ai_keys; DELETE FROM retired_ai_keys; DELETE FROM addresses; DELETE FROM starter_grants; DELETE FROM plus_subscriptions');
 });

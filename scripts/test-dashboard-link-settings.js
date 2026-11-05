@@ -288,7 +288,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
     plus: { available: true, active: false, prices: { plus: "$10" } } } } }));
   await own.state.loadMyAccount();
   assert.equal(own.el("my-plan-state").hidden, true, "nothing said about a plan they don't have");
-  assert.equal(own.el("my-plus-about").textContent, "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own. They run through OpenRouter, only on LLM providers that do not store or train on your data or conversations.");
+  assert.equal(own.el("my-plus-about").textContent, "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own. They run in sealed hardware, so nobody but you can read what you send or what they answer, not even closedhand.com.");
   assert.equal(own.el("my-plus-fine").textContent, "Cancel any time.");
   assert.equal(own.el("my-fair-use").hidden, true);
   assert.equal(own.el("my-plus-get").textContent, "Subscribe \u00b7 $10 a month");

@@ -47,21 +47,25 @@ Migrations in `migrations/` apply on start.
 | `PHONE_PROVISIONER_SECRET` | Shared with the provisioner Worker |
 | `BUG_RECEIPT_SECRET` | Signs bug report receipts (defaults to `SESSION_SECRET`) |
 | `ADDRESS_LIMIT` | How many personal URLs may exist (default 100) |
-| `OPENROUTER_PROVISIONING_KEY` | An OpenRouter management key; with it, each account that claims a personal URL gets its own OpenRouter key, Closedhand Managed Models (lib/included-ai.js); `TOKEN_ENCRYPTION_KEY` keys the fingerprints. Without it, no keys are made |
+| `NEAR_REFRESH_TOKEN` | A sign-in at NEAR AI (cloud.near.ai), as its refresh token (`rt_...`, copied from cloud.near.ai while signed in); with it, each account that claims a personal URL gets its own NEAR AI key, Closedhand Managed Models (lib/included-ai.js). NEAR replaces the token each time it is used, so closedhand.com keeps the current one sealed in its database (lib/near-session.js) and only starts again from this one when it changes; the maintainer is told when NEAR stops taking it. `TOKEN_ENCRYPTION_KEY` seals it and keys the fingerprints. Without it, no keys are made |
+| `NEAR_USER_AGENT` | The user agent of the browser that sign-in was made in, exactly: NEAR renews a sign-in only for the browser it was made in. A sign-in lasts a week from each renewal, and the hourly sweep renews it. Without it, no keys are made |
+| `NEAR_ORG_ID` | The NEAR AI organisation whose credit the keys draw on (optional when the sign-in has only one) |
+| `NEAR_WORKSPACE_ID` | The workspace in it the keys are made in (optional when it has only one) |
+| `NEAR_API_BASE` | NEAR AI's address for signing in and managing keys (default `https://cloud-api.near.ai`; NEAR says it is moving) |
 | `INCLUDED_AI_FIRST_MONTH_DAYS` | How long the first month of Closedhand Managed Models lasts (default 30). Given once per sign-in, ever: a one-way fingerprint of it stays after the account is deleted. Its key has the fair-use ceiling, never reset, and is stopped when the month ends unless a subscription takes over |
 | `INCLUDED_AI_MONTHLY_PEOPLE` | How many first months you expect to start in a calendar month (default 100). Never a stop: the maintainer is told at 75%, 90% and 100%, then every further 25% (lib/capacity.js) |
 | `INCLUDED_AI_DAILY_PEOPLE` | First months in 24 hours worth telling the maintainer about as a burst (default 25). Never a stop |
-| `OPENROUTER_MONTHLY_BUDGET_USD` | The monthly budget set in OpenRouter, the one stop for every Managed Models key; the misuse check weighs this month's pace against it. OpenRouter's own low-balance email warns before the credit runs out |
+| `INCLUDED_AI_MONTHLY_BUDGET_USD` | The monthly NEAR AI spend you expect across every Managed Models key; the misuse check weighs this month's pace against it. The organisation's credit at NEAR is the stop, shown on /insights with the days it lasts |
 | `OPERATOR_EMAILS` | The maintainers' sign-in emails, comma-separated: they can open /insights, and an account signed in with one of them, its address verified, collects the notices above and Closedhand says them in its chat. A notice not collected within a day is emailed to `ASSISTANT_EMAIL_OPERATOR` through the `MAIL_*` sender |
 | `INCLUDED_AI_PER_CONNECTION` | How many people one internet connection can claim it for in 30 days (default 10, so an office sharing one connection fits) |
-| `INCLUDED_AI_FAIR_USE_USD` | Fair use: the most LLM use a key allows (default 20), for the whole first month, or in each calendar month of a subscription (OpenRouter resets it monthly; carrying on past it doubles it for that month) |
+| `INCLUDED_AI_FAIR_USE_USD` | Fair use: the most LLM use a key allows (default 20), for the whole first month, or in each paid month of a subscription (each one raises the key's spending limit at NEAR by it; carrying on past it doubles it for that month) |
 | `POLAR_ACCESS_TOKEN` | A Polar organization access token for the Managed Models subscription (lib/plus.js), with the scopes `checkouts:write`, `customer_sessions:write` and `subscriptions:write`. Without it, and the three below, subscribing is off |
 | `POLAR_WEBHOOK_SECRET` | The secret of Polar's webhook to `BASE_URL/api/plus/webhook`, as Polar shows it (`whsec_...`), sending `subscription.created`, `subscription.updated`, `subscription.active`, `subscription.uncanceled`, `subscription.canceled`, `subscription.revoked` and `order.paid` |
 | `POLAR_PLUS_PRODUCT_ID` | The Managed Models subscription product: monthly |
 | `POLAR_EXTEND_PRODUCT_ID` | The one-time product that carries a subscriber on past fair use to the end of the month (optional) |
 | `POLAR_SERVER` | `sandbox` to use Polar's sandbox (sandbox-api.polar.sh) while trying it out; anything else is live |
-| `INCLUDED_AI_MODELS` | The models those keys may use, comma-separated: the first for chat, the second for support work (default `deepseek/deepseek-v4.1-flash`). Computers pick up a change within a few hours |
-| `INCLUDED_AI_RETIRING_MODELS` | Models just switched away from, still allowed while computers switch; clear it after a day |
+| `INCLUDED_AI_MODELS` | The NEAR AI models those keys are for, comma-separated: the first for chat, the second for support work (default `deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated`). Text only: pictures go to the vision language model on the person's computer. Computers pick up a change within the hour |
+| `INCLUDED_AI_MODEL_NAME` | The chat model's name as people read it in Settings and setup (default `DeepSeek V4.1 Flash, uncensored`). Change it with `INCLUDED_AI_MODELS` |
 | `TRUSTED_PROXY_HOPS` | Proxies in front that add X-Forwarded-For (default 2: Cloudflare, then Railway) |
 | `ASSISTANT_EMAIL_ENABLED`, `ASSISTANT_EMAIL_RELEASED`, `ASSISTANT_EMAIL_PRODUCTION` | All `1` to offer assistant email; any other value keeps it off |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | The mail transport's AWS user: send through SES, read the mail queues and bucket, invoke the guard |

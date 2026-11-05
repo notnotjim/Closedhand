@@ -486,8 +486,7 @@
         <div class="card-body">
           <div id="model-included" hidden>
             <p class="model-current"><strong>Closedhand Managed Models</strong><span id="model-included-line" class="status"></span></p>
-            <p class="note">Closedhand picks the best LLM for each job, from any provider, and switches when a better one is out.</p>
-            <p class="note">Managed Models only ever uses LLM providers that do not store or train on your data or conversations.</p>
+            <p class="note"><span id="model-included-name">DeepSeek V4.1 Flash, uncensored</span>. It runs in sealed hardware, so nobody but you can read what you send or what it answers. When a better uncensored LLM is available, Closedhand switches to it for you.</p>
             <p class="quiet-links"><a href="#" id="model-own">Use your own LLM provider instead</a></p>
           </div>
           <div id="model-own-account">
@@ -971,6 +970,7 @@
   function renderIncluded(state) {
     $("#model-included").hidden = !included();
     $("#model-own-account").hidden = included();
+    if (state.modelIncludedName) $("#model-included-name").textContent = state.modelIncludedName;
     $("#model-included-line").textContent = state.modelIncluded === "ready" ? "Ready."
       : personalUrl.settled() ? "Getting it ready." : "Ready once your personal URL is claimed.";
   }

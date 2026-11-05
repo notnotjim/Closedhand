@@ -1,16 +1,18 @@
 // The AI that comes with Closedhand on the person's computer: the key a
 // personal URL claim brings is kept sealed and never handed on, it becomes the
-// models unless the person set up their own AI account, what is left is read
-// from OpenRouter with the key itself, the person is told once when most of it
-// is used, and a refusal is said in fixed words. Invented keys and people only.
+// models on the provider closedhand.com names (NEAR AI) unless the person set
+// up their own AI account, what is left is what closedhand.com last said, the
+// person is told once when most of it is used, and a refusal is said in fixed
+// words. Invented keys and people only.
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const vm = require("node:vm"), fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
 process.env.TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || crypto.randomBytes(32).toString("base64");
 const root = path.join(__dirname, "..");
 const policy = require("../lib/model-policy");
-const KEY = "sk-or-v1-" + "ab".repeat(32);
-const MODELS = { chat: "deepseek/deepseek-v4.1-flash", background: "deepseek/deepseek-v4.1-flash" };
+const KEY = "sk-" + "ab".repeat(16);
+const NEAR_MODEL = "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated";
+const MODELS = { provider: "near", chat: NEAR_MODEL, background: NEAR_MODEL };
 const tick = () => new Promise((r) => setImmediate(r));
 async function until(check) { for (let i = 0; i < 50 && !check(); i++) await tick(); }
 
@@ -56,7 +58,7 @@ function setup(store, prepare) {
     "./model-config": { prepare, withConfig: (settings, config) => ({ ...settings, model_config: policy.sealConfig(config), llm_provider: "custom" }) },
   }, { fetch: async () => ({ ok: false }) });
 }
-const prepared = (input) => ({ version: 1, connections: { primary: { provider: "openrouter", backend: "custom", baseUrl: "https://openrouter.ai/api/v1", apiKey: input.primary.apiKey } },
+const prepared = (input) => ({ version: 1, connections: { primary: { provider: input.primary.provider, backend: "custom", baseUrl: policy.BASES[input.primary.provider], apiKey: input.primary.apiKey } },
   roles: { chat: { connection: "primary", model: input.model }, background: { connection: "primary", model: input.backgroundModel }, vision: null } });
 
 test("the key becomes the models, sealed, reading images with the same model, support on it too", async () => {
@@ -68,7 +70,7 @@ test("the key becomes the models, sealed, reading images with the same model, su
   assert.match(store.box.settings.included_api_key, /^enc:v1:/);
   assert.ok(!JSON.stringify(store.box.settings).includes(KEY), "the key is never stored readable");
   assert.equal(store.box.settings.model_config.included, true);
-  assert.deepEqual({ provider: asked.primary.provider, model: asked.model, backgroundMode: asked.backgroundMode, visionMode: asked.visionMode }, { provider: "openrouter", model: MODELS.chat, backgroundMode: "same", visionMode: "same" });
+  assert.deepEqual({ provider: asked.primary.provider, model: asked.model, backgroundMode: asked.backgroundMode, visionMode: asked.visionMode }, { provider: "near", model: MODELS.chat, backgroundMode: "same", visionMode: "same" });
   assert.equal(policy.getRole(store.box.settings, "chat").apiKey, KEY, "it opens only where a role is used");
   assert.equal(store.box.settings.preferred_name, "Mira", "nothing else changes");
 });
@@ -130,6 +132,27 @@ test("a person's own AI account stays; the included key waits beside it", async 
   assert.equal(await setup(settingsStore({}), async (input) => prepared(input)).useOwn(), false, "nothing kept: their own is set up in Models");
 });
 
+test("a key NEAR has only just made is waited for when it is refused, then checked again", async () => {
+  const store = settingsStore({});
+  const waited = [];
+  let asks = 0;
+  const ai = load("webapp/included-ai-setup.js", {
+    "./db": { supabase: store.supabase }, "./admin": { getAdminUserId: () => "admin" }, "./settings-patch": store.patch, "./model-policy": policy,
+    "./model-config": { prepare: async (input) => { if (++asks === 1) throw Object.assign(new Error("The model provider returned HTTP 401. The provider rejected the API key."), { status: 401 }); return prepared(input); },
+      withConfig: (settings, config) => ({ ...settings, model_config: policy.sealConfig(config), llm_provider: "custom" }) },
+  }, { fetch: async () => ({ ok: false }), setTimeout: (fn, ms) => { waited.push(ms); return setImmediate(fn); } });
+  await ai.receive({ key: KEY, models: MODELS });
+  await until(() => store.box.settings.model_config);
+  assert.deepEqual(waited, [5000], "five seconds, then checked again");
+  assert.equal(store.box.settings.model_config.included, true);
+  assert.equal(store.box.settings.included_ai.error, undefined);
+  // A key already in use that is refused is not waited for.
+  asks = 0;
+  waited.length = 0;
+  await assert.rejects(ai.use(), /401/);
+  assert.deepEqual(waited, []);
+});
+
 test("a check that fails is recorded, so setup asks for an AI account instead of waiting", async () => {
   const store = settingsStore({});
   const ai = setup(store, async () => { throw new Error("The model provider returned HTTP 503."); });
@@ -141,52 +164,47 @@ test("a check that fails is recorded, so setup asks for an AI account instead of
 
 test("Closedhand's pick is followed: a changed model is switched to and named", async () => {
   const store = settingsStore({});
-  let pick = MODELS, asked = 0;
+  let pick = { ...MODELS, name: "DeepSeek V4.1 Flash, uncensored" }, asked = 0;
   const realFetch = global.fetch;
   const ai = load("webapp/included-ai-setup.js", {
     "./db": { supabase: store.supabase }, "./admin": { getAdminUserId: () => "admin" }, "./settings-patch": store.patch, "./model-policy": policy,
     "./model-config": { prepare: async (input) => { asked++; return prepared(input); }, withConfig: (settings, config) => ({ ...settings, model_config: policy.sealConfig(config), llm_provider: "custom" }) },
     "./phone-registration": { includedAiState: async () => ({ models: pick }) },
-  }, { fetch: async (url) => ({ ok: true, json: async () => ({ data: { name: url.includes("qwen") ? "Qwen: Qwen3 Next" : "DeepSeek: DeepSeek V4.1 Flash" } }) }) });
-  await ai.receive({ key: KEY, models: MODELS });
+  }, { fetch: async (url) => { throw new Error("no lookup: closedhand.com names the model, " + url); } });
+  await ai.receive({ key: KEY, models: pick });
   await until(() => store.box.settings.model_config);
-  assert.equal(store.box.settings.included_ai.name, "DeepSeek V4.1 Flash", "the name people know it by");
+  assert.equal(store.box.settings.included_ai.name, "DeepSeek V4.1 Flash, uncensored", "the name closedhand.com gives it");
   assert.equal(await ai.refresh(), false, "nothing changed, nothing done");
-  pick = { chat: "qwen/qwen3-next", background: "qwen/qwen3-next" };
+  pick = { provider: "near", chat: "zai-org/GLM-5.3-Flash", background: "zai-org/GLM-5.3-Flash", name: "GLM 5.3 Flash, uncensored" };
   assert.equal(await ai.refresh(), true);
-  assert.equal(store.box.settings.included_ai.name, "Qwen3 Next");
-  assert.equal(policy.getRole(store.box.settings, "chat").model, "qwen/qwen3-next", "switched over");
+  assert.equal(store.box.settings.included_ai.name, "GLM 5.3 Flash, uncensored");
+  assert.equal(policy.getRole(store.box.settings, "chat").model, "zai-org/GLM-5.3-Flash", "switched over");
+  assert.equal(policy.getRole(store.box.settings, "chat").baseUrl, "https://cloud-api.near.ai/v1", "on the provider named");
   assert.equal(asked, 2);
   global.fetch = realFetch;
 });
 
-test("only an OpenRouter key and a model name are taken", async () => {
+test("only a key, a provider Closedhand knows and a model name are taken", async () => {
   const store = settingsStore({});
   const ai = setup(store, async (input) => prepared(input));
-  for (const bad of [null, { key: "sk-ant-x", models: MODELS }, { key: KEY, models: { chat: "../etc" } }, { key: KEY + "\n", models: MODELS }]) assert.equal(await ai.receive(bad), false);
+  for (const bad of [null, { key: "sk-ant-x", models: MODELS }, { key: KEY, models: { ...MODELS, chat: "../etc" } }, { key: KEY + "\n", models: MODELS },
+    { key: KEY, models: { chat: NEAR_MODEL } }, { key: KEY, models: { ...MODELS, provider: "somewhere-else" } }, { key: KEY, models: { ...MODELS, provider: "toString" } }]) assert.equal(await ai.receive(bad), false);
   assert.deepEqual(store.box.settings, {});
 });
 
-test("what is left is read from OpenRouter with the person's own key", async () => {
+test("what is left is what closedhand.com last said: a NEAR key can't read it itself", async () => {
   const included = require("../lib/included-ai");
-  const settings = { included_api_key: policy.sealKey(KEY), model_config: { included: true } };
-  const seen = [];
+  const settings = { included_api_key: policy.sealKey(KEY), model_config: { included: true }, included_ai: { usage: { limit: 20, used: 17.5 } } };
   const real = global.fetch;
-  global.fetch = async (url, opts) => { seen.push({ url, opts }); return { ok: true, json: async () => ({ data: { limit: 10, usage: 8.5, limit_remaining: 1.5 } }) }; };
+  global.fetch = async () => { throw new Error("nothing is read with the key"); };
   try {
-    assert.deepEqual(await included.credit(settings), { limit: 10, used: 8.5, left: 1.5 });
-    assert.equal(seen[0].url, "https://openrouter.ai/api/v1/key");
-    assert.equal(seen[0].opts.headers.Authorization, "Bearer " + KEY);
-    assert.equal(seen[0].opts.headers["X-Title"], "Closedhand");
-    global.fetch = async () => ({ ok: false, status: 401 });
-    assert.equal(await included.credit(settings), null, "unknown, not zero, when it can't be read");
+    assert.deepEqual(await included.credit(settings), { limit: 20, used: 17.5, left: 2.5 });
+    assert.equal(await included.credit({ ...settings, included_ai: {} }), null, "unknown, not zero, when nothing was said");
+    assert.equal(await included.credit({ ...settings, included_api_key: undefined }), null, "no key, nothing left");
   } finally { global.fetch = real; }
   assert.equal(included.inUse(settings), true);
   assert.equal(included.inUse({ included_api_key: "x", model_config: { roles: {} } }), false, "their own account, not the included one");
-  // A subscription counts this paid month, from the use the key had when it began (the plan's base).
-  global.fetch = async () => ({ ok: true, json: async () => ({ data: { limit: 47, usage: 31, limit_remaining: 16 } }) });
-  const plus = { ...settings, included_ai: { ...settings.included_ai, plan: { name: "plus", renews_at: "2026-12-15T00:00:00.000Z", base: 27 } } };
-  try { assert.deepEqual(await included.credit(plus), { limit: 20, used: 4, left: 16 }); } finally { global.fetch = real; }
+  for (const f of ["lib/included-ai.js", "webapp/included-ai.js"]) assert.doesNotMatch(fs.readFileSync(path.join(root, f), "utf8"), /openrouter/i);
 });
 
 test("what Closedhand says about Managed Models follows the plan, own provider first, never money", () => {
@@ -329,9 +347,10 @@ test("Closedhand speaks as itself: it names its LLM only when asked, explains ho
   assert.match(engine, /A subscription \(\$\{prices\.plus \? prices\.plus \+ " a month" : "monthly"\}\) keeps them going/, "and the subscription, with its price");
   assert.match(engine, /let prompt = identityLines\(\) \+ builtLines\(\) \+/, "how it is built goes in the full prompt only");
   assert.match(engine, /HOW YOU ARE BUILT \(public: Closedhand is open source/);
-  assert.match(engine, /Managed Models requests go from this computer through OpenRouter only to LLM providers that keep nothing sent and don't train on it/, "asked what happens to what it sends, it knows");
-  for (const page of ["webapp/views/setup.html", "webapp/views/dashboard.html"]) assert.match(fs.readFileSync(path.join(root, page), "utf8"), /Managed Models only ever uses LLM providers that do not store or train on your data or conversations\./, page);
-  assert.match(fs.readFileSync(path.join(root, "closedhand-com/public/account.js"), "utf8"), /They run through OpenRouter, only on LLM providers that do not store or train on your data or conversations\./, "the subscription's blurb says it too");
+  assert.match(engine, /so nobody but \$\{userName\} can read what is sent or answered, not even closedhand\.com/, "asked what happens to what it sends, it knows");
+  assert.match(engine, /never name the company in chat/, "and never names who runs the hardware");
+  assert.doesNotMatch(engine.split("\n").filter((l) => /Managed Models/.test(l) && !/^\s*\/\//.test(l)).join("\n"), /NEAR|OpenRouter/, "nothing it knows about Managed Models names a company");
+  assert.match(fs.readFileSync(path.join(root, "closedhand-com/public/account.js"), "utf8"), /They run in sealed hardware, so nobody but you can read what you send or what they answer, not even closedhand\.com\./, "the subscription's blurb says it too");
   assert.match(engine, /if \(pick && settings\.model_config\?\.included\) return `\$\{settings\.included_ai\?\.name \|\| pick\.model\} \(Closedhand Managed Models/);
   assert.doesNotMatch(engine, /technical architecture/, "how it is built is not a secret");
   assert.doesNotMatch(engine, /closedhand\.com never sees/, "remote dashboard pages pass through the relay");
@@ -342,25 +361,32 @@ function refresher(store, answer) {
     "./db": { supabase: store.supabase }, "./admin": { getAdminUserId: () => "admin" }, "./settings-patch": store.patch, "./model-policy": policy,
     "./model-config": { prepare: async (input) => prepared(input), withConfig: (settings, config) => ({ ...settings, model_config: policy.sealConfig(config), llm_provider: "custom" }) },
     "./phone-registration": { includedAiState: async () => answer.now },
-  }, { fetch: async () => ({ ok: true, json: async () => ({ data: { name: "DeepSeek: DeepSeek V4.1 Flash" } }) }) });
+  });
 }
 
-test("each hour: the plan is kept, a waiting key is taken sealed, and notices are kept once for the bot", async () => {
+test("each hour: the plan and its fair use are kept, a waiting key is taken sealed, and notices are kept once for the bot", async () => {
   const store = settingsStore({});
   const notice = { id: "first-months-75", text: "Free first months this month are at 75% of what you set." };
-  const answer = { now: { models: MODELS, plan: { name: "plus", renews_at: "2026-04-01T00:00:00Z", email: true, base: 12.5, ignored: "x" }, prices: { plus: "$10", extend: "$8" }, key: KEY, notices: [notice, { id: "bad id!", text: "x" }] } };
+  const answer = { now: { models: MODELS, plan: { name: "plus", renews_at: "2026-04-01T00:00:00Z", email: true, ignored: "x" }, usage: { limit: 20, used: 3.251 }, prices: { plus: "$10", extend: "$8" }, key: KEY, notices: [notice, { id: "bad id!", text: "x" }] } };
   const ai = refresher(store, answer);
   assert.equal(await ai.refresh(), true);
   await until(() => store.box.settings.model_config);
   assert.match(store.box.settings.included_api_key, /^enc:v1:/);
   assert.ok(!JSON.stringify(store.box.settings).includes(KEY), "the key is never stored readable");
   assert.equal(store.box.settings.model_config.included, true, "set up as a claim's key is");
-  assert.deepEqual(store.box.settings.included_ai.plan, { name: "plus", email: true, renews_at: "2026-04-01T00:00:00.000Z", base: 12.5 }, "the base this paid month counts from is kept");
+  assert.deepEqual(store.box.settings.included_ai.plan, { name: "plus", email: true, renews_at: "2026-04-01T00:00:00.000Z" });
+  assert.deepEqual(store.box.settings.included_ai.usage, { limit: 20, used: 3.25 }, "how much of this paid month's fair use is used, in cents");
   assert.deepEqual(store.box.settings.included_ai.prices, { plus: "$10", extend: "$8" }, "what the subscription costs, to say when asked");
   assert.deepEqual(store.box.settings.included_notices, [notice], "only well-formed notices");
   // The same answer again, without a key: nothing new.
-  answer.now = { models: MODELS, plan: answer.now.plan, prices: answer.now.prices, notices: [notice] };
+  answer.now = { models: MODELS, plan: answer.now.plan, usage: answer.now.usage, prices: answer.now.prices, notices: [notice] };
   assert.equal(await ai.refresh(), false);
+  // More used: kept; something odd: the last kept stays.
+  answer.now = { ...answer.now, usage: { limit: 20, used: 16.5 } };
+  assert.equal(await ai.refresh(), true);
+  answer.now = { ...answer.now, usage: { limit: "lots", used: -1 } };
+  assert.equal(await ai.refresh(), false);
+  assert.deepEqual(store.box.settings.included_ai.usage, { limit: 20, used: 16.5 });
   assert.equal(store.box.settings.included_notices.length, 1, "kept once");
   // Sent by the bot: let go, and never kept again.
   store.box.settings.included_notices_sent = [notice.id];
@@ -472,22 +498,28 @@ test("use on Managed Models is recorded by that name alone, whichever LLMs carri
   }
 });
 
-// Closedhand Managed Models are shown by that name with what they are, in
-// setup and Settings alike: Closedhand picks the best LLM for each job from
-// any provider. Which LLM it is right now is said in chat when asked, so the
-// page has no hover naming it (and no lookup feeding one).
-test("Managed Models say what they are, and which LLM is said in chat when asked", () => {
+// Closedhand Managed Models are shown with the LLM they run, by the name
+// closedhand.com gives it, and what that means for the person, in setup and
+// Settings alike. The company running the hardware is named only on the
+// Privacy page.
+test("Managed Models say which LLM they run and that nobody else can read it", () => {
   const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
-  const line = "Closedhand picks the best LLM for each job, from any provider, and switches when a better one is out.";
-  for (const f of ["webapp/views/setup.html", "webapp/views/dashboard.html"]) {
+  const line = "It runs in sealed hardware, so nobody but you can read what you send or what it answers. When a better uncensored LLM is available, Closedhand switches to it for you.";
+  for (const [f, id] of [["webapp/views/setup.html", "model-included-name"], ["webapp/views/dashboard.html", "llm-managed-model"]]) {
     const page = read(f);
-    assert.ok(page.includes(line), f);
+    assert.ok(page.includes(`<span id="${id}">DeepSeek V4.1 Flash, uncensored</span>. ${line}`), f);
     assert.doesNotMatch(page, /llmHint\(/, `${f}: no hover naming the LLM`);
   }
-  assert.doesNotMatch(read("webapp/public/llm-hint.js"), /window\.llmHint\b/);
-  assert.doesNotMatch(read("webapp/setup-state.js"), /modelIncludedName/);
-  assert.doesNotMatch(read("webapp/server.js"), /model: settings\.included_ai\?\.name/);
-  assert.match(read("lib/engine.js"), /\(Closedhand Managed Models, which Closedhand picks, through OpenRouter\)/, "chat still names it when asked");
+  assert.match(read("webapp/setup-state.js"), /modelIncludedName: settings\.included_ai\?\.name \|\| null/, "setup shows the name closedhand.com gave");
+  assert.match(read("webapp/server.js"), /name: settings\.included_ai\?\.name \|\| null/, "and so does Settings");
+  assert.match(read("closedhand-com/lib/included-ai.js"), /INCLUDED_AI_MODEL_NAME \|\| 'DeepSeek V4.1 Flash, uncensored'/);
+  assert.match(read("lib/engine.js"), /\(Closedhand Managed Models, which Closedhand picks\)/, "chat names the LLM when asked");
+  for (const f of ["webapp/views/setup.html", "webapp/views/dashboard.html", "closedhand-com/public/account.js", "closedhand-com/views/home.html"]) {
+    assert.doesNotMatch(read(f), /NEAR AI|OpenRouter, only on|through OpenRouter/, `${f}: names no company for Managed Models`);
+  }
+  for (const f of ["webapp/views/privacy.html", "closedhand-com/views/privacy.html"]) {
+    assert.match(read(f), /So nobody but you can read what you send or what comes back, not even closedhand\.com or NEAR AI\./, `${f}: the Privacy page says who and what they see`);
+  }
 });
 
 test("a model's price is the one the company it is used with charges, from OpenRouter's public list, read once a day", async () => {

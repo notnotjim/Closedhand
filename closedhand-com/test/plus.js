@@ -1,18 +1,22 @@
 // The Managed Models subscription (lib/plus.js) against a real Postgres, in a database of its own
 // so it can run beside e2e.js (which empties its own as it starts), with a
-// stand-in Polar and a stand-in OpenRouter: nothing leaves this machine.
+// stand-in Polar and a stand-in NEAR AI: nothing leaves this machine.
 // Invented people only.
 // Run: DATABASE_URL=postgres://... node --test closedhand-com/test/plus.js
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { Pool } = require('pg');
+// Seals closedhand.com's sign-in at NEAR (lib/near-session.js).
+process.env.TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || crypto.randomBytes(32).toString('base64');
 const { migrate } = require('../lib/db');
 const { create, verify } = require('../lib/plus');
 const { planFor } = require('../lib/plan');
+const { nearAi, SIGN_IN, BROWSER } = require('./near-ai');
+// One NEAR for every world here, as the database keeps its sign-in.
+const near = nearAi();
 
 const PLUS = '11111111-1111-4111-8111-111111111111', EXTEND = '22222222-2222-4222-8222-222222222222';
-const MANAGEMENT = 'sk-or-v1-' + 'm'.repeat(64);
 const SECRET = 'whsec_' + crypto.randomBytes(32).toString('base64');
 const NAME = 'closedhand_plus_test';
 let admin, db;
@@ -32,34 +36,20 @@ after(async () => {
   await admin?.end();
 });
 
-// OpenRouter's keys and guardrails, and Polar's checkouts, portal and
-// subscriptions, as far as Closedhand uses them.
+// NEAR AI's keys, and Polar's checkouts, portal and subscriptions, as far as
+// Closedhand uses them.
 function world({ polarFails = null, managed = true } = {}) {
-  const keys = new Map(), calls = [];
+  near.keys.clear();
+  Object.assign(near.state, { down: false, deleteFails: false, refuse: false });
+  const keys = near.keys, calls = [];
   const reply = (status, body) => new Response(body === undefined ? '' : JSON.stringify(body), { status });
   // Polar's view of each subscription (live unless a test ends it), and the
-  // orders given back.
-  const state = { openRouterDown: false, deleteFails: false, polarSubs: new Map(), polarMonths: new Map(), refunds: [] };
+  // orders given back; NEAR's own state: down, or refusing to delete keys.
+  const state = { near: near.state, polarSubs: new Map(), polarMonths: new Map(), refunds: [] };
   const request = async (url, opts = {}) => {
     const method = opts.method || 'GET', body = opts.body ? JSON.parse(opts.body) : null;
     calls.push({ method, url, body });
-    if (url.startsWith('https://openrouter.ai/api/v1')) {
-      assert.equal(opts.headers.Authorization, 'Bearer ' + MANAGEMENT);
-      if (state.openRouterDown) throw new Error('fetch failed');
-      const path = url.slice('https://openrouter.ai/api/v1'.length);
-      if (path.startsWith('/guardrails?')) return reply(200, { data: [{ id: 'rail-1', name: 'Closedhand included AI' }] });
-      if (path === '/guardrails/rail-1') return reply(200, { data: {} });
-      if (path === '/guardrails/rail-1/assignments/keys') { for (const h of body.key_hashes) keys.get(h).guarded = true; return reply(200, {}); }
-      if (path === '/keys' && method === 'POST') {
-        const hash = crypto.randomBytes(32).toString('hex'), key = 'sk-or-v1-' + crypto.randomBytes(32).toString('hex');
-        keys.set(hash, { key, limit: body.limit, limit_reset: body.limit_reset || null, usage: 0, guarded: false });
-        return reply(201, { data: { hash, limit: body.limit }, key });
-      }
-      const m = path.match(/^\/keys\/([a-f0-9]{64})$/);
-      if (m && method === 'GET') { const k = keys.get(m[1]); return k ? reply(200, { data: { limit: k.limit, usage: k.usage, usage_monthly: k.usage_monthly ?? k.usage, limit_reset: k.limit_reset } }) : reply(404, {}); }
-      if (m && method === 'PATCH') { Object.assign(keys.get(m[1]), body); return reply(200, { data: keys.get(m[1]) }); }
-      if (m && method === 'DELETE') { if (state.deleteFails) return reply(500, {}); keys.delete(m[1]); return reply(200, {}); }
-    }
+    if (url.startsWith('https://cloud-api.near.ai/')) return near.request(url, opts);
     if (url.startsWith('https://api.polar.sh/') || url.startsWith('https://sandbox-api.polar.sh/')) {
       assert.equal(opts.headers.Authorization, 'Bearer polar-token');
       const path = url.replace(/^https:\/\/(sandbox-)?api\.polar\.sh/, '');
@@ -86,26 +76,29 @@ function world({ polarFails = null, managed = true } = {}) {
     throw new Error('unexpected ' + method + ' ' + url);
   };
   const env = {
-    OPENROUTER_PROVISIONING_KEY: managed ? MANAGEMENT : '', TOKEN_ENCRYPTION_KEY: 'k'.repeat(44),
+    NEAR_REFRESH_TOKEN: managed ? SIGN_IN : '', NEAR_USER_AGENT: managed ? BROWSER : '', TOKEN_ENCRYPTION_KEY: 'k'.repeat(44),
     POLAR_ACCESS_TOKEN: 'polar-token', POLAR_WEBHOOK_SECRET: SECRET, POLAR_PLUS_PRODUCT_ID: PLUS, POLAR_EXTEND_PRODUCT_ID: EXTEND,
   };
   const includedAi = require('../lib/included-ai').create({ db, env, request });
   const plus = create({ db, env, request, includedAi, baseUrl: 'https://closedhand.com' });
-  return { keys, calls, state, plus, includedAi };
+  // The same, as a closedhand.com that has not read NEAR's list of keys yet
+  // (it keeps it five minutes).
+  const afresh = () => create({ db, env, request, includedAi: require('../lib/included-ai').create({ db, env, request }), baseUrl: 'https://closedhand.com' });
+  return { keys, calls, state, plus, includedAi, afresh };
 }
 
 let people = 0;
 async function person({ freeKey = null } = {}, w) {
   const id = (await db.query("INSERT INTO owners (provider, subject, email) VALUES ('google', $1, $2) RETURNING id", ['g-plus-' + (++people), `person${people}@example.com`])).rows[0].id;
   if (freeKey) {
-    const hash = crypto.randomBytes(32).toString('hex');
-    w.keys.set(hash, { key: 'sk-or-v1-free', limit: 10, limit_reset: null, usage: freeKey.usage || 0, guarded: true });
-    await db.query('INSERT INTO included_ai_keys (owner_id, key_hash, granted_usd) VALUES ($1, $2, 10)', [id, hash]);
-    return { id, hash };
+    const key = crypto.randomUUID();
+    w.keys.set(key, { name: 'Closedhand ' + id, key: 'sk-' + crypto.randomBytes(16).toString('hex'), limit: 10, usage: freeKey.usage || 0 });
+    await db.query('INSERT INTO included_ai_keys (owner_id, key_id, granted_usd) VALUES ($1, $2, 10)', [id, key]);
+    return { id, key };
   }
   return { id };
 }
-const heldKey = async (w, ownerId) => w.keys.get((await db.query('SELECT key_hash FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0]?.key_hash);
+const heldKey = async (w, ownerId) => w.keys.get((await db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0]?.key_id);
 let events = 0;
 // A subscription event, in a paid month from start to end (Polar's own dates,
 // from the day the person subscribed).
@@ -167,12 +160,12 @@ test('subscribing sets the key to a paid month of fair use; carrying on doubles 
   const p = await person({ freeKey: { usage: 3 } }, w);
   assert.equal(await w.plus.handle(subscription('subscription.created', p.id, { status: 'incomplete' })), 'subscription incomplete');
   await settled(p.id);
-  assert.deepEqual([(await heldKey(w, p.id)).limit, (await heldKey(w, p.id)).limit_reset], [10, null], 'a payment not through yet changes nothing');
+  assert.equal((await heldKey(w, p.id)).limit, 10, 'a payment not through yet changes nothing');
   assert.equal((await w.plus.state(p.id)).active, false);
 
   await w.plus.handle(subscription('subscription.active', p.id));
   await settled(p.id);
-  assert.deepEqual([(await heldKey(w, p.id)).limit, (await heldKey(w, p.id)).limit_reset], [23, null], 'the whole fair use, leaving out the 3 the first month used');
+  assert.equal((await heldKey(w, p.id)).limit, 23, 'the whole fair use, leaving out the 3 the first month used');
   assert.deepEqual(await w.plus.state(p.id), { available: true, active: true, renews_at: '2026-12-01T00:00:00.000Z', extended: false, nearly: false });
 
   assert.equal(await w.plus.handle(paid(p.id)), 'carried on to the end of the month');
@@ -193,7 +186,7 @@ test('subscribing sets the key to a paid month of fair use; carrying on doubles 
   (await heldKey(w, p.id)).usage = 7.456;
   await w.plus.handle(subscription('subscription.revoked', p.id, { status: 'canceled', cancel: true }));
   await settled(p.id);
-  assert.deepEqual([(await heldKey(w, p.id)).limit, (await heldKey(w, p.id)).limit_reset], [7.45, null], 'stopped where it stands');
+  assert.equal((await heldKey(w, p.id)).limit, 7.456, 'stopped where it stands');
   assert.equal((await w.plus.state(p.id)).active, false);
 });
 
@@ -203,7 +196,7 @@ test('a checkout that never went through leaves the free use alone', async () =>
   await w.plus.handle(subscription('subscription.created', p.id, { status: 'incomplete' }));
   await w.plus.handle(subscription('subscription.updated', p.id, { status: 'incomplete_expired' }));
   await settled(p.id);
-  assert.deepEqual([(await heldKey(w, p.id)).limit, (await heldKey(w, p.id)).limit_reset], [10, null]);
+  assert.equal((await heldKey(w, p.id)).limit, 10);
 });
 
 test('events for other products or unknown accounts are ignored', async () => {
@@ -222,32 +215,32 @@ test('a subscriber whose account has no key gets one from their computer, once; 
   await settled(p.id);
   assert.equal(await w.includedAi.collect(free.id), null, 'not a subscriber');
   const got = await w.includedAi.collect(p.id);
-  assert.match(got.key, /^sk-or-v1-[a-f0-9]{64}$/);
+  assert.match(got.key, /^sk-[a-f0-9]{32}$/);
   const held = await heldKey(w, p.id);
   assert.equal(held.key, got.key);
-  assert.deepEqual([held.limit, held.limit_reset, held.guarded], [20, null, true], 'a paid month of fair use, behind the guardrail');
+  assert.equal(held.limit, 20, 'a paid month of fair use');
   const row = (await db.query('SELECT * FROM included_ai_keys WHERE owner_id = $1', [p.id])).rows[0];
-  assert.ok(!JSON.stringify(row).includes(got.key), 'only its hash is kept');
+  assert.ok(!JSON.stringify(row).includes(got.key), 'only NEAR\'s id for it is kept');
   assert.equal(Number(row.granted_usd), 0, 'no free use was given');
   assert.equal(await w.includedAi.collect(p.id), null, 'handed over once');
   // Claiming again from another computer makes a fresh subscriber key.
   const again = await w.includedAi.forOwner(p.id, { ip: '198.51.100.9' });
   assert.ok(again.key && again.key !== got.key);
-  assert.deepEqual([(await heldKey(w, p.id)).limit, (await heldKey(w, p.id)).limit_reset], [20, null]);
+  assert.equal((await heldKey(w, p.id)).limit, 20);
 });
 
-test('each renewal on the day they subscribed starts a new paid month of fair use; carrying on is for the month paid in; a key OpenRouter missed is set by the sweep', quiet(async () => {
+test('each renewal on the day they subscribed starts a new paid month of fair use; carrying on is for the month paid in; a key NEAR missed is set by the sweep', quiet(async () => {
   const w = world();
   const p = await person({ freeKey: {} }, w);
   await w.plus.handle(subscription('subscription.active', p.id, { start: '2026-11-15T00:00:00Z', end: '2026-12-15T00:00:00Z' }));
   await settled(p.id);
-  assert.deepEqual([(await heldKey(w, p.id)).limit, (await heldKey(w, p.id)).limit_reset], [20, null], 'no reset on the 1st: the month is theirs');
+  assert.equal((await heldKey(w, p.id)).limit, 20, 'no reset on the 1st: the month is theirs');
   (await heldKey(w, p.id)).usage = 18;
-  w.state.openRouterDown = true;
+  w.state.near.down = true;
   await w.plus.handle(paid(p.id));
   await new Promise(r => setTimeout(r, 50));
-  assert.equal((await db.query('SELECT key_synced FROM plus_subscriptions WHERE owner_id = $1', [p.id])).rows[0].key_synced, false, 'not set while OpenRouter is down');
-  w.state.openRouterDown = false;
+  assert.equal((await db.query('SELECT key_synced FROM plus_subscriptions WHERE owner_id = $1', [p.id])).rows[0].key_synced, false, 'not set while NEAR is down');
+  w.state.near.down = false;
   await w.plus.sweep();
   assert.equal((await heldKey(w, p.id)).limit, 40, 'carried on in this paid month');
   assert.equal((await w.plus.state(p.id)).extended, true);
@@ -348,7 +341,7 @@ test('the account page is told when most of this month\'s fair use is used, neve
   assert.equal((await w.plus.state(p.id)).nearly, false);
   const [, key] = [...w.keys][0];
   key.usage = 17;
-  const now = await w.plus.state(p.id);
+  const now = await w.afresh().state(p.id);
   assert.equal(now.nearly, true);
   assert.ok(!JSON.stringify(now).includes('17'), 'no amount reaches the page');
 });
@@ -356,7 +349,7 @@ test('the account page is told when most of this month\'s fair use is used, neve
 // Money: nothing here may hand out more Managed Models than was paid for or
 // given, and no key may stay live once nothing points at it.
 // Keys waiting to be deleted, from the test that asks only: each starts with none.
-const retired = async () => (await db.query('SELECT key_hash, tries FROM retired_ai_keys ORDER BY retired_at')).rows;
+const retired = async () => (await db.query('SELECT key_id, tries FROM retired_ai_keys ORDER BY retired_at')).rows;
 const noneWaiting = () => db.query('DELETE FROM retired_ai_keys');
 
 test('claiming again never starts a subscriber\'s fair use again; the next paid month, it is whole', async () => {
@@ -366,12 +359,12 @@ test('claiming again never starts a subscriber\'s fair use again; the next paid 
   await w.plus.handle(subscription('subscription.active', p.id));
   await settled(p.id);
   const first = await w.includedAi.collect(p.id);
-  const before = (await db.query('SELECT key_hash FROM included_ai_keys WHERE owner_id = $1', [p.id])).rows[0].key_hash;
+  const before = (await db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = $1', [p.id])).rows[0].key_id;
   w.keys.get(before).usage = 15;
   const again = await w.includedAi.forOwner(p.id, { ip: '198.51.100.20' });
   assert.ok(again.key && again.key !== first.key);
-  assert.deepEqual([(await heldKey(w, p.id)).limit, (await heldKey(w, p.id)).limit_reset], [5, null], 'what the old key used stays used');
-  assert.equal(w.keys.has(before), false, 'the old key is deleted at OpenRouter');
+  assert.equal((await heldKey(w, p.id)).limit, 5, 'what the old key used stays used');
+  assert.equal(w.keys.has(before), false, 'the old key is deleted at NEAR');
   assert.deepEqual(await retired(), [], 'and nothing waits');
   assert.deepEqual(await w.includedAi.usage(p.id), { limit: 20, used: 15 }, 'the same paid month, counted the same');
   // Renewed: the new key's month is whole.
@@ -389,26 +382,26 @@ test('claims at once hand out one key, and no other key stays live', quiet(async
   await w.includedAi.collect(p.id);
   const got = (await Promise.all(Array.from({ length: 6 }, (_, i) => w.includedAi.forOwner(p.id, { ip: '198.51.100.' + (30 + i) })))).filter(Boolean);
   assert.ok(got.length >= 1);
-  const held = (await db.query('SELECT key_hash FROM included_ai_keys WHERE owner_id = $1', [p.id])).rows[0].key_hash;
+  const held = (await db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = $1', [p.id])).rows[0].key_id;
   assert.deepEqual([...w.keys.keys()], [held], 'only the key held stays live: every other one made is deleted');
   assert.ok(got.some(g => g.key === w.keys.get(held).key));
   assert.equal(w.keys.get(held).limit, 20, 'with no more to use than before');
   assert.deepEqual(await retired(), []);
 }));
 
-test('a key whose account goes is deleted at OpenRouter, however it goes and even when that fails at first', quiet(async () => {
+test('a key whose account goes is deleted at NEAR, however it goes and even when that fails at first', quiet(async () => {
   await noneWaiting();
   const w = world();
   const p = await person({ freeKey: {} }, w);
-  w.state.deleteFails = true;
+  w.state.near.deleteFails = true;
   await db.query('DELETE FROM owners WHERE id = $1', [p.id]);
-  assert.deepEqual((await retired()).map(r => r.key_hash), [p.hash], 'listed as its row goes, cascades included');
+  assert.deepEqual((await retired()).map(r => r.key_id), [p.key], 'listed as its row goes, cascades included');
   await w.includedAi.sweep();
-  assert.equal((await retired())[0].tries, 1, 'still waiting while OpenRouter refuses');
-  assert.equal(w.keys.has(p.hash), true);
-  w.state.deleteFails = false;
+  assert.equal((await retired())[0].tries, 1, 'still waiting while NEAR refuses');
+  assert.equal(w.keys.has(p.key), true);
+  w.state.near.deleteFails = false;
   await w.includedAi.sweep();
-  assert.equal(w.keys.has(p.hash), false);
+  assert.equal(w.keys.has(p.key), false);
   assert.deepEqual(await retired(), []);
 }));
 
@@ -417,7 +410,7 @@ test('paying after a used-up first month gives the whole fair use at once', asyn
   const p = await person({ freeKey: { usage: 10 } }, w);
   await w.plus.handle(subscription('subscription.active', p.id));
   await settled(p.id);
-  assert.deepEqual([(await heldKey(w, p.id)).limit, (await heldKey(w, p.id)).limit_reset], [30, null], 'the 10 the first month used is left out');
+  assert.equal((await heldKey(w, p.id)).limit, 30, 'the 10 the first month used is left out');
   const row = (await db.query('SELECT base_usd, base_for FROM included_ai_keys WHERE owner_id = $1', [p.id])).rows[0];
   assert.deepEqual([Number(row.base_usd), new Date(row.base_for).toISOString()], [10, '2026-11-01T00:00:00.000Z']);
   await w.plus.handle(subscription('subscription.updated', p.id));
@@ -429,10 +422,10 @@ test('a month that ends caps the key at what it used, never at 0', async () => {
   const w = world();
   const p = await person({ freeKey: {} }, w);
   await w.includedAi.end(p.id);
-  assert.deepEqual([w.keys.get(p.hash).limit, w.keys.get(p.hash).limit_reset], [0.01, null]);
+  assert.equal(w.keys.get(p.key).limit, 1e-9, 'a billionth of a dollar, the least NEAR takes');
   const used = await person({ freeKey: { usage: 7.256 } }, w);
   await w.includedAi.end(used.id);
-  assert.equal(w.keys.get(used.hash).limit, 7.25);
+  assert.equal(w.keys.get(used.key).limit, 7.256, 'exactly what it used');
 });
 
 test('subscription changes wait while Managed Models are switched off, and are made once they are on', async () => {
@@ -441,10 +434,11 @@ test('subscription changes wait while Managed Models are switched off, and are m
   await off.plus.handle(subscription('subscription.active', p.id));
   await new Promise(r => setTimeout(r, 50));
   assert.equal((await db.query('SELECT key_synced FROM plus_subscriptions WHERE owner_id = $1', [p.id])).rows[0].key_synced, false);
+  const kept = off.keys.get(p.key);
   const on = world();
-  on.keys.set(p.hash, off.keys.get(p.hash) || { key: 'sk-or-v1-free', limit: 10, limit_reset: null, usage: 0, guarded: true });
+  on.keys.set(p.key, kept);
   await on.plus.sweep();
-  assert.deepEqual([on.keys.get(p.hash).limit, on.keys.get(p.hash).limit_reset], [20, null]);
+  assert.equal(on.keys.get(p.key).limit, 20);
 });
 
 // A Polar order, as its webhooks carry it.

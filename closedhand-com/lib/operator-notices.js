@@ -1,6 +1,7 @@
 // Notices for the maintainer, never for the people using Closedhand: how many
-// first months of Closedhand Managed Models have started, a burst of them, and
-// this month's OpenRouter spend (lib/capacity.js). They go to the maintainer's
+// first months of Closedhand Managed Models have started, a burst of them
+// (lib/capacity.js), and closedhand.com's sign-in at NEAR AI needing to be
+// given again (lib/near-session.js). They go to the maintainer's
 // own Closedhand: an account signed in with an email in OPERATOR_EMAILS (the
 // maintainers, as for the insights page) collects them with
 // its next check for the models (lib/addresses.js), and Closedhand says them

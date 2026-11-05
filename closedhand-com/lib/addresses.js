@@ -15,7 +15,7 @@
 // forgets the sign-in and takes the route down (deleteAccount).
 //
 // A claim also hands the claiming computer the AI that comes with Closedhand,
-// a key of its own at OpenRouter (included-ai.js), when one can be given.
+// a key of its own at NEAR AI (included-ai.js), when one can be given.
 const crypto = require('node:crypto');
 const { encryptString, decryptString } = require('./crypto-tokens');
 const { equal } = require('./session');
@@ -488,21 +488,24 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     }));
   }
 
-  // Which models Closedhand Managed Models use now. A computer with its key
-  // asks a few times a day and switches itself over when they change. It is
-  // also told its plan (lib/plan.js: its first month, a subscription, ended or
-  // none), a subscriber whose account holds no key yet gets one here, once,
-  // to seal, and the maintainer's own Closedhand collects their notices.
+  // Which provider and models Closedhand Managed Models use now. A computer
+  // with its key asks every hour and switches itself over when they change.
+  // It is also told its plan (lib/plan.js: its first month, a subscription,
+  // ended or none) and how much of the plan's fair use is used (a NEAR key
+  // can't read that itself), a subscriber whose account holds no key yet gets
+  // one here, once, to seal, and the maintainer's own Closedhand collects
+  // their notices.
   app.get('/api/phone-enrollment/included-ai', wrap(async (req, res) => {
     if (!installation(req)) return res.status(401).json({ error: 'Closedhand could not be recognised. Update it on your computer and try again.' });
     const found = await owned(req);
     const ownerId = found?.row.owner_id || null;
     const plan = await planFor(db, env, ownerId, undefined, includedAi);
     const key = plan.name === 'plus' ? await includedAi.collect(ownerId) : null;
+    const usage = plan.name === 'plus' || plan.name === 'first-month' ? await includedAi.usage(ownerId).catch(() => null) : null;
     const told = notices ? await notices.collect(ownerId) : [];
     // What the subscription costs where the computer is, so Closedhand can say when asked.
     const prices = plus ? await plus.prices(req.headers['cf-ipcountry']).catch(() => null) : null;
-    res.json({ models: includedAi.current(), plan, ...(prices ? { prices } : {}), ...(key ? { key: key.key } : {}), ...(told.length ? { notices: told } : {}) });
+    res.json({ models: includedAi.current(), plan, ...(usage ? { usage } : {}), ...(prices ? { prices } : {}), ...(key ? { key: key.key } : {}), ...(told.length ? { notices: told } : {}) });
   }, { always: true }));
 
   // The copy renames its address. It is known by its secret, like every
@@ -642,16 +645,16 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     }
   });
 
-  // An account's sign-ins, the plan without the base its computer counts
-  // from, how much of this month's fair use is used, as a share for one bar
-  // and never an amount, and the subscription with its prices where the person is.
+  // An account's sign-ins, the plan, how much of this month's fair use is
+  // used, as a share for one bar and never an amount, and the subscription
+  // with its prices where the person is.
   async function detailsOf(owner, country, { card: withCard = false } = {}) {
     const plusState = plus ? await plus.state(owner) : null;
     const plusPrices = plusState?.available ? await plus.prices(country) : null;
     // The card only for My Account, which shows it: closedhand.com's own pages
     // ask for the account on every view, and each card read opens a Polar session.
     const card = withCard && plusState?.active ? await plus.cardOnFile(owner).catch(() => null) : null;
-    const { base, ...plan } = await planFor(db, env, owner, undefined, includedAi);
+    const plan = await planFor(db, env, owner, undefined, includedAi);
     const running = plan.name === 'first-month' || plan.name === 'plus';
     const usage = running ? await includedAi.usage(owner).catch(() => null) : null;
     const used = usage ? Math.round(Math.min(1, Math.max(0, usage.used / usage.limit)) * 100) / 100 : null;

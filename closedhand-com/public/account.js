@@ -84,7 +84,7 @@
     const email = data.plan?.email;
     $('plus-about').hidden = !!p.active;
     $('plus-about').textContent = 'Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own'
-      + (email ? ", and to use Closedhand's own email with no monthly limit" : '') + ". They run through OpenRouter, only on LLM providers that do not store or train on your data or conversations."
+      + (email ? ", and to use Closedhand's own email with no monthly limit" : '') + ". They run in sealed hardware, so nobody but you can read what you send or what they answer, not even closedhand.com."
       // Never had the free month: the subscription's first month is it (Polar's trial).
       + (p.free_month ? ' The first month is free, then ' + (prices.plus || 'a monthly price') + ' a month.' : '');
     $('plus-get').hidden = p.active;

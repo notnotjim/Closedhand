@@ -72,15 +72,15 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
   }
 
   // This month's Managed Models spend across every key and what is left of
-  // the OpenRouter credit they draw on, read at most every five minutes.
-  let openRouter = null, openRouterAt = 0;
-  async function fromOpenRouter() {
+  // the NEAR AI credit they draw on, read at most every five minutes.
+  let near = null, nearAt = 0;
+  async function fromNear() {
     if (!includedAi || !includedAi.enabled()) return { spentThisMonth: null, credit: null };
-    if (Date.now() - openRouterAt < 5 * 60000) return openRouter;
-    openRouterAt = Date.now();
+    if (Date.now() - nearAt < 5 * 60000) return near;
+    nearAt = Date.now();
     const read = (what, promise) => promise.catch(e => { console.error(`[insights] ${what} unavailable:`, e.message); return null; });
     const [spentThisMonth, credit] = await Promise.all([read('spend', includedAi.spentThisMonth()), read('credit', includedAi.credit())]);
-    return (openRouter = { spentThisMonth, credit });
+    return (near = { spentThisMonth, credit });
   }
 
   async function gather() {
@@ -159,13 +159,13 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       installs: { total: installs.total },
       bugs,
       email,
-      managed: { ...firstMonths, plus: Object.fromEntries(plusStates.map(r => [r.status, r.n])), ...await fromOpenRouter() },
+      managed: { ...firstMonths, plus: Object.fromEntries(plusStates.map(r => [r.status, r.n])), ...await fromNear() },
       github: await githubCounts(),
     };
   }
 
-  // One person's Managed Models use this month, read from OpenRouter when
-  // their row is opened.
+  // One person's Managed Models use this month, read from NEAR AI when their
+  // row is opened.
   app.get('/api/insights/person/:id', guarded(async (req, res) => {
     if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(400).json({ error: 'Unknown person' });
     res.json({ usage: includedAi && includedAi.enabled() ? await includedAi.usage(req.params.id).catch(() => null) : null });

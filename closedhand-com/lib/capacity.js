@@ -1,8 +1,8 @@
 // What the maintainer is told, in time to raise a limit before anyone is
 // refused (lib/operator-notices.js says where). Nothing here stops anything:
-// first months keep being given past the expected number. OpenRouter's own
-// budget and credit are the stop for spending, and OpenRouter emails its
-// low-balance alert itself. Each threshold is told once per period
+// first months keep being given past the expected number. The credit of
+// closedhand.com's organisation at NEAR AI is the stop for spending, shown on
+// the insights page with the days it lasts. Each threshold is told once per period
 // (operator_alerts).
 //
 // - First months started this calendar month, against

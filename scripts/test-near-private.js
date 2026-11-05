@@ -56,6 +56,37 @@ const xSecret = (seed) => { const s = sha("sha512", seed).subarray(0, 32); s[0] 
 const COMPOSE = "services:\n  model:\n    image: example/model@sha256:00";
 const MR_CONFIG = Buffer.concat([Buffer.from([1]), sha("sha256", COMPOSE), Buffer.alloc(15)]).toString("hex");
 const quote = (fields) => Buffer.from(JSON.stringify(fields)).toString("hex");
+const mrOf = (compose) => Buffer.concat([Buffer.from([1]), sha("sha256", compose), Buffer.alloc(15)]).toString("hex");
+
+// An enclave that runs a compose manager (invented images and files): what it
+// deploys comes from NEAR's public repository, and its log is quoted.
+const digest = (c) => c.repeat(64);
+const MANAGED = JSON.stringify({ manifest_version: 2, allowed_envs: ["CHANNEL"], docker_compose_file:
+  `services:\n  compose-manager:\n    image: \${MANAGER_IMAGE:-example/compose-manager@sha256:${digest("a")}}\n  launcher:\n    image: example/launcher@sha256:${digest("b")}\n` });
+const FILE = (v) => Buffer.from(`services:\n  model:\n    image: example/model@sha256:${digest(String(v))}\n`);
+const sha256hex = (b) => sha("sha256", b).toString("hex");
+const deploymentsOf = (commits) => [
+  { timestamp: "2026-01-02T03:04:05Z", action: "compose_manager_started", container: "compose-manager", image: `example/compose-manager@sha256:${digest("a")}` },
+  ...commits.flatMap((commit, i) => [
+    { timestamp: `2026-01-0${i + 2}T04:00:00Z`, action: "compose_up", tag: `v${i + 1}`, commit, file: "prod/Example-Model.yaml", file_sha256: sha256hex(FILE(i + 1)), services: ["model"] },
+    { timestamp: `2026-01-0${i + 2}T05:00:00Z`, action: "compose_down", tag: `v${i + 1}`, commit, file: "prod/Example-Model.yaml", services: ["model"] },
+  ]),
+];
+// The log as the compose manager quotes it: SHA-256 of its canonical form,
+// then the nonce. canonical: written out by hand where a test pins the form.
+const logFor = (actions, nonce, { canonical, rtMr3 = "00".repeat(48), quotedNonce = nonce } = {}) => {
+  const hash = sha256hex(canonical || JSON.stringify(actions.map((a) => Object.fromEntries(Object.keys(a).sort().map((k) => [k, a[k]])))));
+  return { actions, actions_hash: hash, nonce, nonce_source: "client", report_data: hash + quotedNonce,
+    quote: quote({ status: "UpToDate", reportData: hash + quotedNonce, mrConfigId: mrOf(MANAGED), rtMr3, tdAttributes: "0000000000000000" }) };
+};
+const github = { files: new Map(), asked: [], down: false };
+const fetchPublished = async (url) => {
+  github.asked.push(url);
+  if (github.down) throw new Error("getaddrinfo ENOTFOUND raw.githubusercontent.com");
+  const bytes = github.files.get(url);
+  return bytes ? { status: 200, bytes } : { status: 404 };
+};
+const publish = (commits) => commits.forEach((commit, i) => github.files.set(`https://raw.githubusercontent.com/nearai/cvm-compose-files/${commit}/prod/Example-Model.yaml`, FILE(i + 1)));
 
 const fake = { mode: {}, reports: 0, posts: [], signatures: {}, sockets: new Set() };
 const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 30000 }, (req, res) => {
@@ -76,8 +107,9 @@ const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 3000
       };
       const model = {
         signing_algo: "ed25519", signing_address: MODEL.pub.toString("hex"), signing_public_key: MODEL.pub.toString("hex"), request_nonce: nonce,
-        intel_quote: quote({ status: "UpToDate", reportData: Buffer.concat([MODEL.pub, Buffer.from(nonce, "hex")]).toString("hex"), mrConfigId: MR_CONFIG, rtMr3: "00".repeat(48), tdAttributes: m.debug ? "0100000000000000" : "0000000000000000" }),
-        event_log: "[]", info: { tcb_info: { app_compose: COMPOSE } }, nvidia_payload: JSON.stringify({ nonce }),
+        intel_quote: quote({ status: "UpToDate", reportData: Buffer.concat([MODEL.pub, Buffer.from(nonce, "hex")]).toString("hex"), mrConfigId: m.managed ? mrOf(MANAGED) : MR_CONFIG, rtMr3: "00".repeat(48), tdAttributes: m.debug ? "0100000000000000" : "0000000000000000" }),
+        event_log: "[]", info: { tcb_info: { app_compose: m.managed ? MANAGED : COMPOSE } }, nvidia_payload: JSON.stringify({ nonce }),
+        ...(m.managed ? { compose_manager_attestation: logFor(deploymentsOf(m.managed), nonce, { rtMr3: m.otherEnclave ? "11".repeat(48) : "00".repeat(48) }) } : {}),
       };
       return send(200, { gateway_attestation: gateway, ...(m.noModels ? {} : { model_attestations: [model] }) });
     }
@@ -111,7 +143,7 @@ after(() => { for (const s of fake.sockets) s.destroy(); server.close(); fs.rmSy
 
 const verifyQuote = async (q) => { const f = JSON.parse(q.toString("utf8")); return { status: f.status, td: { reportData: hex(f.reportData), mrConfigId: hex(f.mrConfigId), rtMr3: hex(f.rtMr3), tdAttributes: hex(f.tdAttributes) } }; };
 let gpuVerdict = true;
-near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, signatureWaitMs: 5 });
+near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, fetchPublished, signatureWaitMs: 5 });
 let keyN = 0;
 // A fresh connection per test (its own key), so each test proves its own.
 const conn = () => ({ provider: "near", backend: "custom", baseUrl: `https://localhost:${PORT}/v1`, apiKey: "test-key-" + ++keyN });
@@ -182,7 +214,8 @@ test("the proof's own checks: report data, configuration and event log", async (
   const report = (over = {}) => ({ signing_algo: "ed25519", signing_address: id.toString("hex"), request_nonce: nonce, intel_quote: "00", event_log: [], info: { tcb_info: { app_compose: COMPOSE } }, ...over });
   const td = (reportData, extra = {}) => async () => ({ status: "UpToDate", td: { reportData, mrConfigId: hex(MR_CONFIG), rtMr3: Buffer.alloc(48), tdAttributes: Buffer.alloc(8), ...extra } });
   const good = Buffer.concat([id, hex(nonce)]);
-  assert.deepEqual(await near.checkReport(report(), nonce, td(good)), { address: id.toString("hex"), algo: "ed25519" });
+  const signer = await near.checkReport(report(), nonce, td(good));
+  assert.deepEqual({ address: signer.address, algo: signer.algo }, { address: id.toString("hex"), algo: "ed25519" });
   await assert.rejects(near.checkReport(report(), nonce, td(Buffer.concat([id, crypto.randomBytes(32)]))), /bind the signer and nonce/);
   await assert.rejects(near.checkReport(report({ info: { tcb_info: { app_compose: COMPOSE + " " } } }), nonce, td(good)), /MRCONFIGID/);
   await assert.rejects(near.checkReport(report({ event_log: [{ imr: 3, event_type: 1, event: "app-id", event_payload: "00" }] }), nonce, td(good)), /RTMR3/);
@@ -282,7 +315,7 @@ test("a new connection to a proven enclave key reuses its proof for a while, one
   assert.equal(fake.reports, 1, "three at once, one proof");
   assert.ok(new Set(fake.posts.map((p) => p.socket)).size > 1, "over more than one connection");
 
-  near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, signatureWaitMs: 5, proofReuseMs: 0 });
+  near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, fetchPublished, signatureWaitMs: 5, proofReuseMs: 0 });
   try {
     reset();
     const c3 = conn();
@@ -291,7 +324,7 @@ test("a new connection to a proven enclave key reuses its proof for a while, one
     await new Promise((r) => setTimeout(r, 50));
     await near.complete(c3, { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] });
     assert.equal(fake.reports, 2, "past its time a proof is made again");
-  } finally { near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, signatureWaitMs: 5 }); }
+  } finally { near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, fetchPublished, signatureWaitMs: 5 }); }
 });
 
 test("a NEAR AI model's quick support jobs skip thinking through its chat template; its replies think as the model does", () => {
@@ -301,4 +334,73 @@ test("a NEAR AI model's quick support jobs skip thinking through its chat templa
   assert.deepEqual(policy.effortOptions(cap, "fast"), { chat_template_kwargs: { enable_thinking: false } });
   assert.deepEqual(policy.effortOptions(cap, "default"), {});
   assert.equal(cap.vision, false, "and it takes text only");
+});
+
+// What a model enclave has deployed (checkDeployments): where it runs NEAR's
+// compose manager, every deployment in its quoted log is a file published in
+// NEAR's public repository, byte for byte, asked for only once.
+test("a model enclave's deployments must all be NEAR's published files, the log bound to its quote", async () => {
+  const nonce = crypto.randomBytes(32).toString("hex");
+  const commits = [crypto.randomBytes(20).toString("hex"), crypto.randomBytes(20).toString("hex")];
+  const report = (log, compose = MANAGED) => ({ info: { tcb_info: { app_compose: compose } }, compose_manager_attestation: log });
+  const deps = { verifyQuote, fetchPublished };
+  github.asked = [];
+  publish(commits);
+  const measured = await near.checkDeployments(report(logFor(deploymentsOf(commits), nonce)), nonce, deps);
+  assert.equal(typeof measured, "string", "the log's quote measurements, to match against the model's");
+  assert.equal(github.asked.length, 2, "each version asked for once, however often the log names it");
+  await near.checkDeployments(report(logFor(deploymentsOf(commits), nonce)), nonce, deps);
+  assert.equal(github.asked.length, 2, "a version found once is not asked for again");
+
+  // The canonical form, as compose-manager writes it: keys sorted, no spaces.
+  const one = [{ timestamp: "2026-01-02T04:00:00Z", action: "compose_up", tag: "v1", commit: commits[0], file: "prod/Example-Model.yaml", file_sha256: sha256hex(FILE(1)), services: ["model", "proxy"] }];
+  const canonical = `[{"action":"compose_up","commit":"${commits[0]}","file":"prod/Example-Model.yaml","file_sha256":"${sha256hex(FILE(1))}","services":["model","proxy"],"tag":"v1","timestamp":"2026-01-02T04:00:00Z"}]`;
+  assert.equal(typeof await near.checkDeployments(report(logFor(one, nonce, { canonical })), nonce, deps), "string");
+
+  const fresh = () => crypto.randomBytes(20).toString("hex");
+  const unpublished = [fresh()];
+  await assert.rejects(near.checkDeployments(report(logFor(deploymentsOf(unpublished), nonce)), nonce, deps), /not in NEAR's public repository/);
+  const changed = [fresh()];
+  github.files.set(`https://raw.githubusercontent.com/nearai/cvm-compose-files/${changed[0]}/prod/Example-Model.yaml`, FILE(9));
+  await assert.rejects(near.checkDeployments(report(logFor(deploymentsOf(changed), nonce)), nonce, deps), /differs from NEAR's published file/);
+
+  const tampered = logFor(deploymentsOf(commits), nonce);
+  tampered.actions = tampered.actions.slice(0, -2);
+  await assert.rejects(near.checkDeployments(report(tampered), nonce, deps), /does not match its hash/);
+  await assert.rejects(near.checkDeployments(report(logFor(deploymentsOf(commits), nonce, { quotedNonce: crypto.randomBytes(32).toString("hex") })), nonce, deps), /bind the log and nonce/);
+  await assert.rejects(near.checkDeployments(report(logFor(deploymentsOf(commits), crypto.randomBytes(32).toString("hex"))), nonce, deps), /another nonce/);
+  await assert.rejects(near.checkDeployments(report(undefined), nonce, deps), /gave no log/);
+  const byTag = MANAGED.replace(`example/launcher@sha256:${digest("b")}`, "example/launcher:latest");
+  await assert.rejects(near.checkDeployments(report(logFor(deploymentsOf(commits), nonce), byTag), nonce, deps), /not fixed by its digest/);
+  const settable = MANAGED.replace('"allowed_envs":["CHANNEL"]', '"allowed_envs":["CHANNEL","MANAGER_IMAGE"]');
+  await assert.rejects(near.checkDeployments(report(logFor(deploymentsOf(commits), nonce), settable), nonce, deps), /can be changed at deployment/);
+  const loose = deploymentsOf(commits); loose[0] = { ...loose[0], image: "example/compose-manager:latest" };
+  await assert.rejects(near.checkDeployments(report(logFor(loose, nonce)), nonce, deps), /own image/);
+  assert.equal(await near.checkDeployments({ info: { tcb_info: { app_compose: COMPOSE } } }, nonce, deps), null, "an enclave with no compose manager runs only what its measured configuration says");
+
+  // GitHub out of reach is no evidence: the proof goes ahead, said once, and the next asks again.
+  const later = [fresh()];
+  github.down = true; github.asked = [];
+  const warned = [], warn = console.warn; console.warn = (line) => warned.push(line);
+  try {
+    assert.equal(typeof await near.checkDeployments(report(logFor(deploymentsOf(later), nonce)), nonce, deps), "string");
+    assert.equal(typeof await near.checkDeployments(report(logFor(deploymentsOf(later), nonce)), nonce, deps), "string");
+  } finally { console.warn = warn; github.down = false; }
+  assert.equal(github.asked.length, 2, "asked again on the next proof");
+  assert.equal(warned.length, 1, "said once");
+  await assert.rejects(near.checkDeployments(report(logFor(deploymentsOf(later), nonce)), nonce, deps), /not in NEAR's public repository/, "and refused once GitHub answers that it isn't there");
+});
+
+test("nothing is sent to a model enclave that deployed an unpublished file, or whose log comes from another enclave", async () => {
+  await ready;
+  const commits = [crypto.randomBytes(20).toString("hex")];
+  publish(commits);
+  reset({ managed: commits });
+  const res = await near.complete(conn(), { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] });
+  assert.equal((await res.json()).choices[0].message.content, "Echo: hi", "all published: sent as before");
+  for (const mode of [{ managed: [crypto.randomBytes(20).toString("hex")] }, { managed: commits, otherEnclave: true }]) {
+    reset(mode);
+    await assert.rejects(near.complete(conn(), { model: MODEL_ID, messages: [{ role: "user", content: "secret" }] }), (e) => e.code === "near_unproven", JSON.stringify(mode));
+    assert.equal(fake.posts.length, 0, "no request reached NEAR AI");
+  }
 });
