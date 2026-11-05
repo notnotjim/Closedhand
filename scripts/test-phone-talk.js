@@ -170,7 +170,7 @@ test("the phone's home: the ring's film fetched on phones only, the box at the t
   assert.match(page, /#heroSection:has\(#heroInputWrap:focus-within\) \.talk-btn/, "the ring steps back while typing");
   // Pick up a project: one row under the box at every width, All projects when there are more.
   assert.match(page, /\+ \(projects\.length > shown\.length \? '<button type="button" class="hero-project" data-all="1">All projects<\/button>' : ''\);/);
-  assert.match(page, /if \(!row \|\| !projects\.length\) return;/, "only when there is a project to pick up");
+  assert.match(page, /if \(!row \|\| \(!projects\.length && !chat\)\) return;/, "only when there is a conversation to pick up");
   assert.doesNotMatch(page, /resumePill|hero-recent-float|heroRecentChips/);
   // In a conversation on a phone: the box edge to edge at the bottom, and the chat apps beside it.
   assert.match(page, /@media \(max-width: 600px\) \{\n    body\.chat-active \.docked-input\.active \{ bottom: 0;/);
