@@ -103,6 +103,13 @@
   // whole reply has been said. add(text) as it streams, end() when it is all
   // written, stop() to cut it short.
   var talking = null;
+  // Where a conversation's reply plays out, through an AnalyserNode so the
+  // ring can move with the voice (talk-ring.js).
+  var heard = null;
+  function out() {
+    if (!heard && context.createAnalyser) { heard = context.createAnalyser(); heard.fftSize = 256; heard.smoothingTimeConstant = 0.5; heard.connect(context.destination); }
+    return heard || context.destination;
+  }
   function talk(send, events) {
     if (talking) talking.stop();
     var t = { id: 'talk-' + (++sequence), part: 0, waiting: null, queue: [], text: '', ended: false, stopped: false, started: false,
@@ -161,7 +168,7 @@
         if (t.stopped) return;
         var source = context.createBufferSource();
         source.buffer = buffer;
-        source.connect(context.destination);
+        source.connect(out());
         t.nodes.add(source);
         source.onended = function () { source.disconnect(); t.nodes.delete(source); finished(); };
         var start = Math.max(context.currentTime + 0.03, t.next);
@@ -212,5 +219,5 @@
     return true;
   }
   window.addEventListener('pagehide', function () { stop(); });
-  window.ClosedHandSpeech = { addControl: addControl, receive: receive, stop: stop, prime: prime, talk: talk };
+  window.ClosedHandSpeech = { addControl: addControl, receive: receive, stop: stop, prime: prime, talk: talk, analyser: function () { return talking ? heard : null; } };
 }());

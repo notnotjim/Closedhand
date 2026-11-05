@@ -7847,21 +7847,24 @@ app.get("/api/rag/sources", async (req, res) => {
   const { data } = await supabase.from("rag_sources").select("*").eq("user_id", userId).order("created_at", { ascending: false });
   const sources = data || [];
 
-  // Which files a search cannot reach. The source row carries the count, but a
-  // count on its own leaves the user hunting; the names are what tell them
-  // whether the gap matters, and a failed file is otherwise indistinguishable
-  // from an indexed one until a search comes back empty.
+  // Which files a search cannot reach, counted now: those that couldn't be
+  // read, named on request (whether the gap matters is the person's to judge),
+  // and recordings and videos still to be heard, which are read while
+  // Closedhand is idle or are due another try. A recording waiting its turn is
+  // not one that couldn't be read.
   if (sources.length > 0) {
-    const { data: failed } = await supabase.from("rag_documents")
-      .select("source_id, name, error_message")
+    const { data: unread } = await supabase.from("rag_documents")
+      .select("source_id, name, file_type, status, metadata, updated_at")
       .eq("user_id", userId)
-      .eq("status", "error");
+      .in("status", ["error", "pending", "processing"]);
     const bySource = {};
-    for (const d of failed || []) {
-      if (!bySource[d.source_id]) bySource[d.source_id] = [];
-      bySource[d.source_id].push({ name: d.name, error: d.error_message });
+    for (const d of unread || []) {
+      const s = bySource[d.source_id] || (bySource[d.source_id] = { unreadable: [], to_hear: { videos: 0, recordings: 0 } });
+      const heard = ragProcessor.HEARD_TYPES.has(d.file_type);
+      if (heard && (d.status !== "error" || Number(d.metadata?.hear_tries || 0) < ragProcessor.HEAR_TRIES)) s.to_hear[/^(mp4|m4v|mov|webm)$/.test(d.file_type) ? "videos" : "recordings"]++;
+      else if (d.status === "error") s.unreadable.push(d.name);
     }
-    for (const s of sources) s.failed_files = bySource[s.id] || [];
+    for (const s of sources) Object.assign(s, bySource[s.id] || { unreadable: [], to_hear: { videos: 0, recordings: 0 } });
   }
   res.json(sources);
 });

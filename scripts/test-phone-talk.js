@@ -119,7 +119,7 @@ test("too short a recording says which button to tap", async () => {
   assert.equal(b.note.textContent, "That was too short to hear. Tap the mic, speak, then tap it again.");
 });
 
-test("the page: the ring and the chat apps on phones only, the ring following the voice, no keyboard while talking", () => {
+test("the page: the ring and the chat apps on phones only, the ring becoming the voice, no keyboard while talking", () => {
   const page = read("webapp/views/index.html");
   assert.match(page, /<button type="button" class="talk-btn" id="talkBtn" aria-label="Talk to Closedhand"><video class="talk-smoke" id="talkSmoke" muted loop playsinline preload="none" [^>]*data-mov="\/orb\/smoke\.mov" data-webm="\/orb\/smoke\.webm" data-poster="\/orb\/smoke-poster\.png"><\/video><span class="talk-core" aria-hidden="true"><\/span><span class="talk-fist" aria-hidden="true"><\/span><\/button>/);
   // No filter on the ring or the fist: Safari draws a filtered video or image
@@ -131,16 +131,28 @@ test("the page: the ring and the chat apps on phones only, the ring following th
   assert.match(page, /\.talk, \.continue-on \{ display: none; \}\n  @media \(max-width: 600px\) \{\n    body:not\(\.no-talk\) \.talk \{ display: flex;/);
   assert.match(page, /var phone = window\.matchMedia\('\(max-width: 600px\)'\);/);
   assert.match(page, /hints: Object\.assign\(\{ idle: 'Tap to talk' \}, talkHints\),/);
-  assert.match(page, /btn\.style\.setProperty\('--level', level === 0 \? 0 : shown\.toFixed\(3\)\);/, "the ring follows the voice");
-  assert.match(page, /transform: scale\(calc\(1 \+ var\(--level, 0\) \* 0\.12\)\);/, "the ring swells with the voice");
-  assert.match(page, /\.talk-btn\.recording \.talk-core \{ animation: none; opacity: calc\(0\.75 \+ var\(--level, 0\) \* 0\.6\);/, "and the light inside rises with it");
-  assert.match(page, /\.talk-btn\.speaking \.talk-core \{ animation-duration: 1\.2s;/, "and quickens while Closedhand speaks");
+  // Talking, the film draws back and the ring is drawn live (talk-ring.js),
+  // following the voice while listening and Closedhand's while speaking.
+  assert.match(page, /<script src="\/talk-ring\.js\?v=[0-9a-f]+"><\/script>|<script src="\/talk-ring\.js"><\/script>/);
+  assert.match(page, /var talkRing = window\.ClosedhandTalkRing \? ClosedhandTalkRing\.mount\(talkBtn, \{ before: talkBtn\.querySelector\('\.talk-core'\), sound: heard \}\) : null;/);
+  assert.match(page, /var micRing = window\.ClosedhandTalkRing \? ClosedhandTalkRing\.mount\(micBtn, \{ strands: 3, points: 64, small: true, sound: heard \}\) : null;/, "the same ring, smaller, in the mic once the chat is open");
+  assert.match(page, /var heard = function \(state\) \{ return state === 'listening' \? window\._conversation\.analyser\(\) : state === 'speaking' && ClosedHandSpeech\.analyser \? ClosedHandSpeech\.analyser\(\) : null; \};/);
+  assert.match(page, /\.talk-btn:is\(\.recording, \.busy, \.speaking\) \.talk-smoke \{ opacity: 0\.14; transform: scale\(0\.9\); \}/);
+  assert.doesNotMatch(page, /transform: scale\(calc\(1 \+ var\(--level, 0\) \* 0\.12\)\)/, "the ring itself moves now, not the whole button");
+  assert.match(page, /talkBtn\.style\.setProperty\('--level', level === 0 \? 0 : shown\.toFixed\(3\)\);/, "the light inside follows the voice");
+  assert.match(page, /\.talk-btn\.recording \.talk-core \{ animation: none; opacity: calc\(0\.75 \+ var\(--level, 0\) \* 0\.6\);/, "and rises with it");
   assert.match(page, /\.toolbar-btn\.speaking \{ color: var\(--accent-live\);/, "the mic too, once the chat is open");
-  assert.match(page, /@media \(prefers-reduced-motion: reduce\) \{ \.talk-btn, \.talk-fist, \.talk-core, #heroInputWrap::after \{ animation: none !important; \}/);
+  assert.match(page, /@media \(prefers-reduced-motion: reduce\) \{ \.talk-btn, \.talk-fist, \.talk-core, #heroInputWrap::after \{ animation: none !important; \}[^\n]*\.talk-btn:is\(\.recording, \.busy, \.speaking\) \.talk-smoke \{ visibility: hidden; \}/, "without motion the still film steps aside for the calm ring");
+  // One line under the ring, End beside it while talking; the box's own note waits for the chat.
+  assert.match(page, /<div class="talk-line" id="talkLine"><p class="talk-hint" id="talkHint" role="status" aria-live="polite"><\/p><button type="button" class="talk-end" id="talkEnd" hidden>End<\/button><\/div>/);
+  assert.match(page, /talkEnd\.addEventListener\('click', function \(\) \{ window\._conversation\.end\(\); \}\);/);
+  assert.match(page, /body:not\(\.chat-active\):not\(\.no-talk\) #dictationNote \{ display: none !important; \}/, "no second line above the box on the home");
+  assert.match(page, /words: function \(words\) \{ input\.value = words; sendMessage\(true\); sayUnder\('“' \+ words \+ '”', 'thinking'\); \},/, "what was heard, under the ring while it thinks");
   assert.match(page, /if \(!window\._conversation \|\| window\._conversation\.state\(\) === 'off'\) input\.focus\(\);/, "no keyboard over a reply being spoken");
   assert.match(page, /: window\.talkFirst && window\.talkFirst\(\) \? \(document\.body\.classList\.contains\('chat-active'\) \? 'Type a message' : 'Message Closedhand'\)/);
   const play = read("webapp/public/speech-playback.js");
-  assert.match(play, /window\.ClosedHandSpeech = \{ addControl: addControl, receive: receive, stop: stop, prime: prime, talk: talk \};/);
+  assert.match(play, /window\.ClosedHandSpeech = \{ addControl: addControl, receive: receive, stop: stop, prime: prime, talk: talk, analyser: function \(\) \{ return talking \? heard : null; \} \};/);
+  assert.match(play, /source\.connect\(out\(\)\);/, "a conversation's reply plays through the analyser the ring reads");
   // An iPhone on silent mutes page audio unless it says it is playback; in a
   // conversation the session is play-and-record, so the mic stays open.
   assert.match(play, /navigator\.audioSession\.type = "playback"/);

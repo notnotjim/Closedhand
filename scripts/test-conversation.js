@@ -1,8 +1,8 @@
 // Talking with Closedhand on a phone (webapp/public/conversation.js): one tap
-// starts a conversation and one ends it; a turn ends when the person stops
-// talking; the reply is spoken as it is written (speech-playback.js talk);
-// talking over it stops it. Runs the real scripts against a stand-in
-// browser and microphone.
+// starts a conversation; a turn ends when the person stops talking, or at
+// once when they tap; a tap with nothing said ends it; the reply is spoken as
+// it is written (speech-playback.js talk); talking over it, or a tap, stops
+// it. Runs the real scripts against a stand-in browser and microphone.
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
@@ -13,7 +13,7 @@ const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
 const RATE = 16000, CHUNK = 1600; // 100 ms a chunk
 
-function browser({ words = "what's on tomorrow" } = {}) {
+function browser({ words = "what's on tomorrow", micError = null, failDictation = false } = {}) {
   const fetched = [], said = [], interrupted = [], ended = [];
   let processor = null, stopped = 0, released = 0, session = null;
   const listeners = {};
@@ -21,11 +21,12 @@ function browser({ words = "what's on tomorrow" } = {}) {
     constructor() { this.sampleRate = RATE; this.state = "running"; this.destination = {}; }
     createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
     createScriptProcessor() { processor = { connect() {}, disconnect() {}, onaudioprocess: null }; return processor; }
+    createAnalyser() { return { fftSize: 0, frequencyBinCount: 128, connect() {}, disconnect() {}, getByteFrequencyData() {} }; }
     resume() { return Promise.resolve(); }
     close() {}
   }
   const navigator = {
-    mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() { stopped++; } }] }) },
+    mediaDevices: { getUserMedia: async () => { if (micError) throw Object.assign(new Error("no"), { name: micError }); return { getTracks: () => [{ stop() { stopped++; } }] }; } },
     wakeLock: { request: async () => ({ release() { released++; } }) },
     get audioSession() { return { set type(t) { session = t; } }; },
   };
@@ -34,6 +35,7 @@ function browser({ words = "what's on tomorrow" } = {}) {
     AudioContext, navigator, document,
     fetch: async (url, opts) => {
       fetched.push(url);
+      if (url === "/api/dictation" && failDictation) return { ok: false, json: async () => ({ error: "busy" }) };
       return { ok: true, json: async () => (url === "/api/dictation" ? { text: words, bytes: opts.body.byteLength } : {}) };
     },
     setTimeout, clearTimeout,
@@ -54,7 +56,7 @@ function browser({ words = "what's on tomorrow" } = {}) {
   const states = [];
   conversation.bind(button, note, {
     labels: { idle: "Talk to Closedhand", on: "End the conversation" },
-    hints: { idle: "Tap to talk", listening: "Listening", thinking: "Thinking", speaking: "Speaking, talk to interrupt", quiet: "Tap to end" },
+    hints: { idle: "Tap to talk", listening: "Listening", thinking: "Thinking", speaking: "Speaking, talk to interrupt", quiet: "Tap to end", missed: "Didn't catch that", noMic: "No microphone", blocked: "Allow the microphone" },
     onState: (s) => states.push(s),
   });
   // ms of a voice, of the room's quiet, or of near silence.
@@ -153,13 +155,76 @@ test("quiet for a while says how to end; quiet for half a minute, or the page hi
   assert.equal(c.conversation.state(), "off");
 });
 
+test("a tap while talking says done: the turn goes at once, and the tail of it is not a new turn", async () => {
+  const b = browser({ words: "book the 9:10" });
+  b.handlers.click();
+  await b.settle();
+  b.sound(500, "room"); b.sound(700, "voice");
+  b.handlers.click();
+  assert.equal(b.conversation.state(), "thinking", "no waiting for the pause");
+  assert.equal(b.fetched.filter((u) => u === "/api/dictation").length, 1);
+  b.sound(400, "voice"); b.sound(1000, "room");
+  await b.settle();
+  assert.deepEqual(b.said, ["book the 9:10"], "what trailed after the tap is not sent again");
+  b.conversation.replyStarted(); b.conversation.replyDone();
+  b.sound(600, "voice"); b.sound(1000, "room");
+  await b.settle();
+  assert.equal(b.said.length, 2, "once it listens again, the next turn counts");
+});
+
+test("a tap with nothing said ends it; a tap while it thinks changes nothing; a tap while it speaks stops the reply and listens", async () => {
+  const b = browser();
+  b.handlers.click();
+  await b.settle();
+  b.sound(500, "room"); b.sound(800, "voice"); b.sound(1000, "room");
+  assert.equal(b.conversation.state(), "thinking");
+  b.handlers.click();
+  assert.equal(b.conversation.state(), "thinking", "a tap while thinking does no harm");
+  assert.deepEqual(b.ended, []);
+  await b.settle();
+  b.conversation.replyStarted();
+  b.handlers.click();
+  assert.deepEqual(b.interrupted, [1], "a tap stops the reply");
+  assert.equal(b.conversation.state(), "listening", "and listens");
+  b.handlers.click();
+  assert.equal(b.conversation.state(), "off", "a tap with nothing said ends it");
+  assert.deepEqual(b.ended, [1]);
+});
+
+test("the ring can follow the voice, and what goes wrong is said in plain words", async () => {
+  const b = browser();
+  assert.equal(b.conversation.analyser(), null, "nothing to follow before it listens");
+  b.handlers.click();
+  await b.settle();
+  assert.ok(b.conversation.analyser(), "listening: the microphone's sound, for the ring");
+  b.handlers.click();
+  assert.equal(b.conversation.analyser(), null, "let go when it ends");
+  const none = browser({ micError: "NotFoundError" });
+  none.handlers.click();
+  await none.settle();
+  assert.equal(none.conversation.state(), "off");
+  assert.equal(none.note.textContent, "No microphone");
+  const blocked = browser({ micError: "NotAllowedError" });
+  blocked.handlers.click();
+  await blocked.settle();
+  assert.equal(blocked.note.textContent, "Allow the microphone");
+  const lost = browser({ failDictation: true });
+  lost.handlers.click();
+  await lost.settle();
+  lost.sound(500, "room"); lost.sound(800, "voice"); lost.sound(1000, "room");
+  await lost.settle();
+  assert.equal(lost.conversation.state(), "listening", "listening again");
+  assert.equal(lost.note.textContent, "Didn't catch that", "and says so for a moment");
+});
+
 test("on a computer the mic writes into the box; on a phone it is the conversation", () => {
   const page = read("webapp/views/index.html");
   assert.match(page, /<script src="\/conversation\.js\?v=\d+"><\/script>/);
   assert.match(page, /ClosedhandDictation\.attach\(document\.getElementById\('micBtn'\), input, document\.getElementById\('dictationNote'\),\n\s+\{ when: function \(\) \{ return !window\.talkFirst\(\); \} \}\);/);
-  assert.match(page, /window\._conversation\.bind\(document\.getElementById\('talkBtn'\), document\.getElementById\('talkHint'\), \{/);
-  assert.match(page, /window\._conversation\.bind\(document\.getElementById\('micBtn'\), document\.getElementById\('dictationNote'\), \{[\s\S]{0,200}when: function \(\) \{ return window\.talkFirst\(\); \}/, "carried on once the chat view opens");
-  assert.match(page, /var talkHints = \{ listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking, talk to interrupt', quiet: 'Tap to end' \};/);
+  assert.match(page, /var talkBtn = document\.getElementById\('talkBtn'\), micBtn = document\.getElementById\('micBtn'\);/);
+  assert.match(page, /window\._conversation\.bind\(talkBtn, talkHint, \{/);
+  assert.match(page, /window\._conversation\.bind\(micBtn, document\.getElementById\('dictationNote'\), \{[\s\S]{0,300}when: function \(\) \{ return window\.talkFirst\(\); \}/, "carried on once the chat view opens");
+  assert.match(page, /var talkHints = \{\n\s+listening: "Listening… tap when you're done", thinking: 'Thinking…', speaking: 'Speaking, talk to interrupt',\n\s+missed: "Didn't catch that\. Say it again\.",\n\s+noMic: "Closedhand can't find a microphone on this device\.",\n\s+blocked: "Closedhand can't hear you yet\. Allow the microphone for this page, then tap again\."\n\s+\};/);
   assert.match(read("webapp/public/dictation.js"), /if \(!take && opts\.when && !opts\.when\(\)\) return;/);
   assert.doesNotMatch(page, /_replyAloud/, "the one-reply read-aloud is gone: a conversation speaks every reply");
 });

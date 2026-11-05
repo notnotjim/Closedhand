@@ -116,9 +116,20 @@ const RAG_FILE_TYPES = Object.fromEntries([
   "mp3", "m4a", "wav", "aac", "flac", "ogg", "oga", "opus", "aiff", "mp4", "m4v", "mov", "webm",
 ].map((t) => ["." + t, t]));
 
-// Which reading of pictures a file had: the one that keeps only words
-// Tesseract is sure of (file-reader.js sureText). One read before it is read again.
-const PICTURE_READER = "sure-lines-1";
+// Which reading of pictures a file had: the one whose description says only
+// colours the picture has (lib/picture-colours.js in the bot), after the one
+// that kept only words Tesseract is sure of (file-reader.js sureText). One
+// read before it is read again; one read by the reading before, only if what
+// was kept of it names a colour, as nothing else of it changes.
+const PICTURE_READER = "colours-1";
+const BEFORE_COLOURS = "sure-lines-1";
+const COLOUR_WORD = /\b(red|orange|yellow|green|blue|purple|pink|brown|black|white|gr[ae]y|navy|turquoise|teal|violet|maroon|tan|beige|gold|silver)\b/i;
+
+// Files a computer or an app makes beside the person's own, which nobody
+// chose to keep: Office's "~$" lock files, Finder's .DS_Store and "._"
+// copies, Windows' Thumbs.db and desktop.ini. Never listed or read: a lock
+// file read as a presentation showed as a file that couldn't be read.
+const SYSTEM_FILE = /^(~\$|\._)|^(\.DS_Store|Thumbs\.db|desktop\.ini)$/i;
 
 // What takes longest to read: pictures, sound and video, read after documents.
 const MEDIA_TYPES = new Set(["jpg", "jpeg", "png", "webp", "gif", "tif", "tiff", "bmp", "heic", "heif",
@@ -139,9 +150,10 @@ async function extractText(buffer, fileType, fileName, userId, media = null) {
   const read = await reader.readFile(buffer, fileName || "file." + fileType);
   if (read.kind === "audio" || read.kind === "video") return hearFile(buffer, fileName || "file." + fileType, read.kind === "video", userId, media);
   if (read.kind === "image" && media) media.push({ modality: "image", buffer, label: "(picture)" });
-  // A PDF with no words in it, scanned pages read too, is a picture saved as
-  // a PDF: a logo, a drawing. Its first page goes in as one.
-  if (read.kind === "pdf" && !String(read.text || "").trim() && media) {
+  // A PDF with no words in it, or a few letters (a logo's), scanned pages read
+  // too, is a picture saved as a PDF: a logo, a drawing. Its first page goes
+  // in as one.
+  if (read.kind === "pdf" && String(read.text || "").replace(/\s+/g, "").length < 20 && media) {
     const page = await reader.pdfPicture(buffer);
     if (page) media.push({ modality: "image", buffer: page, label: "(picture)" });
   }
@@ -654,12 +666,20 @@ async function processDocument(documentId, userId, fileBuffer, fileName, fileTyp
 // embedded and kept, and the file marked ready. Throws when there is nothing
 // to keep.
 async function fileText(documentId, userId, fileName, text, media, sourceContext = null) {
-  if ((!text || text.trim().length < 10) && !(media && media.length)) {
-    throw new Error("No text content could be extracted from this file");
+  text = String(text || "");
+  // A file with nothing in it, words or pictures (an empty document), is
+  // found by its name, as every file is, and has nothing more to keep. It was
+  // counted as a file that couldn't be read.
+  if (!text.trim() && !(media && media.length)) {
+    await supabase.from("rag_chunks").delete().eq("document_id", documentId);
+    const { data: had } = await supabase.from("rag_documents").select("metadata").eq("id", documentId).single();
+    await supabase.from("rag_documents").update({ status: "ready", chunk_count: 0, error_message: null, metadata: { ...((had && had.metadata) || {}), empty: true }, updated_at: new Date().toISOString() }).eq("id", documentId);
+    console.log(`[RAG] ${fileName}: nothing in it`);
+    return { chunks: 0 };
   }
 
   // 2. Chunk, the whole file: a long one is never cut to its first pages.
-  const chunks = text && text.trim().length >= 10 ? chunkText(text) : [];
+  const chunks = text.trim() ? chunkText(text) : [];
   console.log(`[RAG] ${fileName}: ${text.length} chars -> ${chunks.length} chunks`);
   if (chunks.length === 0 && !(media && media.length)) throw new Error("No chunks produced from text");
 
@@ -817,7 +837,7 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
 
     // 2. Scan folder for files
     // recursive: indexing a folder means everything underneath it
-    const files = await scanFolder(userId, origin, folderPath, { recursive: true, account });
+    const files = (await scanFolder(userId, origin, folderPath, { recursive: true, account })).filter((f) => !SYSTEM_FILE.test(f.name || ""));
 
     // Google Docs mimeTypes that we can export as PDF
     const GOOGLE_DOC_TYPES = [
@@ -945,13 +965,21 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
       // read before Tesseract kept only lines it was sure of carries the
       // nonsense it read off shapes, so it is read once more.
       const existing = existingMap[filePath];
-      const readWell = !MEDIA_TYPES.has(typeOf(file)) || existing?.metadata?.read_by === PICTURE_READER;
+      let readWell = !MEDIA_TYPES.has(typeOf(file)) || existing?.metadata?.read_by === PICTURE_READER;
+      if (!readWell && existing?.status === "ready" && existing.metadata?.read_by === BEFORE_COLOURS) {
+        const { data: parts } = await supabase.from("rag_chunks").select("content").eq("document_id", existing.id);
+        if (!(parts || []).some((p) => COLOUR_WORD.test(p.content || ""))) {
+          const metadata = { ...existing.metadata, read_by: PICTURE_READER };
+          const { error } = await supabase.from("rag_documents").update({ metadata }).eq("id", existing.id);
+          if (!error) { existing.metadata = metadata; readWell = true; }
+        }
+      }
       // A routine check leaves an unchanged file that could not be read for
       // Update, rather than fetching it again every time.
       if (opts.scheduled && existing && existing.metadata?.modified === file.modified && existing.status === "error") return;
       if (existing && existing.metadata?.modified === file.modified && existing.status === "ready" && readWell) {
         const { count } = await supabase.from("rag_chunks").select("id", { count: "exact", head: true }).eq("document_id", existing.id);
-        if (count > 0) {
+        if (count > 0 || existing.metadata?.empty) {
           totalChunks += count;
           return;
         }
@@ -1067,24 +1095,20 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
     // number of rows: counting every document made a source with nine failed
     // files read "71 files, 122 chunks, ready" while nine of them were not in
     // the index at all. A file that silently is not indexed looks exactly like
-    // one that is, right up until a search comes back empty.
+    // one that is, right up until a search comes back empty. Which files
+    // can't be read, and which still wait to be heard, are counted when the
+    // sources are shown (GET /api/rag/sources): a recording heard or failed
+    // after this run would leave a note kept here out of date.
     const { count: fileCount } = await supabase.from("rag_documents")
       .select("id", { count: "exact", head: true }).eq("source_id", sourceId).eq("status", "ready");
     const { count: failedCount } = await supabase.from("rag_documents")
       .select("id", { count: "exact", head: true }).eq("source_id", sourceId).eq("status", "error");
 
-    // Files that failed to read are said where the person can see them, so a
-    // partial index never looks complete.
-    const notes = [];
-    if (failedCount > 0) {
-      notes.push(`${failedCount} file${failedCount === 1 ? "" : "s"} couldn't be read, so File Search can't find ${failedCount === 1 ? "it" : "them"} yet.`);
-    }
-
     await supabase.from("rag_sources").update({
       status: "ready",
       file_count: fileCount || 0,
       chunk_count: totalChunks,
-      error_message: notes.length > 0 ? notes.join(" ") : null,
+      error_message: null,
       last_indexed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", sourceId);
@@ -1137,4 +1161,4 @@ async function checkSources() {
   }
 }
 
-module.exports = { init, processDocument, processSource, checkSources, scanFolder, fetchFileContent, extractText, chunkText, docOpening, embedBatch, embedSingle, getServiceToken, fetchWithRefresh, recoverStalledDocuments, hearWaiting, hearFile, dueToHear, HEARD_TYPES };
+module.exports = { init, processDocument, processSource, checkSources, scanFolder, fetchFileContent, extractText, chunkText, docOpening, embedBatch, embedSingle, getServiceToken, fetchWithRefresh, recoverStalledDocuments, hearWaiting, hearFile, dueToHear, HEARD_TYPES, HEAR_TRIES, SYSTEM_FILE };

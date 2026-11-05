@@ -258,6 +258,7 @@ test('a picture of any size is decoded and shrunk before the models read it; one
     const chain = {
       rotate() { calls.push(['rotate']); return chain; },
       resize(o) { calls.push(['resize', o]); return chain; },
+      flatten(o) { calls.push(['flatten', o]); return chain; },
       jpeg(o) { calls.push(['jpeg', o]); return chain; },
       toBuffer: async () => Buffer.from('small jpeg'),
     };
@@ -272,8 +273,9 @@ test('a picture of any size is decoded and shrunk before the models read it; one
       ['open', big.length, { unlimited: true, limitInputPixels: false, failOn: 'none' }],
       ['rotate'],
       ['resize', { width: 1536, height: 1536, fit: 'inside', withoutEnlargement: true }],
+      ['flatten', { background: '#ffffff' }],
       ['jpeg', { quality: 90 }],
-    ], 'any size, turned upright, shrunk to fit 1536, as a JPEG');
+    ], 'any size, turned upright, shrunk to fit 1536, clear parts white, as a JPEG');
     fails = true;
     const junk = Buffer.from('not a picture');
     assert.equal(await pictureForModels(junk), junk, 'goes as it came');

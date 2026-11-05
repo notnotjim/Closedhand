@@ -127,6 +127,8 @@ stub('sandbox.js', {
       return { stdout: 'started' };
     }
     if (route === '/files/read') return { content: 'CLOSEDHAND_PROGRESS download 1\nCLOSEDHAND_VIDEO ' + JSON.stringify(sandboxReply.out) + '\n' };
+    // Each job starts by clearing what earlier ones left (lib/video.js startJob).
+    if (route === '/exec' && body.code.includes('disk_usage')) { calls.exec.push('sweep'); return { stdout: 'free 99999999999\n' }; }
     if (route === '/exec') { calls.exec.push(body.code.includes('rmtree') ? 'cleanup' : 'other'); return { stdout: '' }; }
     return {};
   },
@@ -172,7 +174,7 @@ test('a model that takes video gets the whole video and what is said, and the pa
   const content = calls.requests[0].content;
   assert.equal(content.find((b) => b.type === 'video').source.data, Buffer.from('MP4DATA').toString('base64'));
   assert.match(content.at(-1).text, /^What's said \(from speech written out by Closedhand\):\n\[0:01\] hello/, 'a model that sees but cannot hear still gets every word');
-  assert.deepEqual(calls.exec, ['gather', 'cleanup']);
+  assert.deepEqual(calls.exec, ['sweep', 'gather', 'cleanup']);
 });
 
 test('if the whole video fails, frames and speech go in one request, in order with their times', async () => {
@@ -339,7 +341,7 @@ test('a link to several videos is not guessed at: their titles come back to ask 
   const store = setup({ chat: { model: 'vision-model', cap: { vision: true } }, vision: 'same' });
   await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'https://videos.test/playlist' }),
     (e) => e.userFacing && /^This link holds more than 2 videos, so ask which one to watch:\n1\. Kettle care, part 1 \(https:\/\/videos\.test\/1\)\n2\. Kettle care, part 2 \(https:\/\/videos\.test\/2\)$/.test(e.message));
-  assert.deepEqual(calls.exec, ['gather', 'cleanup'], 'its folder is cleared');
+  assert.deepEqual(calls.exec, ['sweep', 'gather', 'cleanup'], 'its folder is cleared');
   reset({ out: { ok: false, kind: 'live', error: 'This is a live stream' } });
   await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'https://videos.test/live' }), (e) => e.userFacing && /^This is a live stream, so there is no end to watch to yet\./.test(e.message));
 });

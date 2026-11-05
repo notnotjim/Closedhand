@@ -108,6 +108,6 @@ test("the turn's hook, proactive messages and the web chat page", () => {
   const page = read("webapp/views/index.html");
   assert.match(page, /if \(msg\.type === 'elsewhere'\) \{ showElsewhere\(msg\); return; \}/);
   assert.match(page, /where\.textContent = 'on ' \+ VIA_NAMES\[via\];/);
-  assert.match(page, /var firstOfVisit = !hasMessages && !_openProject;\n\s*enterChatMode\(\);\n\s*if \(firstOfVisit\) loadEarlier\(\);/, "typing from the opening screen carries the conversation on");
+  assert.match(page, /var firstOfVisit = !hasMessages && !_openProject;\n(\s*\/\/[^\n]*\n)*\s*if \(spoken === true && !hasMessages && window\.talkFirst && window\.talkFirst\(\)\) holdForAnswer\(\); else enterChatMode\(\);\n\s*if \(firstOfVisit\) loadEarlier\(\);/, "typing (or talking) from the opening screen carries the conversation on");
   assert.match(page, /addMessage\(msg\.content, msg\.role === 'user' \? 'user' : 'bot', null, msg\.ts \|\| null, msg\.via \|\| null\);/, "history says which app too");
 });

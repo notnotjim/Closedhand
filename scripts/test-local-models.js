@@ -332,3 +332,47 @@ test('the VLM is pinned and checked, fetched in the background at start, and sho
 test('a video file sent in chat always gets its frames, which a chat model that cannot see gets described', () => {
   assert.match(fs.readFileSync(path.join(__dirname, '../lib/engine.js'), 'utf8'), /video: !!fileData\.isVideo, frames: fileData\.isVideo \? 8 : 0 \}/);
 });
+
+// Florence-2 often calls a white or pale background blue (tried on invented
+// product shots: a green paddle and an orange-and-white grip on white were
+// both "on a blue background"), so a search for "blue" found pictures with no
+// blue in them. What it says of colours is held to the picture's own pixels.
+test("a picture's description says only colours the picture has: a false background takes the edge's colour, a false colour goes", () => {
+  const { keepSeenColours, namesColour } = require('../lib/picture-colours');
+  const share = (o) => ({ black: 0, white: 0, grey: 0, red: 0, orange: 0, yellow: 0, green: 0, blue: 0, purple: 0, pink: 0, brown: 0, ...o });
+  const grip = { whole: share({ white: 0.9, orange: 0.08, grey: 0.02 }), edge: share({ white: 0.98, grey: 0.02 }) };
+  assert.equal(keepSeenColours('A blue and white object has the words Kestrel on it. There are black circles on the bottom.', grip),
+    'A white object has the words Kestrel on it. There are black circles on the bottom.', 'black is easily taken for the grey there');
+  assert.equal(keepSeenColours('A white and orange striped object is in the middle of a blue background.', grip), 'A white and orange striped object is in the middle of a white background.');
+  assert.equal(keepSeenColours('The background is a light blue color. The stripes are orange.', grip), 'The background is a white color. The stripes are orange.');
+  assert.equal(keepSeenColours('The image is a solid blue color. There are six solid blue squares in it. The object is long.', grip), 'The object is long.');
+  assert.equal(keepSeenColours('A blue and orange ball.', grip), 'An orange ball.');
+  assert.equal(keepSeenColours('A round black object is on a white background. A black ball. The colour is black.', { whole: share({ white: 0.7, green: 0.3 }), edge: share({ white: 1 }) }),
+    'A round object is on a white background. A ball.', 'a false colour before a thing goes on its own; said of nothing, its sentence goes');
+  // What is there stays, word for word.
+  const sky = { whole: share({ blue: 0.7, green: 0.3 }), edge: share({ blue: 0.6, green: 0.4 }) };
+  const said = 'The image is a silhouette of a mountain. The sky is light blue. The background is solid blue.';
+  assert.equal(keepSeenColours(said, sky), said);
+  // With no one colour round the edge, a false background colour is left out.
+  const busy = { whole: share({ red: 0.3, green: 0.3, yellow: 0.4 }), edge: share({ red: 0.4, green: 0.3, yellow: 0.3 }) };
+  assert.equal(keepSeenColours('A red mug on a blue background. A green plant.', busy), 'A green plant.');
+  assert.ok(namesColour('A Navy coat') && !namesColour('A coat on a hook'));
+});
+
+test("the colours are measured from the picture, transparency counted as white, and every picture the VLM describes is checked", async (t) => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib/local-models.js'), 'utf8');
+  assert.match(src, /const picture = await pictureForModels\(bytes\);\n\s*const said = await _call\("describeImage", \{ data: picture \}, \{ urgent \}\);\n\s*return require\("\.\/picture-colours"\)\.checkColours\(said, picture\);/);
+  let sharp; try { sharp = require('sharp'); } catch { return t.skip('sharp is not installed here'); }
+  const { measure, checkColours } = require('../lib/picture-colours');
+  const bar = await sharp({ create: { width: 60, height: 200, channels: 3, background: { r: 245, g: 120, b: 20 } } }).png().toBuffer();
+  const onWhite = await sharp({ create: { width: 400, height: 400, channels: 3, background: { r: 252, g: 252, b: 250 } } }).composite([{ input: bar, left: 170, top: 100 }]).jpeg().toBuffer();
+  const m = await measure(onWhite);
+  assert.ok(m.whole.white > 0.85 && m.whole.orange > 0.05 && m.whole.blue === 0, JSON.stringify(m.whole));
+  assert.ok(m.edge.white > 0.99);
+  assert.equal(await checkColours('An orange bar on a blue background.', onWhite), 'An orange bar on a white background.');
+  const clear = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="60" fill="#1f7a3a"/></svg>')).png().toBuffer();
+  assert.ok((await measure(clear)).edge.white > 0.99, 'a transparent background is white, as it is shown');
+  assert.equal(await checkColours('A green circle on a white background.', clear), 'A green circle on a white background.');
+  assert.equal(await checkColours('A bakery front.', Buffer.from('not a picture')), 'A bakery front.', 'no colour said, nothing measured');
+  assert.equal(await checkColours('A red door.', Buffer.from('not a picture')), 'A red door.', 'a picture that cannot be measured keeps what was said');
+});

@@ -265,3 +265,54 @@ test('a sandbox that answers but fails is not said to be off', async () => {
     for (const f of ['lib/engine.js', 'lib/attachments.js']) assert.match(read(f), /heard\.error\.userFacing \? heard\.error\.message : "Closedhand couldn't hear this file just now\."/, f);
   } finally { restore(); }
 });
+
+// A job cut off partway left its folders on the sandbox; on a sandbox with
+// little room they filled it, and every later video then failed to arrive
+// ("no space left on device"). Each job now starts by clearing what no
+// running job uses, clears its own when it fails, and a file bigger than the
+// room left is not sent at all.
+test('the sandbox is cleared of what earlier jobs left, a failed job clears its own, and a file too big for the room left is not sent', async (t) => {
+  const os = require('node:os');
+  const calls = [];
+  let free = 50 * 1024 ** 3, failWrite = false;
+  const sandbox = {
+    ensureSandbox: async () => {},
+    sandboxRequest: async (userId, method, route, body) => {
+      calls.push([route, body]);
+      if (route === '/exec' && /disk_usage/.test(body.code)) return { stdout: `free ${free}\n` };
+      if (route === '/files/write') { if (failWrite) throw new Error('HTTP 400: {"error":"ENOSPC: no space left on device, write"}'); return { success: true }; }
+      return { stdout: '' };
+    },
+    sandboxFileDownload: async () => ({ content: '' }),
+  };
+  const { video, restore } = withStandIns(sandbox, { transcribe: async () => SAID });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hear-room-'));
+  t.after(() => { restore(); fs.rmSync(dir, { recursive: true, force: true }); });
+
+  // A send that fails partway takes its folders with it.
+  failWrite = true;
+  await assert.rejects(video.hearMedia({ userId: 'u1', buffer: Buffer.from('x'), name: 'Harbour walk.mp4', video: true }), /ENOSPC/);
+  const job = /keep = set\(\["([0-9a-f]+)"\]\)/.exec(calls.find(([r, b]) => r === '/exec' && /disk_usage/.test(b.code))[1].code)[1];
+  const cleared = calls.filter(([r, b]) => r === '/exec' && /rmtree/.test(b.code) && !/disk_usage/.test(b.code)).pop()[1].code;
+  assert.match(cleared, new RegExp(`\\.closedhand-video/in-${job}"`), 'the parts sent so far go');
+
+  // A file bigger than the room left is refused before anything is sent.
+  calls.length = 0; failWrite = false; free = 4 * 1024 ** 3;
+  const big = path.join(dir, 'Ceremony 4K.mov');
+  fs.closeSync(fs.openSync(big, 'w'));
+  fs.truncateSync(big, 6 * 1024 ** 3); // sparse: nothing is written
+  await assert.rejects(video.hearMedia({ userId: 'u1', file: big, name: 'Ceremony 4K.mov', video: true }),
+    (e) => e.userFacing && e.message === "This file is bigger than the room left on Closedhand's sandbox computer.");
+  assert.equal(calls.filter(([r]) => r === '/files/write').length, 0, 'nothing is sent');
+
+  // The sweep itself, run as the sandbox runs it: leftovers go, a running job's folders stay.
+  const sweep = calls.find(([r, b]) => r === '/exec' && /disk_usage/.test(b.code))[1].code;
+  const running = /keep = set\(\["([0-9a-f]+)"\]\)/.exec(sweep)[1];
+  const box = fs.mkdtempSync(path.join(dir, 'box-'));
+  for (const d of [`in-${running}`, running, 'in-0123456789ab', '0123456789ab', 'in-ba9876543210']) fs.mkdirSync(path.join(box, '.closedhand-video', d), { recursive: true });
+  fs.writeFileSync(path.join(box, '.closedhand-video', 'in-ba9876543210', 'file.mov.part00000'), 'x');
+  const ran = require('node:child_process').spawnSync('python3', ['-c', sweep], { cwd: box, encoding: 'utf8' });
+  if (ran.error) return t.diagnostic('python3 is not here, so the sweep was not run');
+  assert.match(ran.stdout, /^free \d+/);
+  assert.deepEqual(fs.readdirSync(path.join(box, '.closedhand-video')).sort(), [running, `in-${running}`].sort());
+});

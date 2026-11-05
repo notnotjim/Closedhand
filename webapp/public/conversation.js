@@ -6,6 +6,9 @@
 // (speech-playback.js talk), and talking over it stops it and starts the
 // next turn. The fist on the phone's home and the mic in a conversation are
 // bound to the same conversation, so it carries on when the chat view opens.
+// A tap while talking says "done": the turn goes at once rather than after
+// the pause. A tap with nothing said ends the conversation; a tap while it
+// speaks stops the reply and listens; a tap while it thinks changes nothing.
 (function (root) {
   'use strict';
   var TURN_END_MS = 800;      // quiet after speech that ends a turn
@@ -38,10 +41,21 @@
       bound.forEach(function (b) {
         if (!b.note) return;
         var shown = text || (state === 'off' && b.hints ? b.hints.idle : '');
+        if (b.say) { b.say(shown, state); return; }
         b.note.textContent = shown;
         b.note.hidden = !shown;
       });
     }
+    // A line said for a moment (a turn that couldn't be made out), then the
+    // state's own line again.
+    var flashTimer = null;
+    function flash(text) {
+      var at = state;
+      show(text);
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(function () { if (state === at) show(hintFor(state)); }, 3500);
+    }
+    function hint(name) { return ((bound[0] && bound[0].hints) || {})[name] || ''; }
     function hintFor(s) {
       var h = (bound[0] && bound[0].hints) || {};
       return s === 'listening' ? h.listening : s === 'thinking' ? h.thinking : s === 'speaking' ? h.speaking : '';
@@ -49,6 +63,9 @@
     function set(next) {
       state = next;
       quietHinted = false;
+      clearTimeout(flashTimer);
+      // Listening again (or speaking, to be talked over): sound counts again.
+      if (vad && next !== 'thinking') vad.done = false;
       bound.forEach(function (b) {
         b.button.classList.toggle('recording', next === 'listening');
         b.button.classList.toggle('busy', next === 'thinking');
@@ -64,12 +81,15 @@
     }
     function level(value) { bound.forEach(function (b) { if (b.onLevel) b.onLevel(value); }); }
 
-    function fresh() { return { floor: 0.003, inTurn: false, pending: 0, voiced: 0, quiet: 0, total: 0, idle: 0, parts: [], pre: [], preMs: 0 }; }
+    function fresh() { return { floor: 0.003, inTurn: false, pending: 0, voiced: 0, quiet: 0, total: 0, idle: 0, parts: [], pre: [], preMs: 0, rate: 0, done: false }; }
 
     // One chunk of microphone sound: is someone talking, has a turn begun or
     // ended, has the person talked over the reply.
     function hear(chunk, rate) {
       if (state === 'off') return;
+      vad.rate = rate;
+      // Tapped "done": the tail of what was being said is not a new turn.
+      if (vad.done) { if (state === 'listening') level(0); return; }
       var ms = chunk.length / rate * 1000, r = rms(chunk);
       var speaking = state === 'speaking';
       // Over the reply only a clearly louder voice counts: the echo
@@ -102,19 +122,24 @@
       vad.parts.push(chunk); vad.total += ms;
       if (loud) { vad.voiced += ms; vad.quiet = 0; } else vad.quiet += ms;
       level(Math.min(1, r * 8));
-      if (vad.quiet >= TURN_END_MS || vad.total >= MAX_TURN_MS) {
-        var parts = vad.parts, voiced = vad.voiced;
-        vad.inTurn = false; vad.parts = []; vad.pending = 0; vad.idle = 0;
-        level(0);
-        if (voiced >= MIN_VOICED_MS) send(parts, rate);
-      }
+      if (vad.quiet >= TURN_END_MS || vad.total >= MAX_TURN_MS) finish(vad.voiced >= MIN_VOICED_MS, false);
+    }
+
+    // The turn ends: after the pause, or at once on a tap.
+    function finish(keep, tapped) {
+      var parts = vad.parts;
+      vad.inTurn = false; vad.parts = []; vad.pending = 0; vad.idle = 0; vad.pre = []; vad.preMs = 0;
+      vad.done = !!tapped;
+      level(0);
+      if (keep) send(parts, vad.rate, tapped);
+      if (state !== 'thinking') vad.done = false;
     }
 
     // A finished turn, written out and sent.
-    function send(parts, rate) {
+    function send(parts, rate, tapped) {
       var peak = 0, length = 0;
       parts.forEach(function (p) { length += p.length; for (var i = 0; i < p.length; i++) { var v = p[i] < 0 ? -p[i] : p[i]; if (v > peak) peak = v; } });
-      if (peak < HEARD) return;
+      if (peak < HEARD || !rate) return;
       var all = new Float32Array(length), at = 0;
       parts.forEach(function (p) { all.set(p, at); at += p.length; });
       var D = root.ClosedhandDictation;
@@ -125,12 +150,12 @@
         .then(function (j) {
           var words = String(j.text || '').trim();
           if (state === 'off') return;
-          if (!words) { if (state === 'thinking' && before === 'listening') set('listening'); return; }
+          if (!words) { if (state === 'thinking' && before === 'listening') { set('listening'); if (tapped) flash(hint('missed')); } return; }
           heard = true;
           opts.words(words);
           if (state === 'listening') set('thinking');
         })
-        .catch(function () { if (state === 'thinking' && before === 'listening') set('listening'); });
+        .catch(function () { if (state === 'thinking' && before === 'listening') { set('listening'); flash(hint('missed')); } });
     }
 
     function start() {
@@ -151,12 +176,16 @@
         processor.onaudioprocess = function (e) { hear(new Float32Array(e.inputBuffer.getChannelData(0)), context.sampleRate); };
         source.connect(processor);
         processor.connect(context.destination);
+        // The voice's shape, for the ring to follow (talk-ring.js).
+        var analyser = null;
+        if (context.createAnalyser) { analyser = context.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.5; source.connect(analyser); }
         if (context.state === 'suspended') context.resume();
-        mic = { context: context, stream: stream, source: source, processor: processor };
-      }).catch(function () {
+        mic = { context: context, stream: stream, source: source, processor: processor, analyser: analyser };
+      }).catch(function (e) {
         context.close();
         end();
-        show("Closedhand can't hear you yet. Allow the microphone for this page, then tap again.");
+        var none = e && (e.name === 'NotFoundError' || e.name === 'OverconstrainedError' || e.name === 'NotReadableError');
+        show(hint(none ? 'noMic' : 'blocked') || "Closedhand can't hear you yet. Allow the microphone for this page, then tap again.");
       });
     }
 
@@ -167,6 +196,7 @@
       if (m) {
         m.processor.onaudioprocess = null;
         m.processor.disconnect();
+        if (m.analyser) m.analyser.disconnect();
         m.source.disconnect();
         m.stream.getTracks().forEach(function (t) { t.stop(); });
         m.context.close();
@@ -182,24 +212,33 @@
     }
 
     // Each button that starts and ends it. b: { button, note, labels { idle,
-    // on }, hints { idle, listening, thinking, speaking, quiet }, onLevel,
-    // onState, when() } where when says whether this button talks right now.
+    // on }, hints { idle, listening, thinking, speaking, quiet, missed, noMic,
+    // blocked }, onLevel, onState, say(text, state) to show a line its own
+    // way, when() } where when says whether this button talks right now.
     function bind(button, note, b) {
       b = b || {};
-      var entry = { button: button, note: note, labels: b.labels || { idle: button.getAttribute('aria-label') || '', on: '' }, hints: b.hints || null, onLevel: b.onLevel, onState: b.onState };
+      var entry = { button: button, note: note, labels: b.labels || { idle: button.getAttribute('aria-label') || '', on: '' }, hints: b.hints || null, onLevel: b.onLevel, onState: b.onState, say: b.say };
       bound.push(entry);
       button.addEventListener('click', function () {
         if (b.when && !b.when()) return;
-        if (state === 'off') start(); else end();
+        tap();
       });
       set(state);
       return true;
     }
 
+    function tap() {
+      if (state === 'off') start();
+      else if (state === 'listening') { if (vad && vad.inTurn) finish(true, true); else end(); }
+      else if (state === 'speaking') { opts.interrupt(); set('listening'); if (vad) vad.idle = 0; }
+    }
+
     if (root.document) root.document.addEventListener('visibilitychange', function () { if (root.document.hidden) end(); });
 
     return {
-      bind: bind, start: start, end: end,
+      bind: bind, start: start, end: end, tap: tap,
+      // The microphone's sound, while listening (an AnalyserNode), or null.
+      analyser: function () { return mic && mic.analyser; },
       // The reply is being heard: the first of it is playing.
       replyStarted: function () { if (state === 'thinking' || state === 'listening') set('speaking'); },
       // The reply has been said in full, or there was nothing to say.

@@ -469,6 +469,15 @@
   .toolbar-btn.speaking { color: var(--accent-live); background: rgba(var(--accent-rgb),0.14); border-color: rgba(var(--accent-rgb),0.55); }
   @keyframes micListening { 0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb),0.35); } 50% { box-shadow: 0 0 0 0.3125rem rgba(var(--accent-rgb),0); } }
   @media (prefers-reduced-motion: reduce) { .toolbar-btn.recording { animation: none; } }
+  /* The ring drawn while talking (talk-ring.js), round the fist on a phone's
+     home and, smaller, inside the mic once the chat is open, where it takes
+     the place of the mic's own pulse. Thinking, the mic stays lit. */
+  .talk-ring { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .toolbar-btn.has-ring { position: relative; }
+  @media (max-width: 600px) {
+    .toolbar-btn.has-ring.recording { animation: none; }
+    .toolbar-btn.has-ring.busy { opacity: 1; color: var(--accent-live); background: rgba(var(--accent-rgb),0.14); border-color: rgba(var(--accent-rgb),0.55); }
+  }
   /* Sits just above the message box, so it never moves the mic while you
      tap it to start and again to stop. */
   .dictation-note { position: absolute; left: 0.75rem; bottom: calc(100% + 0.625rem); z-index: 5; max-width: calc(100% - 1.5rem); box-sizing: border-box; padding: 0.5rem 0.75rem; border-radius: 0.75rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.14); box-shadow: 0 0.375rem 1.25rem rgba(var(--shade-rgb),0.4); font-size: 0.8125rem; line-height: 1.4; color: rgba(var(--fg-rgb),0.82); pointer-events: none; }
@@ -1242,11 +1251,14 @@
   @media (max-width: 600px) {
     body:not(.no-talk) .talk { display: flex; flex-direction: column; align-items: center; gap: 0.625rem; margin: 1rem 0 0.5rem; opacity: 0; animation: heroIn 0.8s ease forwards 0.7s; }
     /* The ring is the voice: closedhand.com's smoke ring, the fist floating
-       in its light. At rest the light breathes; listening, ring and light
-       swell with the voice (--level, from dictation.js); while the words are
-       written out the light quickens and turns. */
-    .talk-btn { position: relative; width: var(--talk-size, 13.5rem); height: var(--talk-size, 13.5rem); padding: 0; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; transform: scale(calc(1 + var(--level, 0) * 0.12)); transition: transform 0.12s ease-out, width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease; }
-    .talk-smoke { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+       in its light. At rest the film breathes. Talking, the film draws back
+       and the ring is drawn live (talk-ring.js): listening, its strands bend
+       with the voice; thinking, it gathers in and a light runs round; while
+       Closedhand speaks, it moves with that voice. The light inside rises
+       with the voice too (--level). */
+    .talk-btn { position: relative; width: var(--talk-size, 13.5rem); height: var(--talk-size, 13.5rem); padding: 0; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease; }
+    .talk-smoke { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; transition: opacity 0.5s ease, transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .talk-btn:is(.recording, .busy, .speaking) .talk-smoke { opacity: 0.14; transform: scale(0.9); }
     .talk-core { position: absolute; left: 50%; top: 50%; width: 60%; height: 60%; translate: -50% -50%; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(var(--accent-rgb),0.30), rgba(var(--accent-rgb),0.08) 45%, transparent 70%); animation: talkBreathe 6s ease-in-out infinite; transition: filter 0.3s ease; }
     /* The fist in the theme's own ink, cut out by its picture: no filter, as
        Safari draws a filtered image at a lower resolution. */
@@ -1257,10 +1269,21 @@
     .talk-btn.recording .talk-fist { animation: talkOpen 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), talkGrip 2.4s ease-in-out 0.4s infinite; }
     .talk-btn.busy { cursor: progress; }
     .talk-btn.speaking .talk-core { animation-duration: 1.2s; filter: brightness(1.5); }
-    .talk-btn.busy .talk-core { animation: talkQuicken 0.9s linear infinite; background: conic-gradient(from 0deg, rgba(var(--accent-rgb),0.05), rgba(var(--accent-rgb),0.5), rgba(var(--accent-rgb),0.05) 40%, transparent 60%); filter: blur(0.375rem) brightness(1.4); }
+    .talk-btn.busy .talk-core { animation: talkBreathe 1.8s ease-in-out infinite; filter: brightness(1.3); }
     .talk-btn.busy .talk-fist { animation: talkClench 0.32s ease-out; }
-    .talk-hint { margin: 0; min-height: 1.375rem; max-width: 18.75rem; font-size: 0.9375rem; line-height: 1.45; text-align: center; color: rgba(var(--fg-rgb),0.75); transition: opacity 0.3s ease; }
+    /* One line under the ring, End beside it while talking; a change fades
+       out, swaps and fades back in (sayUnder). */
+    .talk-line { display: flex; align-items: baseline; justify-content: center; gap: 0.75rem; max-width: 20rem; min-height: 1.375rem; transition: opacity 0.16s ease; }
+    .talk-line.swap { opacity: 0; }
+    .talk-hint { margin: 0; font-size: 0.9375rem; line-height: 1.45; text-align: center; color: rgba(var(--fg-rgb),0.75); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .talk-end { flex: none; position: relative; padding: 0; border: 0; background: none; font: inherit; font-size: 0.9375rem; color: rgba(var(--fg-rgb),0.5); text-decoration: underline; text-decoration-color: rgba(var(--fg-rgb),0.25); text-underline-offset: 0.1875rem; cursor: pointer; }
+    .talk-end::before { content: ""; position: absolute; inset: -0.75rem -0.75rem; }
+    .talk-end:hover, .talk-end:focus-visible { color: var(--fg); }
+    .talk-end[hidden] { display: none; }
     body:not(.chat-active):not(.no-talk) #micBtn { display: none; }
+    /* On the home the line under the ring says it; the box's own note is
+       for the conversation once the chat is open. */
+    body:not(.chat-active):not(.no-talk) #dictationNote { display: none !important; }
     /* The phone's home, top to bottom in the hero's column: the greeting and
        the weather, the ring, then at the bottom, where the thumb is, the
        conversations to pick up, the box and the chat apps. */
@@ -1320,11 +1343,10 @@
   @property --compose-sweep { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
   @keyframes composeSweep { 0% { --compose-sweep: -40deg; opacity: 0; } 12% { opacity: 1; } 85% { opacity: 1; } 100% { --compose-sweep: 330deg; opacity: 0; } }
   @keyframes talkBreathe { 0%, 100% { opacity: 0.65; scale: 0.94; } 50% { opacity: 1; scale: 1.05; } }
-  @keyframes talkQuicken { to { rotate: 360deg; } }
   @keyframes talkOpen { 0% { transform: scale(1); } 45% { transform: scale(1.12); } 100% { transform: scale(1); } }
   @keyframes talkGrip { 0%, 100% { transform: scale(1); } 50% { transform: scale(0.95); } }
   @keyframes talkClench { 0% { transform: scale(1); } 40% { transform: scale(0.82); } 100% { transform: scale(1); } }
-  @media (prefers-reduced-motion: reduce) { .talk-btn, .talk-fist, .talk-core, #heroInputWrap::after { animation: none !important; } .talk-btn { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .talk-btn, .talk-fist, .talk-core, #heroInputWrap::after { animation: none !important; } .talk-btn { transition: none; } .talk-line, .talk-smoke { transition-duration: 0.01s; } .talk-btn:is(.recording, .busy, .speaking) .talk-smoke { visibility: hidden; } }
   /* ===== FEATURES SECTION (below fold) ===== */
   .features-page {
     position: relative;
@@ -1368,6 +1390,18 @@
   .rag-source-btn { background:none; border:1px solid rgba(var(--fg-rgb),0.08); border-radius:0.375rem; padding:0.25rem 0.625rem; color:rgba(var(--fg-rgb),0.5); font-size:0.6875rem; cursor:pointer; font-family:inherit; transition:all 0.2s; }
   .rag-source-btn:hover { border-color:rgba(var(--fg-rgb),0.2); color:var(--muted); }
   .rag-source-btn.danger:hover { border-color:rgba(var(--danger-rgb),0.3); color:var(--danger); }
+  /* "Show which": a quiet text link beside the count of files that couldn't
+     be read; the names open below, one to a line. */
+  .rag-source-which { background:none; border:0; padding:0; margin-left:0.25rem; font:inherit; color:var(--muted); text-decoration:underline; text-underline-offset:0.125rem; cursor:pointer; }
+  .rag-source-which:hover, .rag-source-which:focus-visible { color:var(--fg); }
+  .rag-source-unread { list-style:none; margin:0.375rem 0 0; padding:0; font-size:0.6875rem; line-height:1.5; color:rgba(var(--fg-rgb),0.5); overflow-wrap:anywhere; max-height:12rem; overflow-y:auto; }
+  .rag-source-info > div:last-child { min-width:0; }
+  /* On a phone the actions go under the words instead of squeezing them. */
+  @media (max-width: 767px) {
+    .rag-source:not(.rag-source-add) { flex-wrap:wrap; row-gap:0.625rem; }
+    .rag-source:not(.rag-source-add) .rag-source-info { flex:1 1 100%; }
+    .rag-source-actions { padding-left:2.625rem; }
+  }
   .rag-browse-item { padding:0.625rem 0.875rem; border:1px solid rgba(var(--fg-rgb),0.06); border-radius:0.5rem; margin-bottom:0.25rem; cursor:pointer; display:flex; align-items:center; gap:0.5rem; color:var(--muted); font-size:0.8125rem; transition:all 0.15s; }
   .rag-browse-item:hover { background:rgba(var(--accent-strong-rgb),0.05); border-color:rgba(var(--accent-strong-rgb),0.15); }
   /* Adding from the picker is File Search's add button, set across the list. */
@@ -1576,6 +1610,10 @@
     border-radius: 2px; background: rgba(var(--fg-rgb),0.22); display: none; pointer-events: none;
   }
   @media (hover: none) and (pointer: coarse) { .dash-grab { display: block; } }
+  /* A phone's panel fills the screen, so there is no edge to pull and the bar
+     would sit on the dashboard like a stray scrollbar: the first-open peek
+     says it slides away instead. */
+  @media (max-width: 700px) { .dash-grab { display: none !important; } }
   @keyframes dashPeek { 0%, 100% { transform: translateX(0); } 45% { transform: translateX(1.75rem); } }
   .dash-overlay.active .dash-slide.peek { animation: dashPeek 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.6s 1; }
   .dash-slide-header {
@@ -2231,7 +2269,7 @@
          in the box. -->
     <div class="talk" id="talkArea">
       <button type="button" class="talk-btn" id="talkBtn" aria-label="Talk to Closedhand"><video class="talk-smoke" id="talkSmoke" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback aria-hidden="true" data-mov="/orb/smoke.mov" data-webm="/orb/smoke.webm" data-poster="/orb/smoke-poster.png"></video><span class="talk-core" aria-hidden="true"></span><span class="talk-fist" aria-hidden="true"></span></button>
-      <p class="talk-hint" id="talkHint" role="status" aria-live="polite"></p>
+      <div class="talk-line" id="talkLine"><p class="talk-hint" id="talkHint" role="status" aria-live="polite"></p><button type="button" class="talk-end" id="talkEnd" hidden>End</button></div>
     </div>
     <!-- Sending from here carries on Chat, or the project that is open. -->
 
@@ -2690,6 +2728,7 @@
 <script src="/polar-form.js"></script>
 <script src="/dictation.js?v=9"></script>
 <script src="/conversation.js?v=1"></script>
+<script src="/talk-ring.js"></script>
 <script src="/ask.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -3304,25 +3343,55 @@
       { when: function () { return !window.talkFirst(); } });
   }
   if (canTalk) {
-    var talkHints = { listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking, talk to interrupt', quiet: 'Tap to end' };
+    var talkHints = {
+      listening: "Listening… tap when you're done", thinking: 'Thinking…', speaking: 'Speaking, talk to interrupt',
+      missed: "Didn't catch that. Say it again.",
+      noMic: "Closedhand can't find a microphone on this device.",
+      blocked: "Closedhand can't hear you yet. Allow the microphone for this page, then tap again."
+    };
     window._conversation = ClosedhandConversation.create({
-      words: function (words) { input.value = words; sendMessage(true); },
+      words: function (words) { input.value = words; sendMessage(true); sayUnder('“' + words + '”', 'thinking'); },
       // Talked over: the rest of that reply is not said.
       interrupt: function () { _awaitingSpoken = false; if (_spokenReply) { _spokenReply.stop(); _spokenReply = null; } },
       prime: function () { ClosedHandSpeech.prime(true); },
-      onEnd: function () { _awaitingSpoken = false; if (_spokenReply) { _spokenReply.stop(); _spokenReply = null; } }
+      onEnd: function () { _awaitingSpoken = false; if (_spokenReply) { _spokenReply.stop(); _spokenReply = null; } talkHandover(); }
     });
-    window._conversation.bind(document.getElementById('talkBtn'), document.getElementById('talkHint'), {
+    var talkBtn = document.getElementById('talkBtn'), micBtn = document.getElementById('micBtn');
+    // The ring becomes the sound of the state it is in: the person's voice
+    // while listening, Closedhand's while speaking (talk-ring.js).
+    var heard = function (state) { return state === 'listening' ? window._conversation.analyser() : state === 'speaking' && ClosedHandSpeech.analyser ? ClosedHandSpeech.analyser() : null; };
+    var talkRing = window.ClosedhandTalkRing ? ClosedhandTalkRing.mount(talkBtn, { before: talkBtn.querySelector('.talk-core'), sound: heard }) : null;
+    var micRing = window.ClosedhandTalkRing ? ClosedhandTalkRing.mount(micBtn, { strands: 3, points: 64, small: true, sound: heard }) : null;
+    if (micRing) micBtn.classList.add('has-ring');
+    window._talkRing = talkRing;
+    // One line under the ring, End beside it while talking: each change
+    // fades out, swaps and fades back, so nothing jumps.
+    var talkLine = document.getElementById('talkLine'), talkHint = document.getElementById('talkHint'), talkEnd = document.getElementById('talkEnd'), lineNow = null, lineTimer = null;
+    function sayUnder(text, state) {
+      var key = text + '|' + (state !== 'off');
+      if (key === lineNow) return;
+      var first = lineNow === null;
+      lineNow = key;
+      clearTimeout(lineTimer);
+      var swap = function () { talkHint.textContent = text; talkEnd.hidden = state === 'off'; talkLine.classList.remove('swap'); };
+      if (first) { swap(); return; }
+      talkLine.classList.add('swap');
+      lineTimer = setTimeout(swap, 160);
+    }
+    talkEnd.addEventListener('click', function () { window._conversation.end(); });
+    window._conversation.bind(talkBtn, talkHint, {
       labels: { idle: 'Talk to Closedhand', on: 'End the conversation' },
       hints: Object.assign({ idle: 'Tap to talk' }, talkHints),
-      // The ring follows the voice, eased: quick to rise, slower to settle.
-      onLevel: (function () { var shown = 0, btn = document.getElementById('talkBtn'); return function (level) {
+      say: sayUnder,
+      // The light inside follows the voice, eased: quick to rise, slower to settle.
+      onLevel: (function () { var shown = 0; return function (level) {
         shown = level > shown ? shown * 0.4 + level * 0.6 : shown * 0.82 + level * 0.18;
-        btn.style.setProperty('--level', level === 0 ? 0 : shown.toFixed(3));
+        talkBtn.style.setProperty('--level', level === 0 ? 0 : shown.toFixed(3));
       }; })(),
       // A light tap felt as it starts listening and as it begins to think, where phones allow it.
       onState: function (state) {
         smokeRate(state);
+        if (talkRing) talkRing.set(state);
         if ((state === 'listening' || state === 'thinking') && navigator.vibrate) { try { navigator.vibrate(state === 'listening' ? 12 : 8); } catch (_) {} }
       }
     });
@@ -3330,9 +3399,10 @@
     // while to load from cold: both it and the voice load as the home opens,
     // so the first turn isn't kept waiting. They let go a few minutes later.
     if (window.talkFirst() && !document.body.classList.contains('chat-active')) fetch('/api/dictation/warm?voice=1', { method: 'POST' }).catch(function () {});
-    window._conversation.bind(document.getElementById('micBtn'), document.getElementById('dictationNote'), {
+    window._conversation.bind(micBtn, document.getElementById('dictationNote'), {
       labels: { idle: 'Speak instead of typing', on: 'End the conversation' },
       hints: Object.assign({ idle: '' }, talkHints),
+      onState: function (state) { if (micRing) micRing.set(state); },
       when: function () { return window.talkFirst(); }
     });
   } else document.body.classList.add('no-talk');
@@ -3559,6 +3629,7 @@
   var chatDim = document.getElementById('chatDim');
 
   function enterChatMode() {
+    if (_holding) { clearTimeout(_holding); _holding = null; }
     if (hasMessages) return;
     hasMessages = true;
     window._chatModeActive = true;
@@ -3633,6 +3704,7 @@
           var msg = JSON.parse(event.data);
           if (window.ClosedHandSpeech && window.ClosedHandSpeech.receive(msg)) return;
           if (_awaitingSpoken) speakReply(msg);
+          if (_holding && /^(status|stream_start|stream_token|message|file|error)$/.test(msg.type)) talkHandover();
           // Background progress is not a reply, so it never touches the reply watchdog.
           if (msg.type === 'agent_progress') { agentLiveLine(msg); return; }
           // Conversation history was cleared (/clear, lib/clear-command.js): what is shown goes too.
@@ -3729,6 +3801,17 @@
   // written: a step it takes first is said once ("Checking your calendar"),
   // then the reply sentence by sentence (ClosedHandSpeech.talk).
   var _awaitingSpoken = false, _spokenReply = null, _saidStep = false;
+  // Said on a phone's home: the ring stays, thinking, until the answer
+  // begins, the conversation ends or twelve seconds pass; then it settles
+  // back into its smoke as the conversation opens.
+  var _holding = null;
+  function holdForAnswer() { clearTimeout(_holding); _holding = setTimeout(talkHandover, 12000); }
+  function talkHandover() {
+    if (!_holding) return;
+    clearTimeout(_holding); _holding = null;
+    if (window._talkRing) window._talkRing.set('settle');
+    enterChatMode();
+  }
   function replyVoice() {
     if (!_spokenReply) _spokenReply = ClosedHandSpeech.talk(function (payload) {
       if (!chatWs || chatWs.readyState !== 1) return false;
@@ -3763,7 +3846,9 @@
 
     lastUserMessage = text;
     var firstOfVisit = !hasMessages && !_openProject;
-    enterChatMode();
+    // Said to the ring on a phone's home: the ring thinks until the answer
+    // begins, then the conversation opens (talkHandover).
+    if (spoken === true && !hasMessages && window.talkFirst && window.talkFirst()) holdForAnswer(); else enterChatMode();
     if (firstOfVisit) loadEarlier();
     // A reply shows the message it answers at its top, as it will from history.
     if (_replyTo) displayText = '[replying to ' + (_replyTo.who === 'closedhand' ? "Closedhand's message" : 'your own message') + ': "' + _replyTo.text.replace(/"\]/g, '" ]') + '"]\n' + displayText;
@@ -5575,6 +5660,14 @@ function ragCloseModal() {
   document.getElementById('ragModal').style.display = 'none';
 }
 
+// Sources whose list of files that couldn't be read is open, kept across the
+// redraws while a source is read.
+var _ragUnreadOpen = new Set();
+function ragToggleUnread(id) {
+  if (_ragUnreadOpen.has(id)) _ragUnreadOpen.delete(id); else _ragUnreadOpen.add(id);
+  ragLoadSources();
+}
+
 async function ragLoadSources() {
   try {
     var resp = await fetch('/api/rag/sources');
@@ -5627,6 +5720,8 @@ async function ragLoadSources() {
       var statusClass = s.status;
       var statusWord = s.status === 'ready' ? 'Ready' : s.status === 'error' ? 'Stopped' : s.status;
       if (reading) hasIndexing = true;
+      var hear = s.to_hear || {}, unreadable = s.unreadable || [], openWhich = _ragUnreadOpen.has(s.id);
+      var toHear = [hear.videos ? n(hear.videos) + ' video' + (hear.videos === 1 ? '' : 's') : '', hear.recordings ? n(hear.recordings) + ' recording' + (hear.recordings === 1 ? '' : 's') : ''].filter(Boolean).join(' and ');
       html += '<div class="rag-source">'
         + '<div class="rag-source-info">'
         + '<div class="rag-source-icon ' + iconClass + '">' + iconSvg + '</div>'
@@ -5636,18 +5731,17 @@ async function ragLoadSources() {
           s.origin === 'dropbox' ? 'Dropbox' + (s.path === '' ? '' : s.path) :
           s.path) + '</div>'
         + '<div class="rag-source-meta">' + stats + '</div>'
-        // Completion notes (files that failed to read) surface
-        // here rather than leaving a partial index looking complete
-        + (s.status !== 'indexing' && s.error_message
-            ? '<div class="rag-source-meta">' + escapeHtml(s.error_message) + '</div>'
-            : '')
-        // Naming them matters more than counting them: which files are missing
-        // is what tells the user whether the gap affects anything they search for
-        + (s.status !== 'indexing' && s.failed_files && s.failed_files.length
-            ? '<div class="rag-source-meta">'
-              + s.failed_files.slice(0, 5).map(function(f) { return escapeHtml(f.name); }).join(', ')
-              + (s.failed_files.length > 5 ? ' and ' + (s.failed_files.length - 5) + ' more' : '')
-              + '</div>'
+        // Why a source stopped.
+        + (s.status === 'error' && s.error_message ? '<div class="rag-source-meta">' + escapeHtml(s.error_message) + '</div>' : '')
+        // Recordings and videos still to read, so a search that misses what
+        // is said in one isn't a surprise.
+        + (!reading && toHear ? '<div class="rag-source-meta">' + toHear + ' to read while Closedhand is idle</div>' : '')
+        // Files that couldn't be read, so a partial index never looks
+        // complete; which ones, on request.
+        + (!reading && unreadable.length
+            ? '<div class="rag-source-meta">' + n(unreadable.length) + ' file' + (unreadable.length === 1 ? '' : 's') + ' couldn’t be read'
+              + ' <button type="button" class="rag-source-which" aria-expanded="' + openWhich + '" onclick="ragToggleUnread(\'' + s.id + '\')">' + (openWhich ? 'Hide' : 'Show which') + '</button></div>'
+              + (openWhich ? '<ul class="rag-source-unread">' + unreadable.map(function (name) { return '<li>' + escapeHtml(name) + '</li>'; }).join('') + '</ul>' : '')
             : '')
         + '</div>'
         + '</div>'

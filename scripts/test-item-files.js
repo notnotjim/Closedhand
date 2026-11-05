@@ -45,6 +45,16 @@ test("a file is read once; one that could not be fetched is tried again, less of
   assert.deepEqual(files.textsOf({ file_texts: [{ key: "a1", name: "a.pdf", text: "Total due £35.50" }, { key: "a2", name: "b.pdf", text: null }] }), [{ name: "a.pdf", text: "Total due £35.50" }]);
 });
 
+test("a picture described before its colours were checked is read once more, only if what was kept of it names a colour", () => {
+  const now = Date.parse("2026-11-06T12:00:00Z");
+  const row = (name, kept) => ({ source: "gmail", external_id: "m3", data: { attachments: [{ filename: name, size: 300000, attachmentId: "p1" }], file_texts: [{ key: "p1", name, media: [], ...kept }] } });
+  assert.equal(files.unread(row("paddle.jpg", { text: "A green paddle on a blue background." }), now).length, 1, "named a colour before the check");
+  assert.equal(files.unread(row("paddle.jpg", { text: "A green paddle on a white background.", read_by: "colours-1" }), now).length, 0, "described since");
+  assert.equal(files.unread(row("paddle.jpg", { text: "A paddle leaning on a wall." }), now).length, 0, "no colour said, nothing to change");
+  assert.equal(files.unread(row("notes.pdf", { text: "Paint the shed blue." }), now).length, 0, "a document's own words are never touched");
+  assert.match(read("lib/item-files.js"), /\.\.\.\(PICTURE\.test\(f\.name\) \|\| PICTURE_MIME\.test\(f\.mime\) \? \{ read_by: PICTURE_READER \} : \{\}\) \};/, "what is read now is marked");
+});
+
 test("every connection goes through the one step, at the index's one entry", () => {
   const usi = read("lib/services/usi.js");
   assert.match(usi, /async function indexItems\(userId, service, itemType, items, opts = \{\}\) \{\n  if \(!items\?\.length\) return \{ indexed: 0 \};\n  await withRowFiles\(userId, items\);/, "any connection's items");

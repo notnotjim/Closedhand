@@ -113,7 +113,10 @@ test("Tesseract keeps only lines it is sure of: a photo's shapes read as letters
   const reader = read("lib/file-reader.js");
   assert.match(reader, /return sureText\(\(await Promise\.race\(\[worker\.recognize\(file, \{\}, \{ text: true, blocks: true \}\), over\]\)\)\.data\);/);
   const rag = read("webapp/rag-processor.js");
-  assert.match(rag, /const readWell = !MEDIA_TYPES\.has\(typeOf\(file\)\) \|\| existing\?\.metadata\?\.read_by === PICTURE_READER;/, "pictures read the old way are read again, once");
+  assert.match(rag, /let readWell = !MEDIA_TYPES\.has\(typeOf\(file\)\) \|\| existing\?\.metadata\?\.read_by === PICTURE_READER;/, "pictures read the old way are read again, once");
+  // Read again for their colours only when what was kept names one.
+  assert.match(rag, /const PICTURE_READER = "colours-1";\nconst BEFORE_COLOURS = "sure-lines-1";/);
+  assert.match(rag, /if \(!readWell && existing\?\.status === "ready" && existing\.metadata\?\.read_by === BEFORE_COLOURS\) \{[\s\S]{0,300}if \(!\(parts \|\| \[\]\)\.some\(\(p\) => COLOUR_WORD\.test\(p\.content \|\| ""\)\)\) \{/);
 });
 
 test("the dashboard ranks with the bot's local model, as it embeds with it", async () => {
@@ -187,18 +190,45 @@ test("File Search's rows draw their file type with the Computers tab's icons, wh
   assert.doesNotMatch(icon, /var\(--accent\)/, "a file type is never drawn in Closedhand's own colour");
 });
 
-test("a source's note about files it couldn't read names the Update button and sits in the neutral, not the accent", () => {
-  const rag = read("webapp/rag-processor.js"), page = read("webapp/views/index.html");
+test("a source counts what it couldn't read and what is still to be heard when shown, names on request, all in the neutral", () => {
+  const rag = read("webapp/rag-processor.js"), page = read("webapp/views/index.html"), server = read("webapp/server.js");
   assert.doesNotMatch(rag + page, /Re-index to retry/);
-  assert.match(rag, /couldn't be read, so File Search can't find/);
+  assert.doesNotMatch(rag, /couldn't be read, so File Search can't find/, "no note kept on the source, which a later hearing leaves out of date");
   assert.match(rag, /error_message: "Reading it was cut off\. Update reads it again\." \}/);
-  const sources = page.slice(page.indexOf("Completion notes (files that failed to read)"), page.indexOf("rag-source-actions"));
-  assert.doesNotMatch(sources, /accent-rgb/);
+  // A recording or video due another try is waiting its turn, not unreadable.
+  assert.match(server, /if \(heard && \(d\.status !== "error" \|\| Number\(d\.metadata\?\.hear_tries \|\| 0\) < ragProcessor\.HEAR_TRIES\)\) s\.to_hear\[/);
+  const at = page.indexOf("// Why a source stopped."), sources = page.slice(at, page.indexOf("rag-source-actions", at));
+  assert.match(sources, /' to read while Closedhand is idle<\/div>'/);
+  assert.match(sources, /' couldn’t be read'/);
+  assert.match(sources, /\(openWhich \? 'Hide' : 'Show which'\)/, "which files, only when asked");
+  assert.doesNotMatch(sources, /failed_files|accent-rgb/, "never a run of names inline, never the accent");
+  // On a phone the actions sit under the words.
+  assert.match(page, /@media \(max-width: 767px\) \{\n\s*\.rag-source:not\(\.rag-source-add\) \{ flex-wrap:wrap;/);
 });
 
-test("a PDF with no words goes into File Search as a picture of its first page, so a logo is found by what it shows", () => {
+test("a PDF with no words, or a logo's few letters, goes into File Search as a picture of its first page, so a logo is found by what it shows", () => {
   const rag = read("webapp/rag-processor.js");
-  assert.match(rag, /if \(read\.kind === "pdf" && !String\(read\.text \|\| ""\)\.trim\(\) && media\) \{\n\s*const page = await reader\.pdfPicture\(buffer\);\n\s*if \(page\) media\.push\(\{ modality: "image", buffer: page, label: "\(picture\)" \}\);/);
+  assert.match(rag, /if \(read\.kind === "pdf" && String\(read\.text \|\| ""\)\.replace\(\/\\s\+\/g, ""\)\.length < 20 && media\) \{\n\s*const page = await reader\.pdfPicture\(buffer\);\n\s*if \(page\) media\.push\(\{ modality: "image", buffer: page, label: "\(picture\)" \}\);/);
+});
+
+test("an empty file is found by its name and not counted as unreadable, and files nobody chose are never listed", () => {
+  const rag = read("webapp/rag-processor.js");
+  assert.doesNotMatch(rag, /No text content could be extracted/);
+  assert.match(rag, /if \(!text\.trim\(\) && !\(media && media\.length\)\) \{[\s\S]{0,400}status: "ready", chunk_count: 0, error_message: null, metadata: \{ \.\.\.\(\(had && had\.metadata\) \|\| \{\}\), empty: true \}/);
+  assert.match(rag, /if \(count > 0 \|\| existing\.metadata\?\.empty\) \{/, "an empty file is not read again each time");
+  const { SYSTEM_FILE } = (() => { const m = /const SYSTEM_FILE = (\/.+\/i);/.exec(rag); return { SYSTEM_FILE: new Function("return " + m[1])() }; })();
+  for (const name of ["~$Harbour plan.pptx", ".DS_Store", "._Harbour plan.pptx", "Thumbs.db", "desktop.ini"]) assert.ok(SYSTEM_FILE.test(name), name);
+  for (const name of ["Harbour plan.pptx", "Budget ~$ draft.xlsx", "DS_Store notes.txt"]) assert.ok(!SYSTEM_FILE.test(name), name);
+  assert.match(rag, /\(await scanFolder\(userId, origin, folderPath, \{ recursive: true, account \}\)\)\.filter\(\(f\) => !SYSTEM_FILE\.test\(f\.name \|\| ""\)\)/);
+});
+
+test("the reader never returns a NUL character, which the database refuses", () => {
+  const src = read("lib/file-reader.js");
+  const m = /const bare = (\(text\) => String\(text \|\| ""\)\.replace\(\/\\u0000\/g, ""\));/.exec(src);
+  assert.ok(m, "every text the reader returns goes through bare");
+  assert.equal(new Function("return " + m[1])()("Ferry at 9:10\u0000 from Harbourton\u0000"), "Ferry at 9:10 from Harbourton");
+  assert.match(src, /case "pdf": \{ const r = await pdfRead\(buffer, opts\); return \{ kind, \.\.\.r, text: bare\(r\.text\) \}; \}/);
+  assert.match(src, /const done = \(text, extra = \{\}\) => \(\{ kind, text: bare\(text\),/);
 });
 
 // A part from deep inside a file is embedded headed by the file's name and

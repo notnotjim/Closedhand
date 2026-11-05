@@ -28,6 +28,13 @@
     .account-mode .dashboard-toolbar, .account-mode #personal-url-notice, .account-mode .tab-content:not(#tab-account) { display: none !important; }
     .account-mode #tab-account { display: block; }
     .in-slideover footer, .in-slideover #chat-fab { display: none !important; }
+    /* The page never pans sideways on a phone. Light that bleeds past a box on
+       purpose (the lights running round "Connect anything") is cut at the edge
+       of the screen instead of widening the page, and a strip that scrolls
+       sideways keeps the swipe to itself. scripts/test-phone-width.js checks
+       every tab at phone widths. */
+    .dashboard-container { overflow-x: clip; }
+    :is(.tab-bar, .platforms-grid, .agent-report-table, .emoji-tabs) { overscroll-behavior-x: contain; }
 
     .dashboard-container {
       max-width: 87.5rem;
@@ -1685,7 +1692,7 @@
     .agent-step.agent-err { color: var(--danger); }
     .agent-report { font-size: 0.7812rem; line-height: 1.55; color: var(--fg); margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid rgba(var(--fg-rgb),0.1); }
     .agent-report b { color: var(--fg); }
-    .agent-report-text { white-space: pre-wrap; }
+    .agent-report-text { white-space: pre-wrap; overflow-wrap: anywhere; }
     .agent-report-table { overflow-x: auto; margin: 0.5rem 0; }
     .agent-report-table table { border-collapse: collapse; width: 100%; }
     .agent-report-table th, .agent-report-table td { border: 1px solid rgba(var(--fg-rgb),0.1); padding: 0.25rem 0.5rem; text-align: left; vertical-align: top; }
@@ -1801,7 +1808,7 @@
     .team-member .tm-state.on { color: var(--ok); }
     .team-member .tm-what { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
     .team-member.open .tm-what { visibility: hidden; }
-    .team-member .tm-full { grid-column: 1 / -1; white-space: pre-wrap; color: var(--fg); line-height: 1.5; padding-top: 0.25rem; cursor: text; }
+    .team-member .tm-full { grid-column: 1 / -1; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); line-height: 1.5; padding-top: 0.25rem; cursor: text; }
     .team-member .tm-redo { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 0.375rem; cursor: default; }
     .team-member .tm-redo input { flex: 1 1 14rem; min-width: 0; padding: 0.375rem 0.5rem; background: var(--bg); border: 1px solid rgba(var(--fg-rgb),0.2); border-radius: 0.375rem; color: var(--fg); font: inherit; }
     .team-lead { font-size: 0.75rem; color: var(--muted); margin: -0.5rem 1.25rem 1rem; }
