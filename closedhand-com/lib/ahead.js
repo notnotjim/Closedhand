@@ -203,7 +203,8 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   // another store changes nothing.
   async function settled(invoiceId) {
     if (typeof invoiceId !== 'string' || !/^[A-Za-z0-9]{8,64}$/.test(invoiceId)) return 'no invoice';
-    const found = await btcpayApi('/invoices/' + encodeURIComponent(invoiceId)).catch(e => { if (e.status === 404) return null; throw e; });
+    // BTCPay answers an invoice id it has never made with 403, not 404.
+    const found = await btcpayApi('/invoices/' + encodeURIComponent(invoiceId)).catch(e => { if (e.status === 404 || e.status === 403) return null; throw e; });
     if (!found || found.status !== 'Settled') return 'not settled';
     const ownerId = String(found.metadata?.ownerId || '');
     if (!/^[0-9a-f-]{36}$/.test(ownerId)) return 'not ours';

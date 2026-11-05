@@ -70,7 +70,7 @@ function world(more = {}) {
         return reply(200, { id, checkoutLink: PAY + '/i/' + id });
       }
       const one = path.match(/^\/invoices\/([^/]+)$/);
-      if (one && method === 'GET') { const found = state.invoices.get(decodeURIComponent(one[1])); return found ? reply(200, found) : reply(404, {}); }
+      if (one && method === 'GET') { const found = state.invoices.get(decodeURIComponent(one[1])); return found ? reply(200, found) : reply(403, {}); } // as BTCPay answers an id it never made
     }
     throw new Error('unexpected ' + method + ' ' + url);
   };
