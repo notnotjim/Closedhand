@@ -52,7 +52,7 @@ function stubs(saved, updated) {
       update: (row) => ({ eq: () => ({ eq: async () => { updated.push(row); return { error: null }; } }) }),
     }) } },
     "./dashboard-links": { reportUrl: async (platform, id) => `https://example.test/page/${id}` },
-    "./llm": { getInternalClient: () => ({ model: "m", client: { messages: { create: async () => ({ content: [{ type: "text", text: "\"Buying or renting vans.\"" }] }) } } }) },
+    "./llm": { getInternalClient: () => ({ model: "m", client: { messages: { create: async () => ({ content: [{ type: "text", text: "**\"Buying or renting vans.\"**" }] }) } } }) },
   };
 }
 
@@ -65,7 +65,7 @@ test("a chat answer with a table is kept as a page, linked under the answer, and
   assert.equal(saved[0].title, "Should we buy or rent the vans for the market stall this year, given we only trade on Saturdays and the…", "named after the question at first");
   assert.match(out, /^Two vans cover it\.\n\n\[\[next\]\]\n\n\*\*Small van\*\*: Buy £18k, Rent £400\/mo\n[\s\S]*Renting wins under two years\.\n\nOpen the page: https:\/\/example\.test\/page\/page-1$/);
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.deepEqual(updated, [{ title: "Buying or renting vans" }], "then given a short title by the person's model");
+  assert.deepEqual(updated, [{ title: "Buying or renting vans" }], "then given a short title by the person's model, as plain words");
 });
 
 test("no second page when the turn made one, and none in the web chat or without a table", async (t) => {
