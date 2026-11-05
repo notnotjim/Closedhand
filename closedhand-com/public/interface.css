@@ -296,13 +296,15 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 :is(.site-head nav, .header-right) .nav-out button { padding: 0; border: 0; background: none; font: inherit; font-size: .8125rem; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color 0.2s; }
 .header-right .nav-out button { font-size: var(--ui-label); }
 :is(.site-head nav, .header-right) .nav-out button:hover { color: var(--fg); }
-:is(.site-head nav, .header-right) a.nav-cta { position: relative; display: inline-block; padding: .4375rem .125rem .5625rem; border: 0; border-radius: 0; background: none; color: var(--fg); font-size: .9375rem; font-weight: 500; white-space: nowrap; transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
-:is(.site-head nav, .header-right) a.nav-cta::before, :is(.site-head nav, .header-right) a.nav-cta::after { content: ""; position: absolute; left: -.3125rem; right: -.375rem; bottom: .0625rem; height: .5625rem; -webkit-mask: url(/brush-underline.svg) center / 100% 100% no-repeat; mask: url(/brush-underline.svg) center / 100% 100% no-repeat; pointer-events: none; }
-:is(.site-head nav, .header-right) a.nav-cta::before { background: var(--accent); }
-:is(.site-head nav, .header-right) a.nav-cta::after { bottom: 0; height: .6875rem; background: color-mix(in srgb, var(--accent) 78%, var(--fg)); clip-path: inset(0 100% 0 0); transition: clip-path .45s cubic-bezier(.65, 0, .35, 1); }
-:is(.site-head nav, .header-right) a.nav-cta:is(:hover, :focus-visible) { transform: translateY(-.0625rem); }
-:is(.site-head nav, .header-right) a.nav-cta:is(:hover, :focus-visible)::after { clip-path: inset(0 0 0 0); }
-@media (prefers-reduced-motion: reduce) { :is(.site-head nav, .header-right) a.nav-cta, :is(.site-head nav, .header-right) a.nav-cta::after { transition: none; } }
+/* The header's link to your own Closedhand and the message form's Send
+   (message-us.js): words over the brush, the site's ink main action. */
+.mu-send, :is(.site-head nav, .header-right) a.nav-cta { position: relative; display: inline-block; padding: .4375rem .125rem .5625rem; border: 0; border-radius: 0; background: none; color: var(--fg); font-size: .9375rem; font-weight: 500; white-space: nowrap; transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+.mu-send::before, .mu-send::after, :is(.site-head nav, .header-right) a.nav-cta::before, :is(.site-head nav, .header-right) a.nav-cta::after { content: ""; position: absolute; left: -.3125rem; right: -.375rem; bottom: .0625rem; height: .5625rem; -webkit-mask: url(/brush-underline.svg) center / 100% 100% no-repeat; mask: url(/brush-underline.svg) center / 100% 100% no-repeat; pointer-events: none; }
+.mu-send::before, :is(.site-head nav, .header-right) a.nav-cta::before { background: var(--accent); }
+.mu-send::after, :is(.site-head nav, .header-right) a.nav-cta::after { bottom: 0; height: .6875rem; background: color-mix(in srgb, var(--accent) 78%, var(--fg)); clip-path: inset(0 100% 0 0); transition: clip-path .45s cubic-bezier(.65, 0, .35, 1); }
+.mu-send:is(:hover, :focus-visible), :is(.site-head nav, .header-right) a.nav-cta:is(:hover, :focus-visible) { transform: translateY(-.0625rem); }
+.mu-send:is(:hover, :focus-visible)::after, :is(.site-head nav, .header-right) a.nav-cta:is(:hover, :focus-visible)::after { clip-path: inset(0 0 0 0); }
+@media (prefers-reduced-motion: reduce) { .mu-send, .mu-send::after, :is(.site-head nav, .header-right) a.nav-cta, :is(.site-head nav, .header-right) a.nav-cta::after { transition: none; } }
 @media (max-width: 600px) {
   .site-head { padding: .75rem .875rem; }
   .site-head nav { gap: 1rem; }
@@ -373,4 +375,67 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 }
 @media (prefers-reduced-motion: reduce) {
   .theme-toggle > span, .theme-toggle svg { transition: none; }
+}
+
+/* "Send us a message" (message-us.js), on every page people browse: a small
+   round outlined button at the lower right, quiet until wanted. Its form opens
+   anchored above it on a computer and as a sheet from the bottom on a phone.
+   Send is the site's ink main action (the brush rule above). */
+.mu { position: fixed; right: max(1.25rem, env(safe-area-inset-right)); bottom: calc(1.25rem + env(safe-area-inset-bottom)); z-index: 60; font-family: var(--font-ui); color: var(--fg); }
+.mu [hidden] { display: none !important; }
+.mu-open { position: relative; display: block; width: 2.75rem; height: 2.75rem; padding: 0; border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 50%; background: rgba(var(--bg-rgb),0.72); -webkit-backdrop-filter: blur(.75rem); backdrop-filter: blur(.75rem); color: var(--muted); cursor: pointer; box-shadow: 0 .5rem 1.5rem var(--lift-soft); transition: color .2s, border-color .2s, transform .3s cubic-bezier(.2, .8, .2, 1); }
+.mu-open:hover { color: var(--fg); border-color: rgba(var(--fg-rgb),0.32); transform: translateY(-.0625rem); }
+.mu-open:focus-visible { outline: 2px solid var(--accent); outline-offset: .1875rem; }
+.mu.is-open .mu-open { color: var(--fg); border-color: rgba(var(--fg-rgb),0.28); }
+/* The bubble turns into the cross while the form is open. */
+.mu-icon { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity .2s ease, transform .32s cubic-bezier(.2, .8, .2, 1); }
+.mu-icon svg { display: block; width: 1.5rem; height: 1.5rem; }
+.mu-icon-close { opacity: 0; transform: rotate(-60deg) scale(.5); }
+.mu-icon-close svg { width: 1.125rem; height: 1.125rem; }
+.mu.is-open .mu-icon-message { opacity: 0; transform: rotate(30deg) scale(.5); }
+.mu.is-open .mu-icon-close { opacity: 1; transform: none; }
+.mu-panel { position: absolute; right: 0; bottom: calc(100% + .75rem); box-sizing: border-box; width: 22rem; max-width: calc(100vw - 2.5rem); max-height: calc(100dvh - 6.5rem); overflow: auto; padding: 1.25rem 1.25rem 1rem; border: 1px solid rgba(var(--fg-rgb),0.1); border-radius: 1.125rem; background: var(--raised); box-shadow: 0 1.5rem 4rem var(--lift); transform-origin: calc(100% - 1.375rem) 100%; opacity: 0; transform: translateY(.5rem) scale(.97); transition: opacity .18s ease, transform .26s cubic-bezier(.2, .8, .2, 1); }
+.mu.is-open .mu-panel { opacity: 1; transform: none; }
+.mu-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.mu-head h2 { margin: 0; font: 600 1.0625rem/1.35 var(--font-ui); letter-spacing: -0.01em; color: var(--fg); }
+.mu-close { display: none; }
+.mu-line { margin: .25rem 0 1rem; color: var(--muted); font-size: .875rem; line-height: 1.55; text-wrap: pretty; }
+.mu-panel :is(textarea, input:not(.mu-trap)) { display: block; box-sizing: border-box; width: 100%; margin: 0; border: 1px solid rgba(var(--fg-rgb),0.14); border-radius: .75rem; background: var(--bg); color: var(--fg); font: 400 .9375rem/1.5 var(--font-ui); transition: border-color .2s, box-shadow .2s; }
+.mu-panel textarea { min-height: 7rem; padding: .75rem .875rem; resize: none; }
+.mu-panel input:not(.mu-trap) { min-height: 2.75rem; margin-top: .5rem; padding: 0 .875rem; }
+.mu-panel :is(textarea, input)::placeholder { color: var(--faint); opacity: 1; }
+.mu-panel :is(textarea, input):focus { outline: none; border-color: rgba(var(--fg-rgb),0.4); }
+/* Send pressed with nothing written: the box glows once, where to start. */
+.mu-panel .mu-needs { border-color: rgba(var(--accent-rgb),0.6); box-shadow: 0 0 0 .1875rem rgba(var(--accent-rgb),0.14); animation: mu-nudge .34s ease 1; }
+@keyframes mu-nudge { 0%, 100% { transform: none; } 20% { transform: translateX(-.1875rem); } 50% { transform: translateX(.1875rem); } 80% { transform: translateX(-.0625rem); } }
+.mu-error { margin: .625rem 0 0; color: var(--danger); font-size: .8125rem; line-height: 1.5; }
+.mu-actions { display: flex; justify-content: flex-end; margin-top: .875rem; }
+.mu-send { font-family: var(--font-ui); line-height: 1.2; cursor: pointer; }
+.mu-send:disabled { cursor: default; opacity: .6; }
+/* Sent: thanks, with the brush drawn under it once. */
+.mu-sent { margin: 1rem 0 .5rem; color: var(--muted); font-size: .9375rem; line-height: 1.6; text-wrap: pretty; }
+.mu-thanks { position: relative; display: inline-block; color: var(--fg); font-weight: 500; }
+.mu-thanks::after { content: ""; position: absolute; left: -.25rem; right: -.3125rem; bottom: -.25rem; height: .5rem; background: var(--accent); -webkit-mask: url(/brush-underline.svg) center / 100% 100% no-repeat; mask: url(/brush-underline.svg) center / 100% 100% no-repeat; clip-path: inset(0 100% 0 0); animation: mu-ink .6s cubic-bezier(.65, 0, .35, 1) .12s forwards; }
+@keyframes mu-ink { to { clip-path: inset(0 0 0 0); } }
+.mu-hide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.mu-trap { position: absolute; left: -100vw; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.mu-scrim { position: fixed; inset: 0; background: rgba(var(--bg-rgb),0.55); opacity: 0; transition: opacity .24s ease; }
+.mu.is-open .mu-scrim { opacity: 1; }
+/* While the home page's demo chat or computers fill the screen, their own box
+   sits at the bottom, so the button steps aside. */
+body:is(.chat-active, .computers-active) .mu { display: none; }
+@media print { .mu { display: none; } }
+@media (max-width: 560px) {
+  .mu { right: max(1rem, env(safe-area-inset-right)); bottom: calc(1rem + env(safe-area-inset-bottom)); }
+  .mu-panel { position: fixed; left: 0; right: 0; bottom: 0; width: auto; max-width: none; max-height: calc(100dvh - 3rem); padding: 1.125rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 1.25rem 1.25rem 0 0; opacity: 1; transform: translateY(100%); transition: transform .32s cubic-bezier(.2, .8, .2, 1); }
+  .mu.is-open .mu-panel { transform: none; }
+  .mu-close { display: grid; place-items: center; flex: none; width: 2.75rem; height: 2.75rem; margin: -.75rem -.875rem -.75rem 0; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; }
+  .mu-close svg { display: block; width: 1.125rem; height: 1.125rem; }
+  .mu-close:focus-visible { outline: 2px solid var(--accent); outline-offset: -.375rem; border-radius: 50%; }
+  html.mu-sheet, html.mu-sheet body { overflow: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mu-open, .mu-icon, .mu-panel, .mu-scrim { transition: none; }
+  .mu-panel .mu-needs { animation: none; }
+  .mu-thanks::after { animation: none; clip-path: none; }
 }

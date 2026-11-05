@@ -15,8 +15,9 @@ const DAY = 24 * 3600 * 1000;
 function create({ db, env = process.env, request = fetch }) {
   const operators = new Set(String(env.OPERATOR_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
 
+  // The notice's id, for what is deleted with it (lib/messages.js).
   async function queue(text) {
-    await db.query('INSERT INTO operator_notices (text) VALUES ($1)', [text]);
+    return (await db.query('INSERT INTO operator_notices (text) VALUES ($1) RETURNING id', [text])).rows[0].id;
   }
 
   // The notices waiting for this account, when it is the maintainer's; each

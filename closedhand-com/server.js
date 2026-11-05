@@ -1,5 +1,6 @@
-// closedhand.com: the public website, personal URLs and bug report intake
-// for copies of Closedhand. It holds no one's mail, files or conversations.
+// closedhand.com: the public website, personal URLs, bug report intake for
+// copies of Closedhand and messages sent from the website. It holds no one's
+// mail, files or conversations.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -142,6 +143,8 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   plus.register(app, { sessions });
   ahead.register(app, { sessions });
   require('./lib/bugs').register(app, { db, secret: env.BUG_RECEIPT_SECRET || secret });
+  const messages = require('./lib/messages').create({ db, notices });
+  messages.register(app);
   require('./lib/insights').register(app, { db, sessions, render, env, request, includedAi });
 
   // The assistant email relay and the worker that moves its mail through
@@ -182,16 +185,18 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   // fair use end, keys are brought in line with their subscriptions and plans
   // paid ahead (a new month's fair use, or one that has ended), the
   // maintainer is told what needs raising, a notice their computer has not
-  // collected for a day goes by email, and once a day the database is backed up.
+  // collected for a day goes by email, messages from the website older than
+  // 90 days are deleted, and once a day the database is backed up.
   async function hourly() {
     await includedAi.sweep().catch(e => console.error('[included ai] sweep:', e.message));
     await plus.sweep().catch(e => console.error('[plus] sweep:', e.message));
     await ahead.sweep().catch(e => console.error('[ahead] sweep:', e.message));
     await capacity.check().catch(e => console.error('[capacity] check:', e.message));
     await notices.emailStale().catch(e => console.error('[operator] notices:', e.message));
+    await messages.sweep().catch(e => console.error('[messages] sweep:', e.message));
     await backup.daily().catch(e => console.error('[backup] daily:', e.message));
   }
-  return { app, sessions, plus, hourly, settle: () => includedAi.settle(), stopMail: () => typeof mailWorker === 'function' && mailWorker() };
+  return { app, sessions, plus, messages, hourly, settle: () => includedAi.settle(), stopMail: () => typeof mailWorker === 'function' && mailWorker() };
 }
 
 if (require.main === module) {

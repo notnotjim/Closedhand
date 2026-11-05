@@ -251,3 +251,19 @@ test('the website sizes everything in rem, so computers get their density from o
   const root = sources.get('interface.css');
   assert.match(root, /html \{ font-size: 100%; \}\n@media \(hover: hover\) and \(pointer: fine\) \{ html \{ font-size: 87\.5%; \} \}/);
 });
+
+// "Send us a message" is one shared piece on every page people browse, and
+// stays off the one-time steps (pairing a phone, confirming Closedhand's email
+// address) and the maintainer's own figures, where it would only be in the way.
+test('every page people browse carries the one message button, and no one-time step does', () => {
+  const site = path.join(__dirname, '..', 'closedhand-com');
+  const away = ['pair.html', 'assistant-email-confirm.html', 'insights.html'];
+  for (const view of fs.readdirSync(path.join(site, 'views')).filter(f => f.endsWith('.html'))) {
+    const html = fs.readFileSync(path.join(site, 'views', view), 'utf8');
+    if (away.includes(view)) assert.doesNotMatch(html, /message-us\.js/, view);
+    else assert.match(html, /<script src="\/account-nav\.js" defer><\/script><script src="\/message-us\.js" defer><\/script>/, view);
+  }
+  const css = fs.readFileSync(path.join(site, 'public', 'interface.css'), 'utf8');
+  assert.match(css, /\.mu-send, :is\(\.site-head nav, \.header-right\) a\.nav-cta \{/, 'Send is the site\'s ink main action, the same rule as the header link');
+  assert.match(css, /body:is\(\.chat-active, \.computers-active\) \.mu \{ display: none; \}/, 'out of the way of the home page demo\'s own box');
+});
