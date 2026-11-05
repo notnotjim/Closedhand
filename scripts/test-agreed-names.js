@@ -104,7 +104,7 @@ test("closedhand.com explains when Closedhand is there in one place, as a choice
       const start = html.indexOf('<section class="reveal need" id="need"'), end = html.indexOf("</section>", start);
       const need = html.slice(start, end);
       assert.ok(start > 0 && />What you need</.test(need), "the one section that owns it");
-      assert.match(need, /It answers while that computer is awake and online, or all the time on one you leave on, like a Mac mini at home, or on a cloud server\./);
+      assert.match(need, /Closedhand answers while that computer is awake and online, or all the time on one you leave on, like a Mac mini at home, or on a cloud server\./);
       assert.doesNotMatch(html, /class="lives|Where Closedhand lives/, "folded into What you need");
       html = html.slice(0, start) + html.slice(end);
     }

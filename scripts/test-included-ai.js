@@ -711,7 +711,7 @@ test("the Managed Models page: approved words, the price and LLM where the perso
   const script = read("closedhand-com/public/managed-models.js");
   assert.match(script, /fetch\('\/api\/managed-models'/);
   assert.match(read("closedhand-com/lib/plus.js"), /app\.get\('\/api\/managed-models'[\s\S]{0,900}price: \(await prices\(req\.get\('cf-ipcountry'\)\)\)\?\.plus \|\| null,\n\s+longer: await longerPrices\(req\.get\('cf-ipcountry'\)\),\n\s+crypto: ahead \? ahead\.options\(\)\.crypto \|\| \[\] : \[\],\n\s+model: includedAi\?\.current\(\)\?\.name \|\| null,/);
-  assert.match(read("closedhand-com/views/home.html"), /Or <a href="\/managed-models">Closedhand Managed Models<\/a>, which only run on LLM providers that keep nothing you send\./);
+  assert.match(read("closedhand-com/views/home.html"), /Or <a href="\/managed-models">Closedhand Managed Models<\/a>, which run in sealed hardware, so nobody but you can read what you send\./);
   assert.match(read("closedhand-com/public/account.js"), /about\.href = '\/managed-models'; about\.textContent = 'Closedhand Managed Models';/);
   // Closedhand's own address comes with Managed Models: locked, with Unlock to what they include.
   const card = read("webapp/public/assistant-email.js");
