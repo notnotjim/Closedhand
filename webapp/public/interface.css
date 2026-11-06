@@ -648,7 +648,6 @@ input[type=search]::-webkit-search-cancel-button:hover { background-color: var(-
 .anon-month[aria-pressed="true"] { border-color: rgba(var(--accent-strong-rgb),0.6); background: rgba(var(--accent-strong-rgb),0.08); color: var(--fg); }
 #url-anon-agree { margin-top: 0.75rem; }
 #url-anon-panel .anon-wait { color: var(--fg); }
-#url-anon-panel .anon-fine { margin-top: 0.5rem; font-size: 0.8125rem; color: var(--muted); }
 /* Waiting for the payment: the fist, as in the brand's circle mark, with an
    arc of ink travelling round it, longer and shorter as it goes, while the
    fist breathes. Paid, the ring closes for a moment. Still and whole for

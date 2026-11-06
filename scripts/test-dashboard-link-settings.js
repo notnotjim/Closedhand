@@ -793,9 +793,9 @@ test("resuming the subscription asks first, saying when it renews, for how much 
 test("the dashboard's later claim offers using Closedhand anonymously: the same piece and words as setup, after the same Terms", async () => {
   const setup = fs.readFileSync(require.resolve("../webapp/views/setup.html"), "utf8");
   for (const words of ['class="btn-quiet btn-small" id="url-anonymous" type="button" data-claim-way>Use anonymously</button>',
-    '<h3>Use Closedhand anonymously</h3>', '<p>No email required + pay with crypto instead of card payments.</p>', '<p>You will be given an anonymous account number to keep safe.</p>',
-    '<p class="anon-label">Anonymous users are automatically given access to Managed Models with uncensored LLM access. One time payment with no auto-renewal.</p>',
-    '<p class="anon-fine">Prices in US dollars, paid in the crypto of your choice.</p>',
+    '<h3>Use Closedhand anonymously<span data-info="No email means no recovery: if you lose your account number, nobody can get you back in." data-info-label="Before you choose"></span></h3>',
+    '<p>No email and no card: you get an account number and pay once in crypto, never renewed.</p>',
+    '<p class="anon-label">Includes Closedhand Managed Models, uncensored. Prices in US dollars:</p>',
     `<span>I agree that what I pay for now starts straight away and can't be refunded once started.</span>`, '<p class="terms-nudge" hidden>Tick to agree first</p>',
     'id="url-anon-go" type="button">Pay and continue anonymously</button>', '<button class="quiet-link" id="url-anon-back" type="button">Back</button>',
     'hidden>Tick to agree to the Terms first</p>',
