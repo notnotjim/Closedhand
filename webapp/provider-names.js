@@ -10,7 +10,6 @@ const PROVIDERS = {
   xai: "xAI (Grok)",
   deepseek: "DeepSeek",
   openrouter: "OpenRouter",
-  near: "NEAR AI",
   moonshot: "Moonshot",
   ollama: "Ollama",
 };

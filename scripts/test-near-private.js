@@ -227,12 +227,12 @@ test("the proof's own checks: report data, configuration and event log", async (
   assert.deepEqual(near.ACCEPTED_TCB, ["UpToDate", "SWHardeningNeeded", "ConfigurationNeeded", "ConfigurationAndSWHardeningNeeded"]);
 });
 
-test("NEAR AI is a provider like the others: listed, named and found by its address", () => {
+test("the sealed hardware runs Managed Models and is no provider people pick: found by its address, named in no list", () => {
   const read = (p) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
   assert.equal(require("../lib/model-policy").BASES.near, "https://cloud-api.near.ai/v1");
-  assert.match(read("webapp/public/model-settings.js"), /near: "NEAR AI"/);
-  assert.equal(require("../webapp/provider-names").PROVIDERS.near, "NEAR AI");
-  assert.match(read("webapp/model-summary.js"), /"cloud-api\.near\.ai": "NEAR AI"/);
+  assert.doesNotMatch(read("webapp/public/model-settings.js"), /near:/);
+  assert.equal(require("../webapp/provider-names").PROVIDERS.near, undefined);
+  assert.doesNotMatch(read("webapp/model-summary.js"), /near\.ai/);
   assert.ok(near.isNear({ provider: "near" }) && near.isNear({ provider: "custom", baseUrl: "https://cloud-api.near.ai/v1" }) && !near.isNear({ provider: "deepseek", baseUrl: "https://api.deepseek.com/v1" }));
   assert.match(read("lib/model-wire.js"), /near\.isNear\(conn\) \? await near\.complete\(conn, body, \{ signal \}\)/);
 });

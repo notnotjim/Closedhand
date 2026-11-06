@@ -1,6 +1,6 @@
 # Closedhand
 
-Personal AI without signing your life away.
+Personal uncensored AI without signing your life away.
 
 Closedhand is a private AI assistant that runs on your own computer. Connect any app or service you use, from your mail and chats to your files, bank and work tools, and none of it ever needs to leave your computer. Talk to it in WhatsApp, Telegram or the web chat. Ask "What wine did Tom like?" and it answers "A 2019 Rioja. He said so on WhatsApp." It also speaks up before you ask: "Your flight's delayed. You'll miss your train."
 
@@ -87,7 +87,7 @@ By the time you say hello, Closedhand has already read your inbox and calendar.
 
 ## LLMs
 
-Closedhand is free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, NEAR AI, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does.
+Closedhand is free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does.
 
 If you'd rather not choose, Closedhand Managed Models run DeepSeek V4.1 Flash, uncensored, in sealed hardware: nobody but you can read what you send or what comes back. When a better uncensored LLM is available, Closedhand switches to it for you. Closedhand Managed Models come with 14 days at no charge, once per person, and then carry on with an optional subscription, monthly or every 6 or 12 months, or paid ahead in crypto for 3, 6 or 9 months. You can switch to your own LLM provider at any time.
 

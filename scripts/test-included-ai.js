@@ -532,11 +532,16 @@ test("Managed Models say which LLM they run and that nobody else can read it", (
   assert.match(read("closedhand-com/lib/included-ai.js"), /INCLUDED_AI_MODEL_NAME \|\| keys\.defaults\.name/);
   assert.match(read("closedhand-com/lib/included-ai-near.js"), /name: 'DeepSeek V4\.1 Flash, uncensored'/, "NEAR's, by default");
   assert.match(read("lib/engine.js"), /\(Closedhand Managed Models, which Closedhand picks\)/, "chat names the LLM when asked");
+  // The company running the sealed hardware is named nowhere people read,
+  // the Privacy page included, and is not a provider people can pick.
   for (const f of ["webapp/views/setup.html", "webapp/views/dashboard.html", "closedhand-com/public/account.js", "closedhand-com/views/home.html"]) {
-    assert.doesNotMatch(read(f), /NEAR AI|OpenRouter, only on|through OpenRouter/, `${f}: names no company for Managed Models`);
+    assert.doesNotMatch(read(f), /NEAR|OpenRouter, only on|through OpenRouter/, `${f}: names no company for Managed Models`);
+  }
+  for (const f of ["webapp/views/privacy.html", "closedhand-com/views/privacy.html", "webapp/public/model-settings.js", "webapp/provider-names.js", "README.md"]) {
+    assert.doesNotMatch(read(f), /NEAR/, `${f}: names no company for Managed Models`);
   }
   for (const f of ["webapp/views/privacy.html", "closedhand-com/views/privacy.html"]) {
-    assert.match(read(f), /So nobody but you can read what you send or what comes back, not even closedhand\.com or NEAR AI\./, `${f}: the Privacy page says who and what they see`);
+    assert.match(read(f), /So nobody but you can read what you send or what comes back, not even closedhand\.com or the company running the hardware\./, `${f}: the Privacy page says who and what they see`);
   }
 });
 

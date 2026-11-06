@@ -225,8 +225,8 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   know it by. Closedhand Managed Models are shown with the LLM they run, by the name closedhand.com
   gives it ("DeepSeek V4.1 Flash, uncensored"), and "It runs in sealed hardware, so nobody but you
   can read what you send or what it answers. When a better uncensored LLM is available,
-  Closedhand switches to it for you." The company running that hardware (NEAR AI) is named only
-  on the Privacy page, never elsewhere in the app, on the site or in chat.
+  Closedhand switches to it for you." The company running that hardware is never named in anything people read (the Privacy page
+  calls it the company running that hardware), and is not one of the LLM providers people can pick.
 - Closedhand Managed Models are one product with one name: 14 free days set up for the person,
   then a subscription that keeps them going, renewing every month or every 6 or 12 months, or
   3, 6 or 9 months paid ahead in crypto, which never renew by themselves. Closedhand's own email address comes with
@@ -264,7 +264,7 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   of what comes next puts the person's own LLM provider first and the subscription second.
 - LLM providers are equal. No provider gets special treatment, fallback priority, or
   hardcoded references. Each provider is fully isolated.
-  Closedhand Managed Models (closedhand.com makes each account a NEAR AI API key,
+  Closedhand Managed Models (closedhand.com makes each account a key at the company running the sealed hardware,
   closedhand-com/lib/included-ai.js) are a closedhand.com service, not a provider preference:
   the app's provider list stays equal, and the person can switch to their own LLM provider
   at any time.

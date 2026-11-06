@@ -7,8 +7,7 @@ function location(model, baseUrl) {
   if (["localhost", "127.0.0.1", "[::1]", "host.docker.internal"].includes(host)) return HERE;
   return ({ "api.x.ai": "xAI", "api.deepinfra.com": "DeepInfra", "api.deepseek.com": "DeepSeek",
     "api.anthropic.com": "Anthropic", "api.openai.com": "OpenAI", "openrouter.ai": "OpenRouter",
-    "generativelanguage.googleapis.com": "Google Gemini", "api.groq.com": "Groq", "api.moonshot.ai": "Moonshot",
-    "cloud-api.near.ai": "NEAR AI" })[host] || host;
+    "generativelanguage.googleapis.com": "Google Gemini", "api.groq.com": "Groq", "api.moonshot.ai": "Moonshot" })[host] || host;
 }
 function modelSummary(settings, read = key => process.env[key], local = false) {
   const runtime = read;
