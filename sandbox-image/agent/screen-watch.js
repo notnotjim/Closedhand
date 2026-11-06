@@ -52,13 +52,30 @@ function browserAnswers(port) {
     req.on("timeout", () => { req.destroy(); resolve(false); });
   });
 }
-// x11vnc greets every new connection with its version ("RFB 003.008").
+// Xvnc greets every new connection with its version ("RFB 003.008"), and
+// the check goes on to sign in as any viewer does (no password). Xvnc blocks
+// an address after five connections that never signed in, there to slow
+// password guessing, and every viewer comes from this same machine
+// (websockify): checks that only read the greeting locked every viewer out
+// within minutes (seen in a test container, 2026-11-06).
 function screenAnswers() {
   return new Promise((resolve) => {
     const s = net.connect(5900, "127.0.0.1");
     const done = (ok) => { s.destroy(); resolve(ok); };
+    let step = 0, seen = Buffer.alloc(0);
     s.setTimeout(5000, () => done(false));
-    s.once("data", (d) => done(d.toString("latin1").startsWith("RFB ")));
+    s.on("data", (d) => {
+      seen = Buffer.concat([seen, d]);
+      if (step === 0 && seen.length >= 12) {
+        if (!seen.toString("latin1").startsWith("RFB ")) return done(false);
+        s.write("RFB 003.008\n"); seen = seen.subarray(12); step = 1;
+      }
+      if (step === 1 && seen.length >= 1 && seen.length >= 1 + seen[0]) {
+        if (!seen.subarray(1, 1 + seen[0]).includes(1)) return done(false);
+        s.write(Buffer.from([1])); seen = seen.subarray(1 + seen[0]); step = 2;
+      }
+      if (step === 2 && seen.length >= 4) done(seen.readUInt32BE(0) === 0);
+    });
     s.once("error", () => done(false));
   });
 }
@@ -76,9 +93,11 @@ function listens(port) {
 
 function screenParts(cdpPort) {
   return [
-    { name: "display", proc: "Xvfb", check: displayAnswers },
+    // Xvnc is both the display and the screen it shares: either failing
+    // restarts it, and Chrome with it.
+    { name: "display", proc: "Xvnc", check: displayAnswers },
     { name: "browser", proc: "chromium", check: () => browserAnswers(cdpPort) },
-    { name: "screen", proc: "x11vnc", check: screenAnswers },
+    { name: "screen", proc: "Xvnc", check: screenAnswers },
     { name: "stream", proc: "websockify", check: () => listens(6080) },
   ];
 }

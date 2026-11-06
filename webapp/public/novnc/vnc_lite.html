@@ -43,6 +43,10 @@
             flex: 1; /* fill remaining space */
             overflow: hidden;
         }
+        /* Full screen on a phone: the picture fills the width, top at the
+           top (fitScreen). */
+        body.fit-width { overflow: hidden; }
+        body.fit-width #screen { flex: none; }
 
     </style>
 
@@ -51,7 +55,9 @@
         import RFB from './core/rfb.js';
         import KeyTable from './core/input/keysym.js';
         import keysyms from './core/input/keysymdef.js';
+        import { makeScreen } from './closedhand-screen.js';
 
+        const Screen = makeScreen(RFB, RFB.messages);
         let rfb;
         let desktopName;
 
@@ -153,8 +159,9 @@
             status("Connecting");
 
             // Creating a new RFB object will start a new connection
-            rfb = new RFB(document.getElementById('screen'), url,
-                          { credentials: { password: password } });
+            rfb = new Screen(document.getElementById('screen'), url,
+                             { credentials: { password: password } });
+            rfb.onScreenSize = tellScreenSize;
 
             // Add listeners to important events from the RFB module
             rfb.addEventListener("connect",  connectedToServer);
@@ -167,17 +174,35 @@
             rfb.scaleViewport = readQueryVariable('scale', false);
 
             // Latency tuning for browser-inside-VNC workloads.
-            // - resizeSession: tell the server to match our viewport so we don't encode extra pixels.
             // - qualityLevel 5 (default 6): ever-so-slightly lower JPEG quality, noticeable reduction in
             //   packet size per frame, barely visible in typical web content.
             // - compressionLevel 2 (default): keep moderate CPU cost.
             // - showDotCursor=false: skip drawing the local cursor overlay; the remote cursor is enough.
-            // - Pause rendering when the iframe isn't visible (parent tab hidden or Files tab shown).
-            rfb.resizeSession = true;
+            // The screen's size is the sandbox computer's to set (agent /desktop/shape): Xvnc
+            // refuses a viewer asking for its own size (entrypoint.sh), so none is asked.
             rfb.qualityLevel = 5;
             rfb.compressionLevel = 2;
             rfb.showDotCursor = false;
         }
+
+        // Full screen on a phone the picture fills the width, its top at the
+        // top, and what the phone's keyboard covers stays where it was, as a
+        // page in a phone's browser does; anywhere else the whole picture
+        // fits. The page around this one says which, and is told each new
+        // size once a frame of it is drawn, so full screen shows the picture
+        // only once it has the phone's shape.
+        let fit = 'contain', screenSize = null;
+        function fitScreen() {
+            const byWidth = fit === 'width' && screenSize;
+            document.body.classList.toggle('fit-width', !!byWidth);
+            document.getElementById('screen').style.height = byWidth ? (window.innerWidth * screenSize.height / screenSize.width) + 'px' : '';
+        }
+        function tellScreenSize(width, height, drawn) {
+            screenSize = { width, height };
+            fitScreen();
+            if (drawn && window.parent !== window) window.parent.postMessage({ type: 'closedhand-screen', width, height }, window.location.origin);
+        }
+        window.addEventListener('resize', fitScreen);
 
         connect();
 
@@ -186,7 +211,9 @@
         const SPECIAL = { Backspace: [KeyTable.XK_BackSpace, 'Backspace'], Enter: [KeyTable.XK_Return, 'Enter'],
                           Tab: [KeyTable.XK_Tab, 'Tab'], Escape: [KeyTable.XK_Escape, 'Escape'] };
         window.addEventListener('message', function(e) {
-            if (e.origin !== window.location.origin || !e.data || e.data.type !== 'closedhand-keys' || !rfb) return;
+            if (e.origin !== window.location.origin || !e.data) return;
+            if (e.data.type === 'closedhand-fit') { fit = e.data.fit === 'width' ? 'width' : 'contain'; fitScreen(); return; }
+            if (e.data.type !== 'closedhand-keys' || !rfb) return;
             const key = SPECIAL[e.data.key];
             if (key) { rfb.sendKey(key[0], key[1]); return; }
             for (const ch of String(e.data.text || '').slice(0, 2000)) rfb.sendKey(keysyms.lookup(ch.codePointAt(0)), null);

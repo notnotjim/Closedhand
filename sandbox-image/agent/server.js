@@ -250,7 +250,7 @@ app.get("/health", (_req, res) => {
 app.get("/runtime/activity", auth, (_req, res) => {
   if (!VM) return res.json({ busy: true });
   try {
-    const services = new Set(["chromium", "chrome_crashpad", "Xvfb", "openbox", "x11vnc", "websockify", "socat"]);
+    const services = new Set(["chromium", "chrome_crashpad", "Xvnc", "openbox", "xrandr", "websockify", "socat"]);
     const busy = fs.readdirSync("/proc").some(pid => {
       if (!/^\d+$/.test(pid) || Number(pid) === process.pid) return false;
       try {
@@ -294,12 +294,12 @@ app.get("/desktop/status", auth, async (_req, res) => {
       browser: BROWSER_CMD ? "available" : "missing", python: pythonState, python_error: pythonError || undefined });
   }
   try {
-    const xvfb = require("child_process").execSync("pgrep -c Xvfb", { timeout: 2000 }).toString().trim();
-    const vnc = require("child_process").execSync("pgrep -c x11vnc", { timeout: 2000 }).toString().trim();
+    // Xvnc is both the display and its sharing.
+    const vnc = require("child_process").execSync("pgrep -c Xvnc", { timeout: 2000 }).toString().trim();
     const ws = require("child_process").execSync("pgrep -cf websockify", { timeout: 2000 }).toString().trim();
     // status is the sandbox computer; screen is its browser, which can be
     // restarting while files and commands carry on.
-    res.json({ status: "running", ...require("./screen-watch").screenState(), display: ":99", vnc_ws_port: 6080, resolution: "1280x800", desktop: "browser", procs: { xvfb, vnc, ws } });
+    res.json({ status: "running", ...require("./screen-watch").screenState(), display: ":99", vnc_ws_port: 6080, resolution: "1280x800", desktop: "browser", procs: { vnc, ws } });
   } catch (e) {
     res.json({ status: "degraded", error: e.message });
   }
@@ -343,19 +343,19 @@ app.post("/desktop/browser", auth, async (req, res) => {
   res.json({ status: "launched", url: url || "about:blank" });
 });
 
-// The screen's shape. The screen is taller than it looks (entrypoint.sh):
-// a laptop-shaped part of it, 1280x800, is shown and sent, unless someone is
-// using the browser full screen on a phone. Then a phone-shaped part is, at
-// least 508 wide, Chrome's narrowest window, so sites send their phone
-// layouts and taps land where they look. openbox keeps every window inside
-// the part shown (its margins) and x11vnc sends only that part (its clip).
+// The screen's shape. Xvnc's screen (entrypoint.sh) is laptop-sized,
+// 1280x800, unless someone is using the browser full screen on a phone.
+// Then the screen takes the phone's shape and Chrome acts as that phone
+// (phoneMode): its pages are the phone's width in CSS pixels, at the phone's
+// text size, drawn at least 508 pixels wide, Chrome's narrowest window, so
+// they stay sharp. Chrome's own bars sit above the screen, out of sight: the
+// phone's own bar (web chat) stands in for them, as a phone browser's does.
 // The phone asks again every half minute while it looks; when it stops, the
 // laptop shape comes back by itself. Closedhand's own browsing
 // (browser_helper.py) always gets the laptop shape.
-const SCREEN = { width: 1280, height: 1280 }, LAPTOP = { width: 1280, height: 800 }, NARROWEST = 508;
+const LAPTOP = { width: 1280, height: 800 }, NARROWEST = 508;
 const PHONE_FOR_MS = 90 * 1000;
-const OPENBOX_RC = path.join(os.homedir(), ".config", "openbox", "rc.xml");
-let shape = LAPTOP, shapeTimer = null;
+let shape = { ...LAPTOP, phone: null }, shapeTimer = null, lastPhoneAsk = 0;
 function onScreen(cmd, args) {
   return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 8000, env: { ...process.env, DISPLAY: ":99" } }, (e) => (e ? reject(e) : resolve())));
 }
@@ -364,39 +364,47 @@ function onScreen(cmd, args) {
 function botBrowsing() {
   return browseBusy > 0 || Date.now() - lastBrowseAt < 20000;
 }
+// next: LAPTOP, or { phone: { width, height } }, the phone's view in CSS pixels.
 async function setShape(next) {
-  const laptop = next.width === LAPTOP.width && next.height === LAPTOP.height;
-  if (next.width !== shape.width || next.height !== shape.height) {
-    if (laptop) {
-      fs.rmSync(OPENBOX_RC, { force: true });
-      await onScreen("openbox", ["--reconfigure"]);
-      await onScreen("x11vnc", ["-display", ":99", "-sync", "-remote", "clip:1280x800+0+0"]);
-      await fitWindows(null);
-      shape = { ...LAPTOP };
-    } else {
-      // Chrome's own bars sit above the part shown: the phone's own bar
-      // (web chat) stands in for them, as a phone browser's does. Their
-      // height is measured, the window grown by it, and the part shown
-      // starts below them.
-      await placeWindows(next.width, SCREEN.height);
-      await fitWindows(next);
-      const { bars, frame } = await chromeAround();
-      // The page is the phone's shape exactly, without the frame's width.
-      const width = next.width - 2 * frame, height = Math.round(width * next.height / next.width);
-      await placeWindows(next.width + 2, height + bars + 2);
-      await fitWindows({ width: next.width, height: height + bars });
-      const at = await chromeAround();
-      const top = at.top + bars - frame, left = at.left + frame;
-      await onScreen("x11vnc", ["-display", ":99", "-sync", "-remote", `clip:${width}x${height}+${left}+${top}`]);
-      shape = { width, height, top };
+  const phone = next.phone || null;
+  const same = phone ? !!shape.phone && phone.width === shape.phone.width && phone.height === shape.phone.height : !shape.phone;
+  if (!same && !phone) {
+    await phoneMode(null);
+    await screenSize(LAPTOP);
+    await fitWindows(null);
+    shape = { ...LAPTOP, phone: null };
+  } else if (!same) {
+    const scale = Math.max(1, NARROWEST / phone.width);
+    const width = Math.round(phone.width * scale), height = Math.round(phone.height * scale);
+    // Chrome's bars and frame, measured while its pages are not yet a
+    // phone's: then they report the phone's sizes instead of the window's.
+    if (!shape.phone) {
+      await fitWindows({ left: 0, top: 0, width, height: height + 200 });
+      await chromeAround();
     }
+    const { bars, frame } = chromeSeen;
+    await screenSize({ width, height });
+    // The page fills the screen exactly; Chrome's bars and frame are
+    // outside it.
+    await fitWindows({ left: -frame, top: frame - bars, width: width + 2 * frame, height: height + bars });
+    await phoneMode({ width: phone.width, height: phone.height, scale });
+    const shorter = !!shape.phone && height < shape.height;
+    shape = { width, height, phone };
+    // The phone's keyboard came up: what is being typed into is scrolled
+    // into the height left, as a phone's browser does.
+    if (shorter) await showTypingPlace().catch(() => {});
   }
-  await phoneMode(!laptop).catch((e) => console.error("[shape] phone mode:", e.message));
   clearTimeout(shapeTimer);
-  if (!laptop) shapeTimer = setTimeout(() => queueShape(LAPTOP).catch((e) => console.error("[shape]", e.message)), PHONE_FOR_MS);
-  return shape;
+  if (phone) shapeTimer = setTimeout(() => queueShape(LAPTOP).catch((e) => console.error("[shape]", e.message)), PHONE_FOR_MS);
+  return { width: shape.width, height: shape.height };
 }
-// One change of shape at a time: two overlapping left the part shown at one
+async function showTypingPlace() {
+  const tab = await frontTab();
+  if (!tab) return;
+  await cdpCall(tab.webSocketDebuggerUrl, "Runtime.evaluate", { expression:
+    "(() => { const el = document.activeElement; if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) el.scrollIntoView({ block: 'center' }); })()" });
+}
+// One change of shape at a time: two overlapping left the screen at one
 // size and Chrome's window at the other.
 let shaping = Promise.resolve();
 function queueShape(next) {
@@ -404,13 +412,15 @@ function queueShape(next) {
   shaping = run.catch(() => {});
   return run;
 }
-// openbox places and maximizes windows only inside width x height, top left.
-async function placeWindows(width, height) {
-  const rc = fs.readFileSync("/etc/xdg/openbox/rc.xml", "utf8").replace(/<margins>[\s\S]*?<\/margins>/,
-    `<margins><top>0</top><bottom>${SCREEN.height - height}</bottom><left>0</left><right>${SCREEN.width - width}</right></margins>`);
-  fs.mkdirSync(path.dirname(OPENBOX_RC), { recursive: true });
-  fs.writeFileSync(OPENBOX_RC, rc);
-  await onScreen("openbox", ["--reconfigure"]);
+// Xvnc's screen size, by RandR. Every viewer is told the new size and sent
+// the new screen whole. Xvnc knows a few sizes; any other is added first (one
+// added before is refused again, harmlessly). The size is the one screen's
+// mode: setting only the screen's size left it with no screen showing.
+async function screenSize({ width, height }) {
+  const mode = `${width}x${height}`, w = String(width), h = String(height);
+  await onScreen("xrandr", ["--newmode", mode, "60", w, w, w, w, h, h, h, h]).catch(() => {});
+  await onScreen("xrandr", ["--addmode", "VNC-0", mode]).catch(() => {});
+  await onScreen("xrandr", ["--output", "VNC-0", "--mode", mode]);
 }
 // The tab in front, and the window height its page doesn't get: Chrome's
 // tab strip and toolbar.
@@ -442,8 +452,9 @@ async function chromeAround() {
   }
   return chromeSeen;
 }
-// Chrome's windows fill the part shown. Maximized, Chrome stays at least 640
-// wide, so for a phone they are sized instead, which goes down to 508.
+// Chrome's windows fill the screen. Maximized, Chrome stays at least 640
+// wide, so for a phone they are sized and placed instead, which goes down
+// to 508.
 async function fitWindows(size) {
   const windows = new Map();
   for (const t of (await cdpTargets()) || []) {
@@ -454,18 +465,21 @@ async function fitWindows(size) {
   for (const [windowId, wsUrl] of windows) {
     if (!size) { await cdpCall(wsUrl, "Browser.setWindowBounds", { windowId, bounds: { windowState: "maximized" } }).catch(() => {}); continue; }
     await cdpCall(wsUrl, "Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } }).catch(() => {});
-    await cdpCall(wsUrl, "Browser.setWindowBounds", { windowId, bounds: { left: 0, top: 0, width: size.width, height: size.height } }).catch(() => {});
+    await cdpCall(wsUrl, "Browser.setWindowBounds", { windowId, bounds: { left: size.left, top: size.top, width: size.width, height: size.height } }).catch(() => {});
   }
 }
-// In the phone shape Chrome also says it is a phone: many sites pick their
-// phone version by the device, not the width. Its pages get a phone's user
-// agent and touch, mouse presses arrive as touches (so a drag scrolls), and
-// the open pages reload as their phone versions. Pages keep the window's
-// real width: a phone's 980-wide layout for pages made only for computers
-// shrinks them to unreadable here, with no pinch to zoom out of it. The
-// overrides last as long as this one connection, which the laptop shape
-// closes; pages change back on their next load.
-let phoneSession = null;
+// In the phone shape Chrome acts as the phone watching: many sites pick
+// their phone version by the device, not the width. Its pages are the
+// phone's width and height in CSS pixels at the phone's text size (drawn
+// scale times larger, filling the screen), with a phone's user agent and
+// touch; mouse presses arrive as touches (so a drag scrolls), and the open
+// pages reload as their phone versions. A page that names no viewport of its
+// own gets the phone's width (PHONE_VIEWPORT): a phone's own fallback, 980
+// wide and shrunk to the screen, left pages made only for computers
+// unreadable here, with no pinch to zoom in. The overrides last as long as
+// this one connection, which the laptop shape closes; pages change back on
+// their next load.
+let phoneSession = null, phonePages = new Set(), phoneMetrics = null, phoneSend = null;
 function phoneAgent(desktop) {
   const major = (String(desktop).match(/Chrome\/(\d+)/) || [])[1] || "140";
   return {
@@ -474,9 +488,29 @@ function phoneAgent(desktop) {
       platform: "Android", platformVersion: "10.0.0", architecture: "", model: "K", mobile: true },
   };
 }
-async function phoneMode(on) {
-  if (!on) { if (phoneSession) phoneSession.close(); phoneSession = null; return; }
-  if (phoneSession) return;
+// First in <head>, so a page's own viewport, later in it, still wins.
+const PHONE_VIEWPORT = `(() => {
+  const put = () => {
+    if (!document.head) return false;
+    if (!document.querySelector('meta[name="viewport"]')) {
+      const meta = document.createElement("meta");
+      meta.name = "viewport"; meta.content = "width=device-width, initial-scale=1";
+      document.head.prepend(meta);
+    }
+    return true;
+  };
+  if (!put()) new MutationObserver((_, seen) => { if (put()) seen.disconnect(); }).observe(document, { childList: true, subtree: true });
+})();`;
+// Drawn scale times larger (deviceScaleFactor) and shown that much larger
+// (scale): without the second, the page took only the top left of the screen.
+function phoneMetricsFor({ width, height, scale }) {
+  return { width, height, deviceScaleFactor: scale, scale, dontSetVisibleSize: true, mobile: true, screenWidth: width, screenHeight: height };
+}
+// metrics: { width, height, scale } while a phone watches; null otherwise.
+async function phoneMode(metrics) {
+  if (!metrics) { if (phoneSession) phoneSession.close(); phoneSession = null; phonePages.clear(); phoneMetrics = null; return; }
+  phoneMetrics = metrics;
+  if (phoneSession) { for (const sessionId of phonePages) phoneSend("Emulation.setDeviceMetricsOverride", phoneMetricsFor(metrics), sessionId); return; }
   const version = await httpJson(`http://127.0.0.1:${CDP_PORT}/json/version`);
   const agent = phoneAgent(version["User-Agent"]);
   const WebSocket = require("ws");
@@ -484,22 +518,28 @@ async function phoneMode(on) {
   phoneSession = ws;
   let id = 0;
   const send = (method, params = {}, sessionId) => ws.send(JSON.stringify({ id: ++id, method, params, ...(sessionId ? { sessionId } : {}) }));
+  phoneSend = send;
   ws.on("open", () => send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }));
   ws.on("message", (raw) => {
     let msg; try { msg = JSON.parse(raw.toString()); } catch { return; }
+    if (msg.method === "Target.detachedFromTarget") { phonePages.delete(msg.params.sessionId); return; }
     if (msg.method !== "Target.attachedToTarget") return;
     const { sessionId, targetInfo, waitingForDebugger } = msg.params;
     if (targetInfo.type === "page") {
+      phonePages.add(sessionId);
+      send("Emulation.setDeviceMetricsOverride", phoneMetricsFor(phoneMetrics), sessionId);
       send("Emulation.setUserAgentOverride", { userAgent: agent.userAgent, platform: "Linux armv8l", userAgentMetadata: agent.userAgentMetadata }, sessionId);
       send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }, sessionId);
       send("Emulation.setEmitTouchEventsForMouse", { enabled: true, configuration: "mobile" }, sessionId);
+      send("Page.enable", {}, sessionId);
+      send("Page.addScriptToEvaluateOnNewDocument", { source: PHONE_VIEWPORT }, sessionId);
     }
     if (waitingForDebugger) send("Runtime.runIfWaitingForDebugger", {}, sessionId);
     // A page already loading or loaded (one open before, or one Chrome
     // starts loading before it waits) loads again as its phone version.
     if (targetInfo.type === "page" && /^https?:/.test(targetInfo.url)) send("Page.reload", {}, sessionId);
   });
-  ws.on("close", () => { if (phoneSession === ws) phoneSession = null; });
+  ws.on("close", () => { if (phoneSession === ws) { phoneSession = null; phonePages.clear(); } });
   ws.on("error", () => {});
 }
 // The phone's own browser bar (web chat), standing in for Chrome's in the
@@ -551,11 +591,11 @@ app.post("/desktop/phone-browser", auth, async (req, res) => {
 app.post("/desktop/shape", auth, async (req, res) => {
   if (DESKTOP) return res.status(409).json({ error: "This browser has no screen of its own to reshape." });
   const { width, height } = req.body || {};
-  const phone = Number.isInteger(width) && Number.isInteger(height) && width >= 200 && width <= 1000 && height >= 200 && height <= 2000;
+  const phone = Number.isInteger(width) && Number.isInteger(height) && width >= 200 && width <= 1000 && height >= 200 && height <= 1400;
+  if (phone) lastPhoneAsk = Date.now();
   try {
     if (phone && botBrowsing()) return res.json({ ...(await queueShape(LAPTOP)), busy: true });
-    const k = phone ? Math.max(1, NARROWEST / width) : 1;
-    res.json(await queueShape(phone ? { width: Math.min(SCREEN.width, Math.round(width * k)), height: Math.min(SCREEN.height, Math.round(height * k)) } : LAPTOP));
+    res.json(await queueShape(phone ? { phone: { width, height } } : LAPTOP));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -749,6 +789,13 @@ app.post("/browse", async (req, res) => {
   const timeout = Math.min(timeout_ms || 60000, MAX_TIMEOUT);
   browseBusy++;
   try {
+    // Someone watching on a phone asks for its shape every half minute (web
+    // chat monPhoneShape), and stays phone-shaped through a moment away.
+    // With nobody asking any more, Closedhand's own browsing gets the laptop
+    // shape now, not when the phone shape runs out by itself.
+    if (!DESKTOP && shape.phone && Date.now() - lastPhoneAsk > 35000) {
+      await queueShape(LAPTOP).catch((e) => console.error("[shape]", e.message));
+    }
     if (engine === "headless") await ensureHeadless();
     const body = op === "batch" ? { op, steps, url, engine } : op === "read_pages" ? { op, urls, engine } : { op, step, engine };
     const result = await browseRequest(body, timeout);

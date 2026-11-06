@@ -2047,6 +2047,11 @@
   body.mon-full .mon { container-type:normal; overflow:visible; }
   body.mon-full #monDesktop { position:fixed !important; left:0; right:0; top:0; height:100dvh; z-index:2000; display:flex !important; flex-direction:column; width:auto !important; aspect-ratio:auto !important; background:var(--bg); }
   body.mon-full #monVncFrame { flex:1; height:auto !important; min-height:0; }
+  /* Until the picture has the shape asked for (monHideUntilDrawn), the
+     app's own spinner where it will be. */
+  #monVncFrame { transition:opacity .2s ease; }
+  #monDesktop.mon-shaping #monVncFrame { opacity:0; transition:none; }
+  #monDesktop.mon-shaping::after { content:''; position:absolute; left:50%; top:40%; width:1.25rem; height:1.25rem; margin:-0.625rem 0 0 -0.625rem; border:2px solid rgba(var(--fg-rgb),0.1); border-top-color:var(--accent); border-radius:50%; animation:monSpin 0.6s linear infinite; }
   body.mon-full .mon-open-full { display:none !important; }
   /* The phone's own browser bar, at the bottom as on a phone. Its address,
      back, forward and tabs show only while Chrome's own bars are out of
@@ -6986,36 +6991,92 @@ function jsq(s) {
     if (!window._monDesktopActive) return;
     document.body.classList.add('mon-full');
     monFullFit();
-    monPhoneShape();
+    if (monPhone()) monHideUntilDrawn();
+    monPhoneShape(true);
   }
   function monFullClose() {
     var keys = document.getElementById('monKeys'), desk = document.getElementById('monDesktop');
     if (keys) keys.blur();
     document.body.classList.remove('mon-full');
     desk.style.top = ''; desk.style.height = '';
+    monRevealScreen();
+    monSetFit('contain');
     monLaptopShape();
   }
+  // The sandbox computer's screen as last drawn in the frame
+  // (/novnc/vnc_lite.html tells each new size once a frame of it is drawn).
+  // Full screen on a phone, the picture shows only once it has the shape
+  // asked for: before, the laptop-shaped one showed first as a band across
+  // the middle, and then the phone-shaped one.
+  var monScreenSize = null, monAwaited = null, monRevealTimer = null;
+  window.addEventListener('message', function (e) {
+    var frame = document.getElementById('monVncFrame');
+    if (e.origin !== location.origin || !frame || e.source !== frame.contentWindow || !e.data || e.data.type !== 'closedhand-screen') return;
+    monScreenSize = { width: e.data.width, height: e.data.height };
+    if (monAwaited && monAwaited.width === monScreenSize.width && monAwaited.height === monScreenSize.height) monRevealScreen();
+  });
+  function monHideUntilDrawn() {
+    document.getElementById('monDesktop').classList.add('mon-shaping');
+    clearTimeout(monRevealTimer);
+    monRevealTimer = setTimeout(monRevealScreen, 5000);
+  }
+  function monRevealScreen() {
+    clearTimeout(monRevealTimer);
+    monAwaited = null;
+    document.getElementById('monDesktop').classList.remove('mon-shaping');
+  }
+  // The shape the sandbox computer answered with: shown at once if it is
+  // already drawn, otherwise once it is.
+  function monAwait(size) {
+    var drawn = monScreenSize && monScreenSize.width === size.width && monScreenSize.height === size.height;
+    if (drawn) { monRevealScreen(); return; }
+    // From the laptop shape to a phone's or back, the picture is out of
+    // sight until it changes; within a phone's (its keyboard) the picture
+    // stays, filling the width.
+    if (monScreenSize && (monScreenSize.width >= 1280) !== (size.width >= 1280)) monHideUntilDrawn();
+    if (document.getElementById('monDesktop').classList.contains('mon-shaping')) monAwaited = size;
+  }
+  // Full screen on a phone the picture fills the width, its top at the top,
+  // as a page in a phone's browser does; anywhere else the whole picture
+  // fits (/novnc/vnc_lite.html).
+  var monFit = 'contain';
+  function monSetFit(fit) {
+    monFit = fit;
+    var frame = document.getElementById('monVncFrame');
+    if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'closedhand-fit', fit: fit }, location.origin);
+  }
+  (function () {
+    var frame = document.getElementById('monVncFrame');
+    if (frame) frame.addEventListener('load', function () { monScreenSize = null; monSetFit(monFit); });
+  })();
   // Full screen on a phone, the sandbox computer's screen takes the phone's
   // shape, so sites send their phone layouts and taps land where they look
-  // (agent /desktop/shape). Asked again every half minute: when asking
-  // stops, the sandbox goes back to the laptop shape by itself.
-  var monShapeTimer = null, monShaped = false, monShapeWidth = 0;
-  function monPhoneShape() {
+  // (agent /desktop/shape). The size is taken when the view opens, when the
+  // phone turns and when its keyboard comes or goes; asking again every half
+  // minute keeps that size, so nothing moves while the person looks. Taking
+  // it again each time reshaped the screen whenever the keyboard happened to
+  // be up. When asking stops, the sandbox goes back to the laptop shape by
+  // itself.
+  var monShapeTimer = null, monShaped = false, monShapeWidth = 0, monShapeSize = null;
+  function monPhoneShape(measure) {
     clearTimeout(monShapeTimer);
     if (!document.body.classList.contains('mon-full') || !monPhone() || document.hidden) return;
     // The whole bar shows before the size is taken, so the size is the
     // page area the phone really has left.
     document.getElementById('monFullBar').classList.add('mon-own-bar');
     var frame = document.getElementById('monVncFrame');
-    monShaped = true; monShapeWidth = window.innerWidth;
-    fetch('/api/sandbox/screen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ width: frame.clientWidth, height: frame.clientHeight }) })
+    if (measure === true || !monShapeSize) { monShapeSize = { width: frame.clientWidth, height: frame.clientHeight }; monShapeWidth = window.innerWidth; }
+    monShaped = true;
+    fetch('/api/sandbox/screen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(monShapeSize) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var own = !!(d && !d.busy && d.width < 1280);
         document.getElementById('monFullHint').textContent = d && d.busy ? 'Closedhand is using this browser, so it stays laptop-sized until it\'s done.' : '';
         monOwnBar(own);
+        monSetFit(own ? 'width' : 'contain');
+        if (d && d.width && d.height) monAwait({ width: d.width, height: d.height }); else monRevealScreen();
       })
-      .catch(function () {});
+      .catch(function () { monRevealScreen(); });
     monShapeTimer = setTimeout(monPhoneShape, 30000);
   }
   // The phone's own browser bar (agent /desktop/phone-browser): on while
@@ -7083,23 +7144,40 @@ function jsq(s) {
     clearTimeout(monShapeTimer);
     monOwnBar(false);
     if (!monShaped) return;
-    monShaped = false;
+    monShaped = false; monShapeSize = null;
     var body = JSON.stringify({});
     if (leaving && navigator.sendBeacon) navigator.sendBeacon('/api/sandbox/screen', new Blob([body], { type: 'application/json' }));
     else fetch('/api/sandbox/screen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true }).catch(function () {});
   }
-  // A phone turned sideways gets that shape; the keyboard coming up doesn't
-  // change it, as it changes only the height.
-  window.addEventListener('resize', function () { if (monShaped && window.innerWidth !== monShapeWidth) monPhoneShape(); });
-  document.addEventListener('visibilitychange', function () {
-    if (document.hidden) monLaptopShape(true); else monPhoneShape();
+  // A phone turned sideways gets that shape, out of sight until it is drawn.
+  window.addEventListener('resize', function () {
+    if (!monShaped || window.innerWidth === monShapeWidth) return;
+    monHideUntilDrawn();
+    monPhoneShape(true);
   });
+  // Away for a moment (another app, a code to copy) the phone shape stays,
+  // and the sandbox computer gives it up by itself after a minute and a
+  // half without being asked (agent PHONE_FOR_MS). Going laptop-shaped at
+  // once and back reloaded every open page, and with it whatever was typed.
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) monPhoneShape(); });
   window.addEventListener('pagehide', function () { monLaptopShape(true); });
+  // With the phone's keyboard up the view fits above it, and the sandbox's
+  // screen takes the height left, as a page in a phone's browser does, so
+  // what is typed into stays in sight (agent /desktop/shape scrolls it
+  // there). The bar showing and hiding Safari's own controls is smaller and
+  // changes nothing.
+  var monKeyboardTimer = null;
   function monFullFit() {
     var desk = document.getElementById('monDesktop'), view = window.visualViewport;
     if (!view || !document.body.classList.contains('mon-full')) return;
     desk.style.top = view.offsetTop + 'px';
     desk.style.height = view.height + 'px';
+    clearTimeout(monKeyboardTimer);
+    if (!monShaped || !monShapeSize) return;
+    monKeyboardTimer = setTimeout(function () {
+      var height = document.getElementById('monVncFrame').clientHeight;
+      if (monShaped && height >= 200 && Math.abs(height - monShapeSize.height) > 100) monPhoneShape(true);
+    }, 300);
   }
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', monFullFit);

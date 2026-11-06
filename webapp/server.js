@@ -9748,7 +9748,7 @@ app.get("/api/sandbox/vnc-diag", async (req, res) => {
   try {
     const http = require("http");
     const execResult = await new Promise((resolve) => {
-      const payload = JSON.stringify({ language: "bash", code: "ps aux | grep -E 'Xvfb|x11vnc|websockify|fluxbox' | grep -v grep; echo '---WHICH---'; which Xvfb x11vnc websockify 2>&1; echo '---ENTRY---'; head -5 /entrypoint.sh 2>&1; echo '---DISPLAY---'; echo $DISPLAY" });
+      const payload = JSON.stringify({ language: "bash", code: "ps aux | grep -E 'Xvnc|websockify|openbox' | grep -v grep; echo '---WHICH---'; which Xvnc websockify 2>&1; echo '---ENTRY---'; head -5 /entrypoint.sh 2>&1; echo '---DISPLAY---'; echo $DISPLAY" });
       const opts = { hostname: sandbox.hostname, port: 8080, path: "/exec", method: "POST", timeout: 10000,
         headers: { "Content-Type": "application/json", "X-Sandbox-Token": sandbox.token, "Content-Length": Buffer.byteLength(payload) } };
       const r = http.request(opts, (resp) => { let d = ""; resp.on("data", c => d += c); resp.on("end", () => resolve(d)); });

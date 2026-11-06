@@ -29,7 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg && \
     fi && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Minimal display stack: Xvfb + VNC + openbox (lightweight WM for browser window).
+# Minimal display stack: TigerVNC's Xvnc (the display, sharing itself) +
+# openbox (lightweight WM for browser window). xrandr gives a phone watching a
+# phone-shaped screen (agent /desktop/shape).
 # websockify only relays the screen; the viewer is the dashboard's own copy
 # (webapp/public/novnc), so Debian's noVNC pages, with their password
 # sign-in code, are not installed.
@@ -40,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg && \
 # Debian's Chromium (arm64) brings it, Google Chrome (amd64) does not, and
 # without it the display was taken for dead and restarted every 90 seconds.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    xvfb x11vnc python3-websockify x11-utils \
+    tigervnc-standalone-server x11-xserver-utils python3-websockify x11-utils \
     openbox \
     xdotool scrot fonts-liberation dbus-x11 procps \
     fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \

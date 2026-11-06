@@ -7,18 +7,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 const entry = fs.readFileSync(path.join(__dirname, '..', 'sandbox-image', 'entrypoint.sh'), 'utf8');
 
-// The screen itself is taller, so a phone can get a phone-shaped part of it
-// (agent /desktop/shape); what is sent unless a phone asks is the part shown.
-test('the part of the sandbox screen that is sent is laptop-sized, and Chrome fits inside it', () => {
-  const [, sw, sh] = entry.match(/Xvfb :99 -screen 0 (\d+)x(\d+)x24/).map(Number);
-  const [, w, h] = entry.match(/x11vnc -display :99 [^\n]* -clip (\d+)x(\d+)\+0\+0/).map(Number);
-  assert.ok(w <= sw && h <= sh, 'the part shown is on the screen');
-  assert.ok(w * h <= 1280 * 800, `the part shown, ${w}x${h}, is bigger than 1280x800`);
+// The screen is laptop-sized unless a phone watching asks for its shape
+// (agent /desktop/shape). Xvnc is the display and shares it: frames go out as
+// the screen changes, with fences, instead of one per round trip when asked.
+test('the sandbox screen is laptop-sized, shared by Xvnc on this machine only, and Chrome fits inside it', () => {
+  const [, w, h] = entry.match(/gosu sandbox Xvnc :99 -geometry (\d+)x(\d+) -depth 24 -rfbport 5900 -localhost \\\n\s+-SecurityTypes None -AlwaysShared -AcceptSetDesktopSize=0/).map(Number);
+  assert.ok(w * h <= 1280 * 800, `the screen, ${w}x${h}, is bigger than 1280x800`);
   const windows = [...entry.matchAll(/--window-size=(\d+),(\d+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
   assert.ok(windows.length >= 1);
   for (const [ww, wh] of windows) assert.ok(ww <= w && wh <= h, `window ${ww}x${wh} does not fit ${w}x${h}`);
   const status = fs.readFileSync(path.join(__dirname, '..', 'sandbox-image', 'agent', 'server.js'), 'utf8');
   assert.match(status, new RegExp(`resolution: "${w}x${h}"`));
+  assert.doesNotMatch(entry, /gosu sandbox (x11vnc|Xvfb)/, "one display, sharing itself");
+  assert.match(entry, /gosu sandbox websockify "\$WS_LISTEN" localhost:5900/, "only websockify, on this machine, connects to it");
 });
 
 // A display killed outright, or one from before a restart, left its lock, and
@@ -28,8 +29,8 @@ test('the part of the sandbox screen that is sent is laptop-sized, and Chrome fi
 // was process 1 and collected none of them.
 test("the screen comes back after its display dies, and crashed browsers are collected", () => {
   const entry = require("fs").readFileSync(require("path").join(__dirname, "..", "sandbox-image/entrypoint.sh"), "utf8");
-  assert.match(entry, /\[ "\$\(cat \/proc\/"\$pid"\/comm 2>\/dev\/null\)" != "Xvfb" \]; then\n\s+rm -f \/tmp\/\.X99-lock \/tmp\/\.X11-unix\/X99/, "a lock not held by a running Xvfb is cleared");
-  assert.match(entry, /while true; do\n\s+clear_stale_display\n\s+gosu sandbox Xvfb :99/, "before every start");
+  assert.match(entry, /\[ "\$\(cat \/proc\/"\$pid"\/comm 2>\/dev\/null\)" != "Xvnc" \]; then\n\s+rm -f \/tmp\/\.X99-lock \/tmp\/\.X11-unix\/X99/, "a lock not held by a running display is cleared");
+  assert.match(entry, /while true; do\n\s+clear_stale_display\n\s+gosu sandbox Xvnc :99/, "before every start");
   assert.match(entry, /exec tini -s -- gosu sandbox env DISPLAY=:99 "\$@"/);
   assert.match(require("fs").readFileSync(require("path").join(__dirname, "..", "sandbox-image/Dockerfile"), "utf8"), /curl ca-certificates gosu tini/);
 });
@@ -92,5 +93,5 @@ test("every tool the screen watch runs is installed by the image itself, whichev
   const docker = read("sandbox-image/Dockerfile");
   assert.match(watch, /execFile\("xdpyinfo"/);
   // Google Chrome (amd64, Railway) does not bring x11-utils the way Debian's Chromium does.
-  assert.match(docker, /xvfb x11vnc python3-websockify x11-utils \\/);
+  assert.match(docker, /tigervnc-standalone-server x11-xserver-utils python3-websockify x11-utils \\/);
 });

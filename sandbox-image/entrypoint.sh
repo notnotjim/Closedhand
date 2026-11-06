@@ -15,44 +15,52 @@ XDG_DOCUMENTS_DIR="/workspace"
 XDGEOF
 chown -R sandbox:sandbox /home/sandbox/.config
 
-# 3. Start Xvfb (1280x1280, showing 1280x800), supervised. Chrome already had a supervisor; the
-# display it depends on did not, so an OOM-killed Xvfb left Chrome
-# crash-looping on "Missing X server" for ever with nothing to heal it.
+# 3. The screen: TigerVNC's Xvnc is the display and shares it, supervised.
+# Chrome already had a supervisor; the display it depends on did not, so an
+# OOM-killed display left Chrome crash-looping on "Missing X server" for ever
+# with nothing to heal it.
+# Xvnc sends each frame as soon as the screen changes (continuous updates),
+# with fences so a slow connection never queues frames up; x11vnc sent one
+# only when asked, one per round trip to whoever watches.
 # The size is what a person watching over the internet pays for: every
 # redraw crosses the tunnel, and at 1920x1080 a full one was about 290 KB,
 # close to a second on a phone. 1280x800 is a normal laptop screen for the
-# sites and about 45% less to send. The screen is taller than that so a phone
-# can get a tall phone-shaped part instead (agent /desktop/shape); only the
-# part shown is sent (x11vnc -clip), and openbox keeps windows inside it.
-# The lock and socket Xvfb leaves when it is killed outright (out of memory)
-# outlive it, and so do ones from before a restart (the container keeps /tmp).
-# Xvfb then refuses to start while the lock's process number is in use, by
-# anything at all, so the screen stayed grey for good. A lock not held by an
-# Xvfb that is running is stale.
+# sites and about 45% less to send. A phone watching gets a phone-shaped
+# screen instead (agent /desktop/shape, by RandR).
+# Only this machine connects (websockify, below); no password, as before.
+# The lock and socket the display leaves when it is killed outright (out of
+# memory) outlive it, and so do ones from before a restart (the container
+# keeps /tmp). The display then refuses to start while the lock's process
+# number is in use, by anything at all, so the screen stayed grey for good.
+# A lock not held by a display that is running is stale.
 clear_stale_display() {
     local pid
     [ -f /tmp/.X99-lock ] || return 0
     pid=$(tr -d ' \n' < /tmp/.X99-lock || true)
-    if [ -n "$pid" ] && [ "$(cat /proc/"$pid"/comm 2>/dev/null)" != "Xvfb" ]; then
+    if [ -n "$pid" ] && [ "$(cat /proc/"$pid"/comm 2>/dev/null)" != "Xvnc" ]; then
         rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
         echo "[entrypoint] cleared a stale display lock" >&2
     fi
 }
-xvfb_supervisor() {
+display_supervisor() {
     while true; do
         clear_stale_display
-        gosu sandbox Xvfb :99 -screen 0 1280x1280x24 -ac +extension GLX +render -noreset || true
-        echo "[entrypoint] Xvfb exited, restarting" >&2
+        gosu sandbox Xvnc :99 -geometry 1280x800 -depth 24 -rfbport 5900 -localhost \
+            -SecurityTypes None -AlwaysShared -AcceptSetDesktopSize=0 \
+            -ac +extension GLX +render -noreset || true
+        echo "[entrypoint] Xvnc exited, restarting" >&2
         sleep 1
     done
 }
-xvfb_supervisor &
+display_supervisor &
 sleep 0.5
 
 export DISPLAY=:99
 
 # 4. Openbox, same treatment: without it windows lose management quietly.
-# A restart starts in the laptop shape, whatever shape it stopped in.
+# Its settings are the image's own (/etc/xdg/openbox/rc.xml): a copy the
+# phone shape once wrote in the person's home folder kept windows to the top
+# of a screen that is no longer taller than it looks.
 rm -f /home/sandbox/.config/openbox/rc.xml
 openbox_supervisor() {
     while true; do
@@ -111,19 +119,8 @@ browser_supervisor() {
 browser_supervisor "$START_URL" &
 sleep 1
 
-# 6. VNC server, supervised: -forever only survives client disconnects, not
-# the X server it is attached to going away.
-x11vnc_supervisor() {
-    while true; do
-        gosu sandbox x11vnc -display :99 -nopw -shared -forever -rfbport 5900 -xkb -q -clip 1280x800+0+0 || true
-        echo "[entrypoint] x11vnc exited, restarting" >&2
-        sleep 2
-    done
-}
-x11vnc_supervisor &
-sleep 0.3
 
-# 7. Start websockify. Railway routes internal traffic over IPv6, so it listens
+# 6. Start websockify. Railway routes internal traffic over IPv6, so it listens
 # there; a host with no IPv6 at all (Nodion) refuses that outright, so it
 # listens on IPv4 instead.
 if python3 -c 'import socket; s = socket.socket(socket.AF_INET6); s.bind(("::", 0)); s.close()' 2>/dev/null; then
@@ -142,7 +139,7 @@ websockify_supervisor() {
 }
 websockify_supervisor &
 
-# 8. Run the CMD (agent server), under tini: the agent server would otherwise
+# 7. Run the CMD (agent server), under tini: the agent server would otherwise
 # be process 1, which collects no finished processes, and each browser that
 # crashed stayed in the process table (thousands after a few hours of a grey
 # screen). -s collects them even where tini is not process 1.

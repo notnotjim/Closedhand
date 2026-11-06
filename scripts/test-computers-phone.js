@@ -48,7 +48,7 @@ test("the browser opens full screen without the Fullscreen API, with Keyboard an
 test("what is typed reaches the remote browser, from this page only", () => {
   assert.match(page, /frame\.contentWindow\.postMessage\(Object\.assign\(\{ type: 'closedhand-keys' \}, msg\), location\.origin\)/);
   const vnc = read("webapp/public/novnc/vnc_lite.html");
-  assert.match(vnc, /if \(e\.origin !== window\.location\.origin \|\| !e\.data \|\| e\.data\.type !== 'closedhand-keys' \|\| !rfb\) return;/);
+  assert.match(vnc, /if \(e\.origin !== window\.location\.origin \|\| !e\.data\) return;\n[^\n]*\n\s*if \(e\.data\.type !== 'closedhand-keys' \|\| !rfb\) return;/);
   assert.match(vnc, /rfb\.sendKey\(keysyms\.lookup\(ch\.codePointAt\(0\)\), null\)/);
   assert.match(vnc, /Backspace: \[KeyTable\.XK_BackSpace, 'Backspace'\], Enter: \[KeyTable\.XK_Return, 'Enter'\]/);
 });
@@ -63,34 +63,165 @@ test("an i opens on a tap (Closedhand's one, llm-hint.js), and the sign-in marks
 
 test("full screen on a phone, the sandbox computer's screen takes the phone's shape, and the laptop shape after", () => {
   const entry = read("sandbox-image/entrypoint.sh");
-  assert.match(entry, /Xvfb :99 -screen 0 1280x1280x24/, "room below the laptop-shaped part for a tall phone shape");
-  assert.match(entry, /x11vnc -display :99 [^\n]* -clip 1280x800\+0\+0/, "only the part shown is sent");
-  assert.match(entry, /rm -f \/home\/sandbox\/\.config\/openbox\/rc\.xml\nopenbox_supervisor\(\)/, "a restart starts in the laptop shape");
-  assert.match(read("sandbox-image/openbox-config/rc.xml"), /<margins><top>0<\/top><bottom>480<\/bottom><left>0<\/left><right>0<\/right><\/margins>/, "windows stay in the part shown");
+  assert.match(entry, /gosu sandbox Xvnc :99 -geometry 1280x800 /, "laptop-shaped unless a phone asks");
+  assert.match(entry, /rm -f \/home\/sandbox\/\.config\/openbox\/rc\.xml\nopenbox_supervisor\(\)/, "openbox runs on the image's own settings");
+  assert.doesNotMatch(read("sandbox-image/openbox-config/rc.xml"), /<margins>/, "the screen is all shown: windows use all of it");
   const agent = read("sandbox-image/agent/server.js");
-  assert.match(agent, /const SCREEN = \{ width: 1280, height: 1280 \}, LAPTOP = \{ width: 1280, height: 800 \}, NARROWEST = 508;/);
+  assert.match(agent, /const LAPTOP = \{ width: 1280, height: 800 \}, NARROWEST = 508;/);
   assert.match(agent, /app\.post\("\/desktop\/shape", auth,/);
   assert.match(agent, /if \(phone && botBrowsing\(\)\) return res\.json\(\{ \.\.\.\(await queueShape\(LAPTOP\)\), busy: true \}\);/, "never reshaped under Closedhand's own browsing");
   assert.match(agent, /function botBrowsing\(\) \{\n\s*return browseBusy > 0 \|\| Date\.now\(\) - lastBrowseAt < 20000;/, "Closedhand is browsing while a step runs and just after, not whenever its lasting helper exists");
   assert.match(agent, /shapeTimer = setTimeout\(\(\) => queueShape\(LAPTOP\)/, "back to laptop by itself when the phone stops asking");
   assert.match(agent, /const run = shaping\.then\(\(\) => setShape\(next\)\);/, "one change of shape at a time");
-  assert.match(agent, /"-remote", `clip:\$\{width\}x\$\{height\}\+\$\{left\}\+\$\{top\}`/, "the page only: below Chrome's bars, inside its frame");
+  // The screen is resized by RandR, by a mode of that size: setting only
+  // the screen's size left it with no screen showing.
+  assert.match(agent, /await onScreen\("xrandr", \["--output", "VNC-0", "--mode", mode\]\);/);
+  assert.match(agent, /const scale = Math\.max\(1, NARROWEST \/ phone\.width\);/, "at least Chrome's narrowest window, drawn larger");
+  assert.match(agent, /await fitWindows\(\{ left: -frame, top: frame - bars, width: width \+ 2 \* frame, height: height \+ bars \}\);/, "the page fills the screen, Chrome's bars and frame outside it");
+  assert.match(agent, /res\.json\(await queueShape\(phone \? \{ phone: \{ width, height \} \} : LAPTOP\)\);/, "the phone's own size in CSS pixels");
   const server = read("webapp/server.js");
   assert.match(server, /app\.post\("\/api\/sandbox\/screen",[\s\S]{0,600}sandboxFetch\(info, "POST", "\/desktop\/shape", phone \? \{ width, height \} : \{\}, 15000\)/);
-  assert.match(page, /function monFullOpen\(\) \{[\s\S]{0,200}monPhoneShape\(\);/);
-  assert.match(page, /function monFullClose\(\) \{[\s\S]{0,300}monLaptopShape\(\);/);
+  assert.match(page, /function monFullOpen\(\) \{[\s\S]{0,200}monPhoneShape\(true\);/);
+  assert.match(page, /function monFullClose\(\) \{[\s\S]{0,400}monLaptopShape\(\);/);
   assert.match(page, /monShapeTimer = setTimeout\(monPhoneShape, 30000\);/);
   assert.match(page, /window\.addEventListener\('pagehide', function \(\) \{ monLaptopShape\(true\); \}\);/);
 });
 
-test("in the phone shape Chrome says it is a phone, so sites pick their phone versions", () => {
+// Measured from another continent than the sandbox computer (2026-11-06): with
+// x11vnc and noVNC asking for each frame only once the last had come,
+// scrolling showed 4 to 7 frames a second; asking ahead, 11 to 14, and
+// nothing at all while the screen stood still. Xvnc sends frames unasked.
+test("the sandbox computer's screen comes as fast as it changes, and a new size is drawn whole", async () => {
+  const { pathToFileURL } = require("node:url");
+  const { makeScreen, aheadFor, AHEAD_EVERY_MS } = await import(pathToFileURL(path.join(__dirname, "..", "webapp/public/novnc/closedhand-screen.js")));
+  const asked = [];
+  const messages = { fbUpdateRequest: (sock, incremental, x, y, w, h) => asked.push({ incremental, w, h }) };
+  let frameDone = false;
+  class Base {
+    constructor() { this._rfbConnectionState = "connecting"; this._fbWidth = 0; this._fbHeight = 0; this._sock = {}; }
+    _framebufferUpdate() { return frameDone; }
+    _resize(w, h) { this._fbWidth = w; this._fbHeight = h; }
+  }
+  let now = 0, shown = true, tick = null;
+  const Screen = makeScreen(Base, messages, { clock: () => now, visible: () => shown, every: (fn, ms) => { assert.equal(ms, AHEAD_EVERY_MS); tick = fn; } });
+  const screen = new Screen();
+  const sizes = [];
+  screen.onScreenSize = (w, h, drawn) => sizes.push(`${w}x${h}${drawn ? " drawn" : ""}`);
+  const frame = (took) => { frameDone = false; screen._framebufferUpdate(); now += took; frameDone = true; assert.equal(screen._framebufferUpdate(), true); };
+
+  screen._resize(1280, 800);
+  assert.deepEqual(asked, [], "connecting: noVNC asks for the first whole frame itself");
+  screen._rfbConnectionState = "connected";
+  tick(); tick(); tick();
+  assert.deepEqual(asked.map((a) => a.incremental), [true, true], "two frames asked ahead at most");
+  frame(10);
+  assert.deepEqual(sizes, ["1280x800", "1280x800 drawn"], "the size is told, and again once a frame of it is drawn");
+  tick(); tick(); tick();
+  assert.equal(asked.length, 4, "a frame that came asks ahead again");
+
+  // A slow connection: frames that take longer to arrive than frames come.
+  for (let i = 0; i < 6; i++) frame(200);
+  asked.length = 0;
+  tick(); tick();
+  assert.deepEqual(asked, [], "nothing asked ahead to queue up behind them");
+  assert.equal(aheadFor(200), 0); assert.equal(aheadFor(60), 1); assert.equal(aheadFor(10), 2);
+
+  for (let i = 0; i < 12; i++) frame(5);
+  shown = false; tick();
+  assert.deepEqual(asked, [], "nothing asked ahead while the page is out of sight");
+  shown = true;
+  screen._enabledContinuousUpdates = true; tick(); tick();
+  assert.deepEqual(asked, [], "nothing asked of a server that sends frames unasked (Xvnc)");
+  screen._enabledContinuousUpdates = false;
+
+  // The phone shape: one whole frame of the new size, and only for a size
+  // that changed (x11vnc answers each whole frame with the size again).
+  asked.length = 0; sizes.length = 0;
+  screen._resize(508, 834);
+  assert.deepEqual(asked, [{ incremental: false, w: 508, h: 834 }]);
+  screen._resize(508, 834);
+  assert.equal(asked.length, 1, "the same size again asks for nothing");
+  frame(5);
+  assert.deepEqual(sizes, ["508x834", "508x834 drawn"]);
+
+  screen._rfbConnectionState = "disconnected";
+  let cleared = false; const clear = global.clearInterval; global.clearInterval = () => { cleared = true; };
+  try { tick(); } finally { global.clearInterval = clear; }
+  assert.ok(cleared, "stops with the connection");
+
+  const vnc = read("webapp/public/novnc/vnc_lite.html");
+  assert.match(vnc, /const Screen = makeScreen\(RFB, RFB\.messages\);/);
+  assert.match(vnc, /rfb = new Screen\(document\.getElementById\('screen'\), url,/);
+  assert.doesNotMatch(vnc, /resizeSession = true/, "x11vnc ignores a viewer asking for its own size");
+});
+
+test("full screen on a phone shows the picture once it has the phone's shape, fills the width, and keeps that shape", () => {
+  const vnc = read("webapp/public/novnc/vnc_lite.html");
+  assert.match(vnc, /if \(drawn && window\.parent !== window\) window\.parent\.postMessage\(\{ type: 'closedhand-screen', width, height \}, window\.location\.origin\);/);
+  assert.match(vnc, /if \(e\.data\.type === 'closedhand-fit'\) \{ fit = e\.data\.fit === 'width' \? 'width' : 'contain'; fitScreen\(\); return; \}/);
+  assert.match(vnc, /\(window\.innerWidth \* screenSize\.height \/ screenSize\.width\) \+ 'px'/, "the height follows the width, so the keyboard covers rather than shrinks it");
+  assert.match(page, /if \(e\.origin !== location\.origin \|\| !frame \|\| e\.source !== frame\.contentWindow \|\| !e\.data \|\| e\.data\.type !== 'closedhand-screen'\) return;/);
+  assert.match(page, /function monFullOpen\(\) \{[\s\S]{0,200}if \(monPhone\(\)\) monHideUntilDrawn\(\);/);
+  assert.match(page, /monRevealTimer = setTimeout\(monRevealScreen, 5000\);/, "never left out of sight");
+  assert.match(page, /#monDesktop\.mon-shaping #monVncFrame \{ opacity:0; transition:none; \}/);
+  assert.match(page, /monSetFit\(own \? 'width' : 'contain'\);/);
+  // Asking again every half minute keeps the size: taking it again each time
+  // reshaped the screen whenever the keyboard happened to be up.
+  assert.match(page, /if \(measure === true \|\| !monShapeSize\) \{ monShapeSize = \{ width: frame\.clientWidth, height: frame\.clientHeight \};/);
+  assert.match(page, /body: JSON\.stringify\(monShapeSize\) \}\)/);
+  assert.match(page, /if \(monShaped && height >= 200 && Math\.abs\(height - monShapeSize\.height\) > 100\) monPhoneShape\(true\);/, "the keyboard coming or going reshapes it, Safari's own bar does not");
+  // A moment in another app leaves it as it was: going laptop-shaped and
+  // back reloaded every open page, and what was typed in it.
+  assert.match(page, /document\.addEventListener\('visibilitychange', function \(\) \{ if \(!document\.hidden\) monPhoneShape\(\); \}\);/);
+  assert.doesNotMatch(page, /if \(document\.hidden\) monLaptopShape\(true\)/);
   const agent = read("sandbox-image/agent/server.js");
-  assert.match(agent, /await phoneMode\(!laptop\)/, "on with the phone shape, off with the laptop shape");
+  assert.match(agent, /if \(phone\) lastPhoneAsk = Date\.now\(\);/);
+  assert.match(agent, /if \(!DESKTOP && shape\.phone && Date\.now\(\) - lastPhoneAsk > 35000\) \{\n\s*await queueShape\(LAPTOP\)/, "with nobody watching any more, Closedhand browses laptop-shaped at once");
+  assert.match(agent, /const shorter = !!shape\.phone && height < shape\.height;/, "a phone shape that got shorter");
+  assert.match(agent, /if \(shorter\) await showTypingPlace\(\)/, "what is typed into is scrolled into the height left");
+});
+
+test("in the phone shape Chrome acts as the phone watching, so sites pick their phone versions at its text size", () => {
+  const agent = read("sandbox-image/agent/server.js");
+  assert.match(agent, /await phoneMode\(\{ width: phone\.width, height: phone\.height, scale \}\);/, "on with the phone shape");
+  assert.match(agent, /await phoneMode\(null\);\n\s*await screenSize\(LAPTOP\);/, "off before the laptop shape");
   assert.match(agent, /Target\.setAutoAttach", \{ autoAttach: true, waitForDebuggerOnStart: true, flatten: true \}/, "new pages wait for the phone settings");
-  for (const call of ["Emulation.setUserAgentOverride", "Emulation.setTouchEmulationEnabled", "Emulation.setEmitTouchEventsForMouse"]) assert.ok(agent.includes(`send("${call}"`), call);
-  assert.doesNotMatch(agent, /setDeviceMetricsOverride/, "pages keep the window's width: a phone's 980-wide layout shrank pages to unreadable");
+  for (const call of ["Emulation.setDeviceMetricsOverride", "Emulation.setUserAgentOverride", "Emulation.setTouchEmulationEnabled", "Emulation.setEmitTouchEventsForMouse", "Page.addScriptToEvaluateOnNewDocument"]) assert.ok(agent.includes(`send("${call}"`), call);
+  // Drawn scale times larger and shown that much larger in Chrome's own
+  // view: with the size alone the page took the top left of the screen.
+  assert.match(agent, /return \{ width, height, deviceScaleFactor: scale, scale, dontSetVisibleSize: true, mobile: true, screenWidth: width, screenHeight: height \};/, "the phone's CSS width at its text size, filling the screen");
+  assert.match(agent, /send\("Page\.enable", \{\}, sessionId\);\n\s*send\("Page\.addScriptToEvaluateOnNewDocument"/, "the page agent on, or the default viewport is never added");
   assert.match(agent, /Mobile Safari\/537\.36/);
   assert.match(agent, /if \(targetInfo\.type === "page" && \/\^https\?:\/\.test\(targetInfo\.url\)\) send\("Page\.reload", \{\}, sessionId\);/, "a page already loading loads again as its phone version");
+});
+
+// A phone's own fallback for a page that names no viewport is a 980-wide
+// layout shrunk to the screen: with nothing to pinch, pages made only for
+// computers were unreadable (2026-10-20). Such a page gets the phone's width;
+// a page's own viewport, later in its <head>, still wins.
+test("a page that names no viewport of its own gets the phone's width, not a shrunk 980-wide layout", () => {
+  const agent = read("sandbox-image/agent/server.js");
+  const source = agent.match(/const PHONE_VIEWPORT = `([\s\S]*?)`;/)[1];
+  const run = (doc) => {
+    const observers = [];
+    class MutationObserver { constructor(fn) { this.fn = fn; observers.push(this); } observe() {} disconnect() { this.off = true; } }
+    new Function("document", "MutationObserver", source)(doc, MutationObserver);
+    return observers;
+  };
+  const element = () => ({ name: "", content: "" });
+  const headOf = (metas) => ({ children: metas, prepend(m) { metas.unshift(m); } });
+  const doc = (metas, head = headOf(metas)) => ({ head, createElement: element, querySelector: () => metas.find((m) => m.name === "viewport") || null });
+
+  const none = []; run(doc(none));
+  assert.deepEqual(none.map((m) => m.content), ["width=device-width, initial-scale=1"], "no viewport: the phone's width");
+  const own = [{ name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" }]; run(doc(own));
+  assert.equal(own.length, 1, "a page's own viewport is left alone");
+  const later = []; const early = doc(later, null);
+  const [watch] = run(early);
+  assert.equal(later.length, 0, "no <head> yet");
+  early.head = headOf(later); watch.fn([], watch);
+  assert.equal(later[0].content, "width=device-width, initial-scale=1", "added first in <head> once it exists");
+  assert.ok(watch.off);
 });
 
 test("the sandbox browser starts on Google, which a person can still change", () => {

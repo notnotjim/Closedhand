@@ -104,7 +104,7 @@ test("the bundled screen viewer offers only the no-password sign-in, and carries
   assert.doesNotMatch(rfb, /legacyCrypto|genDES|RSAAES|_negotiateStdVNCAuth|_negotiateARDAuth|_negotiateMSLogonIIAuth/);
   assert.equal(fs.existsSync(path.join(root, "webapp/public/novnc/core/crypto")), false);
   assert.equal(fs.existsSync(path.join(root, "webapp/public/novnc/core/ra2.js")), false);
-  assert.match(read("sandbox-image/Dockerfile"), /xvfb x11vnc python3-websockify/, "the sandbox computer installs no second viewer");
+  assert.match(read("sandbox-image/Dockerfile"), /tigervnc-standalone-server x11-xserver-utils python3-websockify/, "the sandbox computer installs no second viewer");
   assert.doesNotMatch(read("sandbox-image/Dockerfile"), /\/usr\/share\/novnc/);
   const entry = read("sandbox-image/entrypoint.sh");
   assert.match(entry, /gosu sandbox websockify "\$WS_LISTEN" localhost:5900 \|\| true/, "and serves no viewer pages, only the relay");
