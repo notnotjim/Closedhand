@@ -209,7 +209,7 @@ test('YouTube without a link-opening model uses captions and preview frames, nev
   assert.match(read('lib/video.js'), /gather\(userId, href, \{ youtube, videoBytes/);
   const script = read('lib/video-sandbox.py');
   assert.match(script, /"skip_download": True/, 'YouTube is read, not downloaded');
-  assert.match(script, /meta, frames, video = \(local\(ARGS\["path"\]\) if ARGS\.get\("path"\) else youtube\(ARGS\["url"\]\) if ARGS\.get\("youtube"\)\n\s*else download\(ARGS\["url"\]\)\)/);
+  assert.match(script, /meta, frames, video = \(local\(ARGS\["file"\]\) if ARGS\.get\("file"\) else youtube\(ARGS\["url"\]\) if ARGS\.get\("youtube"\)\n\s*else download\(ARGS\["url"\]\)\)/);
 });
 
 test('with no model that sees, frames are described on this computer and read with what is said, with no extra model call', async () => {
@@ -287,7 +287,7 @@ class Container:
     def __exit__(self, *a): return False
     def decode(self, stream):
         for _ in range(7): yield Frame(8000)
-sys.modules["av"] = types.SimpleNamespace(open=lambda p: Container(), AudioResampler=Resampler)
+sys.modules["av"] = types.SimpleNamespace(open=lambda p, options=None: Container(), AudioResampler=Resampler)
 spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 m.OUT = tempfile.mkdtemp(); m.CHUNK_SECONDS = 1
 log = io.StringIO()
@@ -300,6 +300,32 @@ print(json.dumps({"parts": parts, "sizes": [os.path.getsize(os.path.join(m.OUT, 
   assert.deepEqual(whole.sizes, [32000, 32000, 32000, 16000], 'each part written as soon as it is full, the rest at the end: 3.5 s, to its end');
   assert.deepEqual(whole.log, ['CLOSEDHAND_PROGRESS speech 1', 'CLOSEDHAND_PROGRESS speech 2', 'CLOSEDHAND_PROGRESS speech 3', 'CLOSEDHAND_PROGRESS speech 4'], 'a line for each, read by the bot as work still going');
   assert.match(read('lib/video-sandbox.py'), /time\.time\(\) - os\.path\.getmtime\(full\) > 86400:/, 'a job still being written out is not swept away');
+});
+
+// A file the bot lends is opened at its gateway address with the sandbox's
+// own token, never from a copy on the sandbox's disk.
+test("the sandbox reads a lent file at the gateway, with its own token", { skip: !hasPython() }, () => {
+  const out = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys, tempfile, types
+opened = []
+class Container:
+    duration = 90 * 1000000
+    def __init__(self): self.streams = types.SimpleNamespace(audio=[], video=[])
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+def open_(p, options=None):
+    opened.append([p, (options or {}).get("headers")])
+    return Container()
+sys.modules["av"] = types.SimpleNamespace(open=open_, time_base=1000000)
+os.environ.update(GATEWAY_URL="bot.internal:3000", SANDBOX_TOKEN="tok-123", USER_ID="admin")
+spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.OUT = tempfile.mkdtemp(); m.ARGS = {"job": "j", "title": "Harbour walk.mov"}
+meta, frames, video = m.local({"id": "ab" * 16, "size": 6 * 1024 ** 3, "ext": "mov"})
+print(json.dumps({"opened": opened, "duration": meta["duration"], "title": meta["title"]}))`]).toString());
+  const url = 'http://bot.internal:3000/gateway/file/' + 'ab'.repeat(16);
+  assert.deepEqual(out.opened, [[url, 'X-Sandbox-Token: tok-123\r\nX-User-Id: admin\r\n'], [url, 'X-Sandbox-Token: tok-123\r\nX-User-Id: admin\r\n'], [url, 'X-Sandbox-Token: tok-123\r\nX-User-Id: admin\r\n']], 'its length, its frames and its sound, each read there');
+  assert.equal(out.duration, 90);
+  assert.equal(out.title, 'Harbour walk.mov');
 });
 
 test('the sandbox images and the Mac Workspace install the same video tools', () => {

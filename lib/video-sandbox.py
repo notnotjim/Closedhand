@@ -1,8 +1,9 @@
 # Runs on Closedhand's sandbox computer, sent by lib/video.js with ARGS set
 # above it. Gathers what a model needs to understand one video link, or one
-# recording or video file the bot has put on the sandbox (ARGS "path"), and
-# leaves the parts in a hidden folder of the workspace for the bot to collect
-# (the bot deletes that folder, and the file, straight after).
+# recording or video file the bot lends it (ARGS "file", read over the gateway
+# a part at a time, never copied here whole), and leaves the parts in a hidden
+# folder of the workspace for the bot to collect (the bot deletes that folder
+# straight after).
 #
 # YouTube is never downloaded: its terms don't allow it. Its captions, its
 # details and the preview frames YouTube shows when you scrub the timeline are
@@ -220,10 +221,10 @@ def youtube(url):
     return meta, frames, None
 
 
-def video_frames(path, duration):
+def video_frames(path, duration, options=None):
     import av
     frames = []
-    with av.open(path) as c:
+    with av.open(path, options=options or {}) as c:
         if not c.streams.video:
             return frames
         vs = c.streams.video[0]
@@ -239,7 +240,7 @@ def video_frames(path, duration):
     return frames
 
 
-def speech(path):
+def speech(path, options=None):
     """16 kHz mono 16-bit samples, in parts the sandbox can hand over, each
     written as soon as it is full, so a long recording is never held whole,
     and heard to its end, a link's video as a file's. Each part is a line in
@@ -252,7 +253,7 @@ def speech(path):
         parts.append(write("speech-%d.pcm" % len(parts), bytes(data)))
         print("CLOSEDHAND_PROGRESS speech %d" % len(parts), flush=True)
 
-    with av.open(path) as c:
+    with av.open(path, options=options or {}) as c:
         if not c.streams.audio:
             return parts
         resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
@@ -319,21 +320,36 @@ def download(url):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def local(path):
-    """A recording or video file put here by the bot: no download, the same
-    frames and speech as a link."""
+def lent(file):
+    """Where the file the bot lends for this job is read, over the gateway,
+    and the headers that let this sandbox read it."""
+    base = os.environ.get("GATEWAY_URL", "")
+    if not base:
+        raise RuntimeError("this sandbox computer has no way back to Closedhand")
+    if "://" not in base:
+        base = "http://" + base
+    headers = {"X-Sandbox-Token": os.environ.get("SANDBOX_TOKEN", ""), "X-User-Id": os.environ.get("USER_ID", "")}
+    return base.rstrip("/") + "/gateway/file/" + file["id"], headers
+
+
+def local(file):
+    """A recording or video file the bot lends: read where it is, a part at a
+    time as a player reads it, the same frames and speech as a link."""
     import av
-    with av.open(path) as c:
+    import urllib.request
+    url, headers = lent(file)
+    options = {"headers": "".join("%s: %s\r\n" % h for h in headers.items())}
+    with av.open(url, options=options) as c:
         duration = float(c.duration / av.time_base) if c.duration else 0.0
-    meta = {"title": ARGS.get("title") or os.path.basename(path), "uploader": "", "date": "", "duration": round(duration, 1),
+    meta = {"title": ARGS.get("title") or "", "uploader": "", "date": "", "duration": round(duration, 1),
             "description": "", "chapters": [], "language": "", "captions": None}
-    frames = video_frames(path, duration)
+    frames = video_frames(url, duration, options)
     meta["frame_source"] = "video" if frames else None
     video = None
-    if VIDEO_BYTES and os.path.getsize(path) <= VIDEO_BYTES and path.rsplit(".", 1)[-1].lower() in ("mp4", "webm", "mov"):
-        with open(path, "rb") as f:
-            video = write("video." + path.rsplit(".", 1)[-1].lower(), f.read())
-    meta["speech_parts"] = speech(path)
+    if VIDEO_BYTES and file["size"] <= VIDEO_BYTES and file.get("ext") in ("mp4", "webm", "mov"):
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=120) as f:
+            video = write("video." + file["ext"], f.read())
+    meta["speech_parts"] = speech(url, options)
     return meta, frames, video
 
 
@@ -363,7 +379,7 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     try:
         need_libraries()
-        meta, frames, video = (local(ARGS["path"]) if ARGS.get("path") else youtube(ARGS["url"]) if ARGS.get("youtube")
+        meta, frames, video = (local(ARGS["file"]) if ARGS.get("file") else youtube(ARGS["url"]) if ARGS.get("youtube")
                                else download(ARGS["url"]))
         blob, index = bytearray(), []
         for t, data in frames:

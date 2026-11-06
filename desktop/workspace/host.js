@@ -148,7 +148,9 @@ class Workspace {
   get agentSocket() { return path.join(this.sockets, 'agent.sock'); }
   forwardGateway(request, response) {
     // No arbitrary host URLs, paths or headers can cross this boundary.
-    if (!authorised(request, this.options.token) || request.method !== 'POST' || !['/gateway/api', '/gateway/fetch'].includes(request.url)) {
+    if (!authorised(request, this.options.token)) { request.resume(); return json(response, 403, { error: 'This host request is not available to the Workspace.' }); }
+    if (request.method === 'GET' && /^\/gateway\/file\/[0-9a-f]{32}$/.test(request.url)) return this.forwardLentFile(request, response);
+    if (request.method !== 'POST' || !['/gateway/api', '/gateway/fetch'].includes(request.url)) {
       request.resume(); return json(response, 403, { error: 'This host request is not available to the Workspace.' });
     }
     const upstream = http.request({ hostname: '127.0.0.1', port: this.options.gatewayPort,
@@ -163,6 +165,24 @@ class Workspace {
     let bytes = 0;
     request.on('data', chunk => { bytes += chunk.length; if (bytes > 8 * 1024 ** 2) { upstream.destroy(); request.destroy(); } });
     request.pipe(upstream);
+  }
+  // A recording or video the bot lends the sandbox to hear (lib/lent-files.js),
+  // read a part at a time: only its Range crosses, and only the headers that
+  // say which part came back.
+  forwardLentFile(request, response) {
+    const range = /^bytes=\d*-\d*$/.test(String(request.headers.range || '')) ? { Range: request.headers.range } : {};
+    const upstream = http.request({ hostname: '127.0.0.1', port: this.options.gatewayPort,
+      path: request.url, method: 'GET', timeout: 45000, headers: { 'X-Sandbox-Token': this.options.token, ...range } }, result => {
+      const keep = {};
+      for (const h of ['content-type', 'content-length', 'content-range', 'accept-ranges']) if (result.headers[h]) keep[h] = result.headers[h];
+      response.writeHead(result.statusCode, keep); result.pipe(response);
+      result.on('error', () => response.destroy());
+    });
+    upstream.on('error', () => { if (!response.headersSent) json(response, 502, { error: 'The file is not answering.' }); else response.destroy(); });
+    upstream.on('timeout', () => upstream.destroy(new Error('timeout')));
+    response.on('close', () => upstream.destroy());
+    request.resume();
+    upstream.end();
   }
   async request(request, response) {
     // Health polling never downloads, boots or keeps the VM alive.

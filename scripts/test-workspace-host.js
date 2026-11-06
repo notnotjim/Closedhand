@@ -148,3 +148,35 @@ test('the guest gateway forwards only authenticated POSTs to its two explicit ro
   assert.equal(received[0].headers.cookie, undefined);
   assert.equal(received[0].headers.authorization, undefined);
 });
+
+// A recording or video the bot lends the sandbox to hear is read through the
+// same gateway a part at a time: only GETs of a lent file's id, only the
+// Range header across, and only the headers that say which part came back.
+test('the guest gateway lets a lent file be read a part at a time, and nothing else by GET', async t => {
+  const received = [];
+  const bot = http.createServer((req, res) => {
+    received.push({ path: req.url, headers: req.headers });
+    res.writeHead(206, { 'Content-Type': 'application/octet-stream', 'Content-Length': '4', 'Content-Range': 'bytes 10-13/100', 'Accept-Ranges': 'bytes', 'Set-Cookie': 'must-not-cross=1' });
+    res.end('abcd');
+  });
+  const gatewayPort = await listen(bot); t.after(() => bot.close());
+  const workspace = new Workspace({ token, gatewayPort });
+  const gateway = http.createServer((req, res) => workspace.forwardGateway(req, res));
+  const port = await listen(gateway); t.after(() => gateway.close());
+  const id = 'f'.repeat(32);
+  for (const route of [`/gateway/file/${id}?x=1`, '/gateway/file/../api', `/gateway/file/${id}/more`, '/gateway/file/xyz', '/gateway/api']) {
+    assert.equal((await fetch(`http://127.0.0.1:${port}${route}`, { headers: { 'x-sandbox-token': token } })).status, 403, route);
+  }
+  assert.equal((await fetch(`http://127.0.0.1:${port}/gateway/file/${id}`)).status, 403, 'not without the token');
+  assert.equal(received.length, 0);
+  const got = await fetch(`http://127.0.0.1:${port}/gateway/file/${id}`, { headers: { 'x-sandbox-token': token, range: 'bytes=10-13', cookie: 'must-not-cross' } });
+  assert.equal(got.status, 206);
+  assert.equal(await got.text(), 'abcd');
+  assert.equal(got.headers.get('content-range'), 'bytes 10-13/100');
+  assert.equal(got.headers.get('set-cookie'), null);
+  assert.equal(received.length, 1);
+  assert.equal(received[0].path, `/gateway/file/${id}`);
+  assert.equal(received[0].headers.range, 'bytes=10-13');
+  assert.equal(received[0].headers['x-sandbox-token'], token);
+  assert.equal(received[0].headers.cookie, undefined);
+});

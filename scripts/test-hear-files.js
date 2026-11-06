@@ -20,21 +20,30 @@ function withStandIns(sandbox, listen) {
   return { video, restore() { for (const [p, m] of [[sPath, saved.s], [lPath, saved.l]]) { if (m) require.cache[p] = m; else delete require.cache[p]; } delete require.cache[vPath]; } };
 }
 
-test('a video file goes through the sandbox like a link: frames and what is said, then nothing is kept', async () => {
+// What lib/video.js asked the sandbox to run: the job and the script's ARGS.
+function started(code) {
+  const script = Buffer.from(/b64decode\("([^"]+)"\)/.exec(code)[1], 'base64').toString();
+  return { job: /in-([0-9a-f]+)/.exec(code)[1], args: JSON.parse(Buffer.from(/b64decode\("([^"]+)"\)/.exec(script)[1], 'base64').toString()) };
+}
+const lentFiles = require('../lib/lent-files');
+
+test('a video file goes through the sandbox like a link: lent there, not copied, frames and what is said, then nothing is kept', async () => {
   const calls = [];
   const frame = Buffer.from([0xff, 0xd8, 0xff, 1, 2, 3]);
   const meta = { title: 'Masai Mara day 2.mp4', duration: 512, frames: [{ time: 30, offset: 0, size: 6 }, { time: 250, offset: 0, size: 6 }, { time: 490, offset: 0, size: 6 }], speech_parts: ['speech-0.pcm'], speech_seconds: 512 };
   const files = { 'meta.json': Buffer.from(JSON.stringify(meta)), 'frames.bin': frame, 'speech-0.pcm': Buffer.alloc(32000) };
-  let job;
+  let job, args, lentWhileHeard = false;
   const sandbox = {
     ensureSandbox: async () => {},
     // No sandboxExec here: a file's hearing must not count against the
     // model's own 200 runs a day, so calling it would fail this test.
     sandboxRequest: async (userId, method, route, body) => {
       calls.push([route, body]);
-      if (route === '/files/write') { job = /in-([0-9a-f]+)\//.exec(body.path)[1]; return { success: true }; }
-      if (route === '/exec' && /Popen/.test(body.code)) return { stdout: 'started\n' };
-      if (route === '/files/read') return { content: 'CLOSEDHAND_VIDEO ' + JSON.stringify({ ok: true, dir: `.closedhand-video/${job}`, parts: { meta: 'meta.json', frames: 'frames.bin', speech: ['speech-0.pcm'] } }) };
+      if (route === '/exec' && /Popen/.test(body.code)) { ({ job, args } = started(body.code)); return { stdout: 'started\n' }; }
+      if (route === '/files/read') {
+        lentWhileHeard = !!lentFiles.find(args.file.id, 'u1') && !lentFiles.find(args.file.id, 'u2');
+        return { content: 'CLOSEDHAND_VIDEO ' + JSON.stringify({ ok: true, dir: `.closedhand-video/${job}`, parts: { meta: 'meta.json', frames: 'frames.bin', speech: ['speech-0.pcm'] } }) };
+      }
       return { stdout: '' };
     },
     sandboxFileDownload: async (userId, p) => ({ content: files[p.split('/').pop()].toString('base64') }),
@@ -45,16 +54,14 @@ test('a video file goes through the sandbox like a link: frames and what is said
     assert.deepEqual(heard.said.lines, SAID.lines);
     assert.equal(heard.duration, 512);
     assert.deepEqual(heard.frames.map((f) => f.time), [30, 490], 'frames spread across the video');
-    const write = calls.find(([r]) => r === '/files/write');
-    assert.match(write[1].path, /^\.closedhand-video\/in-[0-9a-f]{12}\/file\.mp4$/, 'stored under its own name, never the one sent');
-    assert.equal(write[1].encoding, 'base64');
-    const started = calls.find(([r, b]) => r === '/exec' && /Popen/.test(b.code))[1].code;
-    const script = Buffer.from(/b64decode\("([^"]+)"\)/.exec(started)[1], 'base64').toString();
-    const args = JSON.parse(Buffer.from(/b64decode\("([^"]+)"\)/.exec(script)[1], 'base64').toString());
-    assert.deepEqual({ path: args.path, title: args.title }, { path: write[1].path, title: 'Masai Mara day 2.mp4' });
+    assert.equal(calls.filter(([r]) => r === '/files/write').length, 0, 'nothing is copied to the sandbox');
+    assert.match(args.file.id, /^[0-9a-f]{32}$/);
+    assert.deepEqual({ size: args.file.size, ext: args.file.ext, title: args.title }, { size: 18, ext: 'mp4', title: 'Masai Mara day 2.mp4' });
+    assert.ok(lentWhileHeard, "lent to this person's sandbox alone while it is heard");
+    assert.equal(lentFiles.find(args.file.id, 'u1'), null, 'and taken back once heard');
     const cleanup = calls.filter(([r, b]) => r === '/exec' && /rmtree/.test(b.code)).pop()[1].code;
     assert.match(cleanup, new RegExp(`\\.closedhand-video/${job}`));
-    assert.match(cleanup, new RegExp(`\\.closedhand-video/in-${job}`), 'the copy put on the sandbox goes too');
+    assert.match(cleanup, new RegExp(`\\.closedhand-video/in-${job}`), 'its log goes too');
   } finally { restore(); }
 });
 
@@ -65,9 +72,7 @@ function standInSandbox(calls, log) {
     ensureSandbox: async () => {},
     sandboxRequest: async (userId, method, route, body) => {
       calls.push([route, body]);
-      if (route === '/files/write') { job = /in-([0-9a-f]+)\//.exec(body.path)[1]; return { success: true }; }
-      if (route === '/exec' && /Popen/.test(body.code)) return { stdout: 'started\n' };
-      if (route === '/exec' && /print\("joined"\)/.test(body.code)) return { stdout: 'joined\n' };
+      if (route === '/exec' && /Popen/.test(body.code)) { job = started(body.code).job; return { stdout: 'started\n' }; }
       if (route === '/files/read') return { content: log(++reads, job) };
       return { stdout: '' };
     },
@@ -76,26 +81,44 @@ function standInSandbox(calls, log) {
 }
 const finished = (job) => 'CLOSEDHAND_VIDEO ' + JSON.stringify({ ok: true, dir: `.closedhand-video/${job}`, parts: { meta: 'meta.json', speech: [] } });
 
-test('a large file on disk goes over in parts, read from disk one at a time, and is put together there', async () => {
+// The sandbox reads a lent file as a player does, jumping to the parts it
+// needs (an iPhone video keeps its index at the end), over the gateway.
+test('a lent file is given a part at a time, as Range asks, and only to the sandbox it is lent to', async (t) => {
   const os = require('node:os');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hear-test-'));
+  const express = require('express');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hear-lent-'));
   const file = path.join(dir, 'Ceremony full.mov');
-  const MB = 1024 * 1024;
-  const bytes = Buffer.alloc(40 * MB);
-  for (let i = 0; i < bytes.length; i += 4096) bytes[i] = (i / 4096) % 251;
+  const bytes = Buffer.alloc(40000);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
   fs.writeFileSync(file, bytes);
-  const calls = [];
-  const { video, restore } = withStandIns(standInSandbox(calls, (n, job) => finished(job)), { transcribe: async () => SAID });
-  try {
-    await video.hearMedia({ userId: 'u1', file, name: 'Ceremony full.mov', video: true });
-    const writes = calls.filter(([r]) => r === '/files/write').map(([, b]) => b);
-    assert.deepEqual(writes.map((w) => w.path.replace(/in-[0-9a-f]+/, 'in-JOB')), ['.closedhand-video/in-JOB/file.mov.part00000', '.closedhand-video/in-JOB/file.mov.part00001', '.closedhand-video/in-JOB/file.mov.part00002']);
-    assert.deepEqual(writes.map((w) => Buffer.from(w.content, 'base64').length), [16 * MB, 16 * MB, 8 * MB]);
-    assert.ok(Buffer.concat(writes.map((w) => Buffer.from(w.content, 'base64'))).equals(bytes), 'the parts are the file');
-    const join = calls.find(([r, b]) => r === '/exec' && /print\("joined"\)/.test(b.code))[1].code;
-    assert.match(join, /with open\("\.closedhand-video\/in-[0-9a-f]+\/file\.mov", "wb"\) as out:/);
-    assert.ok(calls.findIndex(([r, b]) => r === '/exec' && /joined/.test(b.code)) < calls.findIndex(([r, b]) => r === '/exec' && /Popen/.test(b.code)), 'joined before it is heard');
-  } finally { restore(); fs.rmSync(dir, { recursive: true, force: true }); }
+  const app = express();
+  app.get('/gateway/file/:id', (req, res) => {
+    const item = lentFiles.find(req.params.id, req.headers['x-user-id']);
+    if (!item) return res.status(404).end();
+    lentFiles.send(item, req, res);
+  });
+  const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  const onDisk = lentFiles.lend('u1', file), inMemory = lentFiles.lend('u1', bytes.subarray(0, 1000));
+  t.after(() => { server.close(); lentFiles.takeBack(onDisk.id); lentFiles.takeBack(inMemory.id); fs.rmSync(dir, { recursive: true, force: true }); });
+  const get = (id, range, user = 'u1') => fetch(`http://127.0.0.1:${server.address().port}/gateway/file/${id}`, { headers: { 'x-user-id': user, ...(range ? { range } : {}) } });
+  const whole = await get(onDisk.id);
+  assert.equal(whole.status, 200);
+  assert.equal(whole.headers.get('accept-ranges'), 'bytes');
+  assert.ok(Buffer.from(await whole.arrayBuffer()).equals(bytes));
+  for (const [range, from, to] of [['bytes=100-199', 100, 199], ['bytes=39990-', 39990, 39999], ['bytes=-50', 39950, 39999], ['bytes=39000-99999', 39000, 39999]]) {
+    const r = await get(onDisk.id, range);
+    assert.equal(r.status, 206, range);
+    assert.equal(r.headers.get('content-range'), `bytes ${from}-${to}/40000`, range);
+    assert.ok(Buffer.from(await r.arrayBuffer()).equals(bytes.subarray(from, to + 1)), range);
+  }
+  assert.equal((await get(onDisk.id, 'bytes=40000-')).status, 416);
+  const part = await get(inMemory.id, 'bytes=10-19');
+  assert.ok(Buffer.from(await part.arrayBuffer()).equals(bytes.subarray(10, 20)), 'bytes held in memory too');
+  assert.equal((await get(onDisk.id, null, 'u2')).status, 404, "never another person's sandbox");
+  lentFiles.takeBack(onDisk.id);
+  assert.equal((await get(onDisk.id)).status, 404, 'nor once taken back');
+  // The gateway's route, behind the sandbox's own token.
+  assert.match(read('lib/gateway.js'), /router\.get\("\/file\/:id", verifySandboxToken, \(req, res\) => \{\n\s*const item = require\("\.\/lent-files"\)\.find\(req\.params\.id, req\.sandboxUserId\);/);
 });
 
 test('a long recording is waited for while the sandbox is still writing it out, and not once it has gone quiet', async (t) => {
@@ -230,8 +253,8 @@ test('File Search, the web chat and saved files all hear recordings and videos',
   assert.match(engine, /frames: fileData\.isVideo \? 8 : 0/, 'frames for every video: a chat model that cannot see gets them described');
   assert.match(read('lib/attachments.js'), /require\("\.\/video"\)\.hearMedia\(\{ userId, buffer, name: att\.fileName, video: read\.kind === "video" \}\)/);
   const script = read('lib/video-sandbox.py');
-  assert.match(script, /def local\(path\):/);
-  assert.match(script, /local\(ARGS\["path"\]\) if ARGS\.get\("path"\)/);
+  assert.match(script, /def local\(file\):/);
+  assert.match(script, /local\(ARGS\["file"\]\) if ARGS\.get\("file"\)/);
   assert.match(read('webapp/server.js'), /const \{ BOT_INTERNAL_URL, botToken \} = require\("\.\/bot-call"\);/);
 });
 
@@ -267,43 +290,56 @@ test('a sandbox that answers but fails is not said to be off', async () => {
 });
 
 // A job cut off partway left its folders on the sandbox; on a sandbox with
-// little room they filled it, and every later video then failed to arrive
-// ("no space left on device"). Each job now starts by clearing what no
-// running job uses, clears its own when it fails, and a file bigger than the
-// room left is not sent at all.
-test('the sandbox is cleared of what earlier jobs left, a failed job clears its own, and a file too big for the room left is not sent', async (t) => {
+// little room they filled it, and every later video then failed ("no space
+// left on device"). Each job now starts by clearing what no running job uses
+// and clears its own when it fails. The file itself is lent, never copied, so
+// a file bigger than the sandbox's room is heard all the same; only too
+// little room for its sound and frames is said.
+test('the sandbox is cleared of what earlier jobs left, a failed job clears its own, and a file bigger than the room left is heard all the same', async (t) => {
   const os = require('node:os');
   const calls = [];
-  let free = 50 * 1024 ** 3, failWrite = false;
+  let free = 50 * 1024 ** 3, failStart = false, job, args;
   const sandbox = {
     ensureSandbox: async () => {},
     sandboxRequest: async (userId, method, route, body) => {
       calls.push([route, body]);
       if (route === '/exec' && /disk_usage/.test(body.code)) return { stdout: `free ${free}\n` };
-      if (route === '/files/write') { if (failWrite) throw new Error('HTTP 400: {"error":"ENOSPC: no space left on device, write"}'); return { success: true }; }
+      if (route === '/exec' && /Popen/.test(body.code)) {
+        if (failStart) throw new Error('HTTP 400: {"error":"ENOSPC: no space left on device, write"}');
+        ({ job, args } = started(body.code));
+        return { stdout: 'started\n' };
+      }
+      if (route === '/files/read') return { content: finished(job) };
       return { stdout: '' };
     },
-    sandboxFileDownload: async () => ({ content: '' }),
+    sandboxFileDownload: async (userId, p) => ({ content: Buffer.from(p.endsWith('meta.json') ? JSON.stringify({ duration: 7200, frames: [], speech_parts: [] }) : '').toString('base64') }),
   };
   const { video, restore } = withStandIns(sandbox, { transcribe: async () => SAID });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hear-room-'));
   t.after(() => { restore(); fs.rmSync(dir, { recursive: true, force: true }); });
 
-  // A send that fails partway takes its folders with it.
-  failWrite = true;
+  // A job that fails to start takes its folders with it.
+  failStart = true;
   await assert.rejects(video.hearMedia({ userId: 'u1', buffer: Buffer.from('x'), name: 'Harbour walk.mp4', video: true }), /ENOSPC/);
-  const job = /keep = set\(\["([0-9a-f]+)"\]\)/.exec(calls.find(([r, b]) => r === '/exec' && /disk_usage/.test(b.code))[1].code)[1];
+  const failed = /keep = set\(\["([0-9a-f]+)"\]\)/.exec(calls.find(([r, b]) => r === '/exec' && /disk_usage/.test(b.code))[1].code)[1];
   const cleared = calls.filter(([r, b]) => r === '/exec' && /rmtree/.test(b.code) && !/disk_usage/.test(b.code)).pop()[1].code;
-  assert.match(cleared, new RegExp(`\\.closedhand-video/in-${job}"`), 'the parts sent so far go');
+  assert.match(cleared, new RegExp(`\\.closedhand-video/in-${failed}"`), 'its folders go');
 
-  // A file bigger than the room left is refused before anything is sent.
-  calls.length = 0; failWrite = false; free = 4 * 1024 ** 3;
+  // A 6 GB video on a sandbox with 4 GB free is heard, read where it is.
+  calls.length = 0; failStart = false; free = 4 * 1024 ** 3;
   const big = path.join(dir, 'Ceremony 4K.mov');
   fs.closeSync(fs.openSync(big, 'w'));
   fs.truncateSync(big, 6 * 1024 ** 3); // sparse: nothing is written
+  await video.hearMedia({ userId: 'u1', file: big, name: 'Ceremony 4K.mov', video: true });
+  assert.equal(args.file.size, 6 * 1024 ** 3);
+  assert.equal(calls.filter(([r]) => r === '/files/write').length, 0, 'nothing is copied');
+  assert.equal(lentFiles.find(args.file.id, 'u1'), null, 'and it is taken back');
+
+  // Too little room for what the script makes of it is said before it starts.
+  calls.length = 0; free = 300 * 1024 ** 2;
   await assert.rejects(video.hearMedia({ userId: 'u1', file: big, name: 'Ceremony 4K.mov', video: true }),
-    (e) => e.userFacing && e.message === "This file is bigger than the room left on Closedhand's sandbox computer.");
-  assert.equal(calls.filter(([r]) => r === '/files/write').length, 0, 'nothing is sent');
+    (e) => e.userFacing && e.message === "There isn't enough room left on Closedhand's sandbox computer to hear this file.");
+  assert.equal(calls.filter(([r, b]) => r === '/exec' && /Popen/.test(b.code)).length, 0, 'nothing is started');
 
   // The sweep itself, run as the sandbox runs it: leftovers go, a running job's folders stay.
   const sweep = calls.find(([r, b]) => r === '/exec' && /disk_usage/.test(b.code))[1].code;
