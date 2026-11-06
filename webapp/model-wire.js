@@ -433,7 +433,10 @@ async function request(conn, params, options = {}) {
     url = conn.baseUrl + "/chat/completions"; convert = data => convertResponseFromOpenAI(data, id);
   }
   named(conn, headers);
-  const signal = options.signal || AbortSignal.timeout(90000);
+  // As long as the engine waits for a reply (lib/engine.js, three minutes): a
+  // reply to a long conversation took more than the 90 seconds this once
+  // allowed, and was cut off with the engine still waiting.
+  const signal = options.signal || AbortSignal.timeout(180000);
   // NEAR AI: proven, end-to-end encrypted and signature-checked (near-private.js).
   const near = require("./near-private");
   const response = conn.backend === "custom" && near.isNear(conn) ? await near.complete(conn, body, { signal })
