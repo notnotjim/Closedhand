@@ -260,11 +260,11 @@ test("a team's card: a line per agent, Working in green, waiting for whom, what 
   assert.match(done, /Did not start/);
   assert.match(done, />Redo</);
   assert.doesNotMatch(ctx.teamLines({ id: "t2", runtime: {} }, team.slice(0, 1), false), />Redo</, "a team from chat is redone by asking in chat");
-  assert.match(dash, /\(team \? 'Team of ' \+ team\.length : 'Task'\)/);
+  assert.match(dash, /var metaHtml = escapeHtml\(whoIsOn\('Task', team\)/);
 });
 
 // A routine can be a team, and a job set to start once (on a date, or the
-// first time something happens) waits under Waiting to start, not Routines.
+// first time something happens) waits among the tasks, not Routines.
 test("a routine keeps its agents and runs them first, keeping their state on the run", () => {
   assert.match(read("migrations/081_team_routines.sql"), /ALTER TABLE automations ADD COLUMN IF NOT EXISTS members jsonb;\nALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS team jsonb;/);
   const runner = read("lib/automations.js");
@@ -282,7 +282,7 @@ test("a routine keeps its agents and runs them first, keeping their state on the
   assert.match(read("lib/agent-team.js"), /const store = opts\.store \|\| \{ save: \(updates\) => updateTask\(parentTaskId, updates\), read: \(\) => getTask\(parentTaskId\) \};/);
 });
 
-test("set for a date it runs once and is done; it waits under Waiting to start until then", async () => {
+test("set for a date it runs once and is done; it waits among the tasks until then", async () => {
   const server = read("webapp/server.js");
   const fn = server.slice(server.indexOf("function watchFields(body, now = Date.now()) {"), server.indexOf("\n}\n", server.indexOf("function watchFields(body, now = Date.now()) {")) + 2);
   const ctx = { watchKinds: { kindOf: () => null, choices: () => [], WHEN: ["arrives"] } };
@@ -293,9 +293,9 @@ test("set for a date it runs once and is done; it waits under Waiting to start u
   const runner = read("lib/automations.js");
   assert.match(runner, /if \(automation\.run_once\) \{\n\s+unregisterCron\(automation\.id\);\n\s+const \{ error \} = await require\("\.\/db"\)\.supabase\.from\("automations"\)\.update\(\{ status: "done", fired_at: new Date\(\)\.toISOString\(\)/);
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /<div class="mc-section-label">Waiting to start<\/div>\n\s+<p class="section-desc">Set for a date, or for the first time something happens\. Each moves to Working now when it starts\.<\/p>/);
-  assert.match(dash, /var waiting = routines\.filter\(function \(a\) \{ return a\.run_once && a\.status === 'active' && !a\.fired_at; \}\);\n\s+var repeating = routines\.filter\(function \(a\) \{ return !a\.run_once; \}\);/);
-  assert.ok(dash.indexOf('id="agents-waiting"') < dash.indexOf('<div class="mc-section-label">Working now</div>'), "first, before Working now");
+  assert.doesNotMatch(dash, /Waiting to start/, "waiting is a task card's state, among the tasks");
+  assert.match(dash, /waiting = routines\.filter\(function \(a\) \{ return a\.run_once && a\.status === 'active' && !a\.fired_at; \}\);\n\s+var repeating = routines\.filter\(function \(a\) \{ return !a\.run_once; \}\);/);
+  assert.match(dash, /var next = waiting\.map\(function \(a\) \{ return \{ at: soon\(a\), html: renderWaitingCard\(a\) \}; \}\)/, "after what is working, soonest first");
   assert.match(dash, /rows\.push\(\{ kind: 'once', label: 'Once, on a date' \}\);/);
   assert.match(dash, /triggerCron = when\.getMinutes\(\) \+ ' ' \+ when\.getHours\(\) \+ ' ' \+ when\.getDate\(\) \+ ' ' \+ \(when\.getMonth\(\) \+ 1\) \+ ' \*';/);
   assert.match(dash, /trigger_timezone: triggerCron \? Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone : undefined,/, "in the time the person is in, a timetable as much as a date");
@@ -309,13 +309,13 @@ test("the form makes a team for any kind, and a routine that is a team says so",
   assert.match(dash, /<p class="team-note" id="auto-team-note" hidden><\/p>/);
   assert.match(dash, /members: members,\n/, "a routine saves its agents");
   assert.match(dash, /\(Array\.isArray\(a\.members\) \? a\.members : \[\]\)\.forEach\(function \(m\) \{ addTeamAgent\(m\.name, m\.part, m\.acts\); \}\);/, "and opens with them");
-  assert.match(dash, /drawInto\('auto-team-list', repeating\.filter\(isTeam\)\.map\(renderAutomationCard\)\.join\(''\)\);/, "a team has its own card, under Teams");
-  assert.match(dash, /<div class="agents-head teams-head"><div class="mc-section-label">Teams<\/div><button type="button" class="goals-new" onclick="openNewTeam\(\)">\+ New team<\/button><\/div>/);
-  assert.match(dash, /\(Array\.isArray\(r\.team\) && r\.team\.length \? teamLines\(r, r\.team, r\.live\) : ''\)/, "a routine's run has a line per agent");
+  assert.match(dash, /drawInto\('auto-saved-list', repeating\.map\(renderAutomationCard\)\.join\(''\)\);/, "a team is a routine's card like any other, under Routines");
+  assert.doesNotMatch(dash, /openNewTeam|\+ New team<\/button>/, "a team is who does the work: + New agent makes one");
+  assert.match(dash, /\(team && r\.live \? teamLines\(r, team, true\) : ''\)/, "a routine's run going has a line per agent");
   assert.match(read("lib/agent-team.js"), /Do not describe the team or how the work went \(who found what, that the parts agree\) unless a part did not finish or two disagree\./);
 });
 
-// A task set in chat for a date waits under Waiting to start and runs as a
+// A task set in chat for a date waits among the tasks and runs as a
 // task; a reminder stays on Upcoming; starter teams open the form filled in.
 test("chat says whether a schedule is a reminder or a task, and a task runs as one when it fires", () => {
   assert.match(read("migrations/082_schedule_kind.sql"), /ALTER TABLE schedules ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'reminder';/);
@@ -332,7 +332,7 @@ test("chat says whether a schedule is a reminder or a task, and a task runs as o
   assert.match(server, /app\.delete\("\/api\/reminders\/:name"/);
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, /rows = rows\.filter\(function \(r\) \{ return !\(r\.kind === 'task' && !r\.repeats\); \}\);/, "Upcoming keeps reminders");
-  assert.match(dash, /esc\('Task \\u00b7 starts ' \+ \(r\.next_at \? dayAndTime\(r\.next_at\) : \(r\.next_run \|\| 'on its date'\)\) \+ ' \\u00b7 set in chat'\)/);
+  assert.match(dash, /esc\(whoIsOn\('Task'\) \+ ' \\u00b7 starts ' \+ \(r\.next_at \? dayAndTime\(r\.next_at\) : \(r\.next_run \|\| 'on its date'\)\) \+ ' \\u00b7 set in chat'\)/);
   assert.match(dash, /askFirst\(btn\.closest\('\.auto-card-actions'\) \|\| btn, \{ text: 'Cancel this\? It won\\u2019t run\.', yes: 'Cancel it' \}\)/);
 });
 

@@ -1682,6 +1682,39 @@
     .agent-card { cursor: pointer; }
     .agent-del { background: none; border: 1px solid rgba(var(--fg-rgb),0.16); color: var(--muted); cursor: pointer; font-size: 0.8125rem; padding: 0.1875rem 0.625rem; border-radius: 0.375rem; margin-left: 0.5rem; transition: all 0.12s; }
     .agent-del:hover { color: var(--accent); border-color: rgba(var(--fg-rgb),0.4); }
+    /* Delete on a finished one: there, but quiet until pointed at. */
+    .agent-del.quiet { border-color: transparent; }
+    /* Something going: an ember breathing beside its name. */
+    .live-ember { display: inline-block; vertical-align: 0.125em; width: 0.4375rem; height: 0.4375rem; margin-right: 0.625rem; border-radius: 50%; background: var(--accent-warm); box-shadow: 0 0 0.5rem rgba(var(--accent-rgb),0.9); animation: know-breathe 2.4s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) { .live-ember { animation: none; } }
+    /* A finished one: when and who above, its answer's first line under, and
+       the whole card opens to the answer. */
+    .done-card { cursor: pointer; transition: border-color .15s; }
+    .dashboard-container .auto-card.done-card:hover { border-color: rgba(var(--fg-rgb),0.24); }
+    /* Its answer's line sits under the meta, in the card's own inset. */
+    .dashboard-container .auto-card.done-card > .auto-card-meta { padding-bottom: 0.25rem; }
+    .done-line { padding: 0 1.25rem 1.125rem; font-size: 0.8125rem; line-height: 1.5; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 600px) { .done-line { padding: 0 1rem 1rem; } }
+    .done-line.failed { color: var(--danger); }
+    /* A link inside a sentence: its words only, over the dashboard's own
+       button padding. */
+    #tab-agents :is(.done-line, .routine-last, .auto-card-meta) .quiet-link { display: inline; padding: 0; margin: 0; min-height: 0; height: auto; border: 0; font: inherit; line-height: inherit; color: inherit; vertical-align: baseline; }
+    .routine-card .routine-last { margin-top: 0.375rem; font-size: 0.8125rem; color: var(--fg); }
+    .routine-card .routine-last.failed { color: var(--danger); }
+    .routine-card .routine-team { flex: 1 0 100%; }
+    .routine-card .routine-team :is(.team-members, .team-lead) { margin-left: 0; margin-right: 0; }
+    .done-open { flex: none; display: grid; place-items: center; width: 1.25rem; height: 1.25rem; margin-left: 0.25rem; }
+    .done-open .chevron-down { width: 0.375rem; height: 0.375rem; margin-top: -0.1875rem; }
+    .agent-card.open .done-open .chevron-down { transform: rotate(-135deg); margin-top: 0.1875rem; }
+    .agent-card.open .done-line { white-space: normal; }
+    /* The chevron stays on the title's line at every width. */
+    .auto-card.done-card .auto-card-header { flex-wrap: nowrap; }
+    .auto-card.done-card .auto-card-name { flex: 1 1 auto; min-width: 0; white-space: normal; }
+    .done-acts { display: flex; gap: 0.5rem; padding: 0 1.25rem 1.125rem; margin-top: -0.375rem; }
+    .done-acts .agent-del { margin-left: 0; }
+    .done-delete { margin-top: 0.625rem; }
+    .done-delete .agent-del { margin-left: 0; }
+    @media (max-width: 600px) { .done-acts { padding: 0 1rem 1rem; } .agent-card.done-card .auto-card-header { flex-wrap: nowrap; } .agent-card.done-card .auto-card-name { flex: 1 1 auto; } }
     /* An open card's trail keeps the card's inset, under a line like a team's. */
     .agent-card .agent-detail { display: none; margin: -0.375rem 1.25rem 1.125rem; border-top: 1px solid rgba(var(--fg-rgb),0.1); padding-top: 0.625rem; }
     .agent-card.open .agent-detail { display: block; }
@@ -1695,6 +1728,8 @@
     .agent-step.agent-err { color: var(--danger); }
     .agent-report { font-size: 0.7812rem; line-height: 1.55; color: var(--fg); margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid rgba(var(--fg-rgb),0.1); }
     .agent-report b { color: var(--fg); }
+    /* The answer first in an opened card, under the card's own line. */
+    .agent-detail > .agent-report:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
     .agent-report-text { white-space: pre-wrap; overflow-wrap: anywhere; }
     .agent-report-table { overflow-x: auto; margin: 0.5rem 0; }
     .agent-report-table table { border-collapse: collapse; width: 100%; }
@@ -1787,12 +1822,11 @@
     .pick-name { font-size: 0.9375rem; font-weight: 600; }
     .pick-about { font-size: 0.8125rem; color: var(--muted); }
     .agent-modal > .team-acts { margin-top: 0.875rem; }
-    /* A team's card on the tab: its agents by name under what it does. */
-    .team-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.5rem; }
-    .team-tag { font-size: 0.75rem; line-height: 1.5; padding: 0.0625rem 0.5rem; border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.375rem; color: var(--fg); }
-    /* Teams' heading keeps its rule, running up to + New team. */
-    .agents-head.teams-head { align-items: center; margin: 2rem 0 1rem; }
-    .agents-head.teams-head .mc-section-label { flex: 1; margin: 0; }
+    /* Each section's heading keeps its rule, running up to its + button where
+       it has one, so every heading and button sits on one line. */
+    .agents-head.list-head { align-items: center; min-height: 2.25rem; margin: 2rem 0 0.75rem; }
+    .agents-head.list-head .mc-section-label { flex: 1; margin: 0; }
+    #tab-agents .goals-intro { margin-bottom: 0; }
 
     /* Looks things up only, unless ticked: what acting means is on its i,
        said once wherever it is read rather than under every card. */
@@ -2364,47 +2398,31 @@
       </div>
 
       <!-- Workers Tab Content -->
-      <!-- Agents: Closedhand working for you. Tasks handed over in chat and
-           routines mid-run under Working now, the routines themselves, and
-           what finished this week (loadAgents). -->
+      <!-- Agents: Closedhand working for you. Tasks, each one card from
+           waiting to its answer, kept a week, and Routines, each card live
+           while it runs (loadAgents). -->
       <div class="tab-content" id="tab-agents">
         <div style="padding-top:1rem;">
-          <!-- One way to start one, a task now or a routine (openNewAgent), at
-               the top right of everything it makes. -->
-          <div class="agents-head">
-            <p class="goals-intro">Closedhand working for you in the background: tasks you hand it in chat or that you start here, done by one agent or a team that splits the work, and routines that run on their own.</p>
-            <button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button>
-          </div>
-          <!-- One-off jobs set for a date or the first time something happens:
-               not routines, since they never repeat. Each moves to Working now
-               when it starts. -->
-          <div id="agents-waiting" hidden style="margin-bottom:1.5rem;">
-            <div class="mc-section-label">Waiting to start</div>
-            <p class="section-desc">Set for a date, or for the first time something happens. Each moves to Working now when it starts.</p>
-            <div id="agents-waiting-list"></div>
-          </div>
-          <div class="mc-section-label">Working now</div>
-          <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from, or the one you picked.</p>
-          <p class="section-desc" id="auto-active-empty">Nothing right now. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on. To pick the team yourself, start one with + New agent.</p>
+          <p class="goals-intro">Closedhand working for you in the background: tasks you hand it in chat or start here, and routines that run on their own.</p>
+          <!-- Tasks: one-off jobs, one card each that changes as it goes:
+               waiting to start, working (who is on it, one agent or a team),
+               then its answer, for a week. + New agent starts one, or a
+               routine, one agent or a team. -->
+          <div class="agents-head list-head"><div class="mc-section-label">Tasks</div><button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button></div>
+          <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from, or the one you picked, and stays here a week. A page it made stays on Pages.</p>
+          <p class="section-desc" id="auto-active-empty">Nothing yet. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on.</p>
           <div id="auto-active-list"></div>
-          <p id="auto-active-error" class="section-desc" role="status" hidden>Could not refresh what is working now. Please try again shortly.</p>
-          <!-- Teams: routines with agents of their own, one card each. -->
-          <div class="agents-head teams-head"><div class="mc-section-label">Teams</div><button type="button" class="goals-new" onclick="openNewTeam()">+ New team</button></div>
-          <p class="section-desc">Agents that work together on one job. Closedhand coordinates each team and sends you one answer.</p>
-          <div id="auto-team-list"></div>
-          <div class="mc-section-label" style="margin-top:1.5rem;">Routines</div>
+          <p id="auto-active-error" class="section-desc" role="status" hidden>Could not refresh your tasks. Please try again shortly.</p>
+          <!-- Routines: every one, one agent or a team, one card each, which
+               goes live while it runs and says how its last run went. -->
+          <div class="agents-head list-head"><div class="mc-section-label">Routines</div></div>
           <p class="section-desc">What Closedhand does on its own, on a timetable or when something happens.</p>
           <div id="auto-saved-list"></div>
           <p id="auto-saved-error" class="section-desc" role="status" hidden>Could not load your routines. Please try again shortly.</p>
           <!-- With no routines yet: real routines to start from, only for what is connected -->
           <div id="auto-empty" style="display:none;">
-            <p class="section-desc">Start from one of these, or make your own.</p>
+            <p class="section-desc">Start from one of these, or make your own with + New agent.</p>
             <div class="agent-tpl-grid" id="agent-tpl-grid"></div>
-          </div>
-          <div id="agents-done" hidden>
-            <div class="mc-section-label" style="margin-top:1.5rem;">Done lately</div>
-            <p class="section-desc">The last week, newest first.</p>
-            <div id="agents-done-list"></div>
           </div>
         </div>
       </div>
@@ -7145,8 +7163,8 @@
         var res = await fetch('/api/reminders');
         if (!res.ok) return;
         var rows = await res.json();
-        // A task set for a time waits under Waiting to start on the Agents tab
-        // and its run shows there; Upcoming keeps the reminders.
+        // A task set for a time waits among the tasks on the Agents tab and
+        // its run shows there; Upcoming keeps the reminders.
         rows = rows.filter(function (r) { return !(r.kind === 'task' && !r.repeats); });
         // Live one-offs here; the last few that ran go under Past.
         var live = rows.filter(function(r) { return !r.archived; });
@@ -7718,10 +7736,13 @@
       } catch (e) { showToast('Could not remove it', true); }
     }
 
-    // Agents: three reads drawn together. Working now holds the tasks handed
-    // over in chat that are going or waiting on the person, and the routines
-    // mid-run; Done lately what finished this week, newest first. A list is
-    // drawn again only when it changed, so a refresh never flickers.
+    // Agents: two lists from four reads. Tasks: one-off jobs, each one card
+    // that changes as it goes, waiting to start, working, then its answer,
+    // kept a week (the answer is in its chat and any page on Pages). A job set
+    // for a date is a task too, waiting, then its run. Routines: every one,
+    // one agent or a team, each card going live while it runs and saying how
+    // its last run went; a routine's run is never a task. A list is drawn
+    // again only when it changed, so a refresh never flickers.
     var _agentsHtml = {};
     function drawInto(id, html) {
       var el = document.getElementById(id);
@@ -7731,48 +7752,64 @@
       try { var r = await fetch(url); return r.ok ? await r.json() : null; } catch (e) { return null; }
     }
     // A refresh that fails keeps what is shown: the one on waking from sleep
-    // goes before the network is back, and it emptied Working now for a
-    // moment. Only a list that never loaded, or refreshes failing for a
-    // while, say so.
-    var _agentsLast = [], _agentsMissed = 0;
+    // goes before the network is back, and it emptied the tasks for a moment.
+    // Only a list that never loaded, or refreshes failing for a while, say so.
+    var _agentsLast = [], _agentsMissed = 0, _agentsLive = {};
     async function loadAgents() {
       var got = await Promise.all([getJson('/api/agents'), getJson('/api/automations'), getJson('/api/automations/recent'), getJson('/api/reminders')]);
       _agentsMissed = got[0] ? 0 : _agentsMissed + 1;
       got = got.map(function (x, i) { return x === null ? _agentsLast[i] || null : (_agentsLast[i] = x); });
       var tasks = got[0], routines = got[1], runs = got[2] || [];
-      // Tasks set in chat for a date, not yet run: Waiting to start too.
+      // Each run to its card: a job set for once is a task; a routine's run
+      // goes live on the routine's card, its newest finished one under it.
+      var byId = {}, liveRun = {}, lastRun = {}, onceRuns = [];
+      (routines || []).forEach(function (a) { byId[a.id] = a; });
+      runs.forEach(function (r) {
+        var a = byId[r.automation_id];
+        r.sends = a ? a.output_destinations || null : null;
+        if (a && a.run_once) { r.once = true; onceRuns.push(r); return; }
+        var t = Date.parse(r.completed_at || r.started_at);
+        if (r.live) { if (!liveRun[r.automation_id]) liveRun[r.automation_id] = r; }
+        else if (!lastRun[r.automation_id] || t > lastRun[r.automation_id].t) lastRun[r.automation_id] = { t: t, run: r };
+      });
+      // Tasks set in chat for a date, not yet run, wait among the tasks too.
       var jobs = (Array.isArray(got[3]) ? got[3] : []).filter(function (r) { return r.kind === 'task' && !r.archived && !r.repeats; });
+      var waiting = [];
       if (routines) {
         document.getElementById('auto-saved-error').hidden = true;
-        // Set to run once and not yet started: Waiting to start. What has run
-        // its once shows only as its run.
-        var waiting = routines.filter(function (a) { return a.run_once && a.status === 'active' && !a.fired_at; });
+        // Set to run once and not yet started: a task waiting to start.
+        waiting = routines.filter(function (a) { return a.run_once && a.status === 'active' && !a.fired_at; });
         var repeating = routines.filter(function (a) { return !a.run_once; });
+        repeating.forEach(function (a) { a.liveRun = liveRun[a.id] || null; a.lastRunShown = lastRun[a.id] ? lastRun[a.id].run : null; });
         _teamList = repeating.filter(function (a) { return isTeam(a) && a.status !== 'expired'; });
         document.getElementById('auto-empty').style.display = repeating.length ? 'none' : 'block';
-        drawInto('auto-saved-list', repeating.filter(function (a) { return !isTeam(a); }).map(renderAutomationCard).join(''));
-        drawInto('auto-team-list', repeating.filter(isTeam).map(renderAutomationCard).join(''));
-        drawInto('agents-waiting-list', waiting.map(renderWaitingCard).join('') + jobs.map(renderWaitingJob).join(''));
-        document.getElementById('agents-waiting').hidden = !waiting.length && !jobs.length;
+        drawInto('auto-saved-list', repeating.map(renderAutomationCard).join(''));
       } else {
         document.getElementById('auto-empty').style.display = 'none';
         document.getElementById('auto-saved-error').hidden = false;
       }
       var going = function (a) { return a.status === 'running' || a.status === 'pending' || a.status === 'awaiting_confirmation' || (a.status === 'blocked' && !!(a.runtime && a.runtime.allowance)); };
       var newest = function (x, y) { return y.at - x.at; };
-      var now = (tasks || []).filter(going).map(function (a) { return { at: Date.parse(a.created_at), html: renderAgentCard(a) }; })
-        .concat(runs.filter(function (r) { return r.live; }).map(function (r) { return { at: Date.parse(r.started_at), html: renderRoutineRun(r) }; }))
+      // Working first, newest first; then waiting, soonest first; then
+      // finished, newest first.
+      var live = (tasks || []).filter(going).map(function (a) { return { key: 'task ' + a.id, at: Date.parse(a.created_at), html: renderAgentCard(a) }; })
+        .concat(onceRuns.filter(function (r) { return r.live; }).map(function (r) { return { key: 'run ' + r.id, at: Date.parse(r.started_at), html: renderRoutineRun(r) }; }))
         .sort(newest);
-      var done = (tasks || []).filter(function (a) { return !going(a); }).map(function (a) { return { at: Date.parse(a.completed_at || a.created_at), html: renderAgentCard(a) }; })
-        .concat(runs.filter(function (r) { return !r.live; }).map(function (r) { return { at: Date.parse(r.completed_at || r.started_at), html: renderRoutineRun(r) }; }))
-        .sort(newest).slice(0, 30);
-      var html = function (list) { return list.map(function (x) { return x.html; }).join(''); };
+      var soon = function (x) { return x.next_at ? Date.parse(x.next_at) : Infinity; };
+      var next = waiting.map(function (a) { return { at: soon(a), html: renderWaitingCard(a) }; })
+        .concat(jobs.map(function (r) { return { at: soon(r), html: renderWaitingJob(r) }; }))
+        .sort(function (x, y) { return x.at - y.at; });
+      // One that finished while the tab was open lands with an ember ring.
+      var done = (tasks || []).filter(function (a) { return !going(a); }).map(function (a) { return { key: 'task ' + a.id, at: Date.parse(a.completed_at || a.created_at), html: renderAgentCard(a) }; })
+        .concat(onceRuns.filter(function (r) { return !r.live; }).map(function (r) { return { key: 'run ' + r.id, at: Date.parse(r.completed_at || r.started_at), html: renderRoutineRun(r) }; }))
+        .sort(newest).map(function (x) { return _agentsLive[x.key] ? { html: x.html.replace('class="auto-card', 'class="auto-card just-added') } : x; });
+      _agentsLive = {};
+      live.forEach(function (x) { _agentsLive[x.key] = true; });
+      var all = live.concat(next, done);
       document.getElementById('auto-active-error').hidden = !!tasks && _agentsMissed < 3;
-      drawInto('auto-active-list', html(now));
-      document.getElementById('auto-active-desc').hidden = !now.length;
-      document.getElementById('auto-active-empty').hidden = !!now.length || !tasks;
-      drawInto('agents-done-list', html(done));
-      document.getElementById('agents-done').hidden = !done.length;
+      drawInto('auto-active-list', all.map(function (x) { return x.html; }).join(''));
+      document.getElementById('auto-active-desc').hidden = !all.length;
+      document.getElementById('auto-active-empty').hidden = !!all.length || !tasks;
     }
 
     // Permission drift is invisible: a scope change does not touch grants already
@@ -7851,7 +7888,7 @@
         if (res && res.ok) { box.remove(); showToast('Passed on. It takes it from its next step.'); loadAgents(); }
         // It finished while the box was open (the list waits while one is):
         // show it finished, and where its answer is.
-        else if (res && res.status === 409) { box.remove(); showToast('It finished before that reached it. Its answer is under Done lately.', true); loadAgents(); }
+        else if (res && res.status === 409) { box.remove(); showToast('It finished before that reached it. Its answer is on its card.', true); loadAgents(); }
         else { send.disabled = false; showToast(d.error || 'Could not pass that on', true); }
       };
       area.focus();
@@ -8147,13 +8184,10 @@
       var detail = running
         ? (Array.isArray(a.team) && a.team.length ? 'running ' + when : (last || 'Working on it') + ' \u00b7 running ' + when)
         : runOutcome(a);
-      if (!running && a.result_edited_at) detail += ' \u00b7 edited ' + timeAgo(a.result_edited_at);
-      // A finished run is only listed when its answer may not have arrived.
-      // Delivery takes a moment, so say so only once it is clearly late.
-      if (!running && a.status !== 'awaiting_confirmation' && a.delivery_status && a.delivery_status !== 'sent' &&
-          a.completed_at && Date.now() - new Date(a.completed_at).getTime() > 2 * 60000) {
-        detail = 'This may not have reached the chat you asked in, so it stays here. ' + detail;
-      }
+      // A finished one says when, and its answer's first line under it: in the
+      // danger red when it could not finish.
+      var failed = !running && !a.result && a.status !== 'cancelled' && a.status !== 'awaiting_confirmation' && a.status !== 'blocked';
+      var doneAt = !running && a.status !== 'awaiting_confirmation' ? 'finished ' + dayAndTime(a.completed_at || a.created_at) + (a.result_edited_at ? ' \u00b7 edited ' + timeAgo(a.result_edited_at) : '') : '';
       // The question went to the chat the task came from. Say where and when, so
       // the answer is given there; this card never takes one.
       var asked = a.status === 'awaiting_confirmation' ? (a.waiting || {}) : null;
@@ -8170,7 +8204,7 @@
         var t = x && x.time ? new Date(x.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
         return '<div class="agent-step">' + escapeHtml(t) + '  ' + escapeHtml(stepText((x && x.text) || '')) + '</div>';
       }).join('');
-      var errHtml = !running && !a.result && a.status !== 'cancelled' && a.status !== 'awaiting_confirmation'
+      var errHtml = !running && !a.result && a.status !== 'cancelled' && a.status !== 'awaiting_confirmation' && !failed
         ? '<div class="agent-step agent-err">' + escapeHtml(couldNotFinish(a.error)) + '</div>' : '';
       if (asked && asked.question) errHtml += '<div class="agent-step">' + escapeHtml(String(asked.question)).replace(/\n/g, '<br>') + '</div>';
       // Raw tool names ("search_cache, sandbox_exec") are machinery leaking.
@@ -8216,7 +8250,7 @@
               '<button class="agent-del" onclick="event.stopPropagation();carryOn(this, \'' + a.id + '\')">Finish as it was</button>'
             : '<button class="agent-del" title="Finish it now, with your LLM\'s allowance back" onclick="event.stopPropagation();carryOn(this, \'' + a.id + '\')">Finish it</button>')
           : '') +
-          '<button class="agent-del" title="Delete this run" aria-label="Delete this run" onclick="event.stopPropagation();confirmAgentDelete(this, \'' + a.id + '\', ' + !!a.report_id + ')">' + TRASH_ICON + '</button>';
+          '<button class="agent-del quiet" title="Delete this run" aria-label="Delete this run" onclick="event.stopPropagation();confirmAgentDelete(this, \'' + a.id + '\', ' + !!a.report_id + ')">' + TRASH_ICON + '</button>';
 
       // The finished work, as a file. Same content as the expanded card,
       // typeset server-side, so what leaves the dashboard looks as considered
@@ -8230,63 +8264,119 @@
         : '';
 
       var team = Array.isArray(a.team) && a.team.length ? a.team : null;
-      return '<div class="auto-card agent-card' + (_openAgents[a.id] ? ' open' : '') + '" onclick="toggleAgentCard(this, \'' + a.id + '\')" title="Click for detail">' +
+      var finished = !running && !asked && !(a.status === 'blocked' && a.runtime && a.runtime.allowance);
+      // What it is and who is on it, then how it stands: going, waiting on
+      // you, or when it finished and where it answered, with the answer's
+      // opening line under it.
+      var place = answerPlace(a);
+      var metaHtml = escapeHtml(whoIsOn('Task', team) + ' \u00b7 ' + (finished ? doneAt : String(detail))) + (finished && a.result && place ? ' \u00b7 answered in ' + place : '');
+      var late = finished && a.result && place && a.delivery_status && a.delivery_status !== 'sent' && a.completed_at && Date.now() - new Date(a.completed_at).getTime() > 2 * 60000;
+      var doneLine = failed ? escapeHtml('Couldn\u2019t finish: ' + couldNotFinish(a.error) + '.') + (place ? ' The note is in ' + place + '.' : '')
+        : late ? escapeHtml('This may not have reached ' + answerPlace(a, true) + ', so its answer is here. ' + String(detail))
+        : escapeHtml(String(detail));
+      return '<div class="auto-card agent-card' + (finished ? ' done-card' : '') + (_openAgents[a.id] ? ' open' : '') + '" onclick="toggleAgentCard(this, \'' + a.id + '\')">' +
+        // A finished one: its title and the chevron that opens it, where its
+        // answer went, its page, and inside, the answer, how it went and Delete.
         '<div class="auto-card-header">' +
-          '<div class="auto-card-name">' + escapeHtml(goal) + '</div>' +
-          pdfHtml +
-          binHtml +
+          '<div class="auto-card-name">' + (running ? LIVE_EMBER : '') + escapeHtml(goal) + '</div>' +
+          (finished ? '<span class="done-open" aria-hidden="true"><span class="chevron-down"></span></span>' : pdfHtml + binHtml) +
         '</div>' +
-        '<div class="auto-card-meta">' + escapeHtml((team ? 'Team of ' + team.length : 'Task') + ' \u00b7 ' + (running || asked ? '' : sentenceCase(runWord(a)) + ' \u00b7 ') + String(detail)) + '</div>' +
-        (team ? teamLines(a, team, running || !!asked) : '') +
-        '<div class="agent-detail">' + (steps || (toolsHtml || errHtml || reportHtml ? '' : '<div class="agent-step">No steps recorded.</div>')) + toolsHtml + errHtml + reportHtml + '</div>' +
+        '<div class="auto-card-meta">' + metaHtml + '</div>' +
+        (finished ? '<div class="done-line' + (failed ? ' failed' : '') + '">' + doneLine + '</div>' + (pdfHtml ? '<div class="done-acts">' + pdfHtml + '</div>' : '') : '') +
+        (team && !finished ? teamLines(a, team, running || !!asked) : '') +
+        '<div class="agent-detail">' + reportHtml + (team && finished ? teamLines(a, team, false) : '') + (steps || (toolsHtml || errHtml || reportHtml ? '' : '<div class="agent-step">No steps recorded.</div>')) + toolsHtml + errHtml +
+          (finished ? '<div class="done-delete">' + binHtml + '</div>' : '') + '</div>' +
       '</div>';
     }
 
+    // Where a task's answer went, by the chat's name; Main chat is a link
+    // that opens it. Null when it was only ever here. Plain words with
+    // plain: true.
+    var PLACE_NAME = { whatsapp: 'WhatsApp', whatsapp_linked: 'WhatsApp', telegram: 'Telegram', slack: 'Slack', discord: 'Discord', line: 'LINE' };
+    function answerPlace(a, plain) {
+      if (!a.platform || a.platform === 'dashboard') return null;
+      if (a.platform === 'web') return plain ? 'Main chat' : '<button type="button" class="quiet-link" onclick="event.stopPropagation();openMainChat()">Main chat</button>';
+      return PLACE_NAME[a.platform] || (plain ? 'your chat' : 'your chat');
+    }
+    function openMainChat() {
+      try { window.parent.openConversation(null); window.parent.closeDashSlide(); } catch (e) { (window.top || window).location.href = '/'; }
+    }
+    // What a piece of work is and who is on it: "Task, one agent", "Routine,
+    // a team of 3" (its agents' own lines are under it).
+    function whoIsOn(kind, team) { return kind + ', ' + (team && team.length ? 'a team of ' + team.length : 'one agent'); }
+    // Something going: an ember breathing beside its name, as Getting to know
+    // you's bar has at its leading end. Still for reduced motion.
+    var LIVE_EMBER = '<span class="live-ember" aria-hidden="true"></span>';
     // When a routine or team runs, as its card says it.
     function routineWhen(a) { return a.trigger_type === 'event' ? watchLine(a) : a.trigger_type === 'manual' ? 'When you ask, or press Run now' : (a.trigger_human_schedule || 'On a timetable'); }
-    // A routine or a team says what it does, when it runs, how its last run
-    // went and whether it is on, with Run now, Edit and delete beside it; a
-    // team names its agents too. Its runs are under Working now and Done lately.
+    // A routine, one agent or a team, says what it does, who does it, when it
+    // runs, how its last run went and whether it is on, with Run now, Edit and
+    // delete beside it; while it runs, the card itself goes live.
     function renderAutomationCard(a) {
-      var going = a.latest_run && (a.latest_run.status === 'running' || a.latest_run.status === 'pending');
       var ended = a.status === 'expired';
       var team = isTeam(a) ? a.members : null, what = team ? 'team' : 'routine';
+      var cut = function (t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026' : t; };
+      // Running now (liveRun, loadAgents): the card itself goes live, with an
+      // ember, its live line and, for a team, each agent's line.
+      var run = a.liveRun || null;
+      var step = run ? (run.progress || []).map(function (e) { if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { e = { text: e }; } } return e && e.text; }).filter(Boolean).pop() : null;
       var when = routineWhen(a);
-      var state = going ? 'working now' : ended ? 'ended' : a.status === 'paused' ? 'off'
+      var state = run ? (team ? '' : (step || 'Working on it') + ' \u00b7 ') + 'started ' + dayAndTime(run.started_at) : ended ? 'ended' : a.status === 'paused' ? 'off'
         : a.next_at ? 'next ' + dayAndTime(a.next_at) : a.trigger_type === 'event' ? 'watching' : '';
-      var last = a.last_run ? (a.last_run.status === 'failed' ? 'last run could not finish, ' : 'last ran ') + dayAndTime(a.last_run.at) : '';
+      // How its last run went, its answer's opening line and the answer to
+      // open, when it ran this week (lastRunShown, loadAgents); an older one
+      // only says when.
+      var lr = !run && a.lastRunShown, lrAt = lr ? dayAndTime(lr.completed_at || lr.started_at) : '';
+      var said = lr ? cut(lr.output_summary, 90) : '';
+      var lastLine = !lr ? '' : lr.status === 'failed'
+        ? '<div class="routine-last failed">Last run couldn\u2019t finish, ' + esc(lrAt) + '.</div>'
+        : '<div class="routine-last">Last ran ' + esc(lrAt) + (said ? ': ' + esc(said.replace(/\.$/, '')) : '') + ' \u00b7 <button type="button" class="quiet-link" onclick="viewAutoRun(\'' + lr.id + '\')">Open the answer</button></div>';
+      var last = !run && !lr && a.last_run ? (a.last_run.status === 'failed' ? 'last run could not finish, ' : 'last ran ') + dayAndTime(a.last_run.at) : '';
+      var who = whoIsOn('Routine', team) + (team ? ': ' + team.map(function (m) { return m.name; }).join(', ') : '');
       var about = String(a.description || '').trim();
       var canSwitch = a.trigger_type !== 'manual' && !ended;
-      return '<div class="auto-card routine-card' + (a.status === 'paused' || ended ? ' off' : '') + '" id="auto-' + a.id + '">' +
+      return '<div class="auto-card routine-card' + (a.status === 'paused' || ended ? ' off' : '') + (run ? ' live' : '') + '" id="auto-' + a.id + '">' +
         '<div class="routine-main">' +
-          '<div class="auto-card-name">' + (a.project ? '<span class="auto-project" title="' + esc(a.project.name) + '">' + esc(a.project.emoji) + '</span> ' : '') + esc(a.name) + '</div>' +
+          '<div class="auto-card-name">' + (run ? LIVE_EMBER : '') + (a.project ? '<span class="auto-project" title="' + esc(a.project.name) + '">' + esc(a.project.emoji) + '</span> ' : '') + esc(a.name) + '</div>' +
           (about ? '<div class="routine-about">' + truncatePrompt(about, 140) + '</div>' : '') +
-          (team ? '<div class="team-tags">' + team.map(function (m) { return '<span class="team-tag">' + esc(m.name) + '</span>'; }).join('') + '</div>' : '') +
-          '<div class="auto-card-meta">' + esc([team ? team.length + (team.length === 1 ? ' agent' : ' agents') : '', when, state, last].filter(Boolean).join(' \u00b7 ')) + '</div>' +
+          '<div class="auto-card-meta">' + esc([who, when, state, last].filter(Boolean).join(' \u00b7 ')) + '</div>' +
+          lastLine +
         '</div>' +
         '<div class="auto-card-actions">' +
-          (ended ? '' : '<button type="button" onclick="runAutomation(\'' + a.id + '\')">Run now</button>') +
+          (ended || run ? '' : '<button type="button" onclick="runAutomation(\'' + a.id + '\')">Run now</button>') +
           '<button type="button" onclick="editAgent(\'' + a.id + '\')">Edit</button>' +
           '<button type="button" title="Delete this ' + what + '" aria-label="Delete this ' + what + '" data-what="' + what + '" onclick="deleteAutomation(\'' + a.id + '\', this)">' + TRASH_ICON + '</button>' +
           (canSwitch ? '<label class="routine-on"><input type="checkbox"' + (a.status === 'active' ? ' checked' : '') + ' onchange="setRoutineOn(\'' + a.id + '\', this)" aria-label="' + esc(a.name) + ' on"> On</label>' : '') +
         '</div>' +
+        (run && team ? '<div class="routine-team">' + teamLines(run, Array.isArray(run.team) && run.team.length ? run.team : team, true) + '</div>' : '') +
       '</div>';
     }
+
 
     // A routine run, going or finished: its name, when, and how it went; a
     // finished one opens its result.
     function renderRoutineRun(r) {
       var cut = function (t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026' : t; };
       var step = (r.progress || []).map(function (e) { if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { e = { text: e }; } } return e && e.text; }).filter(Boolean).pop();
-      var how = r.live ? (Array.isArray(r.team) && r.team.length ? 'started ' : (step || 'Working on it') + ' \u00b7 started ') + dayAndTime(r.started_at)
-        : (r.status === 'failed' ? 'Could not finish' : 'Done') + ' \u00b7 ' + dayAndTime(r.completed_at || r.started_at) + (r.output_summary && r.status !== 'failed' ? ' \u00b7 ' + cut(r.output_summary, 110) : '');
-      return '<div class="auto-card">' +
-        '<div class="auto-card-header"><div class="auto-card-name">' + esc(r.name) + '</div>' +
-          (!r.live && r.status !== 'failed' ? '<button class="agent-del" onclick="viewAutoRun(\'' + r.id + '\')">Open</button>' : '') +
+      var team = Array.isArray(r.team) && r.team.length ? r.team : null, failed = !r.live && r.status === 'failed';
+      var how = r.live ? (team ? 'started ' : (step || 'Working on it') + ' \u00b7 started ') + dayAndTime(r.started_at)
+        : 'finished ' + dayAndTime(r.completed_at || r.started_at) + (failed ? '' : (sentWords(r.sends) ? ' \u00b7 ' + sentWords(r.sends).replace(/\.$/, '').toLowerCase() : ''));
+      var opens = !r.live && !failed;
+      return '<div class="auto-card' + (r.live ? '' : ' done-card') + '"' + (opens ? ' onclick="viewAutoRun(\'' + r.id + '\')"' : '') + '>' +
+        '<div class="auto-card-header"><div class="auto-card-name">' + (r.live ? LIVE_EMBER : '') + esc(r.name) + '</div>' +
+          (opens ? '<span class="done-open" aria-hidden="true"><span class="chevron-down"></span></span>' : '') +
         '</div>' +
-        '<div class="auto-card-meta">' + esc((Array.isArray(r.team) && r.team.length ? 'Routine, a team of ' + r.team.length : 'Routine') + ' \u00b7 ' + how) + '</div>' +
-        (Array.isArray(r.team) && r.team.length ? teamLines(r, r.team, r.live) : '') +
+        '<div class="auto-card-meta">' + esc(whoIsOn(r.once ? 'Task' : 'Routine', team) + ' \u00b7 ' + how) + '</div>' +
+        (r.live ? '' : '<div class="done-line' + (failed ? ' failed' : '') + '">' + esc(failed ? 'Couldn\u2019t finish.' : cut(r.output_summary, 110) || 'Open it for the answer.') + '</div>') +
+        (team && r.live ? teamLines(r, team, true) : '') +
       '</div>';
+    }
+
+
+    // Where a routine sends what it finds, as its run says it.
+    function sentWords(sends) {
+      sends = sends || [];
+      return sends.indexOf('chat_platforms') !== -1 ? 'Sent to your chat apps.' : sends.indexOf('email') !== -1 ? 'Emailed to you.' : '';
     }
 
     // A task set in chat for a date: when it starts, and Cancel, which asks first.
@@ -8294,7 +8384,7 @@
       return '<div class="auto-card routine-card">' +
         '<div class="routine-main">' +
           '<div class="auto-card-name">' + esc(reminderTitle(r.name)) + '</div>' +
-          '<div class="auto-card-meta">' + esc('Task \u00b7 starts ' + (r.next_at ? dayAndTime(r.next_at) : (r.next_run || 'on its date')) + ' \u00b7 set in chat') + '</div>' +
+          '<div class="auto-card-meta">' + esc(whoIsOn('Task') + ' \u00b7 starts ' + (r.next_at ? dayAndTime(r.next_at) : (r.next_run || 'on its date')) + ' \u00b7 set in chat') + '</div>' +
         '</div>' +
         '<div class="auto-card-actions">' +
           '<button type="button" title="Cancel this" aria-label="Cancel this" data-name="' + esc(r.name) + '" onclick="cancelWaitingJob(this)">' + TRASH_ICON + '</button>' +
@@ -8315,7 +8405,7 @@
       return '<div class="auto-card routine-card" id="auto-' + a.id + '">' +
         '<div class="routine-main">' +
           '<div class="auto-card-name">' + esc(a.name) + '</div>' +
-          '<div class="auto-card-meta">' + esc((team ? 'Team of ' + team.length + ': ' + team.map(function (m) { return m.name; }).join(', ') : 'Task') + ' \u00b7 ' + when) + '</div>' +
+          '<div class="auto-card-meta">' + esc(whoIsOn('Task', team) + (team ? ': ' + team.map(function (m) { return m.name; }).join(', ') : '') + ' \u00b7 ' + when) + '</div>' +
         '</div>' +
         '<div class="auto-card-actions">' +
           '<button type="button" onclick="editAgent(\'' + a.id + '\')">Edit</button>' +
@@ -8550,7 +8640,7 @@
     var ASK = {
       agent: ['What should the agent do?', "e.g. Every weekday at 7, check my trains to work and tell me only if one is late or cancelled."],
       team: ['What should the team do?', 'e.g. Plan a long weekend in Porto in March: flights, a flat near the river and a few good places to eat.'],
-      join: ['What should the agent do?', 'e.g. Find flights from Osaka to Seoul on 8 Nov.']
+      join: ['What should the agent do?', 'e.g. Find flights from Lisbon to Porto on 14 Dec.']
     };
     function drawComposer() {
       var team = _mode === 'team', editing = editingRoutine() && (team || _mode === 'agent');
@@ -8999,9 +9089,8 @@
       modal.classList.add('visible');
       setTimeout(function () { document.getElementById('auto-prompt-input').focus(); }, 100);
     }
-    // + New agent and + New team.
+    // + New agent: one agent, or a team (Add an agent in its window).
     function openNewAgent() { openCreateAutomationModal('agent'); }
-    function openNewTeam() { openCreateAutomationModal('team'); }
 
     function closeCreateAutomationModal() {
       document.getElementById('auto-create-modal').classList.remove('visible');
@@ -9091,7 +9180,7 @@
         var data = await res.json();
         if (!res.ok) { errEl.textContent = data.error || 'Could not save'; errEl.style.display = 'block'; return; }
         closeCreateAutomationModal();
-        showToast(body.run_once ? 'Saved. It waits to start under Waiting to start.' : _mode === 'team' ? 'Team saved' : 'Routine saved');
+        showToast(body.run_once ? 'Saved. It waits under Tasks until it starts.' : _mode === 'team' ? 'Team saved' : 'Routine saved');
         loadAgents().then(function () { if (!editId) justAdded(data.id); });
       } catch (e) {
         errEl.textContent = 'Could not reach Closedhand.'; errEl.style.display = 'block';

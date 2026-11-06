@@ -43,20 +43,24 @@ test("tasks handed over in chat: going or waiting under Working now, finished th
   const server = read("webapp/server.js");
   assert.match(server, /const LIVE_RUN_STATUSES = \["running", "pending", "awaiting_confirmation", "blocked"\];/, "a task paused for its LLM's allowance waits under Working now");
   assert.match(server, /const lists = \[runs\(\)\.in\("status", LIVE_RUN_STATUSES\), runs\(\)\.in\("status", DONE_RUN_STATUSES\)\.gte\("created_at", cutoff\)\];/, "a delivered task stays a week, under Done lately");
-  assert.match(server, /const fields = "id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status";/);
+  assert.match(server, /const fields = "id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status, platform";/, "and where it answered, for the card to say");
   assert.doesNotMatch(server, /\/api\/agents[^\n]*archived|req\.query\.archived === "1" && req\.query\.count === "1"\) \{\n\s*const \{ count, error \} = await supabase\.from\("agent_tasks"\)/, "no archive of delivered runs");
   assert.doesNotMatch(dashboard, /toggleArchivedRuns|_archivedRunCount|\/api\/agents\?archived=1/);
-  assert.match(dashboard, /a\.delivery_status !== 'sent' &&\n\s*a\.completed_at && Date\.now\(\) - new Date\(a\.completed_at\)\.getTime\(\) > 2 \* 60000\) \{\n\s*detail = 'This may not have reached the chat you asked in, so it stays here\. ' \+ detail;/, "a late delivery says why");
+  assert.match(dashboard, /var late = finished && a\.result && place && a\.delivery_status && a\.delivery_status !== 'sent' && a\.completed_at && Date\.now\(\) - new Date\(a\.completed_at\)\.getTime\(\) > 2 \* 60000;/, "a late delivery");
+  assert.match(dashboard, /escapeHtml\('This may not have reached ' \+ answerPlace\(a, true\) \+ ', so its answer is here\. ' \+ String\(detail\)\)/, "says why");
   assert.match(dashboard, /function archiveRow\(toggle, count, open\) \{\n\s*if \(!count\) return '';/, "Pages keeps its Archived row");
-  assert.match(dashboard, /escapeHtml\(\(team \? 'Team of ' \+ team\.length : 'Task'\) \+ ' \\u00b7 ' \+ \(running \|\| asked \? '' : sentenceCase\(runWord\(a\)\) \+ ' \\u00b7 '\) \+ String\(detail\)\)/, "a task or a team says what it is and how it stands, in words");
+  assert.match(dashboard, /var metaHtml = escapeHtml\(whoIsOn\('Task', team\) \+ ' \\u00b7 ' \+ \(finished \? doneAt : String\(detail\)\)\) \+ \(finished && a\.result && place \? ' \\u00b7 answered in ' \+ place : ''\);/, "a task says what it is, who is on it, how it stands and where it answered");
+  assert.match(dashboard, /function whoIsOn\(kind, team\) \{ return kind \+ ', ' \+ \(team && team\.length \? 'a team of ' \+ team\.length : 'one agent'\); \}/);
   assert.doesNotMatch(dashboard, /auto-status-pill|&#9632; Stop|&#8595; PDF|&#9654; Run|&#9208; Pause/, "no stock pills, no glyph buttons");
-  assert.match(dashboard, />Closedhand working for you in the background: tasks you hand it in chat or that you start here, done by one agent or a team that splits the work, and routines that run on their own\.</, "the tab says what it holds");
+  assert.match(dashboard, />Closedhand working for you in the background: tasks you hand it in chat or start here, and routines that run on their own\.</, "the tab says what it holds");
 });
 
 test("the Agents tab holds Closedhand working for you: what is working now, the routines, what finished; what it made is on Pages", () => {
   assert.match(dashboard, /<button class="tab" data-tab="agents" onclick="switchTab\('agents'\)">Agents<\/button>/);
   const agents = dashboard.slice(dashboard.indexOf('id="tab-agents"'), dashboard.indexOf('id="tab-upcoming"'));
-  assert.match(agents, /<button type="button" class="goals-new" onclick="openNewAgent\(\)">\+ New agent<\/button>[\s\S]*<div class="mc-section-label">Working now<\/div>[\s\S]*>Routines<\/div>[\s\S]*>Done lately<\/div>/, "one way to start one at the top, then in that order");
+  assert.match(agents, /<div class="agents-head list-head"><div class="mc-section-label">Tasks<\/div><button type="button" class="goals-new" onclick="openNewAgent\(\)">\+ New agent<\/button><\/div>[\s\S]*<div class="agents-head list-head"><div class="mc-section-label">Routines<\/div><\/div>/, "two lists, + New agent on the first");
+  assert.equal((agents.match(/class="mc-section-label"/g) || []).length, 2, "Tasks and Routines, nothing else: waiting is a task's state and a team is who does the work");
+  assert.doesNotMatch(agents, /Done lately|Kept here|Waiting to start|>Teams<|New team/);
   assert.doesNotMatch(dashboard, /\+ New routine/, "a routine is made from New agent too");
   assert.doesNotMatch(agents, />Resources<|id="files-section"|id="datasets-section"|skills-library|<svg/, "no Resources, and no sleeping figure: the templates say what to do");
   assert.doesNotMatch(dashboard, /id="files-section"|function loadFiles/, "no list of files on Pages: what Closedhand makes is a page");
@@ -91,7 +95,7 @@ test("Closedhand's agents: a one-off job is a task, one that repeats a routine, 
   const rules = read("AGENTS.md");
   assert.match(rules, /Closedhand's agents are it working for the person, on the dashboard's Agents tab: a one-off job\n\s*handed over in chat is a "task", and one that repeats on a timetable or when something happens is\n\s*a "routine"\./);
   assert.doesNotMatch(rules, /Never "agent" in what people read/);
-  assert.match(read("lib/engine.js"), /Sections: #upcoming \(bookings, flights and reminders, soonest first\), #agents \(tasks working now, routines, what finished lately\),/);
+  assert.match(read("lib/engine.js"), /Sections: #upcoming \(bookings, flights and reminders, soonest first\), #agents \(tasks working, waiting or done this week, and routines\),/);
 });
 
 test("a routine says what it does, when it runs, how it last ran and whether it is on; a run says how it went", () => {
@@ -99,7 +103,7 @@ test("a routine says what it does, when it runs, how it last ran and whether it 
   const code = ["function renderAutomationCard(a)", "function renderRoutineRun(r)", "function dayAndTime(iso)"].map((sig) => {
     const a = dashboard.indexOf("    " + sig);
     return dashboard.slice(a, dashboard.indexOf("\n    }\n", a) + 6);
-  }).join("\n") + "\n" + line("function isTeam(a)") + "\n" + line("function routineWhen(a)");
+  }).join("\n") + "\n" + ["function isTeam(a)", "function routineWhen(a)", "function whoIsOn(kind, team)", "var LIVE_EMBER"].map(line).join("\n") + "\n" + (() => { const a = dashboard.indexOf("    function sentWords(sends)"); return dashboard.slice(a, dashboard.indexOf("\n    }\n", a) + 6); })();
   const ctx = { esc: (t) => String(t), truncatePrompt: (t) => String(t), watchLine: () => "When an email from the bank arrives", TRASH_ICON: "[bin]" };
   vm.runInNewContext(code + "\nthis.card = renderAutomationCard; this.run = renderRoutineRun;", ctx);
   const at = (days, h) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0); return d.toISOString(); };
@@ -107,12 +111,20 @@ test("a routine says what it does, when it runs, how it last ran and whether it 
   assert.match(on, /Every morning at 08:00 · next tomorrow at 08:00 · last ran today at 08:00/);
   assert.match(on, /<input type="checkbox" checked onchange="setRoutineOn\('r1', this\)"/);
   assert.match(on, />Run now<\/button>[\s\S]*>Edit<\/button>[\s\S]*\[bin\]/);
-  // A team names its agents under what it does, and its bin says team.
+  // A team names its agents in its line, and its bin says team.
   const team = ctx.card({ id: "t1", name: "Monday money check", status: "active", trigger_type: "scheduled", trigger_human_schedule: "Every Monday at 09:00", members: [{ name: "Bank", part: "x" }, { name: "Bills", part: "y" }] });
-  assert.match(team, /<div class="team-tags"><span class="team-tag">Bank<\/span><span class="team-tag">Bills<\/span><\/div>/);
-  assert.match(team, /2 agents · Every Monday at 09:00/);
+  assert.match(team, /Routine, a team of 2: Bank, Bills · Every Monday at 09:00/);
   assert.match(team, /title="Delete this team" aria-label="Delete this team" data-what="team"/);
-  assert.doesNotMatch(on, /team-tags/);
+  assert.match(on, /Routine, one agent · Every morning at 08:00/);
+  // Running, its card goes live: an ember, the live line, each agent's line.
+  ctx.teamLines = (r, t) => "[lines " + t.map((m) => m.name).join(",") + "]";
+  const live = ctx.card({ id: "t2", name: "Monday money check", status: "active", trigger_type: "scheduled", trigger_human_schedule: "Every Monday at 09:00", members: [{ name: "Bank" }, { name: "Bills" }],
+    liveRun: { id: "u7", started_at: at(0, 9), team: [{ name: "Bank", status: "working" }, { name: "Bills", status: "waiting" }] } });
+  assert.match(live, /class="auto-card routine-card live"/);
+  assert.match(live, /class="live-ember"/);
+  assert.match(live, /started today at 09:00/);
+  assert.match(live, /\[lines Bank,Bills\]/);
+  assert.doesNotMatch(live, /Run now/, "not again while it runs");
   const off = ctx.card({ id: "r2", name: "Weekly review", status: "paused", trigger_type: "scheduled", trigger_human_schedule: "Every Friday at 17:00", last_run: { status: "failed", at: at(-2, 17) } });
   assert.match(off, /routine-card off/);
   assert.match(off, /Every Friday at 17:00 · off · last run could not finish, /);
@@ -123,11 +135,24 @@ test("a routine says what it does, when it runs, how it last ran and whether it 
   const ended = ctx.card({ id: "r4", name: "Parcel watch", status: "expired", trigger_type: "event" });
   assert.match(ended, /When an email from the bank arrives · ended/);
   assert.doesNotMatch(ended, /Run now|type="checkbox"/);
-  assert.match(ctx.run({ id: "u1", name: "Inbox sort", live: true, started_at: at(0, 9), progress: [JSON.stringify({ text: "Reading 12 new emails" })] }), /Routine · Reading 12 new emails · started today at 09:00/);
-  const done = ctx.run({ id: "u2", name: "Inbox sort", live: false, status: "success", started_at: at(-1, 9), completed_at: at(-1, 9), output_summary: "Two urgent:\n the landlord and the dentist." });
-  assert.match(done, /Routine · Done · yesterday at 09:00 · Two urgent: the landlord and the dentist\./);
-  assert.match(done, /viewAutoRun\('u2'\)">Open<\/button>/);
-  assert.doesNotMatch(ctx.run({ id: "u3", name: "Inbox sort", live: false, status: "failed", started_at: at(0, 6) }), /Open/, "nothing to open when it could not finish");
+  const going = ctx.run({ id: "u1", name: "Inbox sort", live: true, started_at: at(0, 9), progress: [JSON.stringify({ text: "Reading 12 new emails" })] });
+  assert.match(going, /Routine, one agent · Reading 12 new emails · started today at 09:00/);
+  assert.match(going, /class="live-ember"/, "an ember while it works");
+  const done = ctx.run({ id: "u2", name: "Inbox sort", live: false, status: "success", started_at: at(0, 9), completed_at: at(0, 9), output_summary: "Two urgent:\n the landlord and the dentist." });
+  assert.match(done, /Routine, one agent · finished today at 09:00/);
+  assert.match(done, /<div class="done-line">Two urgent: the landlord and the dentist\.<\/div>/, "kept here only: its answer's first line");
+  assert.match(done, /<div class="auto-card done-card" onclick="viewAutoRun\('u2'\)">/, "and it opens its answer");
+  assert.doesNotMatch(done, /live-ember/);
+  assert.match(ctx.run({ id: "u4", name: "Inbox sort", live: false, status: "success", started_at: at(0, 9), completed_at: at(0, 9), sends: ["chat_platforms", "dashboard"], once: true }), /Task, one agent · finished today at 09:00 · sent to your chat apps/, "a job set for once is a task, and says where it was sent");
+  const failed = ctx.run({ id: "u3", name: "Inbox sort", live: false, status: "failed", started_at: at(0, 6) });
+  assert.doesNotMatch(failed, /viewAutoRun/, "nothing to open when it could not finish");
+  assert.match(failed, /<div class="done-line failed">Couldn’t finish\.<\/div>/);
+  // A routine's card says how its last run this week went, and opens its answer.
+  const ran = ctx.card({ id: "r5", name: "Morning briefing", status: "active", trigger_type: "scheduled", trigger_human_schedule: "Every morning at 08:00", lastRunShown: { id: "u9", status: "success", completed_at: at(0, 8) } });
+  assert.match(ran, /<div class="routine-last">Last ran today at 08:00 · <button type="button" class="quiet-link" onclick="viewAutoRun\('u9'\)">Open the answer<\/button><\/div>/);
+  assert.match(ctx.card({ id: "r7", name: "Morning briefing", status: "active", trigger_type: "manual", lastRunShown: { id: "u6", status: "success", completed_at: at(0, 8), output_summary: "Two meetings and rain after 3pm." } }), /Last ran today at 08:00: Two meetings and rain after 3pm · <button/, "with its answer's opening line");
+  assert.doesNotMatch(ran, /last ran today/, "said once");
+  assert.match(ctx.card({ id: "r6", name: "Weekly review", status: "active", trigger_type: "scheduled", trigger_human_schedule: "Every Friday at 17:00", lastRunShown: { id: "u8", status: "failed", started_at: at(0, 17) } }), /<div class="routine-last failed">Last run couldn’t finish, today at 17:00\.<\/div>/);
 });
 
 test("templates are routines that repeat, shown only for what is connected; effort is the engine's own words", () => {
@@ -347,7 +372,7 @@ test("Add to a team: an agent joins one of the person's teams, or a new team mad
 test("a working task can be told something", () => {
   assert.match(dashboard, /onclick="event\.stopPropagation\(\);openTell\(this, \\'' \+ a\.id \+ '\\'\)">Tell it something<\/button>'/);
   assert.match(dashboard, /fetch\('\/api\/agents\/' \+ id \+ '\/note', \{ method: 'POST'/);
-  assert.match(dashboard, /else if \(res && res\.status === 409\) \{ box\.remove\(\); showToast\('It finished before that reached it\. Its answer is under Done lately\.', true\); loadAgents\(\); \}/, "a note too late says the task finished and shows it");
+  assert.match(dashboard, /else if \(res && res\.status === 409\) \{ box\.remove\(\); showToast\('It finished before that reached it\. Its answer is on its card\.', true\); loadAgents\(\); \}/, "a note too late says the task finished and shows it");
   assert.match(dashboard, /if \(tab === 'agents' && !document\.querySelector\('\.agent-tell'\)\) loadAgents\(\);/, "the list waits while something is being typed");
 });
 

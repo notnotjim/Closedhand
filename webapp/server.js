@@ -5116,10 +5116,11 @@ app.get("/api/connections/scopes", async (req, res) => {
 
 // GET /api/agents — the tasks handed over in chat that the Agents tab shows:
 // what is working or waiting on the person, and what finished in the last
-// week (Done lately). Pages use the same week before folding into Archived.
+// week, each on its own card under Tasks. Pages use the same week before
+// folding into Archived.
 const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 // A task paused because its LLM's allowance ran out is still going: it waits,
-// however long, under Working now (lib/agents.js, pauseForAllowance).
+// however long, on its card under Tasks (lib/agents.js, pauseForAllowance).
 const LIVE_RUN_STATUSES = ["running", "pending", "awaiting_confirmation", "blocked"];
 const DONE_RUN_STATUSES = ["completed", "failed", "cancelled", "partial"];
 app.get("/api/agents", async (req, res) => {
@@ -5130,7 +5131,7 @@ app.get("/api/agents", async (req, res) => {
     const cutoff = new Date(Date.now() - ARCHIVE_AFTER_MS).toISOString();
     // A task's team (agent_tasks.team) comes from a migration the bot applies
     // as it starts; until it has, the list is read without it.
-    const fields = "id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status";
+    const fields = "id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status, platform";
     const read = async (withTeam) => {
       const runs = () => supabase.from("agent_tasks").select(withTeam ? fields + ", team" : fields).eq("user_id", userId);
       const lists = [runs().in("status", LIVE_RUN_STATUSES), runs().in("status", DONE_RUN_STATUSES).gte("created_at", cutoff)];
@@ -5866,7 +5867,8 @@ const isLiveRun = (r) => (r.status === "running" || r.status === "pending") && D
 const runOutcome = (r) => (r.status === "running" || r.status === "pending" ? "failed" : r.status);
 
 // GET /api/automations/recent — every routine's runs from the last week, for
-// Working now (those going) and Done lately (those finished), by name.
+// each routine's card (going, or its last run) and a job set for once, which
+// is a task, by name.
 app.get("/api/automations/recent", async (req, res) => {
   try {
     const userId = getUserIdFromRequest(req);

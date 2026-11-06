@@ -37,44 +37,50 @@ function dashboard({ tasks = [], routines = [], runs = [], reminders = [], fail 
   return { context, get, requests, timers, drawn, telling, state };
 }
 const at = (mins) => new Date(Date.now() - mins * 60000).toISOString();
-test('a routine with agents of its own is a team, with its card under Teams', async () => {
-  const h = dashboard({ routines: [{ id: 'r1' }, { id: 't1', members: [{ name: 'Bank', part: 'x' }] }, { id: 'w1', run_once: true, status: 'active', members: [{ name: 'Bank', part: 'x' }] }] });
-  await h.context.loadAgents();
-  assert.equal(h.get('auto-team-list').innerHTML, '[routine t1]');
-  assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1]');
-  assert.equal(h.get('agents-waiting-list').innerHTML, '[waiting w1]', 'a team set to start once waits like any job');
-});
-test('a job set to start once waits under Waiting to start, not Routines, and is gone from both once it has started', async () => {
-  const h = dashboard({ routines: [{ id: 'r1' }, { id: 'w1', run_once: true, status: 'active' }, { id: 'w2', run_once: true, status: 'done', fired_at: at(5) }],
+test('every routine is under Routines, one agent or a team; a job set to start once is a task, waiting', async () => {
+  const h = dashboard({ routines: [{ id: 'r1' }, { id: 't1', members: [{ name: 'Bank', part: 'x' }] }, { id: 'w1', run_once: true, status: 'active', members: [{ name: 'Bank', part: 'x' }] }, { id: 'w2', run_once: true, status: 'done', fired_at: at(5) }],
     reminders: [{ name: 'Check the Lisbon fares', kind: 'task' }, { name: 'Call the plumber', kind: 'reminder' }, { name: 'Weekly fares', kind: 'task', repeats: 'every Monday' }, { name: 'Old', kind: 'task', archived: true }] });
   await h.context.loadAgents();
-  assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1]');
-  assert.equal(h.get('agents-waiting-list').innerHTML, '[waiting w1][job Check the Lisbon fares]', "a task set in chat for a date waits there too; a reminder does not");
-  assert.equal(h.get('agents-waiting').hidden, false);
+  assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1][routine t1]', 'a team is a routine like any other');
+  assert.equal(h.get('auto-active-list').innerHTML, '[waiting w1][job Check the Lisbon fares]', 'waiting is a task card, a team or not; a reminder is not a task; one that has run shows as its run');
 });
-test('Working now holds tasks going or waiting and routines mid-run; Done lately what finished this week', async () => {
+test('Tasks: working first, then waiting, then each finished one for the week; a routine runs on its own card, never as a task', async () => {
+  const soon = (mins) => new Date(Date.now() + mins * 60000).toISOString();
   const h = dashboard({
-    tasks: [{ id: 't1', status: 'running', created_at: at(4) }, { id: 't2', status: 'awaiting_confirmation', created_at: at(25) }, { id: 't3', status: 'completed', created_at: at(900), completed_at: at(880) }],
-    routines: [{ id: 'r1' }],
-    runs: [{ id: 'u1', live: true, started_at: at(1) }, { id: 'u2', live: false, status: 'success', started_at: at(60), completed_at: at(55) }],
+    tasks: [{ id: 't1', status: 'running', created_at: at(4) }, { id: 't2', status: 'awaiting_confirmation', created_at: at(25) },
+      { id: 't3', status: 'completed', result: 'Done.', created_at: at(40), completed_at: at(30) },
+      { id: 't4', status: 'failed', created_at: at(60 * 50), completed_at: at(60 * 49) }],
+    routines: [{ id: 'r1' }, { id: 'w1', run_once: true, status: 'active', next_at: soon(90) }, { id: 'w3', run_once: true, status: 'done', fired_at: at(2) }],
+    runs: [{ id: 'u1', automation_id: 'r1', live: true, started_at: at(1) }, { id: 'u2', automation_id: 'r1', live: false, status: 'success', started_at: at(60), completed_at: at(55) },
+      { id: 'u3', automation_id: 'w3', live: true, started_at: at(2) }],
+    reminders: [{ name: 'Sooner', kind: 'task', next_at: soon(30) }],
   });
   await h.context.loadAgents();
-  assert.equal(h.get('auto-active-list').innerHTML, '[run u1][task t1][task t2]', 'newest first, routines and tasks together');
-  assert.equal(h.get('agents-done-list').innerHTML, '[run u2][task t3]');
+  assert.equal(h.get('auto-active-list').innerHTML, '[run u3][task t1][task t2][job Sooner][waiting w1][task t3][task t4]');
   assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1]');
   assert.equal(h.get('auto-active-empty').hidden, true);
-  assert.equal(h.get('auto-active-desc').hidden, false, 'where each will answer, said once above them');
-  assert.equal(h.get('agents-done').hidden, false);
+  assert.equal(h.get('auto-active-desc').hidden, false, 'where each answers and how long it stays, said once above them');
   assert.equal(h.get('auto-empty').style.display, 'none', 'no templates beside routines');
+});
+test("a routine's card goes live while it runs and says how its last run went", async () => {
+  const given = [];
+  const h = dashboard({ routines: [{ id: 'r1' }, { id: 'r2' }], runs: [{ id: 'u1', automation_id: 'r1', live: true, started_at: at(1) },
+    { id: 'u2', automation_id: 'r2', live: false, status: 'success', started_at: at(300), completed_at: at(290) }, { id: 'u3', automation_id: 'r2', live: false, status: 'success', started_at: at(60), completed_at: at(55) }] });
+  h.context.renderAutomationCard = (a) => { given.push(a); return '[routine ' + a.id + ']'; };
+  await h.context.loadAgents();
+  assert.equal(given[0].liveRun.id, 'u1');
+  assert.equal(given[0].lastRunShown, null, 'its card is live, not last run');
+  assert.equal(given[1].liveRun, null);
+  assert.equal(given[1].lastRunShown.id, 'u3', 'its newest finished run');
+  assert.equal(h.get('auto-active-list').innerHTML, '', 'never under Tasks');
 });
 test('with nothing working, it says so and how to hand something over; with no routines, the templates', async () => {
   const h = dashboard();
   await h.context.loadAgents();
   assert.equal(h.get('auto-active-empty').hidden, false);
   assert.equal(h.get('auto-active-desc').hidden, true);
-  assert.equal(h.get('agents-done').hidden, true, 'no Done lately with nothing done');
   assert.equal(h.get('auto-empty').style.display, 'block');
-  assert.match(html, /<p class="section-desc" id="auto-active-empty">Nothing right now\. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on\. To pick the team yourself, start one with \+ New agent\.<\/p>/);
+  assert.match(html, /<p class="section-desc" id="auto-active-empty">Nothing yet\. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on\.<\/p>/);
 });
 test('a failed read shows its own error and leaves the rest', async () => {
   const h = dashboard({ fail: '/api/agents', routines: [{ id: 'r1' }] });
