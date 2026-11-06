@@ -194,7 +194,7 @@ test("a source counts what it couldn't read and what is still to be heard when s
   const rag = read("webapp/rag-processor.js"), page = read("webapp/views/index.html"), server = read("webapp/server.js");
   assert.doesNotMatch(rag + page, /Re-index to retry/);
   assert.doesNotMatch(rag, /couldn't be read, so File Search can't find/, "no note kept on the source, which a later hearing leaves out of date");
-  assert.match(rag, /error_message: "Reading it was cut off\. Update reads it again\." \}/);
+  assert.match(rag, /const CUT_OFF = "Reading it was cut off\. Update reads it again\.";/);
   // A recording or video due another try is waiting its turn, not unreadable.
   assert.match(server, /if \(heard && \(d\.status !== "error" \|\| Number\(d\.metadata\?\.hear_tries \|\| 0\) < ragProcessor\.HEAR_TRIES\)\) s\.to_hear\[/);
   const at = page.indexOf("// Why a source stopped."), sources = page.slice(at, page.indexOf("rag-source-actions", at));

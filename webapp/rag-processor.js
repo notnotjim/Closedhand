@@ -1133,18 +1133,40 @@ async function readSource(sourceId, userId, origin, folderPath, selectedFiles, a
  * resume, so they sit unindexed and invisible forever. Mark them failed so
  * the next source run treats them as changed and re-processes them, and so
  * the user can see which files did not make it in.
+ *
+ * A recording or video cut off while it was heard (a restart) is not the
+ * file's fault, so it waits its turn again instead, rather than hours as a
+ * failed try: marked failed, a 6 GB video cut off by a restart waited 18
+ * hours. Twice at most, so a file that brings the hearing down is not heard
+ * for ever; after that the cut counts as a try. One already marked cut off
+ * waits its turn again the same way.
  */
+const CUT_OFF = "Reading it was cut off. Update reads it again.";
+const HEAR_CUTS = 2;
 async function recoverStalledDocuments() {
   const STALL_MS = 20 * 60 * 1000;
   const cutoff = new Date(Date.now() - STALL_MS).toISOString();
   try {
     const { data: docs } = await supabase.from("rag_documents")
-      .select("id, name").eq("status", "processing").lt("updated_at", cutoff);
-    for (const d of (docs || [])) {
-      await supabase.from("rag_documents")
-        .update({ status: "error", error_message: "Reading it was cut off. Update reads it again." })
+      .select("id, name, file_type, metadata").eq("status", "processing").lt("updated_at", cutoff);
+    const { data: cut } = await supabase.from("rag_documents")
+      .select("id, name, file_type, metadata").eq("status", "error").eq("error_message", CUT_OFF).in("file_type", [...HEARD_TYPES]);
+    for (const d of (docs || []).concat(cut || [])) {
+      const heard = HEARD_TYPES.has(d.file_type), cuts = Number(d.metadata?.hear_cuts || 0) + 1;
+      if (heard && cuts <= HEAR_CUTS) {
+        const { error } = await supabase.from("rag_documents")
+          .update({ status: "pending", error_message: null, metadata: { ...(d.metadata || {}), hear_cuts: cuts } })
+          .eq("id", d.id);
+        if (error) console.error(`[RAG] ${d.name}: could not put it back in the queue: ${error.message}`);
+        else console.log(`[RAG] ${d.name} was cut off while it was heard, and waits its turn again`);
+        continue;
+      }
+      if ((cut || []).includes(d)) continue;
+      const { error } = await supabase.from("rag_documents")
+        .update({ status: "error", error_message: CUT_OFF, ...(heard ? { metadata: { ...(d.metadata || {}), hear_cuts: cuts, hear_tries: Number(d.metadata?.hear_tries || 0) + 1 } } : {}) })
         .eq("id", d.id);
-      console.log(`[RAG] Recovered stalled document: ${d.name}`);
+      if (error) console.error(`[RAG] ${d.name}: could not mark it cut off: ${error.message}`);
+      else console.log(`[RAG] Recovered stalled document: ${d.name}`);
     }
   } catch (e) {
     console.error("[RAG] recoverStalledDocuments failed:", e.message);

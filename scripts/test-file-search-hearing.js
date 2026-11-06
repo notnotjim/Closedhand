@@ -23,6 +23,7 @@ function fakeDb(tables) {
         delete() { removing = true; return q; },
         eq(k, v) { filters.push((r) => r[k] === v); return q; },
         in(k, vs) { filters.push((r) => vs.includes(r[k])); return q; },
+        lt(k, v) { filters.push((r) => r[k] < v); return q; },
         single() { one = true; return q; },
         maybeSingle() { one = true; return q; },
         then(resolve, reject) {
@@ -206,4 +207,28 @@ test("File Search keeps a picture's words and what it shows, written by the VLM 
     global.fetch = realFetch;
     for (const rel of ["db", "bot-call", "model-wire", "file-reader", "rag-processor"]) delete require.cache[require.resolve(path.join("..", "webapp", rel))];
   }
+});
+
+// A 6 GB video cut off by a restart while it was heard was marked failed, and
+// as its third failure waited 18 hours for another go.
+test("a recording or video cut off while it was heard waits its turn again, twice at most, and other files are marked as before", async () => {
+  const old = "2026-11-06T01:00:00.000Z";
+  const doc = (id, name, type, status, metadata = {}, extra = {}) => ({ id, user_id: "u1", source_id: "s1", name, file_type: type, status, metadata, updated_at: old, ...extra });
+  const tables = { rag_documents: [
+    doc("v1", "Harbour walk.mov", "mov", "processing", { hear_tries: 3 }),
+    doc("v2", "Long talk.m4a", "m4a", "error", { hear_tries: 1 }, { error_message: "Reading it was cut off. Update reads it again." }),
+    doc("v3", "Crashes the reader.mp4", "mp4", "processing", { hear_tries: 1, hear_cuts: 2 }),
+    doc("d1", "Lease.pdf", "pdf", "processing"),
+    doc("v4", "Stuck long ago.mov", "mov", "error", { hear_tries: 2, hear_cuts: 3 }, { error_message: "Reading it was cut off. Update reads it again." }),
+  ] };
+  const rag = loadFileSearch(tables, { url: "http://127.0.0.1:1" });
+  await rag.recoverStalledDocuments();
+  const row = (id) => tables.rag_documents.find((r) => r.id === id);
+  assert.deepEqual([row("v1").status, row("v1").metadata.hear_cuts, row("v1").metadata.hear_tries], ["pending", 1, 3], "back in the queue, not a failed try");
+  assert.equal(row("v1").error_message, null);
+  assert.ok(rag.dueToHear(row("v1")), "and heard at the next idle moment");
+  assert.deepEqual([row("v2").status, row("v2").metadata.hear_cuts], ["pending", 1], "one already marked cut off waits its turn again too");
+  assert.deepEqual([row("v3").status, row("v3").metadata.hear_tries], ["error", 2], "a third cut counts as a try");
+  assert.deepEqual([row("d1").status, row("d1").error_message], ["error", "Reading it was cut off. Update reads it again."], "a document is marked as before");
+  assert.deepEqual([row("v4").status, row("v4").metadata.hear_cuts], ["error", 3], "one past its cuts is left to its tries");
 });
