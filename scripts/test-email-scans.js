@@ -89,7 +89,7 @@ test("both scanners skip mail already read, count it read only after an answer, 
 
 test("bookings are read ten emails at a time at most, so no answer is cut off and each batch counts on its own", () => {
   const bookings = read("lib/bookings.js");
-  assert.match(bookings, /const EMAILS_PER_READ = 10;/);
+  assert.match(read("lib/booking-reader.js"), /const EMAILS_PER_READ = 10;/);
   assert.match(bookings, /for \(const \{ at, items: batch \} of readerBatches\(emails\)\) \{/);
   assert.match(bookings, /parsed\.push\(b && Number\.isInteger\(idx\) \? \{ \.\.\.b, emailIndex: idx \+ at \} : b\);/, "each answer points back at the right email");
   assert.match(bookings, /await scans\.markRead\(supabase, userId, "bookings", BOOKING_SCAN_VERSION, batch\);/, "only a batch that was answered counts as read");
@@ -100,7 +100,7 @@ test("bookings are read ten emails at a time at most, so no answer is cut off an
 // times and flight numbers 9,000 to 13,000 characters in: shown the first
 // 3,000, the reader found a route and an order number and no time.
 test("the bookings reader sees a long confirmation to its details, its links as their sites, and as much as its LLM's window holds", () => {
-  const { forReader, readerBatches } = require("../lib/bookings");
+  const { forReader, readerBatches } = require("../lib/booking-reader");
   const tracking = Array.from({ length: 60 }, (_, i) => `Offer ${i} (https://track.example-trips.test/c/${"x".repeat(150)}?u=${i})`).join("\n");
   const email = `Your trip is booked\n${tracking}\nLisbon to Madrid, Sun 14 Dec, 09:40 LIS - 11:55 MAD, flight QX 718\nCheck in online (https://air.example/checkin/QX718)`;
   assert.ok(email.indexOf("09:40") > 9000, "the details sit deep in the email");
