@@ -85,19 +85,17 @@ const finished = (job) => 'CLOSEDHAND_VIDEO ' + JSON.stringify({ ok: true, dir: 
 // needs (an iPhone video keeps its index at the end), over the gateway.
 test('a lent file is given a part at a time, as Range asks, and only to the sandbox it is lent to', async (t) => {
   const os = require('node:os');
-  const express = require('express');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hear-lent-'));
   const file = path.join(dir, 'Ceremony full.mov');
   const bytes = Buffer.alloc(40000);
   for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
   fs.writeFileSync(file, bytes);
-  const app = express();
-  app.get('/gateway/file/:id', (req, res) => {
-    const item = lentFiles.find(req.params.id, req.headers['x-user-id']);
-    if (!item) return res.status(404).end();
+  const server = require('node:http').createServer((req, res) => {
+    const item = lentFiles.find(req.url.split('/').pop(), req.headers['x-user-id']);
+    if (!item) { res.writeHead(404); return res.end(); }
     lentFiles.send(item, req, res);
   });
-  const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const onDisk = lentFiles.lend('u1', file), inMemory = lentFiles.lend('u1', bytes.subarray(0, 1000));
   t.after(() => { server.close(); lentFiles.takeBack(onDisk.id); lentFiles.takeBack(inMemory.id); fs.rmSync(dir, { recursive: true, force: true }); });
   const get = (id, range, user = 'u1') => fetch(`http://127.0.0.1:${server.address().port}/gateway/file/${id}`, { headers: { 'x-user-id': user, ...(range ? { range } : {}) } });
