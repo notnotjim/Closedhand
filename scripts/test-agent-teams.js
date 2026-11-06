@@ -521,7 +521,7 @@ test("an agent let take actions gets Closedhand's own tools, under Closedhand's 
   assert.match(src, /const HAND_BACK = "Not done here: this needs the person's yes\./);
   assert.match(src, /if \(b\._spendLedgerId\) await spendGuard\.ledgerUpdate\(b\._spendLedgerId, \{ status: r && r\.error \? "failed" : "completed" \}\);/);
   assert.match(src, /else if \(b\.name === "sandbox_browse" && \(!acts \|\| b\.input\?\.action === "read_pages"\)\) \{/, "read only unless let act");
-  assert.match(src, /const held = acts && toolScope\.has\(b\.name\) && !reading \? await actGate\(userId, userStore, b\) : null;/, "every action is checked, not only the browser's");
+  assert.match(src, /const held = acts && toolScope\.has\(b\.name\) && !reading \? await actGate\(userId, userStore, b, \[\{ content: systemPrompt \}\]\.concat\(messages\)\) : null;/, "every action is checked, not only the browser's");
   assert.match(src, /\} else if \(acts\) \{\n\s+\/\/ A connected app's tool, as the lead runs one\./);
   assert.match(read("lib/agent-team.js"), /runPart\(userId, subGoal, platform, chatId, model, \{ \.\.\.limits, onStep, acts: m\.acts, brief: opts\.brief \}\)/);
   assert.match(src, /goal: m\.job, acts: m\.acts === true \}/);

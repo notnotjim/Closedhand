@@ -126,10 +126,10 @@ test("every runner uses the gate: chat, background tasks, schedules and automati
   assert.match(agents, /sendGate\.sendQuestion\(pendingSend\.name, pendingSend\.input, pendingSend\._chatLabel\)/);
   for (const [file, store] of [["lib/automations.js", "freshStore"], ["lib/scheduling.js", "ctx.activeUserStore"]]) {
     const src = read(file);
-    const at = src.indexOf(`const held = await sendGate.unattended(block.name, block.input, userId, ${store});`);
+    const at = src.indexOf(`const held = madeUp ? null : await sendGate.unattended(block.name, block.input, userId, ${store});`);
     assert.ok(at > 0, file);
-    assert.match(src.slice(at, at + 700), /\} else if \(isInternalTool\(block\.name\)\) \{/, `${file}: before anything runs`);
-    assert.match(src.slice(at, at + 700), /extra: \{ isInternal: held\.isInternal \}/, `${file}: a server's tool runs as one on yes`);
+    assert.match(src.slice(at, at + 800), /\} else if \(isInternalTool\(block\.name\)\) \{/, `${file}: before anything runs`);
+    assert.match(src.slice(at, at + 800), /extra: \{ isInternal: held\.isInternal \}/, `${file}: a server's tool runs as one on yes`);
   }
   const hold = read("lib/spend-guard.js");
   assert.match(hold, /isInternal: true,\n\s*\.\.\.\(extra \|\| \{\}\),/, "extra can say the held call is a server's");
