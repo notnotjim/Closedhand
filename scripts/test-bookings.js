@@ -132,3 +132,16 @@ test('a booking whose email gave only its day is the timed one at that place tha
   assert.equal(mergeInto(timed, dayOnly).starts_at, '2026-12-02T11:00:00+09:00', 'and a time that arrives replaces the day alone');
   assert.equal(mergeInto(timed, dayOnly).details.time_unknown, undefined);
 });
+
+test('a reading that calls a timed booking all day never hides its time', () => {
+  // A clinic's chat gave only the day and the reader called the visit all day; merged into the 11:00 booking, the card showed no time.
+  const timed = { id: 't2', kind: 'appointment', provider: 'Larkspur Dental', starts_at: '2026-12-02T11:00:00+09:00', timezone: 'Asia/Tokyo', details: { room: '3' } };
+  const dayOnly = { kind: 'appointment', provider: 'Larkspur Dental Studio', starts_at: '2026-12-02T00:00:00+09:00', timezone: 'Asia/Tokyo', details: { all_day: true, guests: 1 } };
+  const merged = mergeInto(dayOnly, timed);
+  assert.equal(merged.starts_at, '2026-12-02T11:00:00+09:00');
+  assert.equal(merged.details.all_day, undefined, 'not all day: its time stands');
+  assert.equal(merged.details.guests, 1, 'what the reading knew is kept');
+  assert.equal(mergeInto(dayOnly, { ...timed, details: { all_day: true } }).details.all_day, true, 'one that was all day stays so');
+  const card = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'webapp/views/dashboard.html'), 'utf8');
+  assert.match(card, /var when = det\.time_unknown \|\| \(det\.all_day && at === '00:00'\) \? '' : at;/, 'and a card shows any time that is not midnight');
+});
