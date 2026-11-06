@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { currentTimeContext, flightDateContext } = require('../lib/time-context');
+const { currentTimeContext, flightDateContext, clashContext } = require('../lib/time-context');
 const at = new Date('2026-09-12T21:40:00Z');
 const facts = { 'flight-test': { value: JSON.stringify({ flightNumber: 'XY829', departure: { airport: 'ICN', tz: 'Asia/Seoul', dateTime: '2026-09-13T10:30:00+09:00' } }) } };
 test('unknown location never presents London as the confirmed user location', () => {
@@ -33,7 +33,7 @@ test('the actual chat prompt tail includes the current airport date evidence', (
   const fn = vm.runInNewContext(body + '\nbuildVolatileSystemTail', {
     Date: FixedDate, ctx: { store: { facts }, activeUserStore: { profile: { timezone: 'Europe/London' } } },
     require: name => {
-      if (name === './time-context') return { currentTimeContext, flightDateContext };
+      if (name === './time-context') return { currentTimeContext, flightDateContext, clashContext };
       if (name === './services/google') return { listGoogleAccounts: () => [] };
       if (name === './routine-offers') return { offerFor: () => '' };
       throw Error(name);

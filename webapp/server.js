@@ -6951,6 +6951,30 @@ app.get("/mail", async (req, res) => {
   }
 });
 
+// Plans that cannot all be true (webapp/itinerary.js, the bot's
+// lib/itinerary.js), worked out afresh from what Upcoming shows: a quiet line
+// on each card involved until the person settles it in chat, or Closedhand's
+// look at it found nothing to ask (lib/itinerary-check.js keeps that under
+// _itinerary-clashes). { [booking id or flight key]: line }.
+async function clashLines(userId) {
+  try {
+    const since = new Date(Date.now() - 24 * 3600000).toISOString();
+    const [flights, bookings, kept] = await Promise.all([
+      supabase.from("facts").select("key, value").eq("user_id", userId).like("key", "flight-%"),
+      supabase.from("bookings").select("id, kind, title, starts_at, ends_at, timezone, status").eq("user_id", userId).or(`starts_at.gte.${since},ends_at.gte.${since}`),
+      supabase.from("facts").select("value").eq("user_id", userId).eq("key", "_itinerary-clashes").maybeSingle(),
+    ]);
+    const itinerary = require("./itinerary");
+    const found = itinerary.clashes({ flights: itinerary.flightsFrom(Object.fromEntries((flights.data || []).map((r) => [r.key, r.value]))), bookings: bookings.data || [] });
+    let record = {};
+    try { let v = JSON.parse(kept.data?.value || "{}"); if (typeof v?.value === "string") v = JSON.parse(v.value); record = v || {}; } catch (_) {}
+    return itinerary.lines(found, record);
+  } catch (e) {
+    console.error("[itinerary] clash lines:", e.message);
+    return {};
+  }
+}
+
 app.get("/api/bookings", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
@@ -6961,8 +6985,9 @@ app.get("/api/bookings", async (req, res) => {
     if (error) throw error;
     // Over ones are listed under Past, as flights already flown are.
     const now = Date.now();
+    const clash = await clashLines(userId);
     const rows = await Promise.all((data || []).map(async (b) => ({
-      ...b, over: bookingOver(b, now),
+      ...b, over: bookingOver(b, now), clash: clash[b.id] || null,
       source_mail: await sourceMail(userId, { emailId: b.source_email_id, reference: b.reference }).catch(() => null),
     })));
     res.json(rows);
@@ -7038,7 +7063,9 @@ app.get("/api/flights", async (req, res) => {
       })
       .sort((a, b) => new Date(a.departure.dateTime) - new Date(b.departure.dateTime));
 
+    const clash = await clashLines(userId);
     await Promise.all(flights.map(async (f) => {
+      f.clash = clash[f._key] || null;
       f.source_mail = await sourceMail(userId, { emailId: f.emailId, reference: f.confirmationCode }).catch(() => null);
     }));
     res.json(flights);

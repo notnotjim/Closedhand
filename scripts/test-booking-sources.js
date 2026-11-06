@@ -128,5 +128,5 @@ test("Upcoming reads everything connected, and a booking from a chat says where 
   assert.match(dash, /title="' \+ escHtml\('From your ' \+ c\.app \+ ' chat' \+ \(c\.name \? ' with ' \+ c\.name : ''\)\) \+ '"/);
   const defs = read("lib/tools/definitions.js");
   assert.match(defs, /Upcoming bookings picked out of the user's email, chats and connected services/);
-  assert.match(read("lib/engine.js"), /"bookings from mail and chats \(trains, hotels, tickets, appointments\): list, scan, record a change"/);
+  assert.match(read("lib/engine.js"), /"bookings from mail and chats \(trains, hotels, tickets, appointments\): list, scan, record a change, settle plans that clash"/);
 });

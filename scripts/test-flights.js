@@ -127,7 +127,7 @@ test('live checker ignores superseded flights and saves timezone enrichment even
 test('dashboard renders airport-local clocks using the shipped browser helper', () => {
   const html = fs.readFileSync(path.join(root, 'webapp/views/dashboard.html'), 'utf8');
   const render = html.slice(html.indexOf('    function renderFlightCard('), html.indexOf('    // === Load flights ==='));
-  const scope = { getFlightStatusInfo: () => ({ cls: 'scheduled', label: 'Scheduled' }), escHtml: String, fmtFlightTime: clock.time, sourceDocsHtml: () => '', UPCOMING_ICON: { flight: '[plane]' } };
+  const scope = { getFlightStatusInfo: () => ({ cls: 'scheduled', label: 'Scheduled' }), escHtml: String, fmtFlightTime: clock.time, sourceDocsHtml: () => '', clashHtml: () => '', UPCOMING_ICON: { flight: '[plane]' } };
   vm.runInNewContext(render, scope);
   const card = scope.renderFlightCard(next);
   assert.match(card, />20:00</); assert.match(card, />21:20</);
@@ -144,7 +144,7 @@ test('flights API excludes superseded records and keeps authentication enforced'
   const state = facts(); apply(state, reconcileFlights(state, [change], [email], now));
   const query = { select() { return this; }, eq(column, value) { assert.equal(column, 'user_id'); assert.equal(value, user); return this; }, async like() { return { data: Object.entries(state).map(([key,value]) => ({key,value:JSON.stringify(value)})) }; } };
   class FixedDate extends Date { static now() { return now; } }
-  vm.runInNewContext(source.slice(start, end), { Date: FixedDate, process: {env:{}}, console, getUserIdFromRequest: () => user, supabase: { from: () => query }, sourceMail: async () => null, app: { get: (_,fn) => { handler = fn; } } });
+  vm.runInNewContext(source.slice(start, end), { Date: FixedDate, process: {env:{}}, console, getUserIdFromRequest: () => user, supabase: { from: () => query }, sourceMail: async () => null, clashLines: async () => ({}), app: { get: (_,fn) => { handler = fn; } } });
   const res = { json(value) { payload = value; }, status(code) { status = code; return this; } };
   await handler({}, res);
   assert.deepEqual(Array.from(payload, f => f.flightNumber), ['XY648']);

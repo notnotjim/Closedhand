@@ -1439,6 +1439,9 @@
     .flight-details {
       display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.375rem;
     }
+    /* Plans that cannot all be true: one quiet line on each card involved,
+       in the neutral, with a thin rule beside it, until settled in chat. */
+    .upcoming-clash { margin: 0 0.875rem 0.75rem; padding-left: 0.625rem; border-left: 2px solid rgba(var(--fg-rgb),0.28); font-size: 0.75rem; line-height: 1.45; color: var(--fg-quiet); }
     /* A card made from an email opens it; the booking's files sit under it. */
     .source-docs { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0 0.875rem 0.75rem; }
     .source-doc { display: inline-flex; align-items: center; gap: 0.375rem; max-width: 100%; padding: 0.25rem 0.625rem; border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.375rem; font-size: 0.75rem; color: var(--fg-quiet); text-decoration: none; }
@@ -6919,8 +6922,13 @@
           '<button class="conn-btn conn-btn-disconnect" title="Not a booking? Remove it" aria-label="Remove this booking" onclick="confirmBookingRemove(this, \'' + b.id + '\')" style="padding:2px 0.5rem;font-size:0.6875rem;">&times;</button>' +
         '</div>' +
         (details.length ? '<div class="flight-details" style="padding:0 0.875rem 0.625rem;">' + details.join('') + '</div>' : '') +
-        sourceDocsHtml(b.source_mail) + chatSourceHtml(det.from_chat) +
+        clashHtml(b.clash) + sourceDocsHtml(b.source_mail) + chatSourceHtml(det.from_chat) +
       '</div>';
+    }
+    // What this clashes with in the person's other plans (webapp/server.js
+    // clashLines), said on each card involved until it is settled in chat.
+    function clashHtml(line) {
+      return line ? '<p class="upcoming-clash">' + escHtml(line) + '</p>' : '';
     }
     // A booking found in a chat names the app and who, as one from mail
     // opens its email.
@@ -7084,6 +7092,7 @@
           ${f._key ? `<button class="conn-btn conn-btn-disconnect" title="Not your flight? Remove it" aria-label="Remove this flight" onclick="confirmFlightRemove(this, '${escHtml(f._key)}')" style="padding:2px 0.5rem;font-size:0.6875rem;">&times;</button>` : ''}
         </div>
         ${details.length ? `<div class="flight-details" style="padding:0 0.875rem 0.625rem;">${details.join('')}</div>` : ''}
+        ${clashHtml(f.clash)}
         ${sourceDocsHtml(f.source_mail)}
         ${timeNote ? `<p class="flight-details" style="display:block;padding:0 0.875rem 0.875rem;margin:0;">${escHtml(timeNote)}</p>` : ''}
       </div>`;
