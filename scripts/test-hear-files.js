@@ -97,21 +97,26 @@ test('a lent file is given a part at a time, as Range asks, and only to the sand
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const onDisk = lentFiles.lend('u1', file), inMemory = lentFiles.lend('u1', bytes.subarray(0, 1000));
-  t.after(() => { server.close(); lentFiles.takeBack(onDisk.id); lentFiles.takeBack(inMemory.id); fs.rmSync(dir, { recursive: true, force: true }); });
-  const get = (id, range, user = 'u1') => fetch(`http://127.0.0.1:${server.address().port}/gateway/file/${id}`, { headers: { 'x-user-id': user, ...(range ? { range } : {}) } });
+  t.after(async () => { server.closeAllConnections(); await new Promise((r) => server.close(r)); lentFiles.takeBack(onDisk.id); lentFiles.takeBack(inMemory.id); fs.rmSync(dir, { recursive: true, force: true }); });
+  // Every answer read to its end, so no connection is left open when the server stops.
+  const get = async (id, range, user = 'u1') => {
+    const r = await fetch(`http://127.0.0.1:${server.address().port}/gateway/file/${id}`, { headers: { 'x-user-id': user, ...(range ? { range } : {}) } });
+    const body = Buffer.from(await r.arrayBuffer());
+    return { status: r.status, headers: r.headers, body };
+  };
   const whole = await get(onDisk.id);
   assert.equal(whole.status, 200);
   assert.equal(whole.headers.get('accept-ranges'), 'bytes');
-  assert.ok(Buffer.from(await whole.arrayBuffer()).equals(bytes));
+  assert.ok(whole.body.equals(bytes));
   for (const [range, from, to] of [['bytes=100-199', 100, 199], ['bytes=39990-', 39990, 39999], ['bytes=-50', 39950, 39999], ['bytes=39000-99999', 39000, 39999]]) {
     const r = await get(onDisk.id, range);
     assert.equal(r.status, 206, range);
     assert.equal(r.headers.get('content-range'), `bytes ${from}-${to}/40000`, range);
-    assert.ok(Buffer.from(await r.arrayBuffer()).equals(bytes.subarray(from, to + 1)), range);
+    assert.ok(r.body.equals(bytes.subarray(from, to + 1)), range);
   }
   assert.equal((await get(onDisk.id, 'bytes=40000-')).status, 416);
   const part = await get(inMemory.id, 'bytes=10-19');
-  assert.ok(Buffer.from(await part.arrayBuffer()).equals(bytes.subarray(10, 20)), 'bytes held in memory too');
+  assert.ok(part.body.equals(bytes.subarray(10, 20)), 'bytes held in memory too');
   assert.equal((await get(onDisk.id, null, 'u2')).status, 404, "never another person's sandbox");
   lentFiles.takeBack(onDisk.id);
   assert.equal((await get(onDisk.id)).status, 404, 'nor once taken back');
