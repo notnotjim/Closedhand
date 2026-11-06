@@ -31,6 +31,15 @@ function stamp(html) {
     return v ? prefix + urlPath + "?v=" + v + '"' : match;
   });
 }
+// A page's module imports ("from './x.js'") carry the hash too, read against
+// the page's own folder: the screen viewer (novnc/vnc_lite.html) loads its
+// code that way, and Cloudflare had browsers keep the old code four hours.
+function stampImports(html, folder) {
+  return html.replace(/(\bfrom\s+)(['"])(\.\/[^'"?#]+\.js)\2/g, (match, prefix, quote, rel) => {
+    const v = version(folder + rel.slice(2));
+    return v ? prefix + quote + rel + "?v=" + v + quote : match;
+  });
+}
 // Where Closedhand runs. Moved to Railway (Go always-on), it lives in the
 // person's own Railway account, not on their computer: a sentence that says
 // "your computer" carries its Railway wording in data-railway, put in place
@@ -71,4 +80,4 @@ function cacheHeaders(res, file) {
   const v = res.req?.query?.v;
   res.set("Cache-Control", v && v === version(urlPath) ? "public, max-age=31536000, immutable" : "no-cache");
 }
-module.exports = { version, stamp, forHost, sendPage, cacheHeaders, setAppearance, withAppearance };
+module.exports = { version, stamp, stampImports, forHost, sendPage, cacheHeaders, setAppearance, withAppearance };

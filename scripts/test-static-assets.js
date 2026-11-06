@@ -38,6 +38,19 @@ test('only the current hash earns a long-lived cache header', () => {
   const bare = response({}); assets.cacheHeaders(bare, file);
   assert.equal(bare.headers['Cache-Control'], 'no-cache');
 });
+
+test("the screen viewer names its code with each file's hash, and a changed file gets a new address", () => {
+  const page = fs.readFileSync(path.join(publicDir, 'novnc', 'vnc_lite.html'), 'utf8');
+  const stamped = assets.stampImports(page, '/novnc/');
+  for (const name of ['closedhand-screen.js', 'core/rfb.js']) assert.ok(stamped.includes(`from './${name}?v=${hashOf('novnc/' + name)}'`), name);
+  assert.doesNotMatch(stamped, /from '\.\/[^'?]+\.js'/, 'every import carries its hash');
+  assert.equal(assets.stampImports("import x from './nowhere.js';", '/novnc/'), "import x from './nowhere.js';", 'a missing file is left as it was');
+  const viewer = response({ v: hashOf('novnc/closedhand-screen.js') }); assets.cacheHeaders(viewer, path.join(publicDir, 'novnc', 'closedhand-screen.js'));
+  assert.equal(viewer.headers['Cache-Control'], 'public, max-age=31536000, immutable');
+  const server = fs.readFileSync(path.join(__dirname, '..', 'webapp', 'server.js'), 'utf8');
+  assert.match(server, /app\.get\("\/novnc\/vnc_lite\.html", \(req, res\) => \{\n\s*res\.set\("Cache-Control", "no-cache"\);\n\s*res\.type\("html"\)\.send\(assets\.stampImports\(/);
+  assert.ok(server.indexOf('app.get("/novnc/vnc_lite.html"') < server.indexOf('app.use("/novnc", express.static('), 'before the folder itself');
+});
 test('every served page is stamped', () => {
   for (const name of fs.readdirSync(path.join(__dirname, '..', 'webapp', 'views')).filter(f => f.endsWith('.html'))) {
     const html = fs.readFileSync(path.join(__dirname, '..', 'webapp', 'views', name), 'utf8');
