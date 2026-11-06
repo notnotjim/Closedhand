@@ -6,11 +6,11 @@
   <script src="/theme.js"></script><script src="/account-nav.js" defer></script><script src="/message-us.js" defer></script>
 <script src="/handheld.js"></script>
 <title>Closedhand</title>
-<meta name="description" content="Personal uncensored AI without signing your life away. Your Closedhand assistant is free and open source, runs on a computer you control and works with any LLM.">
+<meta name="description" content="Personal uncensored AI without giving away the keys to your digital life. Your Closedhand assistant is free and open source, runs on a computer you control and works with any LLM.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Closedhand">
 <meta property="og:title" content="Closedhand: control your world and your private data">
-<meta property="og:description" content="Personal uncensored AI without signing your life away. Your Closedhand assistant is free and open source, runs on a computer you control and works with any LLM.">
+<meta property="og:description" content="Personal uncensored AI without giving away the keys to your digital life. Your Closedhand assistant is free and open source, runs on a computer you control and works with any LLM.">
 <meta property="og:url" content="https://closedhand.com/">
 <meta property="og:image" content="https://closedhand.com/og.png">
 <meta property="og:image:width" content="1200">
@@ -231,7 +231,7 @@ body.chat-active .page { height: 100dvh; min-height: 0; overflow: hidden; }
     flex-wrap: wrap;
     justify-content: center;
   }
-.hero-footer span {
+.hero-footer > span {
     font-size: clamp(.8125rem, 1.1vw, .9375rem);
     line-height: 1.5;
     letter-spacing: 0;
@@ -298,8 +298,7 @@ body.chat-active .input-box { backdrop-filter: none; }
     :root { --hero-title-size: clamp(1.4375rem, 7.6vw, 2.375rem); --hero-copy-size: .875rem; }
     .hero-heading { font-size: var(--hero-title-size); letter-spacing: -0.3px; margin-bottom: 1rem; white-space: nowrap; }
     .hero-heading .hero-heading-first, .hero-heading .hero-heading-more { display: block; white-space: nowrap; max-width: none; padding-left: 0; transition: opacity 0.8s ease 0.7s; }
-    .hero-footer span { white-space: normal; line-height: 1.45; }
-    .hero-footer .footer-sentence { display: block; }
+    .hero-footer > span { white-space: normal; line-height: 1.45; }
     .hero-recent-tab { padding: .3125rem .75rem .375rem; font-size: .6875rem; }
     
     .input-box-wrap:focus-within { transform: none; }
@@ -773,7 +772,6 @@ body.chat-active .mon-area { display:none; }
   html:not(.handheld) .handheld-only { display: none !important; }
   html.handheld .computer-only, html.handheld .header-right a.nav-cta { display: none !important; }
   html.handheld .hero-footer { margin-top: var(--foot-gap, 1.25rem); }
-  html.handheld .hero-footer .footer-sentence { display: block; }
   /* The fist and its label float with equal room above (from the line of
      text to the ring's visible edge) and below (to the steps card), and
      whatever ends the first screen keeps 30px clear of the browser's bar.
@@ -895,7 +893,7 @@ body.chat-active .mon-area { display:none; }
   <div class="hero-area" id="heroSection">
     <div class="hero-space-top" style="flex:0.55"></div>
     <div class="hero-heading"><span class="hero-heading-first">Control your world</span><span class="hero-heading-more" id="heroMore">and your private data.</span></div>
-    <div class="hero-heading-sub">Personal uncensored AI without signing your life away</div>
+    <div class="hero-heading-sub">Personal uncensored AI without giving away the keys to your digital life.</div>
     <script>
       // The second sentence of the heading is measured at its natural width
       // once the fonts are in, so it can unfold to exactly that; then the hero
@@ -967,7 +965,7 @@ body.chat-active .mon-area { display:none; }
     </div>
 
     <div class="hero-footer">
-      <span><a class="ethos-link" href="/ethos"><span class="computer-only">Your Closedhand assistant</span><span class="handheld-only">Closedhand</span> is local-first, open source and works with any LLM. <span class="footer-sentence">The keys to your digital life stay with you.</span></a></span>
+      <span><a class="ethos-link" href="/ethos"><span class="computer-only">Your Closedhand assistant</span><span class="handheld-only">Closedhand</span> is local-first, open source and works with any LLM.</a></span>
     </div>
     <div class="hero-space-bottom" style="flex:1"></div>
   </div>
