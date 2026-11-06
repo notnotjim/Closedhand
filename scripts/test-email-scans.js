@@ -87,11 +87,38 @@ test("both scanners skip mail already read, count it read only after an answer, 
   assert.match(read("migrations/064_email_scans.sql"), /CREATE TABLE IF NOT EXISTS email_scans \(/);
 });
 
-test("bookings are read ten emails at a time, so no answer is cut off and each batch counts on its own", () => {
+test("bookings are read ten emails at a time at most, so no answer is cut off and each batch counts on its own", () => {
   const bookings = read("lib/bookings.js");
   assert.match(bookings, /const EMAILS_PER_READ = 10;/);
-  assert.match(bookings, /const batch = emails\.slice\(at, at \+ EMAILS_PER_READ\)\.map\(\(e, i\) => \(\{ \.\.\.e, emailIndex: i \}\)\);/);
+  assert.match(bookings, /for \(const \{ at, items: batch \} of readerBatches\(emails\)\) \{/);
   assert.match(bookings, /parsed\.push\(b && Number\.isInteger\(idx\) \? \{ \.\.\.b, emailIndex: idx \+ at \} : b\);/, "each answer points back at the right email");
   assert.match(bookings, /await scans\.markRead\(supabase, userId, "bookings", BOOKING_SCAN_VERSION, batch\);/, "only a batch that was answered counts as read");
   assert.match(bookings, /if \(failure && !parsed\.length\) return \{ scanned: emails\.length, found: 0, new: 0, error: failure \};/);
+});
+
+// An agency's confirmation opens with offers and tracking links, and gave its
+// times and flight numbers 9,000 to 13,000 characters in: shown the first
+// 3,000, the reader found a route and an order number and no time.
+test("the bookings reader sees a long confirmation to its details, its links as their sites, and as much as its LLM's window holds", () => {
+  const { forReader, readerBatches } = require("../lib/bookings");
+  const tracking = Array.from({ length: 60 }, (_, i) => `Offer ${i} (https://track.example-trips.test/c/${"x".repeat(150)}?u=${i})`).join("\n");
+  const email = `Your trip is booked\n${tracking}\nLisbon to Madrid, Sun 14 Dec, 09:40 LIS - 11:55 MAD, flight QX 718\nCheck in online (https://air.example/checkin/QX718)`;
+  assert.ok(email.indexOf("09:40") > 9000, "the details sit deep in the email");
+  const read = forReader(email);
+  assert.match(read, /09:40 LIS - 11:55 MAD, flight QX 718/, "and the reader reaches them");
+  assert.match(read, /Offer 3 \(track\.example-trips\.test\)/, "a link reads as its site");
+  assert.match(read, /Check in online \(https:\/\/air\.example\/checkin\/QX718\)/, "the way to check in stays whole");
+  assert.equal(forReader("y".repeat(40000)).length, 15000);
+
+  const items = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, subject: `Booking ${i}`, body: "z".repeat(15000) }));
+  const roomy = readerBatches(items);
+  assert.deepEqual(roomy.map((b) => [b.at, b.items.length]), [[0, 10], [10, 2]], "ten at most to a large window");
+  assert.deepEqual(roomy[1].items.map((e) => e.emailIndex), [0, 1]);
+  const ctx = require("../lib/context"), was = ctx.activeUserStore;
+  ctx.activeUserStore = { profile: { settings: { model_config: { roles: { background: { capabilities: { contextWindow: 8192 } } } } } } };
+  try {
+    const small = readerBatches(items.slice(0, 3));
+    assert.equal(small.length, 3, "a small local LLM reads one at a time");
+    assert.ok(small.every((b) => b.items[0].body.length < 6000), "each cut to what its window holds");
+  } finally { ctx.activeUserStore = was; }
 });
