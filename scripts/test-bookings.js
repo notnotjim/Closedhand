@@ -82,12 +82,24 @@ test('a flight booked through an agency is the tracked flight, not a second one'
   assert.equal(isTrackedFlight(agency, []), false);
 });
 
+test('a flight booking with only its day is the tracked flight leaving that day', () => {
+  // An agency's trip reminder gave the route and the day, never the time; kept at midnight, it showed as a second flight at 00:00.
+  const tracked = [{ ref: 'QX7H2M', departs: Date.parse('2026-12-14T13:40:00+09:00'), day: '2026-12-14' }];
+  const untimed = { kind: 'flight', provider: 'Example Trips', reference: '700 800 900', starts_at: '2026-12-14T00:00:00+09:00', timezone: 'Asia/Tokyo', details: { time_unknown: true } };
+  assert.ok(isTrackedFlight(untimed, tracked), 'the reader said the time was not given');
+  assert.ok(isTrackedFlight({ ...untimed, details: {}, starts_at: '2026-12-13T15:00:00.000Z' }, tracked), 'one stored before that, at midnight where it is');
+  assert.equal(isTrackedFlight({ ...untimed, starts_at: '2026-12-15T00:00:00+09:00' }, tracked), false, 'another day is another flight');
+  assert.equal(isTrackedFlight({ ...untimed, details: {}, starts_at: '2026-12-14T19:10:00+09:00' }, tracked), false, 'a flight with its own time later that day is another flight');
+  assert.equal(isTrackedFlight({ ...untimed, kind: 'hotel' }, tracked), false, 'a stay that day is not the flight');
+});
+
 test('with no end time, a booking is over an hour in, an all-day one at the end of its day, a stay a day later', () => {
   const start = '2026-11-02T10:00:00+00:00', ms = Date.parse(start), hour = 3600000;
   assert.equal(noEndOver({ kind: 'restaurant', starts_at: start }), ms + hour);
   assert.equal(noEndOver({ kind: 'hotel', starts_at: start }), ms + 24 * hour);
   assert.equal(noEndOver({ kind: 'event', starts_at: start, timezone: 'Europe/London', details: { all_day: true } }), Date.parse('2026-11-03T00:00:00+00:00'), 'midnight where it is');
   assert.equal(noEndOver({ kind: 'event', starts_at: new Date(ms), details: {} }), ms + hour, 'a stored date works too');
+  assert.equal(noEndOver({ kind: 'train', starts_at: '2026-11-02T00:00:00+00:00', timezone: 'Europe/London', details: { time_unknown: true } }), Date.parse('2026-11-03T00:00:00+00:00'), 'a day without its time lasts the day');
 });
 
 // A clinic's booking-page link was saved as a "Check in" link on every visit,

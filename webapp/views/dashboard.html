@@ -6884,7 +6884,8 @@
     function renderBookingCard(b) {
       var det = b.details || {};
       var icon = UPCOMING_ICON[b.kind] || UPCOMING_ICON.other;
-      var when = det.all_day ? '' : fmtBookingTime(b.starts_at, b.timezone);
+      // A day without its time shows no time, never midnight.
+      var when = det.all_day || det.time_unknown ? '' : fmtBookingTime(b.starts_at, b.timezone);
       var until = b.ends_at ? fmtBookingTime(b.ends_at, b.timezone) : '';
       var sameDay = b.ends_at && fmtBookingDate(b.ends_at, b.timezone) === fmtBookingDate(b.starts_at, b.timezone);
       var route = det.from && det.to ? escHtml(det.from) + ' &rarr; ' + escHtml(det.to) : (b.location ? escHtml(b.location) : '');

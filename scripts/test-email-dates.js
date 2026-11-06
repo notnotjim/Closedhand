@@ -257,6 +257,54 @@ test("a booking is read from the whole email, and dates the email doesn't give a
   assert.deepEqual(tables.bookings.map((b) => b.title), ["Example Hostel"], "the stay with dates the email doesn't give is dropped");
 });
 
+// A travel agency's trip reminder gave the route and the booking number but
+// no date; the reader dated it from the mail beside it, at midnight, and it
+// showed above the flight itself as a second flight at 00:00.
+test("a booking needs its date in its own email's words, and one with only its day shows no time and is the tracked flight that day", async () => {
+  const Module = require("node:module");
+  const day = 86400000, soon = new Date(Date.now() + 9 * day);
+  const ymd = soon.toISOString().slice(0, 10);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const said = `${soon.getUTCDate()} ${months[soon.getUTCMonth()]} ${soon.getUTCFullYear()}`;
+  const sent = new Date(Date.now() - day).toISOString();
+  const mails = [
+    { id: "m-reminder", subject: "Booking 700800900: time to pack for Riverton to Lakeside", from: "Example Trips <trips@example.com>", date: sent, body: "Booking number 700 800 900. Booking status Confirmed. Only a few more days to go!" },
+    { id: "m-link", subject: "Your ferry booking FX4410", from: "Example Ferries", date: sent, body: `Booking FX4410 is confirmed. Manage it (https://example.com/t/${ymd.replace(/-/g, "")}x9)` },
+    { id: "m-agency", subject: "Booking 700800901 confirmed", from: "Example Trips", date: sent, body: `Riverton to Lakeside, ${said}. Booking 700 800 901.` },
+    { id: "m-train", subject: "Your train ticket TR5512", from: "Example Rail", date: sent, body: `Harbourtown to Millbrook on ${said}. Ticket TR5512.` },
+  ];
+  const tables = { email_scans: [], bookings: [], data_cache: [], facts: [
+    { user_id: "u1", key: `flight-QX101-${ymd}`, value: { value: JSON.stringify({ flightNumber: "QX101", confirmationCode: "QX7H2M", departure: { airport: "RVT", dateTime: `${ymd}T13:40:00+09:00` }, arrival: { airport: "LKS", dateTime: `${ymd}T15:40:00+09:00` } }) } },
+  ] };
+  let prompt = "";
+  const midnight = `${ymd}T00:00:00+09:00`, dayAfter = `${new Date(soon.getTime() + day).toISOString().slice(0, 10)}T00:00:00+09:00`;
+  const reply = [
+    { emailIndex: 0, kind: "flight", title: "Riverton to Lakeside", provider: "Example Trips", reference: "700 800 900", starts_at: dayAfter, timezone: "Asia/Tokyo", timeStated: false, yearStated: true, dates_quote: "Riverton to Lakeside", details: { from: "Riverton", to: "Lakeside" } },
+    { emailIndex: 1, kind: "ferry", title: "Ferry FX4410", provider: "Example Ferries", reference: "FX4410", starts_at: `${ymd}T08:00:00+09:00`, timezone: "Asia/Tokyo", timeStated: true, yearStated: true, dates_quote: ymd.replace(/-/g, ""), details: {} },
+    { emailIndex: 2, kind: "flight", title: "Riverton to Lakeside", provider: "Example Trips", reference: "700 800 901", starts_at: midnight, timezone: "Asia/Tokyo", timeStated: false, yearStated: true, dates_quote: said, details: { from: "Riverton", to: "Lakeside" } },
+    { emailIndex: 3, kind: "train", title: "Harbourtown to Millbrook", provider: "Example Rail", reference: "TR5512", starts_at: midnight, timezone: "Asia/Tokyo", timeStated: false, yearStated: true, dates_quote: said, details: {} },
+  ];
+  const load = Module._load;
+  Module._load = function (request, parent, ...rest) {
+    if (parent && /lib\/bookings\.js$/.test(parent.filename)) {
+      if (request === "./db") return { supabase: memoryDb(tables) };
+      if (request === "./services/data-access") return { searchCache: async () => ({ results: mails }) };
+      if (request === "./services/data-sync") return { searchOtherSources: async () => [] };
+      if (request === "./llm") return { getInternalClient: () => ({ model: "fixture", client: { messages: { create: async (p) => { prompt = p.messages[0].content; return { content: [{ type: "text", text: JSON.stringify(reply) }] }; } } } }) };
+      if (request === "./mail-attachments") return { withWholeBodies: async (_, es) => es, bodyForScan: (_, e) => e.body };
+    }
+    return load.call(this, request, parent, ...rest);
+  };
+  try {
+    delete require.cache[require.resolve("../lib/bookings")];
+    await require("../lib/bookings").scanBookings("u1");
+  } finally { Module._load = load; delete require.cache[require.resolve("../lib/bookings")]; }
+  assert.match(prompt, /"timeStated" is false when the item gives the booking's day but not its time/);
+  assert.deepEqual(tables.bookings.map((b) => b.title), ["Harbourtown to Millbrook"],
+    "the reminder's quote names no date, the ferry's date is only inside a link, and the agency's flight is the tracked QX101");
+  assert.equal(tables.bookings[0].details.time_unknown, true, "shown without a time, never as midnight");
+});
+
 test("a booking settled in a chat is found, and says where it came from; Closedhand's own conversations are not read", async () => {
   const Module = require("node:module");
   const day = 86400000, now = Date.now();

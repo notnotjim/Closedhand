@@ -6851,8 +6851,8 @@ async function sourceMail(userId, { emailId, reference } = {}) {
 }
 
 // A booking is over once it ends. Most don't say when they end: an all-day
-// one (a festival or day pass, a ticket for a date) is over at the end of its
-// own day; any other (a table at 19:00, a viewing at 10:30) moves to Past an
+// one (a festival or day pass, a ticket for a date), or one whose time its
+// email never gave, is over at the end of its own day; any other (a table at 19:00, a viewing at 10:30) moves to Past an
 // hour after it starts, since once it has begun it is not coming up; a stay
 // with no check-out counts a day. Same rule as noEndOver in
 // lib/booking-identity.js, which the webapp cannot import.
@@ -6861,7 +6861,7 @@ function bookingOver(b, now = Date.now()) {
   let end = b.ends_at ? Date.parse(iso(b.ends_at)) : Date.parse(iso(b.starts_at));
   if (!b.ends_at && !isNaN(end)) {
     if (b.kind === "hotel") end += 24 * 3600000;
-    else if (!(b.details && b.details.all_day)) end += 3600000;
+    else if (!(b.details && (b.details.all_day || b.details.time_unknown))) end += 3600000;
     else {
       try {
         const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: b.timezone || "UTC", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })

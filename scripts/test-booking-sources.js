@@ -78,6 +78,8 @@ test('a booking with no end moves to Past an hour after it starts', () => {
   const festival = { kind: 'event', starts_at: '2026-10-14T10:00:00+01:00', timezone: 'Europe/London', details: { all_day: true } };
   assert.equal(load(0).bookingOver(festival, Date.parse('2026-10-14T18:00:00+01:00')), false, 'an all-day event lasts its day');
   assert.equal(load(0).bookingOver(festival, Date.parse('2026-10-15T00:30:00+01:00')), true, 'and is over after midnight');
+  const untimed = { kind: 'flight', starts_at: '2026-10-14T00:00:00+01:00', timezone: 'Europe/London', details: { time_unknown: true } };
+  assert.equal(load(0).bookingOver(untimed, Date.parse('2026-10-14T09:00:00+01:00')), false, 'a day without its time lasts the day');
   const hotel = { kind: 'hotel', starts_at: '2026-10-06T14:00:00+07:00', ends_at: '2026-10-09T12:00:00+07:00' };
   assert.equal(load(0).bookingOver(hotel, Date.parse('2026-10-08T10:00:00+07:00')), false, 'a stated end wins');
 });
