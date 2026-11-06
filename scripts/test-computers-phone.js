@@ -87,10 +87,11 @@ test("full screen on a phone, the sandbox computer's screen takes the phone's sh
   assert.match(page, /window\.addEventListener\('pagehide', function \(\) \{ monLaptopShape\(true\); \}\);/);
 });
 
-// Measured from a phone over the internet (2026-11-06): with
-// x11vnc and noVNC asking for each frame only once the last had come,
-// scrolling showed 4 to 7 frames a second; asking ahead, 11 to 14, and
-// nothing at all while the screen stood still. Xvnc sends frames unasked.
+// Measured from a phone over the internet (2026-11-06): with noVNC asking
+// for each frame only once the last had come, scrolling showed 4 to 7 frames
+// a second; asking ahead, 11 to 14 from x11vnc and 27 to 37 from Xvnc, and
+// nothing at all while the screen stood still. Xvnc's own way, frames sent
+// unasked, each waiting for the last one's fence, gave 5 to 7.
 test("the sandbox computer's screen comes as fast as it changes, and a new size is drawn whole", async () => {
   const { pathToFileURL } = require("node:url");
   const { makeScreen, aheadFor, AHEAD_EVERY_MS } = await import(pathToFileURL(path.join(__dirname, "..", "webapp/public/novnc/closedhand-screen.js")));
@@ -99,6 +100,7 @@ test("the sandbox computer's screen comes as fast as it changes, and a new size 
   let frameDone = false;
   class Base {
     constructor() { this._rfbConnectionState = "connecting"; this._fbWidth = 0; this._fbHeight = 0; this._sock = {}; }
+    _sendEncodings() { messages.clientEncodings(this._sock, [7, -224, -312, -313, -223]); }
     _framebufferUpdate() { return frameDone; }
     _resize(w, h) { this._fbWidth = w; this._fbHeight = h; }
   }
@@ -130,9 +132,14 @@ test("the sandbox computer's screen comes as fast as it changes, and a new size 
   shown = false; tick();
   assert.deepEqual(asked, [], "nothing asked ahead while the page is out of sight");
   shown = true;
-  screen._enabledContinuousUpdates = true; tick(); tick();
-  assert.deepEqual(asked, [], "nothing asked of a server that sends frames unasked (Xvnc)");
-  screen._enabledContinuousUpdates = false;
+  // Fences and continuous updates are not offered: Xvnc then answers each
+  // frame asked for, rather than one per round trip.
+  const offered = [];
+  messages.clientEncodings = (sock, encs) => offered.push(encs);
+  screen._sendEncodings();
+  assert.deepEqual(offered, [[7, -224, -223]]);
+  screen._sendEncodings();
+  assert.equal(offered.length, 2, "noVNC's own way of sending them is left as it was");
 
   // The phone shape: one whole frame of the new size, and only for a size
   // that changed (x11vnc answers each whole frame with the size again).

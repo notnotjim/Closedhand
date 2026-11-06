@@ -8,8 +8,8 @@ const path = require('node:path');
 const entry = fs.readFileSync(path.join(__dirname, '..', 'sandbox-image', 'entrypoint.sh'), 'utf8');
 
 // The screen is laptop-sized unless a phone watching asks for its shape
-// (agent /desktop/shape). Xvnc is the display and shares it: frames go out as
-// the screen changes, with fences, instead of one per round trip when asked.
+// (agent /desktop/shape). Xvnc is the display and shares it, a frame for
+// each the viewer asks for, asked ahead (closedhand-screen.js).
 test('the sandbox screen is laptop-sized, shared by Xvnc on this machine only, and Chrome fits inside it', () => {
   const [, w, h] = entry.match(/gosu sandbox Xvnc :99 -geometry (\d+)x(\d+) -depth 24 -rfbport 5900 -localhost \\\n\s+-SecurityTypes None -AlwaysShared -AcceptSetDesktopSize=0/).map(Number);
   assert.ok(w * h <= 1280 * 800, `the screen, ${w}x${h}, is bigger than 1280x800`);

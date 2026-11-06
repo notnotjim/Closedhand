@@ -19,9 +19,9 @@ chown -R sandbox:sandbox /home/sandbox/.config
 # Chrome already had a supervisor; the display it depends on did not, so an
 # OOM-killed display left Chrome crash-looping on "Missing X server" for ever
 # with nothing to heal it.
-# Xvnc sends each frame as soon as the screen changes (continuous updates),
-# with fences so a slow connection never queues frames up; x11vnc sent one
-# only when asked, one per round trip to whoever watches.
+# Xvnc sends a frame for each one the viewer asks for, and the viewer asks
+# ahead (webapp/public/novnc/closedhand-screen.js); its own way, frames sent
+# unasked, waits for each one's fence and gives one per round trip.
 # The size is what a person watching over the internet pays for: every
 # redraw crosses the tunnel, and at 1920x1080 a full one was about 290 KB,
 # close to a second on a phone. 1280x800 is a normal laptop screen for the

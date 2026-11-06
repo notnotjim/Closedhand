@@ -1,18 +1,22 @@
 // Closedhand's additions to noVNC for the sandbox computer's screen
 // (vnc_lite.html), kept apart from noVNC's own files.
 
-// A server without continuous updates (x11vnc, which the sandbox computer
-// used before Xvnc) sends a frame only when asked, and noVNC asks for the
-// next one only once the last has arrived: one frame per round trip to the
-// computer running Closedhand. Watched from a phone over the internet, that
-// was 4 to 7 frames a second while scrolling, 140 ms apart (2026-11-06). Asking ahead,
-// two frames at most, let it send each frame as soon as the screen changed:
-// 11 to 14 a second on the same connection. A frame that takes longer to
-// arrive than frames come means the connection is what is slow, and asking
-// ahead would only queue frames behind each other, so it asks ahead less,
-// then not at all. A server with continuous updates sends frames unasked,
-// and none are asked for.
+// The server sends a frame when asked, and noVNC asks for the next one only
+// once the last has arrived: one frame per round trip to the computer
+// running Closedhand. Watched from a phone over the internet, that was 4 to 7
+// frames a second while scrolling, 140 ms apart (2026-11-06). Asking ahead,
+// two frames at most, lets it send each frame as soon as the screen changes.
+// A frame that takes longer to arrive than frames come means the connection
+// is what is slow, and asking ahead would only queue frames behind each
+// other, so it asks ahead less, then not at all.
+//
+// Xvnc can send frames unasked instead (continuous updates), but it waits
+// for each one's fence to come back before the next: one frame per round
+// trip again. Over a 110 ms one that was 5 to 7 frames a second while
+// scrolling, when the sandbox itself made 59; asked ahead, the same scroll
+// came at 27 to 37 (2026-11-06). So neither is offered to it.
 export const AHEAD_EVERY_MS = 33;
+const FENCE = -312, CONTINUOUS_UPDATES = -313;
 
 export function aheadFor(arrivalMs) {
     return arrivalMs > 120 ? 0 : arrivalMs > 40 ? 1 : 2;
@@ -41,9 +45,16 @@ export function makeScreen(Base, messages, {
 
         _askAhead() {
             if (this._rfbConnectionState === 'disconnected') { clearInterval(this._aheadTimer); return; }
-            if (this._rfbConnectionState !== 'connected' || this._enabledContinuousUpdates || !visible() || this._ahead >= this._aheadMax) return;
+            if (this._rfbConnectionState !== 'connected' || !visible() || this._ahead >= this._aheadMax) return;
             messages.fbUpdateRequest(this._sock, true, 0, 0, this._fbWidth, this._fbHeight);
             this._ahead++;
+        }
+
+        // noVNC's list without fences and continuous updates (above).
+        _sendEncodings() {
+            const send = messages.clientEncodings;
+            messages.clientEncodings = (sock, encs) => send(sock, encs.filter((e) => e !== FENCE && e !== CONTINUOUS_UPDATES));
+            try { super._sendEncodings(); } finally { messages.clientEncodings = send; }
         }
 
         _framebufferUpdate() {
