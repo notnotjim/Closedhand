@@ -67,23 +67,26 @@ test("two stays far apart on the same nights clash", () => {
   const toronto = { id: "b-yyz-stay", kind: "hotel", title: "Harbourfront Suites", starts_at: "2026-12-11T15:00:00-05:00", ends_at: "2026-12-13T11:00:00-05:00", timezone: YYZ, status: "confirmed" };
   const found = itinerary.clashes({ flights: [], bookings: [stay, toronto], now: NOW });
   assert.deepEqual(found.map((c) => [c.kind, c.items.map((it) => it.id)]), [["stays", ["b-stay", "b-yyz-stay"]]]);
-  const lines = itinerary.lines(found, {});
+  assert.deepEqual(itinerary.lines(found, {}), {}, "nothing before it is judged");
+  const lines = itinerary.lines(found, { clashes: { [found[0].id]: { items: { "b-stay": { state: "asked" }, "b-yyz-stay": { state: "asked" } } } } });
   assert.equal(lines["b-stay"], "Clashes with Harbourfront Suites: both are booked for the same nights.");
   assert.equal(lines["b-yyz-stay"], "Clashes with Casa do Rio, 4 nights: both are booked for the same nights.");
 });
 
 test("each card involved says what it clashes with, in the places Closedhand's look named, until it is settled or found nothing to ask", () => {
   const found = itinerary.clashes({ flights: itinerary.flightsFrom({ ...trip, "flight-XQ309-2026-12-11": early }), bookings: [stay, dentist], now: NOW });
-  assert.deepEqual(itinerary.lines(found, {}), {
+  assert.deepEqual(itinerary.lines(found, {}), {}, "nothing shows before their LLM has judged it: far apart alone is not a clash");
+  const judgedReal = { clashes: { "f:flight-XQ309-2026-12-11": { items: Object.fromEntries(found[0].items.map((it) => [it.id, { state: "real" }])) } } };
+  assert.deepEqual(itinerary.lines(found, judgedReal), {
     "b-stay": "Clashes with XQ309, which flies you to YYZ before this.",
     "b-dent": "Clashes with XQ309, which flies you to YYZ before this.",
     "flight-XQ301-2026-12-14": "Clashes with XQ309, which flies you to YYZ before this.",
     "flight-XQ309-2026-12-11": "Clashes with what's booked after it.",
-  }, "before anything is known of the places");
+  }, "judged real, before the places are named");
   const named = { clashes: { "f:flight-XQ309-2026-12-11": { place: "Toronto", from: "Lisbon", items: { "b-stay": { state: "asked" }, "b-dent": { state: "asked" }, "flight-XQ301-2026-12-14": { state: "asked" } } } } };
   assert.equal(itinerary.lines(found, named)["b-dent"], "Clashes with XQ309: you'd be in Toronto by then.");
   assert.equal(itinerary.lines(found, named)["flight-XQ309-2026-12-11"], "Clashes with your plans in Lisbon after it.");
-  for (const state of ["settled", "quiet"]) {
+  for (const state of ["settled", "quiet", "open"]) {
     const done = { clashes: { "f:flight-XQ309-2026-12-11": { items: Object.fromEntries(found[0].items.map((it) => [it.id, { state }])) } } };
     assert.deepEqual(itinerary.lines(found, done), {}, state);
   }
@@ -114,7 +117,7 @@ test("a clash is judged by the person's LLM and put to them once; a new item cla
   const { mod, restore } = check(facts);
   try {
     const judged = [], told = [];
-    const judge = async (userId, clash, picture, only) => { judged.push([...only]); assert.match(picture, /Flight XQ309: LIS .* -> YYZ/); return { ask: true, message: "Your new XQ309 takes you home on 11 Dec, but you're still booked in Lisbon after it. Are you cutting the trip short?", place: "Toronto", from: "Lisbon" }; };
+    const judge = async (userId, clash, picture, only) => { judged.push([...only]); assert.match(picture, /Flight XQ309: LIS .* -> YYZ/); return { clashing: [...only], ask: true, message: "Your new XQ309 takes you home on 11 Dec, but you're still booked in Lisbon after it. Are you cutting the trip short?", place: "Toronto", from: "Lisbon" }; };
     const tell = async (userId, store, text) => { told.push(text); return true; };
     const r1 = await mod.review("u1", { bookings: [stay], judge, tell, now: NOW });
     assert.deepEqual(r1, { found: 1, asked: 1 });
@@ -145,8 +148,10 @@ test("a clash its look found nothing to ask about stays quiet, and one it could 
     const deps = { bookings: [stay], judge: async () => verdict, tell: async () => { told++; return true; }, now: NOW };
     await mod.review("u1", deps);
     const items = () => Object.values(mod.readRecord(facts).clashes["f:flight-XQ309-2026-12-11"].items).map((it) => it.state);
-    assert.deepEqual(items(), ["open", "open"], "not judged: still open, and the cards say it meanwhile");
-    verdict = { ask: false, message: "", place: "", from: "" };
+    assert.deepEqual(items(), ["open", "open"], "not judged: still open");
+    const found = itinerary.clashes({ flights: itinerary.flightsFrom(facts), bookings: [stay], now: NOW });
+    assert.deepEqual(itinerary.lines(found, mod.readRecord(facts)), {}, "and nothing shows on the cards meanwhile");
+    verdict = { clashing: [], ask: false, message: "", place: "", from: "" };
     await mod.review("u1", deps);
     assert.deepEqual(items(), ["quiet", "quiet"]);
     assert.equal(told, 0);
@@ -158,7 +163,7 @@ test("the person's answer settles it: what no longer stands comes off their plan
   const facts = { ...trip, "flight-XQ309-2026-12-11": early };
   const { mod, removed, restore } = check(facts);
   try {
-    await mod.review("u1", { bookings: [stay, dentist], judge: async () => ({ ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }), tell: async () => true, now: NOW });
+    await mod.review("u1", { bookings: [stay, dentist], judge: async (u, c, p, only) => ({ clashing: [...only], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }), tell: async () => true, now: NOW });
     assert.deepEqual((await mod.settle("u1", { clash: "f:nope" })).error, "No clash with that id. The time block lists the open ones.");
     const r = await mod.settle("u1", { clash: "f:flight-XQ309-2026-12-11", drop: ["b-stay", "b-dent", "flight-XQ301-2026-12-14"] });
     assert.deepEqual(r, { success: true, dropped: ["Casa do Rio, 4 nights", "Check-up at Clinica Alfama", "XQ301"], kept: [] });
@@ -183,4 +188,34 @@ test("the chat can settle a clash, and every scan that brings in a booking or a 
   assert.match(read("lib/engine.js"), /flightDateContext\(ctx\.store\?\.facts, now\) \+ clashContext\(ctx\.store\?\.facts\)/);
   // The webapp works the lines out with the same rules.
   assert.equal(read("webapp/itinerary.js"), read("lib/itinerary.js"));
+});
+
+// Far apart alone is not a clash: the person's LLM says, from what each thing
+// is, which really cannot happen, and only those are shown or asked about.
+test("only what the person's LLM judges a real clash is shown or asked about", async () => {
+  const facts = { ...trip, "flight-XQ309-2026-12-11": early };
+  const { mod, restore } = check(facts);
+  try {
+    const told = [];
+    // The stay needs them there; the check-up, say, turned out to be a video call.
+    const judge = async () => ({ clashing: ["b-stay"], ask: true, message: "Your new XQ309 leaves Lisbon on 11 Dec, but Casa do Rio is booked to the 15th. Are you cutting the trip short?", place: "Toronto", from: "Lisbon" });
+    await mod.review("u1", { bookings: [stay, dentist], judge, tell: async (u, s, t) => { told.push(t); return true; }, now: NOW });
+    const record = mod.readRecord(facts);
+    const states = Object.fromEntries(Object.entries(record.clashes["f:flight-XQ309-2026-12-11"].items).map(([id, it]) => [id, it.state]));
+    assert.equal(states["b-stay"], "asked");
+    assert.equal(states["b-dent"], "quiet", "the call needs nobody there");
+    assert.ok(Object.entries(states).every(([id, st]) => id === "b-stay" || st === "quiet"), "everything else the check noticed stays quiet");
+    const found = itinerary.clashes({ flights: itinerary.flightsFrom(facts), bookings: [stay, dentist], now: NOW });
+    const shown = itinerary.lines(found, record);
+    assert.deepEqual(Object.keys(shown).sort(), ["b-stay", "flight-XQ309-2026-12-11"]);
+    assert.equal(told.length, 1);
+    // Judged real but with nowhere to send the question: shown, and asked about after the next scan.
+    const facts2 = { ...trip, "flight-XQ309-2026-12-11": early };
+    const second = check(facts2);
+    try {
+      await second.mod.review("u1", { bookings: [stay], judge: async () => ({ clashing: ["b-stay"], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }), tell: async () => false, now: NOW });
+      assert.equal(second.mod.readRecord(facts2).clashes["f:flight-XQ309-2026-12-11"].items["b-stay"].state, "real");
+      assert.equal(second.mod.openClashes(facts2).length, 1, "and in Closedhand's picture");
+    } finally { second.restore(); }
+  } finally { restore(); }
 });
