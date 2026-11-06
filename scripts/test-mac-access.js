@@ -89,7 +89,7 @@ test('file errors show recovery for existing access and setup only for an unpair
       _monLocalPath: '~', monLocalCrumb() {}, _monSnapshotState() {},
       fetch: async url => ({ ok: url === '/api/bridge/status', json: async () => data }),
     });
-    vm.runInContext(section(index, '  async function monLoadLocal()', '  async function monLoadStorage()'), context);
+    vm.runInContext(section(index, '  async function monLoadLocal()', '  var _monNavLock = 0;'), context);
     await context.monLoadLocal();
     const html = get('monLocalFiles').innerHTML;
     if (!data.desktop && data.status === 'not_paired') {

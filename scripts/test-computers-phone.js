@@ -24,7 +24,7 @@ test("a phone shows one computer at a time, picked with a switch", () => {
 
 test("the terminal stays off a phone, and its storage line moves beside the status", () => {
   assert.match(phone, /\.mon-term-bar, \.mon-term, #monSyncTip \{ display:none !important; \}/);
-  assert.match(page, /storage\.textContent = online === null \? '' : ' \\u00b7 ' \+ \(data\.storage \|\| '0'\) \+ ' of '/);
+  assert.match(page, /storage\.textContent = online === null \? '' : ' \\u00b7 ' \+ \(data\.storage \|\| '0'\) \+ \(room \? ' of ' \+ room : ''\)/);
 });
 
 test("on a phone a tap opens a folder, or a file's actions as a sheet", () => {
@@ -87,7 +87,7 @@ test("full screen on a phone, the sandbox computer's screen takes the phone's sh
   assert.match(page, /window\.addEventListener\('pagehide', function \(\) \{ monLaptopShape\(true\); \}\);/);
 });
 
-// Measured from another continent than the sandbox computer (2026-11-06): with
+// Measured from a phone over the internet (2026-11-06): with
 // x11vnc and noVNC asking for each frame only once the last had come,
 // scrolling showed 4 to 7 frames a second; asking ahead, 11 to 14, and
 // nothing at all while the screen stood still. Xvnc sends frames unasked.

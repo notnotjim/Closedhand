@@ -5391,7 +5391,6 @@ function switchPageTab(tab) {
       if (typeof monLoadLocal === 'function') monLoadLocal();
     });
     if (typeof monLoadCloud === 'function') monLoadCloud();
-    if (typeof monLoadStorage === 'function') monLoadStorage();
     // Browser (desktop) view is the default; setTimeout so monToggleDesktop
     // exists even when hash routing runs this before later script blocks load.
     setTimeout(function() {
@@ -6536,7 +6535,6 @@ function jsq(s) {
       setOnline();var d=await r.json();monRenderLocal(d.files||[]);_monRestoreState('local',snap);_monAnimateIn('monLocalFiles');}
     catch(e){await setOffline();}
   }
-  async function monLoadStorage(){try{var r=await fetch('/api/sandbox');var d=await r.json();if(d.exists){var u=d.volume_size_used_mb||0,t=d.volume_size_mb||10240;document.getElementById('monStorageLabel').textContent=(u/1024).toFixed(1)+'/'+( t/1024).toFixed(0)+' GB';document.getElementById('monStorageFill').style.width=Math.min(100,(u/t)*100)+'%';}}catch(e){}}
 
   var _monNavLock = 0;
   function monNav(p){if(Date.now()-_monNavLock<500)return;_monNavLock=Date.now();_monCloudPath=p;window._monResetCloudState=true;monLoadCloud();}
@@ -6570,7 +6568,7 @@ function jsq(s) {
   function monUpload(){document.getElementById('monUploadInput').click();}
   async function monHandleUpload(files){
     if(!files||!files.length)return;
-    for(var i=0;i<files.length;i++){var f=files[i],form=new FormData();form.append('file',f);form.append('path',_monCloudPath.replace(/\/$/,'')+'/'+f.name);try{var r=await fetch('/api/sandbox/upload',{method:'POST',body:form});if(!r.ok){var d=await r.json().catch(function(){return {};});console.error('Upload failed:',r.status);if(d.error&&r.status===415)monCopyNotice(d.error);}}catch(e){}}document.getElementById('monUploadInput').value='';monDropFeedback();_monCloudPath='/workspace/Yours';monLoadCloud();monLoadStorage();
+    for(var i=0;i<files.length;i++){var f=files[i],form=new FormData();form.append('file',f);form.append('path',_monCloudPath.replace(/\/$/,'')+'/'+f.name);try{var r=await fetch('/api/sandbox/upload',{method:'POST',body:form});if(!r.ok){var d=await r.json().catch(function(){return {};});console.error('Upload failed:',r.status);if(d.error&&r.status===415)monCopyNotice(d.error);}}catch(e){}}document.getElementById('monUploadInput').value='';monDropFeedback();_monCloudPath='/workspace/Yours';monLoadCloud();
   }
   // A file the sandbox computer doesn't take is refused by the server
   // (upload-types.js); say so here, naming it, instead of leaving it missing.
@@ -7310,10 +7308,11 @@ function jsq(s) {
     var headerText = document.getElementById('monWorkspaceStatusText');
     if (headerText) headerText.textContent = label.charAt(0).toUpperCase() + label.slice(1);
     var storage = document.getElementById('monStoragePhone');
-    if (storage) storage.textContent = online === null ? '' : ' \u00b7 ' + (data.storage || '0') + ' of ' + ((data.volume_size_mb || 5120) / 1024).toFixed(0) + 'GB';
+    var room = data && data.volume_size_mb ? Math.round(data.volume_size_mb / 1024) + 'GB' : '';
+    if (storage) storage.textContent = online === null ? '' : ' \u00b7 ' + (data.storage || '0') + (room ? ' of ' + room : '');
     var status = document.getElementById('monTermStatus');
     if (status) {
-      status.textContent = label + (online === null ? '' : ' | ' + (data.storage || '0') + '/' + ((data.volume_size_mb || 5120) / 1024).toFixed(0) + 'GB');
+      status.textContent = label + (online === null ? '' : ' | ' + (data.storage || '0') + (room ? '/' + room : ''));
       var dot = document.createElement('span');
       dot.className = 'mon-activity-dot ' + state;
       dot.setAttribute('aria-hidden', 'true');
@@ -8014,7 +8013,6 @@ function jsq(s) {
   window.monUnfurl = monUnfurl;
   window.monLoadLocal = monLoadLocal;
   window.monLoadCloud = monLoadCloud;
-  window.monLoadStorage = monLoadStorage;
 
   // Sites to sign in to on the sandbox browser (/api/sandbox/sign-ins). The
   // ticks refresh while the browser is on screen, so they follow the person
@@ -8085,7 +8083,7 @@ function jsq(s) {
   window.monLoadSignins = monLoadSignins;
 
   // Init
-  setTimeout(function(){monLoadCloud();monLoadLocal();monLoadStorage();},300);
+  setTimeout(function(){monLoadCloud();monLoadLocal();},300);
   setTimeout(function(){monLoadSignins(false);},3000);
 
 

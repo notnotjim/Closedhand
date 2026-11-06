@@ -8528,11 +8528,16 @@ app.get("/api/sandbox/activity", async (req, res) => {
 
     // Get storage info
     const info = await getSandboxInfo(userId);
-    let storage = null;
+    // What its files take and the room its disk really has: a stored size
+    // is right only for the Mac app's own disk, while on Docker and Railway
+    // the disk is whatever that computer or volume gives.
+    let storage = null, size = null;
     if (info) {
       try {
-        const storageResp = await sandboxFetch(info, "POST", "/exec", { language: "bash", code: "du -sh /workspace 2>/dev/null | cut -f1" }, 5000);
-        storage = (storageResp.stdout || storageResp.output || "").trim();
+        const storageResp = await sandboxFetch(info, "POST", "/exec", { language: "bash", code: "du -sh /workspace 2>/dev/null | cut -f1; df -m --output=size /workspace 2>/dev/null | tail -1" }, 5000);
+        const [used, total] = String(storageResp.stdout || storageResp.output || "").trim().split("\n");
+        storage = (used || "").trim();
+        size = Number(total) || null;
       } catch (e) { /* sandbox may be sleeping */ }
     }
 
@@ -8550,7 +8555,7 @@ app.get("/api/sandbox/activity", async (req, res) => {
     res.json({
       runs,
       storage: storage || "0",
-      volume_size_mb: info?.volume_size_mb || 5120,
+      volume_size_mb: size || info?.volume_size_mb || null,
       syncs,
       online: !!info,
     });

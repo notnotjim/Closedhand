@@ -4,8 +4,8 @@
 // A server without continuous updates (x11vnc, which the sandbox computer
 // used before Xvnc) sends a frame only when asked, and noVNC asks for the
 // next one only once the last has arrived: one frame per round trip to the
-// computer running Closedhand. From a phone on another continent that was 4
-// to 7 frames a second while scrolling, 140 ms apart (2026-11-06). Asking ahead,
+// computer running Closedhand. Watched from a phone over the internet, that
+// was 4 to 7 frames a second while scrolling, 140 ms apart (2026-11-06). Asking ahead,
 // two frames at most, let it send each frame as soon as the screen changed:
 // 11 to 14 a second on the same connection. A frame that takes longer to
 // arrive than frames come means the connection is what is slow, and asking
