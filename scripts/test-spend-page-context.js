@@ -35,3 +35,19 @@ test('a payment word in a host or return URL does not turn a lookup into checkou
   g.notePage('u', 'https://payments.example.com/search?return=/checkout', 'Search transactions');
   assert.equal(g.spendIntent('sandbox_browse', { _userId: 'u', action: 'click', selector: 'button[type=submit]' }), null);
 });
+
+// An agent asked to fill an Amazon basket clicked "add-to-cart-button" by
+// script on a product page, after looking at the basket, and was stopped with
+// "I'm about to pay": the basket page left from before counted as a checkout.
+test('adding to a basket is never paying, and a step is judged by the page it names', () => {
+  const g = guard();
+  g.notePage('u', 'https://shop.example/gp/cart/view.html', 'Shopping Basket');
+  const add = (script, url = 'https://shop.example/dp/X1') => g.spendIntent('sandbox_browse', { _userId: 'u', action: 'eval_js', url, browser: 'visible', script });
+  assert.equal(add("(()=>{const b=document.getElementById('add-to-cart-button');if(!b)return 'NO BUTTON | '+document.title;b.click();return 'clicked | '+document.title;})()"), null);
+  assert.equal(g.spendIntent('sandbox_browse', { _userId: 'u', action: 'click', selector: '#add-to-cart-button' }), null, 'a click that adds, even on the basket page');
+  assert.equal(g.spendIntent('sandbox_browse', { _userId: 'u', action: 'click', selector: 'input[name="submit.add-to-cart"]' }), null);
+  assert.ok(add("document.getElementById('add-to-cart-button').click(); document.getElementById('buy-now-button').click()"), 'adding and buying in one script is still stopped');
+  assert.ok(add("document.querySelector('#place-your-order').click()", 'https://shop.example/checkout/spc'), 'and so is any click on a checkout it names');
+  assert.ok(add("document.querySelector('button.primary').click()", null), 'a script with no page of its own is judged by the basket it is on');
+  assert.ok(g.spendIntent('sandbox_browse', { _userId: 'u', action: 'click', selector: 'text=Proceed to checkout' }), 'going to the checkout is still asked about');
+});
