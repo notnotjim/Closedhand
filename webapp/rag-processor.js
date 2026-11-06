@@ -194,17 +194,39 @@ function clock(seconds) {
   const t = Math.max(0, Math.round(Number(seconds) || 0)), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60;
   return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(t % 60).padStart(2, "0");
 }
+// A POST answered whenever the work is done, up to `ms`: fetch gives up when
+// no answer has begun within five minutes, and a 17-minute 4K video took
+// longer than that to arrive and be heard ("fetch failed"). `body` is bytes,
+// or a stream of them (a web stream from fetch, or Node's).
+function waitedPost(url, body, headers, ms) {
+  const { Readable } = require("stream");
+  const client = require(url.startsWith("https:") ? "https" : "http");
+  return new Promise((resolve, reject) => {
+    const req = client.request(url, { method: "POST", headers }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, text: Buffer.concat(chunks).toString("utf8") }));
+      res.on("error", reject);
+    });
+    req.setTimeout(ms, () => req.destroy(new Error("hearing took too long")));
+    req.on("error", reject);
+    if (Buffer.isBuffer(body)) return req.end(body);
+    const stream = typeof body.pipe === "function" ? body : Readable.fromWeb(body);
+    stream.on("error", (e) => req.destroy(e));
+    stream.pipe(req);
+  });
+}
+
 // `file` is its bytes, or a stream of them as they arrive from where it is
 // kept, passed straight on: the bot writes it to disk (lib/hear-route.js), so
 // neither holds a file of any size whole.
 async function hearFile(file, fileName, video, userId, media = null) {
   const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
   const query = new URLSearchParams({ name: fileName, ...(video ? { video: "1", frames: String(VIDEO_FRAMES) } : {}), ...(media ? { vectors: "1" } : {}) });
-  const res = await fetch(`${BOT_INTERNAL_URL}/internal/hear?${query}`, {
-    method: "POST", body: file, ...(Buffer.isBuffer(file) ? {} : { duplex: "half" }), signal: AbortSignal.timeout(12 * 3600000),
-    headers: { "Content-Type": "application/octet-stream", "x-closedhand-token": botToken(userId) },
-  });
-  const heard = await res.json().catch(() => ({}));
+  const res = await waitedPost(`${BOT_INTERNAL_URL}/internal/hear?${query}`, file,
+    { "Content-Type": "application/octet-stream", "x-closedhand-token": botToken(userId) }, 12 * 3600000);
+  let heard = {};
+  try { heard = JSON.parse(res.text); } catch (_) {}
   if (!res.ok) throw new Error(heard.error || "Closedhand couldn't hear this file just now.");
   const seen = [];
   for (const f of heard.frames || []) {

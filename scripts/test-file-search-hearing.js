@@ -232,3 +232,24 @@ test("a recording or video cut off while it was heard waits its turn again, twic
   assert.deepEqual([row("d1").status, row("d1").error_message], ["error", "Reading it was cut off. Update reads it again."], "a document is marked as before");
   assert.deepEqual([row("v4").status, row("v4").metadata.hear_cuts], ["error", 3], "one past its cuts is left to its tries");
 });
+
+// fetch gives up when no answer has begun within five minutes: a 17-minute 4K
+// video took longer than that to arrive and be heard, and failed as "fetch
+// failed". The bot is waited for as long as hearing takes, up to 12 hours.
+test("a recording is waited for as long as it takes to hear, not fetch's five minutes", async () => {
+  const rag = read("webapp/rag-processor.js");
+  const hear = rag.slice(rag.indexOf("async function hearFile("), rag.indexOf("async function hearFile(") + 600);
+  assert.match(hear, /await waitedPost\(`\$\{BOT_INTERNAL_URL\}\/internal\/hear\?\$\{query\}`, file,/);
+  assert.doesNotMatch(hear, /\bfetch\(/);
+  // A web stream (fetch's body, as a file arrives from Drive) goes to the bot as it arrives.
+  const bot = await standInBot();
+  try {
+    const tables = {};
+    const r = loadFileSearch(tables, bot);
+    const parts = [Buffer.alloc(64 * 1024, 1), Buffer.alloc(64 * 1024, 2)];
+    const stream = new ReadableStream({ pull(c) { const p = parts.shift(); if (p) c.enqueue(p); else c.close(); } });
+    const text = await r.hearFile(stream, "Harbour walk.mov", true, "u1");
+    assert.match(text, /Welcome to Harbour walk\.mov/);
+    assert.deepEqual(bot.heard.at(-1), { name: "Harbour walk.mov", bytes: 128 * 1024, chunked: true });
+  } finally { bot.close(); }
+});

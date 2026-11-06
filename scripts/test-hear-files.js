@@ -248,7 +248,7 @@ test('File Search, the web chat and saved files all hear recordings and videos',
   const rag = read('webapp/rag-processor.js');
   for (const ext of ['mp3', 'm4a', 'wav', 'mp4', 'mov', 'webm']) assert.match(rag, new RegExp(`"${ext}"`), ext);
   assert.match(rag, /if \(read\.kind === "audio" \|\| read\.kind === "video"\) return hearFile\(/);
-  assert.match(rag, /fetch\(`\$\{BOT_INTERNAL_URL\}\/internal\/hear\?\$\{query\}`/);
+  assert.match(rag, /waitedPost\(`\$\{BOT_INTERNAL_URL\}\/internal\/hear\?\$\{query\}`/);
   assert.match(rag, /"x-closedhand-token": botToken\(userId\)/);
   assert.match(read('index.js'), /require\("\.\/lib\/hear-route"\)\.register\(ctx\.expressApp\);/);
   const engine = read('lib/engine.js');
