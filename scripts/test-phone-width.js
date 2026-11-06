@@ -78,7 +78,16 @@ function launch(bin) {
     pending.set(n, (m) => (m.error ? reject(new Error(method + ': ' + m.error.message)) : resolve(m.result)));
     proc.stdio[3].write(JSON.stringify({ id: n, method, params, sessionId }) + '\0');
   });
-  const close = () => { try { proc.kill(); } catch {} setTimeout(() => fs.rmSync(dir, { recursive: true, force: true }), 300); };
+  // Chrome's profile goes once Chrome has exited: removed on a timer, it was
+  // sometimes still being written as Chrome shut down, and the error came
+  // after the test had ended.
+  const close = () => new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch {} resolve(); };
+    proc.once('exit', finish);
+    setTimeout(finish, 5000).unref();
+    try { proc.kill(); } catch { finish(); }
+  });
   return { send, close };
 }
 
@@ -154,7 +163,7 @@ test('no page is wider than a phone screen, whatever is moving on it', { timeout
       }
     }
   } finally {
-    close();
+    await close();
     server.close();
   }
   assert.deepEqual(found, [], 'pages wider than the screen:\n' + found.join('\n'));
