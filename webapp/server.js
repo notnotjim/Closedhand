@@ -6847,7 +6847,10 @@ async function sourceMail(userId, { emailId, reference } = {}) {
   const openUrl = source ? openUrlFor(source) : null;
   // Which mailbox the email opens in, so the card can show its mark.
   const mailbox = /^https:\/\/mail\.google\.com\//.test(openUrl || "") ? "gmail" : /^https:\/\/outlook\./.test(openUrl || "") ? "outlook" : null;
-  return { open_url: openUrl, mailbox, documents };
+  // Closedhand's own copy too, for where the mailbox's address can't open
+  // this one email (Gmail on an iPhone, see /mail).
+  const copyUrl = source ? "/mail?" + mailQuery(source.source, source.external_id) : null;
+  return { open_url: openUrl, copy_url: copyUrl, mailbox, documents };
 }
 
 // A booking is over once it ends. Most don't say when they end: an all-day
@@ -6907,7 +6910,12 @@ app.get("/api/mail/attachment", async (req, res) => {
 });
 
 // Closedhand's own copy of one email, for mail with no web address of its
-// own (IMAP): who sent it, when, what it says and its files.
+// own (IMAP), and for Gmail on an iPhone or iPad: who sent it, when, what it
+// says and its files. There a Gmail address opens in Safari on Gmail's phone
+// site, which starts at the inbox; Google lets the Gmail app take no links
+// from mail.google.com (only saved passwords), and the app's own
+// googlegmail: opens it but cannot be pointed at one email. So the card
+// opens this copy, and "Open in Gmail" here opens the app.
 app.get("/mail", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.redirect("/login?next=" + encodeURIComponent(req.originalUrl || "/"));
@@ -6922,10 +6930,14 @@ app.get("/mail", async (req, res) => {
     const e = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const when = m.date && !isNaN(Date.parse(m.date)) ? new Date(m.date).toUTCString() : e(m.date);
     const files = mailFiles(m).map((f, n) => `<a class="file" href="/api/mail/attachment?${e(mailQuery(source, id))}&amp;n=${n}" target="_blank" rel="noopener">${e(f.filename)}</a>`).join("");
+    const web = openUrlFor({ source, external_id: id, data: m });
+    const gmail = /^https:\/\/mail\.google\.com\//.test(web);
+    const ios = /\biP(hone|ad|od)\b/.test(String(req.get("user-agent") || ""));
+    const own = web.startsWith("https://") ? `<a class="open" href="${e(gmail && ios ? "googlegmail://" : web)}">Open in ${gmail ? "Gmail" : "Outlook"}</a>` : "";
     res.set({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'" });
     res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><title>${e(m.subject || "Email")}</title>
-<style>html{font-size:100%}@media screen and (hover:hover) and (pointer:fine){html{font-size:90%}}body{margin:0;background:#111;color:#EFE6D6;font:0.9375rem/1.55 -apple-system,system-ui,sans-serif}main{max-width:47.5rem;margin:0 auto;padding:1.5rem 1rem 3rem}h1{font-size:1.25rem;line-height:1.3;margin:0 0 0.75rem}.meta{color:#B6AFA4;font-size:0.8125rem;margin:0 0 0.25rem}.files{display:flex;flex-wrap:wrap;gap:0.5rem;margin:1rem 0}.file{border:1px solid rgba(239,230,214,.16);border-radius:0.375rem;padding:0.25rem 0.625rem;color:#EFE6D6;text-decoration:none;font-size:0.8125rem}.body{white-space:pre-wrap;word-wrap:break-word;margin-top:1.25rem;border-top:1px solid rgba(239,230,214,.12);padding-top:1rem}</style></head>
-<body><main><h1>${e(m.subject || "(no subject)")}</h1><p class="meta">From ${e(m.from)}</p>${m.to ? `<p class="meta">To ${e(m.to)}</p>` : ""}<p class="meta">${when}</p>${files ? `<div class="files">${files}</div>` : ""}<div class="body">${e(m.body || m.snippet || "")}</div></main></body></html>`);
+<style>html{font-size:100%}@media screen and (hover:hover) and (pointer:fine){html{font-size:90%}}body{margin:0;background:#111;color:#EFE6D6;font:0.9375rem/1.55 -apple-system,system-ui,sans-serif}main{max-width:47.5rem;margin:0 auto;padding:1.5rem 1rem 3rem}h1{font-size:1.25rem;line-height:1.3;margin:0 0 0.75rem}.meta{color:#B6AFA4;font-size:0.8125rem;margin:0 0 0.25rem}.files{display:flex;flex-wrap:wrap;gap:0.5rem;margin:1rem 0}.file{border:1px solid rgba(239,230,214,.16);border-radius:0.375rem;padding:0.25rem 0.625rem;color:#EFE6D6;text-decoration:none;font-size:0.8125rem}.body{white-space:pre-wrap;word-wrap:break-word;margin-top:1.25rem;border-top:1px solid rgba(239,230,214,.12);padding-top:1rem}.open{display:inline-block;margin:0.75rem 0 0;border:1px solid rgba(239,230,214,.24);border-radius:0.5rem;padding:0.375rem 0.875rem;color:#EFE6D6;text-decoration:none;font-size:0.875rem}</style></head>
+<body><main><h1>${e(m.subject || "(no subject)")}</h1><p class="meta">From ${e(m.from)}</p>${m.to ? `<p class="meta">To ${e(m.to)}</p>` : ""}<p class="meta">${when}</p>${own}${files ? `<div class="files">${files}</div>` : ""}<div class="body">${e(m.body || m.snippet || "")}</div></main></body></html>`);
   } catch (err) {
     console.error("[mail] view error:", err.message);
     res.status(500).send("Could not open that email. Try again.");

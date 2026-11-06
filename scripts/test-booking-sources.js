@@ -44,6 +44,7 @@ function load(now) {
 test('a flight opens its own email in the right account, with the files worth having from every email naming the booking', async () => {
   const sm = JSON.parse(JSON.stringify(await load(Date.now()).sourceMail('u1', { emailId: 'order11', reference: 'QZX7KP' })));
   assert.equal(sm.open_url, 'https://mail.google.com/mail/?authuser=pat%40example.com#all/thr11');
+  assert.equal(sm.copy_url, '/mail?source=gmail&id=order11', "and Closedhand's own copy, for an iPhone");
   assert.equal(sm.mailbox, 'gmail');
   assert.deepEqual(sm.documents.map((d) => d.name), ['E-ticket QZX7KP.pdf', 'Boarding pass.pkpass'],
     'Gmail and Outlook alike; inline pictures, calendar files, terms and receipts left out');
@@ -95,6 +96,18 @@ test('the file route is behind the login, checks its inputs, asks the bot and ne
   const view = server.slice(server.indexOf('app.get("/mail"'), server.indexOf('app.get("/api/bookings"'));
   assert.match(view, /if \(!userId\) return res\.redirect\("\/login/);
   assert.match(view, /"Content-Security-Policy": "default-src 'none'/, 'Closedhand\'s copy of an email runs no script');
+});
+
+// On an iPhone a Gmail address opened Gmail's phone site at the inbox, in
+// Safari: the Gmail app takes no links from mail.google.com.
+test("on an iPhone a Gmail email opens as Closedhand keeps it, with Open in Gmail opening the Gmail app", () => {
+  const dash = read('webapp/views/dashboard.html');
+  assert.match(dash, /var IOS = \/\\biP\(hone\|ad\|od\)\\b\/\.test\(navigator\.userAgent\);/);
+  assert.match(dash, /var mail = sm && \(IOS && sm\.mailbox === 'gmail' && sm\.copy_url \? sm\.copy_url : sm\.open_url\);/, 'Outlook and every other phone keep the mailbox\'s own address');
+  const view = server.slice(server.indexOf('app.get("/mail"'), server.indexOf('app.get("/api/bookings"'));
+  assert.match(view, /const ios = \/\\biP\(hone\|ad\|od\)\\b\/\.test\(String\(req\.get\("user-agent"\) \|\| ""\)\);/);
+  assert.match(view, /href="\$\{e\(gmail && ios \? "googlegmail:\/\/" : web\)\}">Open in \$\{gmail \? "Gmail" : "Outlook"\}<\/a>/, 'the app on an iPhone, the mailbox\'s own address elsewhere');
+  assert.match(view, /const own = web\.startsWith\("https:\/\/"\)/, 'only mail with a trusted address of its own gets the link');
 });
 
 test('the dashboard opens the email from its own chip, lists the files and moves finished bookings to Past', () => {
