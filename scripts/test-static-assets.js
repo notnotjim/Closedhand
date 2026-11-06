@@ -48,8 +48,7 @@ test("the screen viewer names its code with each file's hash, and a changed file
   const viewer = response({ v: hashOf('novnc/closedhand-screen.js') }); assets.cacheHeaders(viewer, path.join(publicDir, 'novnc', 'closedhand-screen.js'));
   assert.equal(viewer.headers['Cache-Control'], 'public, max-age=31536000, immutable');
   const server = fs.readFileSync(path.join(__dirname, '..', 'webapp', 'server.js'), 'utf8');
-  assert.match(server, /app\.get\("\/novnc\/vnc_lite\.html", \(req, res\) => \{\n\s*res\.set\("Cache-Control", "no-cache"\);\n\s*res\.type\("html"\)\.send\(assets\.stampImports\(/);
-  assert.ok(server.indexOf('app.get("/novnc/vnc_lite.html"') < server.indexOf('app.use("/novnc", express.static('), 'before the folder itself');
+  assert.match(server, /app\.use\("\/novnc", \(req, res, next\) => \{\n\s*if \(req\.method !== "GET" \|\| req\.path !== "\/vnc_lite\.html"\) return next\(\);\n\s*res\.set\("Cache-Control", "no-cache"\);\n\s*res\.type\("html"\)\.send\(assets\.stampImports\([\s\S]*?\}, express\.static\(path\.join\(__dirname, "public", "novnc"\), \{ setHeaders: assets\.cacheHeaders \}\)\);/, 'the page first, then the folder');
 });
 test('every served page is stamped', () => {
   for (const name of fs.readdirSync(path.join(__dirname, '..', 'webapp', 'views')).filter(f => f.endsWith('.html'))) {

@@ -87,11 +87,11 @@ app.use("/api", (req, res, next) => {
 // The screen viewer names its code with each file's hash, as every page does
 // (assets.stamp): by plain names, Cloudflare had browsers keep the old code
 // four hours after a change. A file asked for with its current hash is kept.
-app.get("/novnc/vnc_lite.html", (req, res) => {
+app.use("/novnc", (req, res, next) => {
+  if (req.method !== "GET" || req.path !== "/vnc_lite.html") return next();
   res.set("Cache-Control", "no-cache");
   res.type("html").send(assets.stampImports(require("fs").readFileSync(path.join(__dirname, "public", "novnc", "vnc_lite.html"), "utf8"), "/novnc/"));
-});
-app.use("/novnc", express.static(path.join(__dirname, "public", "novnc"), { setHeaders: assets.cacheHeaders }));
+}, express.static(path.join(__dirname, "public", "novnc"), { setHeaders: assets.cacheHeaders }));
 
 // Local-storage public route: serves ONLY the `logos` bucket (rendered in the
 // browser via getPublicUrl). Attachments stay private — fetched via the authed
