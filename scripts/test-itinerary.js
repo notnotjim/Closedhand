@@ -219,3 +219,11 @@ test("only what the person's LLM judges a real clash is shown or asked about", a
     } finally { second.restore(); }
   } finally { restore(); }
 });
+
+// A flight found before this check existed was never judged: review ran only
+// after a scan that found a booking. Every scheduled bookings pass reviews.
+test("every scheduled bookings pass judges clashes, not only one that found a booking", () => {
+  const src = read("lib/bookings.js");
+  const pass = src.slice(src.indexOf("const pass = async () => {"), src.indexOf("setTimeout(pass, FIRST_SCAN_DELAY_MS)"));
+  assert.match(pass, /await scanBookings\(u\.userId\);\n[\s\S]*?try \{ await require\("\.\/itinerary-check"\)\.review\(u\.userId\); \}/);
+});
