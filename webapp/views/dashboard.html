@@ -4799,12 +4799,12 @@
     function renderIncludedPlan(data) {
       var plan = data.plan || {}, inUse = data.state === 'in-use';
       var after = inUse ? ' After that Closedhand needs your own LLM provider to reply.' : '';
-      var said, tail = " Your plan and this month's use are in ";
+      var said, tail = " Your plan and this month's use are in ", end = '.';
       // Most of this month's fair use used: in how many days it renews, as My Account says.
       var renew = data.nearly && plan.fair_use_renews_at ? ' ' + fairUseRenewsIn(plan.fair_use_renews_at) : '';
       if (plan.name === 'maintainer') { said = 'Closedhand Managed Models are on for your account as the maintainer, with no charge' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.'; tail = " This month's use is in "; }
       else if (plan.name === 'ahead') { said = 'Closedhand Managed Models are paid ahead until ' + planDay(plan.ends_at) + '.' + renew + after; }
-      else if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or ' + (plan.was === 'ahead' ? 'pay ahead again' : 'subscribe again') + ' in '; tail = ''; }
+      else if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. ' + (plan.was === 'ahead' ? 'Pay ahead again' : 'Subscribe again') + ' in '; tail = ''; end = ', or use your own LLM provider (free ones work too).'; }
       else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'Closedhand Managed Models come with your free 14 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
       else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'Closedhand Managed Models come with your free 14 days.'; }
       else if (plan.name === 'plus' && plan.ends_at) { said = 'Closedhand Managed Models come with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + renew + after; tail = ' Resume it in '; }
@@ -4813,7 +4813,7 @@
         var left = Date.parse(plan.ends_at) - Date.now();
         said = left > 0 && left <= 3 * 86400000 ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.ends_at) + '.' : 'Closedhand Managed Models come with your free 14 days.';
       }
-      document.getElementById('included-ai-plan').replaceChildren(said + tail, accountLink('My Account'), '.');
+      document.getElementById('included-ai-plan').replaceChildren(said + tail, accountLink('My Account'), end);
     }
     var includedState = null, llmStep = null;
     async function loadIncludedAi() {

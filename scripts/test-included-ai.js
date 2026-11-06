@@ -207,21 +207,21 @@ test("what is left is what closedhand.com last said: a NEAR key can't read it it
   for (const f of ["lib/included-ai.js", "webapp/included-ai.js"]) assert.doesNotMatch(fs.readFileSync(path.join(root, f), "utf8"), /openrouter/i);
 });
 
-test("what Closedhand says about Managed Models follows the plan, own provider first, never money", () => {
+test("what Closedhand says about Managed Models follows the plan, keeping them first, never money", () => {
   const included = require("../lib/included-ai");
   const link = "https://alex.closedhand.ai/dashboard#settings";
   const first = { name: "first-month", ends_at: "2026-03-21T10:00:00.000Z", email: false };
   assert.equal(included.endingText(first, link, false, "Europe/London"),
-    "Closedhand Managed Models, the LLM I've been using since you set me up, stays on until 21 March. After that, connect your own LLM provider in the dashboard (https://alex.closedhand.ai/dashboard#settings) (free ones work too), or keep Managed Models with a subscription at closedhand.com/subscribe.");
-  assert.match(included.endingText({ ...first, email: true }, link, false, "Europe/London"), /with a subscription, which also keeps Closedhand's own email address, at closedhand\.com\/subscribe\.$/);
+    "Closedhand Managed Models, the LLM I've been using since you set me up, stays on until 21 March. After that, keep Managed Models with a subscription at closedhand.com/subscribe, or connect your own LLM provider in the dashboard (https://alex.closedhand.ai/dashboard#settings) (free ones work too).");
+  assert.match(included.endingText({ ...first, email: true }, link, false, "Europe/London"), /with a subscription, which also keeps Closedhand's own email address, at closedhand\.com\/subscribe, or connect/);
   assert.match(included.endingText({ ...first, ends_at: "2026-03-21T23:30:00.000Z" }, link, false, "Asia/Tokyo"), /until 22 March\./, "the day where the person is");
   assert.equal(included.nearlyUsedText(first, link, false),
-    "You've used most of the fair use of Closedhand Managed Models. To carry on without a break, connect your own LLM provider in the dashboard (https://alex.closedhand.ai/dashboard#settings) (free ones work too), or keep Managed Models with a subscription at closedhand.com/subscribe.");
+    "You've used most of the fair use of Closedhand Managed Models. To carry on without a break, keep Managed Models with a subscription at closedhand.com/subscribe, or connect your own LLM provider in the dashboard (https://alex.closedhand.ai/dashboard#settings) (free ones work too).");
   assert.equal(included.nearlyUsedText({ name: "plus" }, "/dashboard#settings", true),
     "You've used most of this month's fair use of Managed Models. To carry on without a break, [carry on to the end of the month](https://closedhand.com/carry-on), or connect your own LLM provider in the [dashboard](/dashboard#settings).");
   assert.doesNotMatch(included.nearlyUsedText({ name: "plus", extended: true }, link, false), /end of the month at/, "never offered twice in a month");
   assert.equal(included.usedUpText(first, link, false, "Europe/London"),
-    "You've reached the fair use of Closedhand Managed Models, so I can't reply for now. Connect your own LLM provider in the dashboard (https://alex.closedhand.ai/dashboard#settings) (free ones work too) and I'll carry on, or keep Managed Models with a subscription at closedhand.com/subscribe.");
+    "You've reached the fair use of Closedhand Managed Models, so I can't reply for now. Keep Managed Models with a subscription at closedhand.com/subscribe and I'll carry on, or connect your own LLM provider in the dashboard (https://alex.closedhand.ai/dashboard#settings) (free ones work too).");
   assert.equal(included.usedUpText({ name: "plus", renews_at: "2026-12-15T00:00:00.000Z", fair_use_renews_at: "2026-12-15T00:00:00.000Z" }, link, false, "Europe/London"),
     "You've reached this month's fair use of Managed Models, so I can't reply until 15 December. Carry on to the end of the month at closedhand.com/carry-on, or connect your own LLM provider in the dashboard (https://alex.closedhand.ai/dashboard#settings).", "back on the day it renews, not the 1st");
   assert.equal(included.usedUpText({ name: "plus", ends_at: "2026-12-15T00:00:00.000Z", extended: true }, link, false, "Europe/London"),
@@ -235,8 +235,8 @@ test("what Closedhand says about Managed Models follows the plan, own provider f
   assert.match(included.usedUpText({ name: "ahead", ends_at: "2027-02-01T00:00:00.000Z", fair_use_renews_at: "2026-12-01T00:00:00.000Z" }, link, false, "Europe/London"), /until 1 December\. Carry on to the end of the month at closedhand\.com\/carry-on/);
   assert.equal(included.nearlyUsedText({ name: "ahead" }, link, false), included.nearlyUsedText({ name: "plus" }, link, false), "the same words for every plan");
   assert.doesNotMatch(included.nearlyUsedText({ name: "ahead", extended: true }, link, false), /end of the month at/);
-  assert.match(included.usedUpText({ name: "ended", was: "plus" }, link, false), /^Your subscription to Managed Models has ended, so I can't reply for now\. .* or subscribe again at closedhand\.com\/subscribe\.$/);
-  assert.match(included.usedUpText({ name: "ended", was: "first-month" }, link, false), /^Closedhand Managed Models have ended, so I can't reply for now\. .* or keep Managed Models with a subscription at closedhand\.com\/subscribe\.$/);
+  assert.match(included.usedUpText({ name: "ended", was: "plus" }, link, false), /^Your subscription to Managed Models has ended, so I can't reply for now\. Subscribe again at closedhand\.com\/subscribe and I'll carry on, or connect your own LLM provider/);
+  assert.match(included.usedUpText({ name: "ended", was: "first-month" }, link, false), /^Closedhand Managed Models have ended, so I can't reply for now\. Keep Managed Models with a subscription at closedhand\.com\/subscribe and I'll carry on, or connect your own LLM provider/);
   assert.equal(included.usedUpText({ name: "ended" }, link, false), included.usedUpText({ name: "ended", was: "first-month" }, link, false), "unknown: the free days' words");
   assert.equal(included.usedUpText(undefined, link, false), included.usedUpText(first, link, false), "no plan known yet: as free days");
   assert.equal(included.period(first), "first-month:2026-03-21T10:00:00.000Z");
@@ -251,11 +251,10 @@ test("what Closedhand says about Managed Models follows the plan, own provider f
     included.usedUpText({ name: "ended" }, null, false), included.accountProblemText(402, null, false), included.accountProblemText(401, null, false)];
   for (const text of all) assert.doesNotMatch(text, /\bAI\b(?! key)/, "the LLM is the LLM, never 'AI': " + text);
   for (const text of all.slice(0, 7)) assert.doesNotMatch(text, /\$|%|credit|tokens?\b|free until|trial/i, "no money, shares, tokens or trial words: " + text);
-  // Their own provider is offered first wherever a Managed Models message offers both.
+  // Keeping Managed Models is offered first wherever a message offers both.
   for (const text of all.slice(0, 7)) {
-    const own = text.indexOf("your own LLM provider"), plus = text.search(/with a subscription|end of the month at|subscribe again/);
-    // A subscriber chose Managed Models: carrying on comes first for them.
-    if (own >= 0 && plus >= 0 && !/this month's fair use of Managed Models/.test(text)) assert.ok(own < plus, "own provider first: " + text);
+    const own = text.indexOf("your own LLM provider"), plus = text.search(/with a subscription|end of the month|[Ss]ubscribe again|[Pp]ay ahead again/);
+    if (own >= 0 && plus >= 0) assert.ok(plus < own, "Managed Models first: " + text);
   }
 });
 
@@ -293,7 +292,7 @@ test("the free 14 days: most of the fair use is said once, and their end once, i
   store.box.settings.included_ai.plan.ends_at = new Date(Date.now() + 2.5 * 86400000).toISOString();
   store.box.settings.included_told.nearly = "first-month:" + store.box.settings.included_ai.plan.ends_at;
   assert.equal(await job.check(), 1);
-  assert.match(told[1], /^Closedhand Managed Models, the LLM I've been using since you set me up, stays on until \d{1,2} [A-Z][a-z]+\. After that, connect your own LLM provider/);
+  assert.match(told[1], /^Closedhand Managed Models, the LLM I've been using since you set me up, stays on until \d{1,2} [A-Z][a-z]+\. After that, keep Managed Models with a subscription/);
   assert.equal(await job.check(), 0, "the end is said once");
   assert.equal(told.length, 2);
 });
@@ -441,7 +440,7 @@ test("Settings says in one sentence what the person's plan means for Managed Mod
   assert.equal(plan({ state: "available", plan: { name: "plus" } }), "Closedhand Managed Models come with your subscription." + link);
   assert.equal(plan({ plan: { name: "first-month", ends_at: day(5) } }), "Closedhand Managed Models come with your free 14 days." + link, "the free days' end only in their last three days");
   assert.match(plan({ plan: { name: "first-month", ends_at: day(2) } }), /^Closedhand Managed Models come with your free 14 days, until \d+ \w+\./);
-  assert.equal(plan({ state: "in-use", plan: { name: "ended", was: "plus" } }), "Closedhand Managed Models have ended. Use your own LLM provider (free ones work too), or subscribe again in [My Account](#account).", "an ended plan is said here too: Closedhand stops answering with it");
+  assert.equal(plan({ state: "in-use", plan: { name: "ended", was: "plus" } }), "Closedhand Managed Models have ended. Subscribe again in [My Account](#account), or use your own LLM provider (free ones work too).", "an ended plan is said here too: Closedhand stops answering with it");
   const page = fs.readFileSync(path.join(root, "webapp/views/dashboard.html"), "utf8");
   const card = page.slice(page.indexOf('<section class="choice-card" id="llm-managed"'), page.indexOf("</section>", page.indexOf('<section class="choice-card" id="llm-managed"')));
   assert.doesNotMatch(card, />Resume<\/button>|id="included-ai-plan-status"|Your subscription/, "no subscription row beside the way to use them: that is My Account's");
@@ -659,7 +658,7 @@ test("14 free days per person: the chat offers no second ones, and the subscript
   const { endingText, nearlyUsedText, usedUpText } = require("../lib/included-ai");
   const ending = { name: "first-month", ends_at: "2026-11-20T00:00:00Z" };
   for (const text of [endingText(ending, null, false, "UTC"), nearlyUsedText(ending, null, false), usedUpText({ name: "ended", was: "first-month" }, null, false, "UTC")]) {
-    assert.match(text, /keep Managed Models with a subscription at closedhand\.com\/subscribe\.$/);
+    assert.match(text, /[Kk]eep Managed Models with a subscription at closedhand\.com\/subscribe[ ,]/);
     assert.doesNotMatch(text, /free,|is free|days free/, "the free days were the free ones");
   }
   assert.doesNotMatch(fs.readFileSync(path.join(root, "lib/included-ai.js"), "utf8"), /firstFree|plus_trial/);
@@ -716,7 +715,7 @@ test("the Managed Models page: approved words, the price and LLM where the perso
   const script = read("closedhand-com/public/managed-models.js");
   assert.match(script, /fetch\('\/api\/managed-models'/);
   assert.match(read("closedhand-com/lib/plus.js"), /app\.get\('\/api\/managed-models'[\s\S]{0,900}price: \(await prices\(req\.get\('cf-ipcountry'\)\)\)\?\.plus \|\| null,\n\s+longer: await longerPrices\(req\.get\('cf-ipcountry'\)\),\n\s+crypto: ahead \? ahead\.options\(\)\.crypto \|\| \[\] : \[\],\n\s+model: includedAi\?\.current\(\)\?\.name \|\| null,/);
-  assert.match(read("closedhand-com/views/home.html"), /Or <a href="\/managed-models">Closedhand Managed Models<\/a>, which run in sealed hardware, so nobody but you can read what you send\./);
+  assert.match(read("closedhand-com/views/home.html"), /Closedhand uses an uncensored \(abliterated\), encrypted LLM by default via <a href="\/managed-models">Managed Models<\/a>\. For those who prefer to bring their own LLM key instead, Closedhand works with any model of your choosing\./, "the home page leads with Managed Models");
   assert.match(read("closedhand-com/public/account.js"), /about\.href = '\/managed-models'; about\.textContent = 'Closedhand Managed Models';/);
   // Closedhand's own address comes with Managed Models: locked, with Unlock to what they include.
   const card = read("webapp/public/assistant-email.js");

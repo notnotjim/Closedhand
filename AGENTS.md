@@ -253,15 +253,18 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   cancelling, keeping and invoices go through closedhand.com; closedhand.com/subscribe is the
   one-tap link chat gives. Usage shows what Closedhand has been doing, with costs only for the
   person's own LLM provider, whose bill it is; Managed Models use is shown by that name alone.
-- Closedhand is free software that runs with any LLM the person chooses through their own API key,
-  free ones included; that is the main path. Managed Models and their subscription are
-  conveniences. Each person has 14 free days of Managed Models, ever, which need no card; an
+- Closedhand uses Managed Models by default, and copy leads with them: an uncensored LLM that nobody
+  but the person can read. Closedhand is also free software that runs with any LLM the person
+  chooses through their own API key, free ones included, said as their choice, plainly, never
+  pushed. Each person has 14 free days of Managed Models, ever, which need no card; an
   account made with an account number has none, and pays ahead in crypto only. Someone who did not
   get them then has the subscription's first 14 days free instead (Polar's trial: the card is
   taken at checkout, nothing is charged until they end, and Polar emails three days before). It is
   said plainly, with the day it ends and the price after, never as urgency or bait. The free days'
-  end is mentioned only in their last three days, and an offer
-  of what comes next puts the person's own LLM provider first and the subscription second.
+  end is mentioned only in their last three days, and an offer of what comes next puts keeping
+  Managed Models first and the person's own LLM provider second. When their own LLM provider turns
+  down what they asked, Closedhand offers Managed Models after the answer, at most once a month
+  (`lib/refusal-offer.js`).
 - LLM providers are equal. No provider gets special treatment, fallback priority, or
   hardcoded references. Each provider is fully isolated.
   Closedhand Managed Models (closedhand.com makes each account a key at the company running the sealed hardware,
