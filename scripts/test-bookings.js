@@ -110,3 +110,25 @@ test('a reference is one the text gives, never the code inside a link, and a che
   assert.match(src, /if \(reference && !srcWords\.includes\(/);
   assert.match(src, /"check_in_url": "the link to check in online \(a flight's or hotel's online check-in\), or null; never a link that only shows or changes the booking"/);
 });
+
+test('a booking whose email gave only its day is the timed one at that place that day, and never takes its time', () => {
+  // One clinic emailed the day of an appointment; another email gave its time. Kept apart, the day-only one showed as a second card.
+  const dayOnly = { id: 'd1', kind: 'appointment', provider: 'Larkspur Dental Studio', reference: 'LD-4410', starts_at: '2026-12-02T00:00:00+09:00', timezone: 'Asia/Tokyo', source_email_id: 'mailC', updated_at: '2026-11-20T09:00:00Z', details: { time_unknown: true, notes: 'Bring your X-rays' } };
+  const timed = { id: 't1', kind: 'appointment', provider: 'Larkspur Dental', reference: null, starts_at: '2026-12-02T11:00:00+09:00', timezone: 'Asia/Tokyo', source_email_id: 'mailD', updated_at: '2026-11-19T09:00:00Z', details: { room: '3' } };
+  assert.ok(sameBooking(dayOnly, timed));
+  assert.equal(sameBooking(dayOnly, { ...timed, starts_at: '2026-12-03T11:00:00+09:00' }), false, 'another day is another booking');
+  assert.equal(sameBooking(dayOnly, { ...timed, provider: 'Harbourside Physio' }), false, 'another place is another booking');
+  assert.equal(sameBooking({ ...dayOnly, details: {} }, { ...timed, starts_at: '2026-12-02T16:00:00+09:00' }), true, 'one stored before the reader said so, at midnight there');
+  const plan = mergePlan([dayOnly, timed]);
+  assert.deepEqual(plan.drop, ['d1'], 'the one with its time stays, though the other has the reference');
+  assert.equal(plan.keep[0].id, 't1');
+  assert.equal(plan.keep[0].patch.reference, 'LD-4410', 'and gains the reference');
+  assert.equal(plan.keep[0].patch.details.time_unknown, undefined, 'and still shows its time');
+  assert.equal(plan.keep[0].patch.details.notes, 'Bring your X-rays');
+  // A later email giving only the day updates the timed row and keeps its time.
+  const merged = mergeInto({ ...dayOnly, id: undefined }, timed);
+  assert.equal(merged.starts_at, '2026-12-02T11:00:00+09:00');
+  assert.equal(merged.details.time_unknown, undefined);
+  assert.equal(mergeInto(timed, dayOnly).starts_at, '2026-12-02T11:00:00+09:00', 'and a time that arrives replaces the day alone');
+  assert.equal(mergeInto(timed, dayOnly).details.time_unknown, undefined);
+});
