@@ -91,7 +91,7 @@ test("a run's page belongs to its run, so its delivery links it", async () => {
 
 // An answer nobody gets in a chat, or one too long for a chat (which gets a
 // short version and once linked the Agents tab), is kept as its run's page:
-// a task's card leaves the tab after a week, a page stays on Pages.
+// a task's card leaves the tab once its answer is sent, a page stays on Pages.
 test("an answer only on the dashboard, or too long for a chat, becomes its run's page", async () => {
   const delivery = require("../lib/task-delivery");
   const rows = [];
@@ -105,6 +105,8 @@ test("an answer only on the dashboard, or too long for a chat, becomes its run's
   assert.equal(await delivery.answerPage(db, { id: "r1", user_id: "u1", runtime: { config: { name: "Weekly van check" } } }, "automation_runs", long, [{ platform: "telegram", chatId: "9" }]), "p2", "too long for a chat");
   assert.deepEqual([rows[1].automation_run_id, rows[1].title, rows[1].reason], ["r1", "Weekly van check", "An answer too long for a chat"]);
   assert.equal(await delivery.answerPage(db, { id: "r2", user_id: "u1", runtime: {} }, "automation_runs", "Short.", []), null, "a routine's short run keeps to its card");
+  assert.equal(await delivery.answerPage(db, { id: "r3", user_id: "u1", runtime: { config: { name: "Van quotes", run_once: true } } }, "automation_runs", "Short.", []), "p3", "a job set for once is a task: sent only to the dashboard, a page");
+  assert.equal(rows[2].reason, "A task's answer, kept only here");
   assert.equal(await delivery.answerPage(db, task, "agent_tasks", null, []), null, "nothing to keep when it could not finish");
 });
 

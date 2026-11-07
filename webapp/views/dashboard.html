@@ -2398,17 +2398,18 @@
 
       <!-- Workers Tab Content -->
       <!-- Agents: Closedhand working for you. Tasks, each one card from
-           waiting to its answer, kept a week, and Routines, each card live
-           while it runs (loadAgents). -->
+           waiting until its answer is in its chat, and Routines, each card
+           live while it runs (loadAgents). -->
       <div class="tab-content" id="tab-agents">
         <div style="padding-top:1rem;">
           <p class="goals-intro">Closedhand working for you in the background: tasks you hand it in chat or start here, and routines that run on their own.</p>
           <!-- Tasks: one-off jobs, one card each that changes as it goes:
                waiting to start, working (who is on it, one agent or a team),
-               then its answer, for a week. + New agent starts one, or a
-               routine, one agent or a team. -->
+               gone once its answer is in its chat; one whose answer may not
+               have reached it stays, with the answer. + New agent starts one,
+               or a routine, one agent or a team. -->
           <div class="agents-head list-head"><div class="mc-section-label">Tasks</div><button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button></div>
-          <p class="section-desc" id="auto-active-desc" hidden>Each answers in the chat it came from, or the one you picked, and stays here a week. A page it made stays on Pages.</p>
+          <p class="section-desc" id="auto-active-desc" hidden>What Closedhand is working on now. Each answers in the chat it came from, or the one you picked.</p>
           <p class="section-desc" id="auto-active-empty">Nothing yet. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on.</p>
           <div id="auto-active-list"></div>
           <p id="auto-active-error" class="section-desc" role="status" hidden>Could not refresh your tasks. Please try again shortly.</p>
@@ -7757,9 +7758,9 @@
     }
 
     // Agents: two lists from four reads. Tasks: one-off jobs, each one card
-    // that changes as it goes, waiting to start, working, then its answer,
-    // kept a week (the answer is in its chat and any page on Pages). A job set
-    // for a date is a task too, waiting, then its run. Routines: every one,
+    // that changes as it goes, waiting to start, working, then gone once its
+    // answer is in its chat (and any page on Pages). A job set for a date is
+    // a task too, waiting, then its run. Routines: every one,
     // one agent or a team, each card going live while it runs and saying how
     // its last run went; a routine's run is never a task. A list is drawn
     // again only when it changed, so a refresh never flickers.
@@ -7787,7 +7788,7 @@
       runs.forEach(function (r) {
         var a = byId[r.automation_id];
         r.sends = a ? a.output_destinations || null : null;
-        if (a && a.run_once) { r.once = true; onceRuns.push(r); return; }
+        if (a && a.run_once) { onceRuns.push(r); return; }
         var t = Date.parse(r.completed_at || r.started_at);
         if (r.live) { if (!liveRun[r.automation_id]) liveRun[r.automation_id] = r; }
         else if (!lastRun[r.automation_id] || t > lastRun[r.automation_id].t) lastRun[r.automation_id] = { t: t, run: r };
@@ -7819,9 +7820,11 @@
       var next = waiting.map(function (a) { return { at: soon(a), html: renderWaitingCard(a) }; })
         .concat(jobs.map(function (r) { return { at: soon(r), html: renderWaitingJob(r) }; }))
         .sort(function (x, y) { return x.at - y.at; });
-      // One that finished while the tab was open lands with an ember ring.
+      // Finished, only until its answer is sent (/api/agents keeps no other
+      // task). One that finished while the tab was open lands with an ember ring.
+      var unsent = function (r) { return ['pending', 'waiting', 'uncertain'].indexOf(r.delivery_status) !== -1; };
       var done = (tasks || []).filter(function (a) { return !going(a); }).map(function (a) { return { key: 'task ' + a.id, at: Date.parse(a.completed_at || a.created_at), html: renderAgentCard(a) }; })
-        .concat(onceRuns.filter(function (r) { return !r.live; }).map(function (r) { return { key: 'run ' + r.id, at: Date.parse(r.completed_at || r.started_at), html: renderRoutineRun(r) }; }))
+        .concat(onceRuns.filter(function (r) { return !r.live && unsent(r); }).map(function (r) { return { key: 'run ' + r.id, at: Date.parse(r.completed_at || r.started_at), html: renderRoutineRun(r) }; }))
         .sort(newest).map(function (x) { return _agentsLive[x.key] ? { html: x.html.replace('class="auto-card', 'class="auto-card just-added') } : x; });
       _agentsLive = {};
       live.forEach(function (x) { _agentsLive[x.key] = true; });
@@ -8286,12 +8289,12 @@
       var team = Array.isArray(a.team) && a.team.length ? a.team : null;
       var finished = !running && !asked && !(a.status === 'blocked' && a.runtime && a.runtime.allowance);
       // What it is and who is on it, then how it stands: going, waiting on
-      // you, or when it finished and where it answered, with the answer's
-      // opening line under it.
+      // you, or when it finished, with the answer's opening line under it.
+      // A finished one is here only while its answer is on its way.
       var place = answerPlace(a);
-      var metaHtml = escapeHtml(whoIsOn('Task', team) + ' \u00b7 ' + (finished ? doneAt : String(detail))) + (finished && a.result && place ? ' \u00b7 answered in ' + place : '');
+      var metaHtml = escapeHtml(whoIsOn('Task', team) + ' \u00b7 ' + (finished ? doneAt : String(detail)));
       var late = finished && a.result && place && a.delivery_status && a.delivery_status !== 'sent' && a.completed_at && Date.now() - new Date(a.completed_at).getTime() > 2 * 60000;
-      var doneLine = failed ? escapeHtml('Couldn\u2019t finish: ' + couldNotFinish(a.error) + '.') + (place ? ' The note is in ' + place + '.' : '')
+      var doneLine = failed ? escapeHtml('Couldn\u2019t finish: ' + couldNotFinish(a.error) + '.')
         : late ? escapeHtml('This may not have reached ' + answerPlace(a, true) + ', so its answer is here. ' + String(detail))
         : escapeHtml(String(detail));
       return '<div class="auto-card agent-card' + (finished ? ' done-card' : '') + (_openAgents[a.id] ? ' open' : '') + '" onclick="toggleAgentCard(this, \'' + a.id + '\')">' +
@@ -8373,31 +8376,30 @@
     }
 
 
-    // A routine run, going or finished: its name, when, and how it went; a
-    // finished one opens its result.
+    // The run of a job set for once, which is a task, going or finished: its
+    // name, when, and how it went; a finished one opens its result.
     function renderRoutineRun(r) {
       var cut = function (t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026' : t; };
       var step = (r.progress || []).map(function (e) { if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { e = { text: e }; } } return e && e.text; }).filter(Boolean).pop();
       var team = Array.isArray(r.team) && r.team.length ? r.team : null, failed = !r.live && r.status === 'failed';
+      // A finished one is here only while its answer is on its way, as a
+      // task is: past two minutes, it may not have reached where it went.
+      var late = !r.live && !failed && Date.now() - Date.parse(r.completed_at || r.started_at) > 2 * 60000;
       var how = r.live ? (team ? 'started ' : (step || 'Working on it') + ' \u00b7 started ') + dayAndTime(r.started_at)
-        : 'finished ' + dayAndTime(r.completed_at || r.started_at) + (failed ? '' : (sentWords(r.sends) ? ' \u00b7 ' + sentWords(r.sends).replace(/\.$/, '').toLowerCase() : ''));
+        : 'finished ' + dayAndTime(r.completed_at || r.started_at);
       var opens = !r.live && !failed;
       return '<div class="auto-card' + (r.live ? '' : ' done-card') + '"' + (opens ? ' onclick="viewAutoRun(\'' + r.id + '\')"' : '') + '>' +
         '<div class="auto-card-header"><div class="auto-card-name">' + (r.live ? LIVE_EMBER : '') + esc(r.name) + '</div>' +
           (opens ? '<span class="done-open" aria-hidden="true"><span class="chevron-down"></span></span>' : '') +
         '</div>' +
-        '<div class="auto-card-meta">' + esc(whoIsOn(r.once ? 'Task' : 'Routine', team) + ' \u00b7 ' + how) + '</div>' +
-        (r.live ? '' : '<div class="done-line' + (failed ? ' failed' : '') + '">' + esc(failed ? 'Couldn\u2019t finish.' : cut(r.output_summary, 110) || 'Open it for the answer.') + '</div>') +
+        '<div class="auto-card-meta">' + esc(whoIsOn('Task', team) + ' \u00b7 ' + how) + '</div>' +
+        (r.live ? '' : '<div class="done-line' + (failed ? ' failed' : '') + '">' + esc(failed ? 'Couldn\u2019t finish.'
+          : late ? 'This may not have reached ' + ((r.sends || []).indexOf('chat_platforms') !== -1 ? 'your chat apps' : 'your inbox') + ', so its answer is here.'
+          : cut(r.output_summary, 110) || 'Open it for the answer.') + '</div>') +
         (team && r.live ? teamLines(r, team, true) : '') +
       '</div>';
     }
 
-
-    // Where a routine sends what it finds, as its run says it.
-    function sentWords(sends) {
-      sends = sends || [];
-      return sends.indexOf('chat_platforms') !== -1 ? 'Sent to your chat apps.' : sends.indexOf('email') !== -1 ? 'Emailed to you.' : '';
-    }
 
     // A task set in chat for a date: when it starts, and Cancel, which asks first.
     function renderWaitingJob(r) {

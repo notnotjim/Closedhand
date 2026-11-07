@@ -44,22 +44,25 @@ test('every routine is under Routines, one agent or a team; a job set to start o
   assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1][routine t1]', 'a team is a routine like any other');
   assert.equal(h.get('auto-active-list').innerHTML, '[waiting w1][job Check the Lisbon fares]', 'waiting is a task card, a team or not; a reminder is not a task; one that has run shows as its run');
 });
-test('Tasks: working first, then waiting, then each finished one for the week; a routine runs on its own card, never as a task', async () => {
+test('Tasks: working first, then waiting, then a finished one whose answer is on its way; a routine runs on its own card, never as a task', async () => {
   const soon = (mins) => new Date(Date.now() + mins * 60000).toISOString();
   const h = dashboard({
     tasks: [{ id: 't1', status: 'running', created_at: at(4) }, { id: 't2', status: 'awaiting_confirmation', created_at: at(25) },
       { id: 't3', status: 'completed', result: 'Done.', created_at: at(40), completed_at: at(30) },
       { id: 't4', status: 'failed', created_at: at(60 * 50), completed_at: at(60 * 49) }],
-    routines: [{ id: 'r1' }, { id: 'w1', run_once: true, status: 'active', next_at: soon(90) }, { id: 'w3', run_once: true, status: 'done', fired_at: at(2) }],
+    routines: [{ id: 'r1' }, { id: 'w1', run_once: true, status: 'active', next_at: soon(90) }, { id: 'w3', run_once: true, status: 'done', fired_at: at(2) },
+      { id: 'w4', run_once: true, status: 'done', fired_at: at(90) }, { id: 'w5', run_once: true, status: 'done', fired_at: at(90) }],
     runs: [{ id: 'u1', automation_id: 'r1', live: true, started_at: at(1) }, { id: 'u2', automation_id: 'r1', live: false, status: 'success', started_at: at(60), completed_at: at(55) },
-      { id: 'u3', automation_id: 'w3', live: true, started_at: at(2) }],
+      { id: 'u3', automation_id: 'w3', live: true, started_at: at(2) },
+      { id: 'u4', automation_id: 'w4', live: false, status: 'success', started_at: at(90), completed_at: at(80), delivery_status: 'sent' },
+      { id: 'u5', automation_id: 'w5', live: false, status: 'success', started_at: at(90), completed_at: at(35), delivery_status: 'waiting' }],
     reminders: [{ name: 'Sooner', kind: 'task', next_at: soon(30) }],
   });
   await h.context.loadAgents();
-  assert.equal(h.get('auto-active-list').innerHTML, '[run u3][task t1][task t2][job Sooner][waiting w1][task t3][task t4]');
+  assert.equal(h.get('auto-active-list').innerHTML, '[run u3][task t1][task t2][job Sooner][waiting w1][task t3][run u5][task t4]', 'a job set for once leaves once its answer is sent, as a task does');
   assert.equal(h.get('auto-saved-list').innerHTML, '[routine r1]');
   assert.equal(h.get('auto-active-empty').hidden, true);
-  assert.equal(h.get('auto-active-desc').hidden, false, 'where each answers and how long it stays, said once above them');
+  assert.equal(h.get('auto-active-desc').hidden, false, 'what it holds and where each answers, said once above them');
   assert.equal(h.get('auto-empty').style.display, 'none', 'no templates beside routines');
 });
 test("a routine's card goes live while it runs and says how its last run went", async () => {

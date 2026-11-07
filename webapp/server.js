@@ -5116,10 +5116,14 @@ app.get("/api/connections/scopes", async (req, res) => {
 });
 
 // GET /api/agents — the tasks handed over in chat that the Agents tab shows:
-// what is working or waiting on the person, and what finished in the last
-// week, each on its own card under Tasks. Pages use the same week before
-// folding into Archived.
+// what is working or waiting on the person, each on its own card under Tasks.
+// A finished one goes once its answer is in the chat it went to; one whose
+// answer may not have reached it stays, with the answer, for a week. Pages
+// use the same week before folding into Archived.
 const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+// An answer on its way, waiting for its chat app, or never confirmed there
+// (lib/task-delivery.js).
+const UNSENT = ["pending", "waiting", "uncertain"];
 // A task paused because its LLM's allowance ran out is still going: it waits,
 // however long, on its card under Tasks (lib/agents.js, pauseForAllowance).
 const LIVE_RUN_STATUSES = ["running", "pending", "awaiting_confirmation", "blocked"];
@@ -5135,7 +5139,7 @@ app.get("/api/agents", async (req, res) => {
     const fields = "id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status, platform";
     const read = async (withTeam) => {
       const runs = () => supabase.from("agent_tasks").select(withTeam ? fields + ", team" : fields).eq("user_id", userId);
-      const lists = [runs().in("status", LIVE_RUN_STATUSES), runs().in("status", DONE_RUN_STATUSES).gte("created_at", cutoff)];
+      const lists = [runs().in("status", LIVE_RUN_STATUSES), runs().in("status", DONE_RUN_STATUSES).in("delivery_status", UNSENT).gte("created_at", cutoff)];
       return Promise.all(lists.map((q) => q.order("created_at", { ascending: false }).limit(50)));
     };
     let results = await read(true);
@@ -5869,14 +5873,14 @@ const runOutcome = (r) => (r.status === "running" || r.status === "pending" ? "f
 
 // GET /api/automations/recent — every routine's runs from the last week, for
 // each routine's card (going, or its last run) and a job set for once, which
-// is a task, by name.
+// is a task, by name, there until its answer is sent.
 app.get("/api/automations/recent", async (req, res) => {
   try {
     const userId = getUserIdFromRequest(req);
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
     const recent = (withTeam) => supabase
       .from("automation_runs")
-      .select("id, automation_id, status, progress, output_summary, error, started_at, completed_at" + (withTeam ? ", team" : ""))
+      .select("id, automation_id, status, progress, output_summary, error, started_at, completed_at, delivery_status" + (withTeam ? ", team" : ""))
       .eq("user_id", userId)
       .not("automation_id", "is", null)
       .gte("started_at", new Date(Date.now() - ARCHIVE_AFTER_MS).toISOString())

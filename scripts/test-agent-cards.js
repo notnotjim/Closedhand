@@ -39,17 +39,21 @@ test("a run that could not finish says why in plain words, never the check's not
   assert.doesNotMatch(read("lib/agents.js"), /Quality check sent it back/);
 });
 
-test("tasks handed over in chat: going or waiting under Working now, finished this week under Done lately", () => {
+test("tasks handed over in chat: going or waiting, and a finished one only until its answer is sent", () => {
   const server = read("webapp/server.js");
   assert.match(server, /const LIVE_RUN_STATUSES = \["running", "pending", "awaiting_confirmation", "blocked"\];/, "a task paused for its LLM's allowance waits under Working now");
-  assert.match(server, /const lists = \[runs\(\)\.in\("status", LIVE_RUN_STATUSES\), runs\(\)\.in\("status", DONE_RUN_STATUSES\)\.gte\("created_at", cutoff\)\];/, "a delivered task stays a week, under Done lately");
+  assert.match(server, /const UNSENT = \["pending", "waiting", "uncertain"\];/);
+  assert.match(server, /const lists = \[runs\(\)\.in\("status", LIVE_RUN_STATUSES\), runs\(\)\.in\("status", DONE_RUN_STATUSES\)\.in\("delivery_status", UNSENT\)\.gte\("created_at", cutoff\)\];/, "a delivered task leaves; one that may not have reached its chat stays a week");
+  assert.match(server, /\.select\("id, automation_id, status, progress, output_summary, error, started_at, completed_at, delivery_status" \+/, "a job set for once, likewise");
+  assert.match(dashboard, /\.concat\(onceRuns\.filter\(function \(r\) \{ return !r\.live && unsent\(r\); \}\)/);
   assert.match(server, /const fields = "id, goal, title, status, model, result, progress, tools_used, error, created_at, completed_at, result_edited_at, runtime, delivery_status, platform";/, "and where it answered, for the card to say");
   assert.doesNotMatch(server, /\/api\/agents[^\n]*archived|req\.query\.archived === "1" && req\.query\.count === "1"\) \{\n\s*const \{ count, error \} = await supabase\.from\("agent_tasks"\)/, "no archive of delivered runs");
   assert.doesNotMatch(dashboard, /toggleArchivedRuns|_archivedRunCount|\/api\/agents\?archived=1/);
   assert.match(dashboard, /var late = finished && a\.result && place && a\.delivery_status && a\.delivery_status !== 'sent' && a\.completed_at && Date\.now\(\) - new Date\(a\.completed_at\)\.getTime\(\) > 2 \* 60000;/, "a late delivery");
   assert.match(dashboard, /escapeHtml\('This may not have reached ' \+ answerPlace\(a, true\) \+ ', so its answer is here\. ' \+ String\(detail\)\)/, "says why");
   assert.match(dashboard, /function archiveRow\(toggle, count, open\) \{\n\s*if \(!count\) return '';/, "Pages keeps its Archived row");
-  assert.match(dashboard, /var metaHtml = escapeHtml\(whoIsOn\('Task', team\) \+ ' \\u00b7 ' \+ \(finished \? doneAt : String\(detail\)\)\) \+ \(finished && a\.result && place \? ' \\u00b7 answered in ' \+ place : ''\);/, "a task says what it is, who is on it, how it stands and where it answered");
+  assert.match(dashboard, /var metaHtml = escapeHtml\(whoIsOn\('Task', team\) \+ ' \\u00b7 ' \+ \(finished \? doneAt : String\(detail\)\)\);/, "a task says what it is, who is on it and how it stands");
+  assert.doesNotMatch(dashboard, /answered in|The note is in/, "a finished one shown has not reached its chat");
   assert.match(dashboard, /function whoIsOn\(kind, team\) \{ return kind \+ ', ' \+ \(team && team\.length \? 'a team of ' \+ team\.length : 'one agent'\); \}/);
   assert.doesNotMatch(dashboard, /auto-status-pill|&#9632; Stop|&#8595; PDF|&#9654; Run|&#9208; Pause/, "no stock pills, no glyph buttons");
   assert.match(dashboard, />Closedhand working for you in the background: tasks you hand it in chat or start here, and routines that run on their own\.</, "the tab says what it holds");
@@ -95,7 +99,7 @@ test("Closedhand's agents: a one-off job is a task, one that repeats a routine, 
   const rules = read("AGENTS.md");
   assert.match(rules, /Closedhand's agents are it working for the person, on the dashboard's Agents tab: a one-off job\n\s*handed over in chat is a "task", and one that repeats on a timetable or when something happens is\n\s*a "routine"\./);
   assert.doesNotMatch(rules, /Never "agent" in what people read/);
-  assert.match(read("lib/engine.js"), /Sections: #upcoming \(bookings, flights and reminders, soonest first\), #agents \(tasks working, waiting or done this week, and routines\),/);
+  assert.match(read("lib/engine.js"), /Sections: #upcoming \(bookings, flights and reminders, soonest first\), #agents \(tasks working or waiting, and routines\),/);
 });
 
 test("a routine says what it does, when it runs, how it last ran and whether it is on; a run says how it went", () => {
@@ -103,7 +107,7 @@ test("a routine says what it does, when it runs, how it last ran and whether it 
   const code = ["function renderAutomationCard(a)", "function renderRoutineRun(r)", "function dayAndTime(iso)"].map((sig) => {
     const a = dashboard.indexOf("    " + sig);
     return dashboard.slice(a, dashboard.indexOf("\n    }\n", a) + 6);
-  }).join("\n") + "\n" + ["function isTeam(a)", "function routineWhen(a)", "function whoIsOn(kind, team)", "var LIVE_EMBER"].map(line).join("\n") + "\n" + (() => { const a = dashboard.indexOf("    function sentWords(sends)"); return dashboard.slice(a, dashboard.indexOf("\n    }\n", a) + 6); })();
+  }).join("\n") + "\n" + ["function isTeam(a)", "function routineWhen(a)", "function whoIsOn(kind, team)", "var LIVE_EMBER"].map(line).join("\n");
   const ctx = { esc: (t) => String(t), truncatePrompt: (t) => String(t), watchLine: () => "When an email from the bank arrives", TRASH_ICON: "[bin]" };
   vm.runInNewContext(code + "\nthis.card = renderAutomationCard; this.run = renderRoutineRun;", ctx);
   const at = (days, h) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0); return d.toISOString(); };
@@ -136,14 +140,18 @@ test("a routine says what it does, when it runs, how it last ran and whether it 
   assert.match(ended, /When an email from the bank arrives · ended/);
   assert.doesNotMatch(ended, /Run now|type="checkbox"/);
   const going = ctx.run({ id: "u1", name: "Inbox sort", live: true, started_at: at(0, 9), progress: [JSON.stringify({ text: "Reading 12 new emails" })] });
-  assert.match(going, /Routine, one agent · Reading 12 new emails · started today at 09:00/);
+  assert.match(going, /Task, one agent · Reading 12 new emails · started today at 09:00/, "a job set for once is a task");
   assert.match(going, /class="live-ember"/, "an ember while it works");
-  const done = ctx.run({ id: "u2", name: "Inbox sort", live: false, status: "success", started_at: at(0, 9), completed_at: at(0, 9), output_summary: "Two urgent:\n the landlord and the dentist." });
-  assert.match(done, /Routine, one agent · finished today at 09:00/);
+  const ago = (mins) => new Date(Date.now() - mins * 60000).toISOString();
+  const done = ctx.run({ id: "u2", name: "Inbox sort", live: false, status: "success", started_at: ago(3), completed_at: ago(1), output_summary: "Two urgent:\n the landlord and the dentist." });
+  assert.match(done, /Task, one agent · finished [^<]*<\/div>/);
+  assert.doesNotMatch(done, /sent to|emailed/i, "here only while its answer is on its way");
   assert.match(done, /<div class="done-line">Two urgent: the landlord and the dentist\.<\/div>/, "kept here only: its answer's first line");
   assert.match(done, /<div class="auto-card done-card" onclick="viewAutoRun\('u2'\)">/, "and it opens its answer");
   assert.doesNotMatch(done, /live-ember/);
-  assert.match(ctx.run({ id: "u4", name: "Inbox sort", live: false, status: "success", started_at: at(0, 9), completed_at: at(0, 9), sends: ["chat_platforms", "dashboard"], once: true }), /Task, one agent · finished today at 09:00 · sent to your chat apps/, "a job set for once is a task, and says where it was sent");
+  const late = (sends) => ctx.run({ id: "u4", name: "Inbox sort", live: false, status: "success", started_at: ago(12), completed_at: ago(10), sends, output_summary: "Two urgent." });
+  assert.match(late(["chat_platforms", "dashboard"]), /<div class="done-line">This may not have reached your chat apps, so its answer is here\.<\/div>/, "still unsent after two minutes, as a task says it");
+  assert.match(late(["email"]), /This may not have reached your inbox, so its answer is here\./);
   const failed = ctx.run({ id: "u3", name: "Inbox sort", live: false, status: "failed", started_at: at(0, 6) });
   assert.doesNotMatch(failed, /viewAutoRun/, "nothing to open when it could not finish");
   assert.match(failed, /<div class="done-line failed">Couldn’t finish\.<\/div>/);
