@@ -27,10 +27,23 @@ test('today and tomorrow, once each, in local time, with rain where likely', () 
   assert.equal(line.shortLabel('Reservation at Harbour Grill Old Town'), 'Harbour Grill Old Town');
 });
 
-test('the line is served behind the login and shown under the weather', () => {
+test('one thing written down twice is said once: a stay booked and in the calendar, a flight number with or without its space', () => {
+  const now = Date.parse('2026-03-02T01:00:00Z');
+  const entries = line.build([
+    { at: Date.parse('2026-03-02T23:00:00Z'), raw: 'Harbour View Lodge', kind: 'booking' },
+    { at: Date.parse('2026-03-03T00:00:00Z'), raw: 'Stay at Harbour View Lodge', kind: 'event' },
+    { at: Date.parse('2026-03-03T03:55:00Z'), raw: 'QX416', label: 'Flight to OKA', kind: 'flight' },
+    { at: Date.parse('2026-03-03T03:55:00Z'), raw: 'Flight to Naha (QX 416)', kind: 'event' },
+    { at: Date.parse('2026-03-03T09:00:00Z'), raw: 'Harbour walk with Priya', kind: 'event' },
+  ], { tz: 'Asia/Tokyo', now });
+  assert.equal(line.sentence(entries), 'Tomorrow: Harbour View Lodge 08:00 · Flight to OKA 12:55 · Harbour walk with Priya 18:00', 'an event of its own, hours from the booking, stays');
+});
+
+test('the line is served behind the login and shown under the weather, on a row of its own', () => {
   const server = read('webapp/server.js');
   assert.ok(server.indexOf('app.get("/api/today"') > server.indexOf('// --- The gate: everything registered below needs the session'));
   assert.match(read('webapp/views/index.html'), /<p class="today-line" id="todayLine" hidden><\/p>/);
+  assert.doesNotMatch(read('webapp/views/index.html'), /\.today-line \{[^}]*max-width/, 'a cap on its width let it sit beside the weather');
 });
 
 test('an ignored planted instruction is always mentioned in the reply', () => {

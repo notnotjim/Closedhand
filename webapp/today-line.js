@@ -22,12 +22,23 @@ function shortLabel(text) {
   return t;
 }
 
-const words = (s) => new Set(String(s || "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3));
+// Words that say what a thing is, a flight number written as one ("QX 416"
+// and "QX416" alike).
+const words = (s) => new Set(String(s || "").toLowerCase().replace(/\b([a-z]{2}|[a-z]\d|\d[a-z])\s+(\d{1,4})\b/g, "$1$2")
+  .split(/[^a-z0-9]+/).filter((w) => w.length > 3 || /^[a-z0-9]{2}\d{1,4}$/.test(w)));
+// One thing written down twice: shared words within 45 minutes, or within
+// 12 hours a booking and a calendar entry holding its whole name (a stay's
+// check-in on the booking, the calendar's at the hotel's own hour).
 function sameThing(a, b) {
-  if (Math.abs(a.at - b.at) > 45 * 60000) return false;
+  const apart = Math.abs(a.at - b.at);
   const wa = words(a.raw), wb = words(b.raw);
-  for (const w of wa) if (wb.has(w)) return true;
-  return false;
+  if (apart <= 45 * 60000) {
+    for (const w of wa) if (wb.has(w)) return true;
+    return false;
+  }
+  const booking = a.kind === "booking" ? wa : b.kind === "booking" ? wb : null;
+  const other = booking === wa ? wb : wa;
+  return !!booking && a.kind !== b.kind && apart <= 12 * 3600000 && booking.size > 0 && [...booking].every((w) => other.has(w));
 }
 
 // items: [{ at: ms, raw: "title", kind: "event"|"booking"|"flight", label? }]
