@@ -848,7 +848,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     const done = await (await call('POST', '/api/phone-enrollment/claim', { code }, copy.auth)).json();
     assert.equal(done.url, 'https://quinn-ai.closedhand.ai');
     assert.match(done.included_ai.key, /^sk-[a-f0-9]{32}$/);
-    assert.deepEqual(done.included_ai.models, { provider: 'near', chat: MODEL, background: MODEL, name: 'DeepSeek V4.1 Flash, uncensored' });
+    assert.deepEqual(done.included_ai.models, { provider: 'near', chat: MODEL, background: MODEL, name: 'DeepSeek V4.1 Flash Abliterated' });
     const row = (await db.query("SELECT k.* FROM included_ai_keys k JOIN owners o ON o.id = k.owner_id WHERE o.subject = 'g-quinn'")).rows[0];
     assert.ok(keys.has(row.key_id), 'NEAR\'s id for the key');
     // Quinn is the maintainer here (OPERATOR_EMAILS): Managed Models with no

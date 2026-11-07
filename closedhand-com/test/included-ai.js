@@ -102,7 +102,7 @@ test('a claim gets 14 free days of its own: a NEAR key with their own ceiling, n
   const id = owner(db);
   const given = await ai.forOwner(id, from());
   assert.match(given.key, /^sk-[a-f0-9]{32}$/);
-  assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: MODEL, name: 'DeepSeek V4.1 Flash, uncensored' }, 'text only: pictures go to the vision language model on the computer');
+  assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: MODEL, name: 'DeepSeek V4.1 Flash Abliterated' }, 'text only: pictures go to the vision language model on the computer');
   const [keyId, made] = [...near.keys][0];
   assert.equal(made.limit, 12, 'the free days\' ceiling');
   assert.equal(made.name, 'Closedhand ' + id, 'named by the account, never its email');
@@ -284,7 +284,7 @@ test('the provider and models come from the settings: chat first, support second
   const near = nearAi();
   const ai = create({ db: database(), env: env({ INCLUDED_AI_MODELS: MODEL + ', zai-org/GLM-5.3-Flash', INCLUDED_AI_TRIAL_USD: '5', INCLUDED_AI_VISION_MODEL: 'some/vision-model' }), request: near.request });
   const given = await ai.forOwner(owner(), from());
-  assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: 'zai-org/GLM-5.3-Flash', name: 'DeepSeek V4.1 Flash, uncensored' }, 'never a vision model on NEAR: its encryption carries words');
+  assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: 'zai-org/GLM-5.3-Flash', name: 'DeepSeek V4.1 Flash Abliterated' }, 'never a vision model on NEAR: its encryption carries words');
   assert.deepEqual(ai.current(), given.models, 'computers asking get the same pick');
   assert.equal(create({ db: database(), env: {}, request: near.request }).current(), null, 'none without a sign-in at NEAR');
   assert.equal([...near.keys.values()][0].limit, 5);
