@@ -133,7 +133,7 @@
     if (sum) c.append(sum);
     if (g.check_in_text && g.status === "active") c.append(el("p", "goal-checkin", "Check-in: " + g.check_in_text));
     if (g.status !== "achieved" && !g.why && !g.if_then) {
-      const plan = el("button", "goal-plan-chat", `Plan it with ${state.assistant || "Closedhand"}`); plan.type = "button";
+      const plan = el("button", "goal-plan-chat", `Talk it through with ${state.assistant || "Closedhand"}`); plan.type = "button";
       plan.onclick = () => askInChat(`${emojiOf(g.project_id)} Help me set up my ${g.shape === "habit" ? "habit" : "goal"}: ${g.title}`.trim());
       c.append(plan);
     }
