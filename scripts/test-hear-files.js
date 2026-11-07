@@ -91,6 +91,9 @@ test('a lent file is given a part at a time, as Range asks, and only to the sand
   for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
   fs.writeFileSync(file, bytes);
   const server = require('node:http').createServer((req, res) => {
+    // No connection kept for reuse: one closed under fetch when the server
+    // stopped failed the run after this test ended.
+    res.setHeader('connection', 'close');
     const item = lentFiles.find(req.url.split('/').pop(), req.headers['x-user-id']);
     if (!item) { res.writeHead(404); return res.end(); }
     lentFiles.send(item, req, res);

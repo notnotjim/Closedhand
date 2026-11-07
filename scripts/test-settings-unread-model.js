@@ -44,7 +44,8 @@ test('readable settings choose the models chosen in Settings, and with none chos
 test('the chat shows a user-facing error as written, never "something went wrong"', () => {
   const src = fs.readFileSync(path.join(__dirname, '../lib/engine.js'), 'utf8');
   assert.match(src, /catch \(error\) \{ if \(error\.userFacing\) return error\.message; throw error; \}/);
-  assert.match(src, /console\.error\("LLM API error:"[^\n]*\n\s*if \(error\.userFacing\) return error\.message;/);
+  assert.match(src, /console\.error\("LLM API error:"[^\n]*\n\s*const reply = await failureReply\(error\);/);
+  assert.match(src, /async function failureReply\(error\) \{\n\s*if \(error\.userFacing\) return error\.message;/);
 });
 
 test('a failed profile read marks the settings unread; a missing row does not', () => {
