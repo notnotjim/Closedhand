@@ -35,7 +35,7 @@
         const body = el("textarea"); body.rows = 5; body.placeholder = "Anything Closedhand should know: a brief, details, pasted text";
         const row = el("div", "goal-new-actions");
         row.append(btn("goal-small", "Add note", async () => {
-          if (!body.value.trim()) return;
+          if (!body.value.trim()) return window.needsField(body, "Write the note first.");
           try { await onAdd({ kind: "note", title: t.value.trim(), text: body.value }); close(); } catch (e) { fail(b, e); }
         }), btn("goal-small goal-quiet", "Cancel", close));
         b.append(t, body, row);

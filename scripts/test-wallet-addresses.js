@@ -125,11 +125,11 @@ test("Settings adds, changes and removes addresses behind the dashboard's own ch
   assert.match(server, /if \(c\.billing && c\.billing\.address_id === id\) \{/, "removing an address leaves its cards without one");
   assert.doesNotMatch(server, /if \(gone\.is_home\) \{/, "and makes nothing home in its place");
   const add = server.slice(server.indexOf('app.post("/api/wallet", async'), server.indexOf('app.patch("/api/wallet/:id"'));
-  assert.match(add, /if \(!billing\) return res\.status\(400\)\.json\(\{ error: "Choose the card's billing address\." \}\);/, "a card is never kept without a billing address");
-  assert.match(add, /if \(!holder\) return res\.status\(400\)\.json\(\{ error: "Enter the name on the card\." \}\);/);
+  assert.match(add, /if \(!billing\) return res\.status\(400\)\.json\(\{ error: "Choose the card's billing address\.", field: "billing" \}\);/, "a card is never kept without a billing address");
+  assert.match(add, /if \(!holder\) return res\.status\(400\)\.json\(\{ error: "Enter the name on the card\.", field: "holder" \}\);/);
   assert.match(add, /if \(!\/\^\\d\{3,4\}\$\/\.test\(cvc\)\) return res\.status\(400\)/, "nor without its security code");
   const patch = server.slice(server.indexOf('app.patch("/api/wallet/:id"'), server.indexOf('app.delete("/api/wallet/:id"'));
-  assert.match(patch, /if \(!patch\.billing\) return res\.status\(400\)\.json\(\{ error: "Choose the card's billing address\." \}\);/, "nor changed to none");
+  assert.match(patch, /if \(!patch\.billing\) return res\.status\(400\)\.json\(\{ error: "Choose the card's billing address\.", field: "billing" \}\);/, "nor changed to none");
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, /<div style="font-size:0.8125rem;font-weight:600;color:var\(--fg\);margin-bottom:0.625rem;">Addresses<\/div>/);
   // A site that already has the person's address keeps its own; the default

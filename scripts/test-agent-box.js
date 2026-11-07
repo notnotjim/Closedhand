@@ -90,7 +90,7 @@ test("Email sends the results from the assistant's own address to its owner, as 
 test("with the assistant's address off, Email says where to turn it on and cannot be saved", () => {
   assert.match(dashboard, /_assistantEmail = \{ on: !!\(d\.available && d\.enabled && d\.address\), name: d\.name \|\| 'Closedhand' \};/);
   assert.match(dashboard, /hint\.innerHTML = 'Turn on ' \+ escapeHtml\(_assistantEmail\.name\) \+ '\\u2019s email address in <a href="#" onclick="openEmailSettings\(\);return false;">Settings<\/a> to use this\.';/);
-  assert.match(dashboard, /if \(_selectedDest === 'email' && _assistantEmail && !_assistantEmail\.on\) \{ errEl\.textContent = 'Turn on '/);
+  assert.match(dashboard, /if \(_selectedDest === 'email' && _assistantEmail && !_assistantEmail\.on\) \{ if \(_openTok !== 'where'\) openToken\('where'\); return needsField\(document\.getElementById\('plan-where'\), 'Turn on '/, "said at where the results go");
   assert.match(dashboard, /function openCreateAutomationModal\(mode\) \{\n\s*loadAssistantEmailState\(\);/);
   assert.doesNotMatch(read("lib/own-email.js"), /gmail_send|outlook_send/, "one meaning for Email: from the assistant's address");
 });

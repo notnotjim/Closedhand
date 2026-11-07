@@ -171,7 +171,7 @@
   // A payment that charges at once, once the box is ticked: Polar's page, or
   // closedhand.com's own crypto payment page.
   async function pay(path, body, button) {
-    if (!$('agree-box').checked) { say('Tick the box first: this payment starts straight away.', true); $('agree-box').focus(); return; }
+    if (!$('agree-box').checked) { say(''); return window.needsField($('agree'), 'Tick the box first: this payment starts straight away.'); }
     button.disabled = true; say('Opening…');
     try {
       const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, agreed: true }) });

@@ -124,7 +124,15 @@
         form.append(el('p', 'Replies use only these details for seven days. New actions still need you.', 'section-desc'));
         const actions = el('div', '', 'assistant-email-address');
         actions.append(button('Allow replies', async () => {
-          await request('/threads/' + thread.id, { purpose: purpose.value, sharedBrief: brief.value, participants: people.value.split(',').map(x => x.trim()).filter(Boolean) }); await load();
+          // What is missing is said at its box (needs-field.js).
+          const missing = 'Add the task and the details this conversation may use.';
+          if (!purpose.value.trim()) return window.needsField(purpose, missing);
+          if (!brief.value.trim()) return window.needsField(brief, missing);
+          const participants = people.value.split(',').map(x => x.trim()).filter(Boolean);
+          if (!participants.length) return window.needsField(people, 'Choose people already in this conversation.');
+          try { await request('/threads/' + thread.id, { purpose: purpose.value, sharedBrief: brief.value, participants }); }
+          catch (e) { if (/people|address/i.test(e.message)) return window.needsField(people, e.message); throw e; }
+          await load();
         }));
         if (!thread.stopped) actions.append(button('Stop conversation', async () => { await request('/threads/' + thread.id, { stopped: true }); await load(); }));
         form.append(actions); form.onsubmit = event => event.preventDefault(); section.append(form); details.append(section);

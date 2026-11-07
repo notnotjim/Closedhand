@@ -328,6 +328,17 @@ test("starting and changing a project holds to one emoji each", async () => {
   assert.deepEqual(threads.find((t) => t.id === "t2").messages.map((m) => m.content), ["✈️ window seats please", "📦 van booked"], "their conversations become one, the latest last");
 });
 
+test("what a new project still needs is said at its field, before and after the server checks", () => {
+  const form = read("webapp/public/projects.js");
+  assert.match(form, /if \(!name\.value\.trim\(\)\) return window\.needsField\(name, "Give it a name\."\);\n\s*if \(!emoji\.value\.trim\(\)\) return window\.needsField\(emojiRow, "Choose one emoji for it\."\);/);
+  assert.match(form, /catch \(e\) \{ if \(fieldOf\[e\.field\]\) window\.needsField\(fieldOf\[e\.field\], e\.message\); else showError\(e\.message\);/);
+  assert.match(form, /emoji\.value = e; emoji\.dispatchEvent\(new Event\("input", \{ bubbles: true \}\)\);/, "picking an emoji takes the note away, as typing one does");
+  const server = read("webapp/projects.js");
+  assert.match(server, /error: e\.message \|\| String\(e\), \.\.\.\(e\.field \? \{ field: e\.field \} : \{\}\)/);
+  assert.equal((server.match(/needs\("emoji", /g) || []).length, 4, "every emoji refusal names its field");
+  assert.equal((server.match(/needs\("name", "Give it a name\."\)/g) || []).length, 2);
+});
+
 test("the pass after a turn: a project message updates that project only; any other updates a project it is about, or notices, once, never a no", async () => {
   const answer = JSON.stringify({ touched: [
     { id: "aaaa1111", name: "House move", summary: "Deposit paid.", state: { open: ["Book the parking permit"], decisions: ["Movers at 9"], people: [], facts: [] }, expected_end: null },

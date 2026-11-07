@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
   <script src="/theme.js"></script>
   <script src="/move-progress.js" defer></script>
+  <script src="/needs-field.js"></script>
   <script src="/llm-hint.js"></script>
   <title>Set up Closedhand</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -418,11 +419,11 @@
       <form id="bring-form">
         <div class="field">
           <label for="bring-url">Personal URL</label>
-          <input id="bring-url" placeholder="name.closedhand.ai" autocomplete="off" spellcheck="false" required>
+          <input id="bring-url" placeholder="name.closedhand.ai" autocomplete="off" spellcheck="false">
         </div>
         <div class="field">
           <label for="bring-code">Move code</label>
-          <input id="bring-code" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" required>
+          <input id="bring-code" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
         </div>
         <button class="save-btn" id="bring-go" type="submit">Bring it here</button>
         <p class="form-msg" id="bring-msg" role="status" aria-live="polite"></p>
@@ -520,7 +521,7 @@
           <form id="password-form" method="post">
             <div class="field">
               <label for="pw-input">Choose a password</label>
-              <input type="password" id="pw-input" autocomplete="new-password" minlength="8" required>
+              <input type="password" id="pw-input" autocomplete="new-password">
             </div>
             <button class="save-btn" type="submit">Set password</button>
             <p class="form-msg" id="pw-msg"></p>
@@ -735,7 +736,6 @@
                   <div class="terms-accept" id="url-terms">
                     <label class="terms-check"><input type="checkbox" id="url-terms-box"><span>I agree to the <a href="https://closedhand.com/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://closedhand.com/privacy" target="_blank" rel="noopener">Privacy&nbsp;policy</a></span></label>
                     <p class="note">With <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>, no company restricts what Closedhand can say or do, and nobody but you can read anything that goes in or comes out. All we ask is that you use Closedhand within the law.</p>
-                    <p class="terms-nudge" id="url-terms-nudge" hidden>Tick to agree to the Terms first</p>
                   </div>
                   <button class="save-btn" id="url-start" type="submit" data-claim-way>Claim your personal URL</button>
                   <!-- Using Closedhand anonymously (account-number-claim.js): pressed, the
@@ -750,7 +750,6 @@
                       <div class="anon-months" id="url-anon-months" role="group" aria-label="Months paid ahead"></div>
                       <div class="nudge-row" id="url-anon-agree">
                         <label class="terms-check"><input type="checkbox" id="url-anon-agree-box"><span>I agree that what I pay for now starts straight away and can't be refunded once started.</span></label>
-                        <p class="terms-nudge" hidden>Tick to agree first</p>
                       </div>
                     </div>
                     <div class="anon-wait-row" id="url-anon-wait-row">
@@ -968,13 +967,17 @@
   }
 
   // --- Shared form helper: post JSON, show the result inline ---------------
-  function postJSON(url, method, body, msgEl, btn, onOk) {
+  // atField(error, status): the field a refusal is about, where it is said
+  // (needsField), or nothing for one said under the form.
+  function postJSON(url, method, body, msgEl, btn, onOk, atField) {
     msgEl.className = "form-msg"; msgEl.style.display = "none";
     if (btn) btn.disabled = true;
     fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, j: j }; }); })
+      .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, status: res.status, j: j }; }); })
       .then(function (r) {
         if (btn) btn.disabled = false;
+        var field = !r.ok && atField && r.j && r.j.error ? atField(r.j.error, r.status) : null;
+        if (field) return needsField(field, r.j.error);
         if (r.ok) {
           msgEl.className = "form-msg ok"; msgEl.style.display = "block";
           msgEl.textContent = (onOk && onOk(r.j)) || "Saved.";
@@ -1002,19 +1005,24 @@
   // --- Password form -------------------------------------------------------
   $("#password-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
+    if (!$("#pw-input").value) return needsField($("#pw-input"), "Type a password first.");
     postJSON("/api/setup/password", "POST", { password: $("#pw-input").value }, $("#pw-msg"), null,
-      function () { $("#pw-input").value = ""; return "Password set. You're logged in on this browser."; });
+      function () { $("#pw-input").value = ""; return "Password set. You're logged in on this browser."; },
+      function (error, status) { return status === 400 && !/ADMIN_PASSWORD/.test(error) ? $("#pw-input") : null; });
   });
 
   // --- Telegram form -------------------------------------------------------
   $("#tg-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
+    if (!$("#tg-token").value.trim()) return needsField($("#tg-token"), "Paste the token BotFather sent.");
     postJSON("/api/setup/telegram", "POST", { token: $("#tg-token").value.trim() }, $("#tg-msg"), null,
       function (j) {
         return j.username
           ? "Connected. Open t.me/" + j.username + " and say hello; the first sender becomes the owner."
           : "Connected. Message your bot to claim it.";
-      });
+      },
+      // Both of its refusals are about the token.
+      function (error, status) { return status === 400 ? $("#tg-token") : null; });
   });
 
   // --- Closedhand Managed Models ------------------------------------------------
@@ -1096,8 +1104,12 @@
     if (["failed", "unconfirmed", "idle"].indexOf(st.step) < 0) setTimeout(followBring, st.step === "done" ? 2000 : 1500);
     else bringing = false;
   }
+  // What the move still needs is said at its box (move.js's own words).
+  var BRING_URL = "Type the other Closedhand's personal URL, like name.closedhand.ai.", BRING_CODE = "Type the 20-character move code its My Account shows.";
   $("#bring-form").addEventListener("submit", async function (ev) {
     ev.preventDefault();
+    if (!$("#bring-url").value.trim()) return needsField($("#bring-url"), BRING_URL);
+    if (!$("#bring-code").value.trim()) return needsField($("#bring-code"), BRING_CODE);
     $("#bring-go").disabled = true;
     bringSay("Starting the move.");
     try {
@@ -1107,7 +1119,12 @@
       if (!r.ok) throw new Error(j.error || "The move couldn't start.");
       bringing = true;
       followBring();
-    } catch (e) { bringSay(e.message); $("#bring-go").disabled = false; }
+    } catch (e) {
+      $("#bring-go").disabled = false;
+      var at = e.message === BRING_URL ? "#bring-url" : e.message === BRING_CODE ? "#bring-code" : null;
+      if (at) { bringSay(""); return needsField($(at), e.message); }
+      bringSay(e.message);
+    }
   });
   $("#bring-again").addEventListener("click", async function () {
     this.hidden = true;
@@ -1706,7 +1723,7 @@
     var btn = this, msg = $("#m-own-msg");
     var id = $("#m-client-id").value.trim(), secret = $("#m-client-secret").value.trim();
     msg.style.display = "none";
-    if (!id || !secret) { msg.textContent = "Paste both the Application (client) ID and the client secret value."; msg.style.display = "block"; return; }
+    if (!id || !secret) return needsField($(id ? "#m-client-secret" : "#m-client-id"), "Paste both the Application (client) ID and the client secret value.");
     btn.disabled = true;
     fetch("/api/connection-catalogue/microsoft/client", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId: id, clientSecret: secret }) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -1799,7 +1816,6 @@
     $("#g-tabs").style.display = gStep === 1 ? "" : "none";
     var next = $("#g-next");
     next.style.display = gStep === G_LAST ? "none" : "";
-    next.disabled = gStep === 1 && !$("#g-project").value.trim();
     if (gStep === 1) setTimeout(function () { $("#g-project").focus(); }, 50);
   }
   $("#g-start").addEventListener("click", function () { gStep = 1; gSave(); gRender(); });
@@ -1816,7 +1832,11 @@
       document.body.appendChild(box);
     });
   });
-  $("#g-next").addEventListener("click", function () { if (gStep < G_LAST) { gStep++; gSave(); gRender(); } });
+  // The first step needs the Project ID, and says so at its box.
+  $("#g-next").addEventListener("click", function () {
+    if (gStep === 1 && !$("#g-project").value.trim()) return needsField($("#g-project"), "Paste the Project ID here first.");
+    if (gStep < G_LAST) { gStep++; gSave(); gRender(); }
+  });
   $("#g-back").addEventListener("click", function () { if (gStep > 1) { gStep--; gSave(); gRender(); } });
   $("#g-project").addEventListener("input", function () { gApplyProject(); gRender(); });
   $all("#g-flow .copy").forEach(function (btn) {

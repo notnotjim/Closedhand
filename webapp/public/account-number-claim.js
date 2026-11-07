@@ -7,23 +7,18 @@
    the payment is confirmed: the ring closes for a moment. Then the account
    number, large and grouped with Copy, shows until the person ticks that the
    number is saved (webapp/phone-registration.js claimAnonymous). The Terms
-   box above applies to both ways: pressing either without it ticked draws
-   the eye to it (nudge), never an error. The page holding the piece says
+   box above applies to both ways: pressing either without it ticked says so
+   at the box (nudge), the way every form says what it still needs
+   (needs-field.js). The page holding the piece says
    whether the Terms are agreed and where its Terms row is, shows its
    errors, and hears when the account is made and when the number is saved. */
 (function (root) {
   'use strict';
-  // A row to tick first, shown gently: a short highlight, its quiet helper
-  // line and the focus on its box, with no jump.
-  function nudge(row) {
-    if (!row) return;
-    var helper = row.querySelector('.terms-nudge');
-    if (helper) helper.hidden = false;
-    try {
-      row.classList.remove('is-nudged'); void row.offsetWidth; row.classList.add('is-nudged');
-      row.querySelector('input[type=checkbox]').focus({ preventScroll: true });
-      row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    } catch (_) {}
+  // A box to tick first, pressed past: said under its row, with the focus
+  // on the box.
+  function nudge(row, text) {
+    if (!row || !root.needsField) return;
+    root.needsField(row, text || 'Tick to agree to the Terms first.', row.querySelector('input[type=checkbox]'));
   }
   function mount(box, options) {
     var $ = function (id) { return box.querySelector('#' + id); };
@@ -83,12 +78,11 @@
     }
     $('url-anonymous').addEventListener('click', function () { if (options.ready()) show(true); });
     $('url-anon-back').addEventListener('click', function () { if (!busy) show(false); });
-    $('url-anon-agree-box').addEventListener('change', function () { if (this.checked) $('url-anon-agree').querySelector('.terms-nudge').hidden = true; });
     // Paid for first: the payment page, then waiting for it.
     $('url-anon-go').addEventListener('click', async function () {
       if (busy || !options.ready()) return;
       if (!options.agreed()) { nudge(options.terms()); return; }
-      if (!$('url-anon-agree-box').checked) { nudge($('url-anon-agree')); return; }
+      if (!$('url-anon-agree-box').checked) { nudge($('url-anon-agree'), 'Tick to agree first.'); return; }
       busy = true; note = ''; options.say(null); draw(); options.changed();
       try {
         var result = await request('/api/phone/claim-anonymous', { months: months });

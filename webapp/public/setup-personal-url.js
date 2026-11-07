@@ -161,7 +161,7 @@
         if (!response.ok) throw new Error(result.error || 'Could not save that. Please try again.');
         // Whether a Google or Microsoft sign-in waits to claim with.
         state = Object.assign({}, state, result, { termsAccepted: true });
-        agreedHere = true; actionError = null; $('url-terms-nudge').hidden = true;
+        agreedHere = true; actionError = null;
       } catch (e) { box.checked = false; actionError = e.message; }
       finally { box.disabled = false; display(); }
     });
@@ -227,8 +227,12 @@
       if (codeTyped().length === 6 && !claiming) submitCode();
     });
     $('url-code-form').addEventListener('submit', function (event) { event.preventDefault(); submitCode(); });
+    var CODE_SHAPE = 'The code is 6 letters and numbers, as shown on closedhand.com.';
     async function submitCode(given) {
       if (!password || claiming) return;
+      // What the code still needs is said at its box (needsField).
+      if (!given && codeTyped().length !== 6) return root.needsField($('url-code'), CODE_SHAPE);
+      var atCode = null;
       claiming = true; actionError = null; display();
       try {
         var body = given ? { code: given.code, state: given.state } : { code: $('url-code').value };
@@ -239,8 +243,8 @@
         // The sign-in window's job is done: setup behind it picks the claim up.
         // A refused code keeps the window open, showing why.
         if (given && given.close) { try { root.close(); } catch (_) {} }
-      } catch (e) { actionError = e.message; }
-      finally { claiming = false; lastCheck = 0; display(); check(); }
+      } catch (e) { if (!given && /\bcode\b/i.test(e.message)) atCode = e.message; else actionError = e.message; }
+      finally { claiming = false; lastCheck = 0; display(); check(); if (atCode) root.needsField($('url-code'), atCode); }
     }
     // Change: rename. The old address sends people on for thirty days.
     $('url-change').addEventListener('click', function (event) {
@@ -256,6 +260,10 @@
     $('url-rename-form').addEventListener('submit', async function (event) {
       event.preventDefault();
       if (!password || renaming) return;
+      // A name that can't be one, or is taken, is said at its box.
+      var NAME_SHAPE = 'Use 3 to 32 letters, numbers or hyphens, starting with a letter. A few names, like admin and mail, are kept back.';
+      if (cleanName($('url-new-name').value).length < 3) return root.needsField($('url-new-name'), NAME_SHAPE);
+      var atName = null;
       renaming = true; actionError = null; renamed = null; display();
       try {
         var response = await fetch('/api/phone/rename', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('url-new-name').value }), signal: AbortSignal.timeout(20000) });
@@ -266,8 +274,8 @@
         if (next) { state.addressName = new URL(next).hostname.split('.')[0]; state.ownershipConfirmed = true; }
         renamed = next ? 'Your Closedhand is now at ' + new URL(next).hostname + '. It takes about a minute to connect there, and the old address sends people to it for 30 days.' : null;
         $('url-rename-form').hidden = true;
-      } catch (e) { actionError = e.message; }
-      finally { renaming = false; lastCheck = 0; display(); }
+      } catch (e) { if (/^Use 3 to 32 letters|name is taken|already taken/.test(e.message)) atName = e.message; else actionError = e.message; }
+      finally { renaming = false; lastCheck = 0; display(); if (atName) root.needsField($('url-new-name'), atName); }
     });
     $('url-continue').addEventListener('click', function () {
       if (!password) return;

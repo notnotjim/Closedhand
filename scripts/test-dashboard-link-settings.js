@@ -225,7 +225,7 @@ test("the dashboard offers a personal URL to a Closedhand without one, and nothi
 // My Account: the Closedhand account, its plan and subscription, and Delete account.
 function accountPage(respond) {
   const elements = {};
-  const el = id => elements[id] ||= { id, hidden: true, disabled: false, textContent: "", dataset: {}, style: {}, attrs: {}, classList: { add() {}, remove() {} },
+  const el = id => elements[id] ||= { id, hidden: true, disabled: false, textContent: "", dataset: {}, style: {}, attrs: {}, classList: { add() {}, remove() {} }, parentElement: { id: "confirm-actions" },
     setAttribute(k, v) { this.attrs[k] = v; }, focus() {}, replaceWith(other) { this.replacedBy = other; },
     replaceChildren(...kids) { this.children = kids; this.textContent = kids.map(k => k.textContent).join(" | "); },
     append(...parts) { this.textContent += parts.map(p => typeof p === "string" ? p : p.textContent).join(""); } };
@@ -235,6 +235,7 @@ function accountPage(respond) {
     document: { getElementById: el, createElement: () => ({ textContent: "", focus() {}, addEventListener(type, fn) { this.on = fn; }, append(...parts) { this.textContent += parts.map(p => typeof p === "string" ? p : p.textContent).join(""); } }), querySelector: () => null },
     fetch: async (url, options = {}) => { calls.push([options.method || "GET", url, ...(options.body ? [options.body] : [])]); const r = respond(url, options); return { ok: !r.status || r.status < 400, json: async () => r.body }; },
     showToast: message => calls.push(["toast", message]),
+    needsField: (field, text) => calls.push(["needs", field.id, text]),
     hostText: (computer) => computer,
   });
   vm.runInContext(region(html, "    // The uncensored LLM's name as closedhand.com gives it", "    async function loadIncludedAi()"), state);
@@ -278,7 +279,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   assert.match(html2, /<div class="account-action-title">Card<\/div>[\s\S]{0,160}<button type="button" class="account-action-btn" onclick="openPolar\('card'\)">Change<\/button>/);
   assert.match(html2, /<button type="button" class="account-action-btn account-action-btn-danger" onclick="startAccountAction\('plus-cancel'\)">Cancel<\/button>/);
   assert.match(html2, /<input class="confirm-type-input" id="input-plus-cancel" placeholder="Type CANCEL" oninput="checkConfirmInput\('plus-cancel','CANCEL'\)">/);
-  assert.match(html2, /if \(cancel && !button\.classList\.contains\("enabled"\)\) return;/, "never cancelled without the word typed");
+  assert.match(html2, /if \(cancel && !confirmTyped\("plus-cancel"\)\) return;/, "never cancelled without the word typed");
   const cancelled = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "plus", ends_at: "2026-12-15T09:00:00.000Z" }, used: 0.5,
     plus: { available: true, active: true, ends_at: "2026-12-15T09:00:00.000Z", prices: {} } } } }));
   await cancelled.state.loadMyAccount();
@@ -326,7 +327,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   paid.el("my-agree-box").checked = false;
   await paid.el("my-ahead-crypto").children[0].on();
   await paid.state.payFor("extend", 0, paid.el("my-plus-extend"));
-  assert.deepEqual(paid.calls.filter(c => c[0] === "toast"), [["toast", "Tick the box first: this payment starts straight away."], ["toast", "Tick the box first: this payment starts straight away."]], "nothing goes ahead until the box is ticked");
+  assert.deepEqual(paid.calls.filter(c => c[0] === "needs"), [["needs", "my-agree", "Tick the box first: this payment starts straight away."], ["needs", "my-agree", "Tick the box first: this payment starts straight away."]], "nothing goes ahead until the box is ticked, said beside the box");
   assert.ok(!paid.calls.some(c => c[1] === "/api/plus/checkout"));
   paid.el("my-agree-box").checked = true;
   await paid.state.payFor("extend", 0, paid.el("my-plus-extend"));
@@ -344,7 +345,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   assert.deepEqual([fresh.el("my-ahead-crypto").hidden, fresh.el("my-ahead-crypto-line").hidden], [true, false], "crypto behind its quiet link");
   fresh.state.openPolar = (...args) => fresh.calls.push(["polar", JSON.stringify(args)]);
   await fresh.el("my-longer").children[0].on();
-  assert.deepEqual(fresh.calls.filter(c => c[0] === "toast" || c[0] === "polar"), [["toast", "Tick the box first: this payment starts straight away."]]);
+  assert.deepEqual(fresh.calls.filter(c => c[0] === "needs" || c[0] === "polar"), [["needs", "my-agree", "Tick the box first: this payment starts straight away."]]);
   fresh.el("my-agree-box").checked = true;
   await fresh.el("my-longer").children[1].on();
   assert.deepEqual(fresh.calls.at(-1), ["polar", JSON.stringify(["checkout", "plus", { months: 12, agreed: true }])], "Polar's form for every 12 months");
@@ -396,8 +397,13 @@ test("Settings ends with My Account, the account's one home, and Usage is part o
 test("Delete account stops when closedhand.com can't be reached, and deletes anyway only when asked", async () => {
   const page = accountPage((url) => url.includes("anyway=1") ? { body: { success: true, redirect: "/" } }
     : { status: 502, body: { accountUnreachable: true, error: "closedhand.com couldn’t be reached, so nothing was deleted." } });
+  page.el("input-delete-account").value = "";
   await page.state.executeAccountAction("delete-account");
-  assert.deepEqual(page.calls, [["DELETE", "/api/account"]]);
+  assert.deepEqual(page.calls, [["needs", "confirm-actions", "Type DELETE to confirm."]], "pressed before the word: said at its box, nothing sent");
+  page.calls.length = 0;
+  page.el("input-delete-account").value = "delete";
+  await page.state.executeAccountAction("delete-account");
+  assert.deepEqual(page.calls, [["DELETE", "/api/account"]], "the word in any case");
   assert.equal(page.el("delete-account-offline").hidden, false);
   assert.match(page.el("delete-account-offline").textContent, /nothing was deleted/);
   assert.equal(page.el("go-delete-anyway").hidden, false);
@@ -798,9 +804,8 @@ test("the dashboard's later claim offers using Closedhand anonymously: the same 
     '<h3>Use Closedhand anonymously<span data-info="No email means no recovery: if you lose your account number, nobody can get you back in." data-info-label="Before you choose"></span></h3>',
     '<p>No email and no card: you get an account number and pay once in crypto, never renewed.</p>',
     '<p class="anon-label">Includes <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>. Prices in US dollars:</p>',
-    `<span>I agree that what I pay for now starts straight away and can't be refunded once started.</span>`, '<p class="terms-nudge" hidden>Tick to agree first</p>',
+    `<span>I agree that what I pay for now starts straight away and can't be refunded once started.</span>`,
     'id="url-anon-go" type="button">Pay and continue anonymously</button>', '<button class="quiet-link" id="url-anon-back" type="button">Back</button>',
-    'hidden>Tick to agree to the Terms first</p>',
     "With <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>, no company restricts what Closedhand can say or do, and nobody but you can read anything that goes in or comes out. All we ask is that you use Closedhand within the law.",
     "You claim one by signing in on closedhand.com below, and your Closedhand account stores your email and nothing else.",
     '<p class="url-number-label">Your account number</p>',

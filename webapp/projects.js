@@ -32,7 +32,9 @@ function register(app, { db, userId: who, withAppearance }) {
     if (error) throw new Error("Could not load your projects.");
     return data || [];
   };
-  const fail = (res, e, status = 500) => res.status(status).json({ error: e.message || String(e) });
+  // A refusal about one field names it, so the form can show the note there.
+  const fail = (res, e, status = 500) => res.status(status).json({ error: e.message || String(e), ...(e.field ? { field: e.field } : {}) });
+  const needs = (field, text) => Object.assign(new Error(text), { field });
   const name = (x) => String(x || "").trim().slice(0, 80);
   // Items from connected apps are taken from the stored record, never from
   // what the form sent.
@@ -161,10 +163,10 @@ function register(app, { db, userId: who, withAppearance }) {
     try {
       const b = req.body || {};
       const title = name(b.name), emoji = rules.onlyMark(b.emoji);
-      if (!title) return fail(res, new Error("Give it a name."), 400);
-      if (!emoji) return fail(res, new Error("Choose one emoji for it."), 400);
+      if (!title) return fail(res, needs("name", "Give it a name."), 400);
+      if (!emoji) return fail(res, needs("emoji", "Choose one emoji for it."), 400);
       const clash = rules.takenBy(await mine(userId), emoji);
-      if (clash) return fail(res, new Error(`${emoji} already marks ${clash.name}. Choose another.`), 409);
+      if (clash) return fail(res, needs("emoji", `${emoji} already marks ${clash.name}. Choose another.`), 409);
       const context = rules.withContext(rules.typed(b.context), await syncedItems(userId, b.items));
       const { data, error } = await db.from("projects").insert({
         user_id: userId, name: title, emoji, about: String(b.about || "").trim().slice(0, 600), instructions: lines(b.instructions), context, status: "active",
@@ -181,10 +183,10 @@ function register(app, { db, userId: who, withAppearance }) {
       const p = rows.find((r) => r.id === req.params.id);
       if (!p) return fail(res, new Error("That project is not here any more."), 404);
       const b = req.body || {}, set = {};
-      if (b.name !== undefined) { set.name = name(b.name); if (!set.name) return fail(res, new Error("Give it a name."), 400); }
+      if (b.name !== undefined) { set.name = name(b.name); if (!set.name) return fail(res, needs("name", "Give it a name."), 400); }
       if (b.emoji !== undefined) {
         set.emoji = rules.onlyMark(b.emoji);
-        if (!set.emoji) return fail(res, new Error("Choose one emoji for it."), 400);
+        if (!set.emoji) return fail(res, needs("emoji", "Choose one emoji for it."), 400);
       }
       if (b.about !== undefined) set.about = String(b.about || "").trim().slice(0, 600);
       if (b.instructions !== undefined) set.instructions = lines(b.instructions);
@@ -196,7 +198,7 @@ function register(app, { db, userId: who, withAppearance }) {
       if (b.archived === false) Object.assign(set, { status: "active", archived_at: null, expected_end: null });
       const emoji = set.emoji || p.emoji;
       const clash = (set.status || p.status) === "active" && rules.takenBy(rows, emoji, p.id);
-      if (clash) return fail(res, new Error(`${emoji} already marks ${clash.name}. Choose another.`), 409);
+      if (clash) return fail(res, needs("emoji", `${emoji} already marks ${clash.name}. Choose another.`), 409);
       // Only a real change counts as an update: saving the form as it was
       // leaves "Updated" where it was.
       const same = (k) => JSON.stringify(set[k] ?? null) === JSON.stringify(p[k] ?? null);
@@ -463,7 +465,7 @@ ${empty ? `<p class="empty">Nothing here yet. Start a message with ${esc(p.emoji
 ${main.length && side.length ? `<div class="grid"><div class="col">${main.join("")}</div><aside class="col">${side.join("")}</aside></div>` : main.length || side.length ? `<div class="grid one"><div class="col">${[...main, ...side].join("")}</div></div>` : ""}
 ${conversationHtml(messages)}
 <footer>Start a message with <span class="em">${esc(p.emoji)}</span> in any chat to carry on with ${esc(p.name)}. Closedhand’s replies start with <span class="em">${esc(p.emoji)}</span> while you’re talking about it.</footer>
-${adding ? `<script src="/project-context.js" defer></script>` : ""}<script src="/project-page.js" defer></script>`);
+${adding ? `<script src="/needs-field.js"></script><script src="/project-context.js" defer></script>` : ""}<script src="/project-page.js" defer></script>`);
 }
 
 function shell(title, inner) {

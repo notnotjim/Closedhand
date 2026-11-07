@@ -65,27 +65,21 @@
     settle = setTimeout(function () { if (!open) { panel.hidden = true; scrim.hidden = true; } }, still.matches ? 0 : 260);
   }
   function say(words) { error.textContent = words; error.hidden = !words; }
-  // Pressed with nothing written: the box is shown, gently, as where to start.
-  function nudge(field) {
-    field.focus();
-    field.classList.remove('mu-needs');
-    void field.offsetWidth;
-    field.classList.add('mu-needs');
-  }
 
   opener.addEventListener('click', function () { open ? hide(true) : show(); });
   root.querySelector('.mu-close').addEventListener('click', function () { hide(true); });
   scrim.addEventListener('click', function () { hide(true); });
   document.addEventListener('keydown', function (e) { if (open && e.key === 'Escape') hide(true); });
   document.addEventListener('pointerdown', function (e) { if (open && !root.contains(e.target)) hide(false); });
-  text.addEventListener('input', function () { if (text.value.trim()) { text.classList.remove('mu-needs'); say(''); } });
+  text.addEventListener('input', function () { if (text.value.trim()) say(''); });
   email.addEventListener('input', function () { say(''); });
 
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var message = text.value.trim(), reply = email.value.trim();
-    if (!message) { nudge(text); return; }
-    if (reply && !/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(reply)) { say('That email doesn’t look right. Check it, or leave it empty.'); email.focus(); return; }
+    // What is still needed is said at its box (needs-field.js, the app's own piece).
+    if (!message) return window.needsField(text, 'Write your message first.');
+    if (reply && !/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(reply)) return window.needsField(email, 'That email doesn’t look right. Check it, or leave it empty.');
     say('');
     send.disabled = true;
     send.textContent = 'Sending…';

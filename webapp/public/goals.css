@@ -104,3 +104,6 @@
   .goal-fill, .goal-dot, .goal-tick { transition: none; }
   #goals-cheer.show { animation: none; }
 }
+/* Closedhand drafting a goal's plan: the line breathes until the plan is in. */
+.goal-drafting { display: block; color: var(--muted); animation: mp-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .goal-drafting { animation: none; } }

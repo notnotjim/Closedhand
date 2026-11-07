@@ -405,9 +405,14 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .mu-panel input:not(.mu-trap) { min-height: 2.75rem; margin-top: .5rem; padding: 0 .875rem; }
 .mu-panel :is(textarea, input)::placeholder { color: var(--faint); opacity: 1; }
 .mu-panel :is(textarea, input):focus { outline: none; border-color: rgba(var(--fg-rgb),0.4); }
-/* Send pressed with nothing written: the box glows once, where to start. */
-.mu-panel .mu-needs { border-color: rgba(var(--accent-rgb),0.6); box-shadow: 0 0 0 .1875rem rgba(var(--accent-rgb),0.14); animation: mu-nudge .34s ease 1; }
-@keyframes mu-nudge { 0%, 100% { transform: none; } 20% { transform: translateX(-.1875rem); } 50% { transform: translateX(.1875rem); } 80% { transform: translateX(-.0625rem); } }
+/* A form field still needed (needs-field.js, the app's own piece): it takes focus with
+   a small nudge, and a note under it, pointing up at it, says what it wants. */
+.field-needs { position: relative; width: fit-content; max-width: 100%; margin: -0.25rem 0 0.75rem; padding: 0.4375rem 0.75rem; border-radius: 0.5rem; background: var(--fg); color: var(--bg); font-size: 0.8125rem; line-height: 1.4; animation: field-needs-in .3s cubic-bezier(.2, .8, .2, 1.25) both; }
+.field-needs::before { content: ""; position: absolute; left: 1rem; top: -0.25rem; width: 0.5625rem; height: 0.5625rem; background: inherit; border-radius: 0.125rem; transform: rotate(45deg); }
+@keyframes field-needs-in { from { opacity: 0; transform: translateY(-0.25rem) scale(.96); } to { opacity: 1; transform: none; } }
+.needs-nudge { animation: needs-nudge .34s ease 1; }
+@keyframes needs-nudge { 0%, 100% { transform: none; } 20% { transform: translateX(-0.1875rem); } 50% { transform: translateX(0.1875rem); } 80% { transform: translateX(-0.0625rem); } }
+@media (prefers-reduced-motion: reduce) { .field-needs, .needs-nudge { animation: none; } }
 .mu-error { margin: .625rem 0 0; color: var(--danger); font-size: .8125rem; line-height: 1.5; }
 .mu-actions { display: flex; justify-content: flex-end; margin-top: .875rem; }
 .mu-send { font-family: var(--font-ui); line-height: 1.2; cursor: pointer; }
@@ -436,6 +441,5 @@ body:is(.chat-active, .computers-active) .mu { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mu-open, .mu-icon, .mu-panel, .mu-scrim { transition: none; }
-  .mu-panel .mu-needs { animation: none; }
   .mu-thanks::after { animation: none; clip-path: none; }
 }

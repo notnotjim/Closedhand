@@ -261,9 +261,15 @@ test('every page people browse carries the one message button, and no one-time s
   for (const view of fs.readdirSync(path.join(site, 'views')).filter(f => f.endsWith('.html'))) {
     const html = fs.readFileSync(path.join(site, 'views', view), 'utf8');
     if (away.includes(view)) assert.doesNotMatch(html, /message-us\.js/, view);
-    else assert.match(html, /<script src="\/account-nav\.js" defer><\/script><script src="\/message-us\.js" defer><\/script>/, view);
+    else assert.match(html, /<script src="\/account-nav\.js" defer><\/script><script src="\/needs-field\.js" defer><\/script><script src="\/message-us\.js" defer><\/script>/, view);
   }
   const css = fs.readFileSync(path.join(site, 'public', 'interface.css'), 'utf8');
   assert.match(css, /\.mu-send, :is\(\.site-head nav, \.header-right\) a\.nav-cta \{/, 'Send is the site\'s ink main action, the same rule as the header link');
   assert.match(css, /body:is\(\.chat-active, \.computers-active\) \.mu \{ display: none; \}/, 'out of the way of the home page demo\'s own box');
+  // What a form still needs is said at its box, by the app's own piece, kept identical here.
+  assert.equal(fs.readFileSync(path.join(site, 'public', 'needs-field.js'), 'utf8'), fs.readFileSync(path.join(__dirname, '..', 'webapp', 'public', 'needs-field.js'), 'utf8'));
+  assert.match(css, /\.field-needs \{ position: relative;/);
+  const mu = fs.readFileSync(path.join(site, 'public', 'message-us.js'), 'utf8');
+  assert.match(mu, /if \(!message\) return window\.needsField\(text, 'Write your message first\.'\);/);
+  assert.doesNotMatch(mu + css, /mu-needs|mu-nudge/, 'no lookalike of its own');
 });

@@ -1322,13 +1322,11 @@
       font-size: 0.8125rem;
       cursor: pointer;
       opacity: 0.3;
-      pointer-events: none;
       transition: opacity 0.15s;
       color: var(--fg);
     }
     .confirm-go.enabled {
       opacity: 1;
-      pointer-events: auto;
     }
     .confirm-go-danger {
       color: var(--danger);
@@ -2147,6 +2145,7 @@
   </style>
   <link rel="stylesheet" href="/welcome.css">
   <link rel="stylesheet" href="/interface.css">
+  <script src="/needs-field.js"></script>
   <script src="/llm-hint.js"></script>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/logocircle.png">
@@ -2517,7 +2516,6 @@
               <div class="terms-accept" id="phone-terms" hidden>
                 <label class="terms-check"><input type="checkbox" id="phone-terms-box" onchange="agreeDashboardTerms(this)"><span>I agree to the <a href="https://closedhand.com/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://closedhand.com/privacy" target="_blank" rel="noopener">Privacy&nbsp;policy</a></span></label>
                 <p class="account-action-desc">With <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>, no company restricts what Closedhand can say or do, and nobody but you can read anything that goes in or comes out. All we ask is that you use Closedhand within the law.</p>
-                <p class="terms-nudge" id="phone-terms-nudge" hidden>Tick to agree to the Terms first</p>
               </div>
               <button class="account-action-btn" id="phone-start" onclick="startDashboardLink()" data-claim-way>Claim your personal URL</button>
               <a id="phone-setup-link" target="_blank" rel="noopener" hidden>Claim your personal URL</a>
@@ -2533,7 +2531,6 @@
                   <div class="anon-months" id="url-anon-months" role="group" aria-label="Months paid ahead"></div>
                   <div class="nudge-row" id="url-anon-agree">
                     <label class="terms-check"><input type="checkbox" id="url-anon-agree-box"><span>I agree that what I pay for now starts straight away and can't be refunded once started.</span></label>
-                    <p class="terms-nudge" hidden>Tick to agree first</p>
                   </div>
                 </div>
                 <div class="anon-wait-row" id="url-anon-wait-row">
@@ -4262,7 +4259,8 @@
     async function addMcpConnection() {
       var box = document.getElementById('mcp-url-input');
       var input = box.value.trim();
-      if (!input || document.getElementById('mcp-connect-btn').disabled) return;
+      if (document.getElementById('mcp-connect-btn').disabled) return;
+      if (!input) return needsField(box.closest('.mcp-pill'), 'Paste an MCP server, skill or API key.');
 
       // A skill link goes to the skill installer, which has its own flow.
       if (/\/SKILL\.md(?:[?#].*)?$/i.test(input)) {
@@ -4384,7 +4382,7 @@
       input.type = 'text'; input.autocomplete = 'off'; input.placeholder = 'For example, ElevenLabs';
       label.append(input);
       var button = document.createElement('button'); button.className = 'conn-btn conn-btn-manage'; button.textContent = 'Find it';
-      button.onclick = function() { if (input.value.trim()) findApiFor(input.value.trim()); else input.focus(); };
+      button.onclick = function() { if (input.value.trim()) findApiFor(input.value.trim()); else needsField(input, 'Say which service the key is for.'); };
       input.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); button.onclick(); } };
       section.append(label, button);
       input.focus();
@@ -4492,7 +4490,8 @@
         var button=document.createElement('button');button.className='conn-btn conn-btn-manage';button.textContent='Use this connection';
         button.onclick=async function(){
           if(document.getElementById('mcp-connect-btn').disabled)return;
-          if(fields.some(function(f){return !f.input.value.trim();})){fields.find(function(f){return !f.input.value.trim();}).input.focus();return;}
+          var empty=fields.find(function(f){return !f.input.value.trim();});
+          if(empty)return needsField(empty.input,'Fill this in to connect.');
           fields.forEach(function(f){
             var answer=f.input.value.trim();
             // Preserve schemes and argument prefixes around one template value.
@@ -4534,7 +4533,7 @@
       if (header === 'custom') header = document.getElementById('mcp-header-custom').value.trim();
       var clientId = document.getElementById('mcp-client-id-input').value.trim();
       var clientSecret = document.getElementById('mcp-client-secret-input').value.trim();
-      if (!key && !clientId) { showToast('Paste a key or a client ID first', true); return; }
+      if (!key && !clientId) { var keyBox = document.getElementById('mcp-key-input'); return needsField(keyBox.parentElement, 'Paste a key or a client ID first.', keyBox); }
       var extra = {};
       if (key) { extra.auth_token = key; extra.header_name = header || 'Authorization'; }
       if (clientId) { extra.client_id = clientId; if (clientSecret) extra.client_secret = clientSecret; }
@@ -5142,11 +5141,21 @@
       if (action === "delete-account") { document.getElementById("delete-account-offline").hidden = true; document.getElementById("go-delete-anyway").hidden = true; }
     }
 
+    // A typed word guards each action that can't be undone. The button stays
+    // dim until the word is in, in any case, and pressing it before then says
+    // what to type, at the box, rather than doing nothing.
+    const CONFIRM_WORDS = { "clear-data": "WIPE", "delete-account": "DELETE", "plus-cancel": "CANCEL" };
+    function confirmTyped(action) {
+      const input = document.getElementById("input-" + action), word = CONFIRM_WORDS[action];
+      if (!input || !word || input.value.trim().toUpperCase() === word) return true;
+      needsField(input.parentElement, "Type " + word + " to confirm.", input);
+      return false;
+    }
     function checkConfirmInput(action, word) {
       const input = document.getElementById("input-" + action);
       const goBtn = document.getElementById("go-" + action);
       if (!input || !goBtn) return;
-      if (input.value.trim() === word) {
+      if (input.value.trim().toUpperCase() === word) {
         goBtn.classList.add("enabled");
       } else {
         goBtn.classList.remove("enabled");
@@ -5379,7 +5388,7 @@
       const p = (myAccountShown && myAccountShown.plus) || {};
       const free = kind === "plus" && months === 1 && !!p.free_month;
       const agree = document.getElementById("my-agree-box");
-      if (!free && !agree.checked) { showToast("Tick the box first: this payment starts straight away.", true); agree.focus(); return; }
+      if (!free && !agree.checked) return needsField(document.getElementById("my-agree"), "Tick the box first: this payment starts straight away.", agree);
       const crypto = kind === "ahead" || (kind === "extend" && !!p.ahead_until);
       if (!crypto) return openPolar("checkout", kind, { ...(kind === "plus" ? { months } : {}), agreed: !free });
       button.disabled = true;
@@ -5439,7 +5448,7 @@
     // it, until then, undoes that.
     async function setPlusCancel(cancel, pressed) {
       const button = pressed || (cancel ? document.getElementById("go-plus-cancel") : document.querySelector("#action-plus-keep button"));
-      if (cancel && !button.classList.contains("enabled")) return;
+      if (cancel && !confirmTyped("plus-cancel")) return;
       // Resuming commits to the next charge, so it says first when, how much
       // and to which card, from wherever it is pressed. Nothing is charged now.
       if (!cancel) {
@@ -5585,6 +5594,7 @@
       };
       const ep = endpointMap[action];
       if (!ep) return;
+      if (!anyway && !confirmTyped(action)) return;
       const offline = document.getElementById("delete-account-offline"), goAnyway = document.getElementById("go-delete-anyway");
       if (action === "delete-account") { offline.hidden = true; goAnyway.hidden = true; }
 
@@ -5923,9 +5933,7 @@
         return !input.disabled && input.value !== '';
       });
       if ((currency || hasAmount) && !/^[A-Z]{3}$/.test(currency)) {
-        document.getElementById('sl-status').textContent = 'Enter a three-letter currency code, such as GBP, USD or EUR.';
-        document.getElementById('sl-currency').focus();
-        return;
+        return needsField(document.getElementById('sl-currency'), 'Choose the currency.');
       }
       var body = {
         per_purchase: document.getElementById('sl-per-purchase').value,
@@ -6130,7 +6138,7 @@
       var editing = _editingAddress;
       var res = await fetch(editing ? '/api/wallet/addresses/' + editing : '/api/wallet/addresses', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       var data = await res.json().catch(function () { return {}; });
-      if (!res.ok) { st.textContent = data.error || 'Could not save the address'; return; }
+      if (!res.ok) { st.textContent = ''; if (data.field) return needsField(document.getElementById('wa-' + data.field), data.error); st.textContent = data.error || 'Could not save the address'; return; }
       closeAddressForm();
       showToast(editing ? 'Address saved' : 'Address added');
       loadWallet();
@@ -6151,11 +6159,11 @@
     async function saveWalletCard() {
       var st = document.getElementById('wc-status'); st.textContent = 'Saving…';
       var billing = document.getElementById('wc-billing').value;
-      if (!billing) { st.textContent = 'Choose the card\'s billing address.'; return; }
+      if (!billing) { st.textContent = ''; return needsField(document.getElementById('wc-billing'), 'Choose the card\'s billing address.'); }
       if (billing === 'new') {
         var made = await fetch('/api/wallet/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(addressBody()) });
         var addr = await made.json().catch(function () { return {}; });
-        if (!made.ok) { st.textContent = addr.error || 'Could not save the address'; return; }
+        if (!made.ok) { st.textContent = ''; if (addr.field) return needsField(document.getElementById('wa-' + addr.field), addr.error); st.textContent = addr.error || 'Could not save the address'; return; }
         billing = addr.address.id;
         _walletAddresses.push(addr.address);
         fillBilling(billing);
@@ -6172,7 +6180,7 @@
       });
       var res = await walletFetch(editing ? '/api/wallet/' + editing : '/api/wallet', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       var data = await res.json().catch(function() { return {}; });
-      if (!res.ok) { st.textContent = data.error || 'Could not save the card'; return; }
+      if (!res.ok) { st.textContent = ''; if (data.field) return needsField(document.getElementById('wc-' + data.field), data.error); st.textContent = data.error || 'Could not save the card'; return; }
       st.textContent = '';
       closeCardForm();
       showToast(editing ? 'Card saved' : 'Card added');
@@ -6219,7 +6227,6 @@
         var r = await fetch('/api/phone/accept-terms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).error || 'Could not save that. Please try again.');
         _termsHere = true;
-        document.getElementById('phone-terms-nudge').hidden = true;
         if (_phone) renderPhone(Object.assign({}, _phone, { termsAccepted: true }));
       } catch (e) { box.checked = false; document.getElementById('phone-desc').textContent = e.message; }
       finally { box.disabled = false; }
@@ -6495,6 +6502,9 @@
     }
     async function saveUsagePrice(model, id) {
       var value = function (part) { return document.getElementById(id + '-' + part).value; };
+      var wrong = ['in', 'out', 'cached'].map(function (part) { return document.getElementById(id + '-' + part); })
+        .find(function (b) { return b.value !== '' && !(Number(b.value) >= 0 && Number(b.value) < 1000); });
+      if (wrong) return needsField(wrong.closest('.usage-price-row'), 'Prices are per million tokens, from 0 to 1000.', wrong);
       var r = await fetch('/api/usage/prices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: model, in: value('in'), out: value('out'), cached: value('cached') }) });
       var d = await r.json().catch(function () { return {}; });
       if (!r.ok) { showToast(d.error || 'Could not save the price', true); return; }
@@ -7346,7 +7356,8 @@
 
     window.addRule = function() {
       var input = document.getElementById('new-rule-input');
-      if (!input || !input.value.trim()) return;
+      if (!input) return;
+      if (!input.value.trim()) return needsField(input.parentElement, 'Write the preference first.', input);
       var rule = input.value.trim();
       input.value = '';
       fetch('/api/rules', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ rule: rule }) })
@@ -7723,7 +7734,8 @@
           return;
         }
 
-        if (!res.ok) { mcpStatus(''); showToast(data.error || 'Could not add that skill', true); return; }
+        // What was pasted is the trouble (no skill there, an empty file): said under the box it was pasted in.
+        if (!res.ok) { mcpStatus(''); if (res.status < 500 && data.error) needsField(document.getElementById('mcp-url-input').closest('.mcp-pill'), data.error); else showToast(data.error || 'Could not add that skill', true); return; }
         _pendingSkillUrl = null;
         warnEl.style.display = 'none';
         document.getElementById('mcp-url-input').value = '';
@@ -7889,7 +7901,7 @@
       box.querySelectorAll('button')[1].onclick = function () { box.remove(); };
       send.onclick = async function () {
         var note = area.value.trim();
-        if (!note) { area.focus(); return; }
+        if (!note) return needsField(area, 'Write what to tell it.');
         send.disabled = true;
         var res = await fetch('/api/agents/' + id + '/note', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: note }) }).catch(function () { return null; });
         var d = res ? await res.json().catch(function () { return {}; }) : {};
@@ -8789,7 +8801,7 @@
       box.innerHTML = rows.map(function (r, i) {
         return '<button type="button" class="choice' + (r.off ? ' off' : '') + '" aria-pressed="' + (on(r) ? 'true' : 'false') + '" data-i="' + i + '"><span>' + escHtml(r.label) + '</span>' + (r.note ? '<small>' + escHtml(r.note) + '</small>' : '') + '</button>';
       }).join('');
-      [].forEach.call(box.querySelectorAll('.choice'), function (b) { b.onclick = function () { pick(rows[Number(b.dataset.i)]); }; });
+      [].forEach.call(box.querySelectorAll('.choice'), function (b) { b.onclick = function () { clearNeeds(document.getElementById('auto-create-modal')); pick(rows[Number(b.dataset.i)]); }; });
     }
     function whenChoices() {
       var rows = [];
@@ -8881,24 +8893,7 @@
       if (_teamNoteKind === 'local') return 'A team of ' + n + ' does the work of ' + n + ' agents on the computer running your model. How many it can work on at once depends on that computer\'s memory and how the model is served, and the rest wait their turn.';
       return 'A team of ' + n + ' does the work of ' + n + ' agents at once, so it uses your LLM provider\'s limits and adds to its bill about ' + n + ' times as fast as one agent. Closedhand runs as many at once as your LLM can take; the rest wait their turn.';
     }
-    // A field still needed: it takes focus with a small nudge, and a note
-    // under it, pointing up at it, says what it wants. Typing in it takes the
-    // note away. A message at the foot of the form sent people hunting for
-    // what it meant.
-    function needsField(field, text) {
-      if (!field) return;
-      var note = field.nextElementSibling && field.nextElementSibling.classList.contains('field-needs') ? field.nextElementSibling : null;
-      if (!note) {
-        note = document.createElement('p'); note.className = 'field-needs'; note.setAttribute('role', 'alert');
-        field.insertAdjacentElement('afterend', note);
-        field.addEventListener('input', function gone() { note.remove(); field.removeEventListener('input', gone); });
-      }
-      note.textContent = text;
-      field.classList.remove('needs-nudge'); void field.offsetWidth; field.classList.add('needs-nudge');
-      field.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      field.focus({ preventScroll: true });
-    }
-    function clearNeeds(root) { [].forEach.call((root || document).querySelectorAll('.field-needs'), function (n) { n.remove(); }); }
+    // needsField and clearNeeds: /needs-field.js, the one way every form says what it still needs.
     // The first agent whose part is left empty, its part shown to fill in.
     function emptyPart() { return [].find.call(document.querySelectorAll('#auto-team .team-agent'), function (el) { var p = el.querySelector('.team-goal'), n = el.querySelector('.team-name'); return (p.value.trim() || n.value.trim()) && p.value.trim().length < 3; }); }
     function needsPart() { return needsField(emptyPart().querySelector('.team-goal'), 'Say what this agent should do.'); }
@@ -9114,7 +9109,7 @@
       var errEl = document.getElementById('auto-create-error');
       if (!prompt) return needsField(document.getElementById('auto-prompt-input'), 'Say what it should do.'), null;
       if (!name) { if (_openTok !== 'name') openToken('name'); return needsField(document.getElementById('auto-name-input'), 'Give it a name.'), null; }
-      if (_selectedDest === 'email' && _assistantEmail && !_assistantEmail.on) { errEl.textContent = 'Turn on ' + _assistantEmail.name + '’s email address in Settings first or choose another place to send results.'; errEl.style.display = 'block'; return null; }
+      if (_selectedDest === 'email' && _assistantEmail && !_assistantEmail.on) { if (_openTok !== 'where') openToken('where'); return needsField(document.getElementById('plan-where'), 'Turn on ' + _assistantEmail.name + '’s email address in Settings first or choose another place to send results.'), null; }
       var members = teamFromForm();
       if (emptyPart()) return needsPart(), null;
       if (_mode === 'team' && !members.length) return needsAgent(), null;
@@ -9186,6 +9181,7 @@
           body: JSON.stringify(body)
         });
         var data = await res.json();
+        if (res.status === 409) { if (_openTok !== 'name') openToken('name'); return needsField(document.getElementById('auto-name-input'), data.error); }
         if (!res.ok) { errEl.textContent = data.error || 'Could not save'; errEl.style.display = 'block'; return; }
         closeCreateAutomationModal();
         showToast(body.run_once ? 'Saved. It waits under Tasks until it starts.' : _mode === 'team' ? 'Team saved' : 'Routine saved');
@@ -9389,8 +9385,9 @@
     }
 
     async function pairBridge() {
-      var code = document.getElementById('bridge-code-input').value.trim().toUpperCase();
-      if (code.length !== 6) { showToast('Enter the 6-character code from Closedhand Bridge', true); return; }
+      var codeBox = document.getElementById('bridge-code-input');
+      var code = codeBox.value.trim().toUpperCase();
+      if (code.length !== 6) return needsField(codeBox.parentElement, 'Enter the 6-character code from Closedhand Bridge.', codeBox);
       var btn = document.getElementById('bridge-pair-btn');
       btn.disabled = true; btn.textContent = 'Pairing…';
       try {
@@ -9416,6 +9413,8 @@
             var card = document.getElementById('bridge-connected-card');
             if ((card && card.style.display !== 'none') || pollCount > 10) clearInterval(pollBridge);
           }, 2000);
+        } else if (res.status < 500 && data.error) {
+          needsField(codeBox.parentElement, data.error, codeBox);
         } else {
           showToast(data.error || 'Pairing failed', true);
         }
@@ -9512,10 +9511,10 @@
     async function savePreferredName() {
       var el = document.getElementById('preferred-name');
       var name = (el && el.value || '').trim();
-      if (!name) { showToast('Type the name you want to be called', true); return; }
+      if (!name) return needsField(el.parentElement, 'Type the name you want to be called.', el);
       var r = await fetch('/api/settings/preferred-name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) });
       var d = await r.json().catch(function() { return {}; });
-      if (r.ok) showToast('Closedhand will call you ' + d.name + '.'); else showToast(d.error || 'Could not save the name', true);
+      if (r.ok) showToast('Closedhand will call you ' + d.name + '.'); else if (r.status === 400 && d.error) needsField(el.parentElement, d.error, el); else showToast(d.error || 'Could not save the name', true);
     }
     window.savePreferredName = savePreferredName;
     loadPreferredName();
@@ -10479,10 +10478,13 @@
       var app = _chatAppOpen; var spec = CHAT_APP_SPECS[app]; if (!spec) return;
       var keys = {}; spec.fields.forEach(function(f) { keys[f.key] = (document.getElementById('chat-app-' + f.key) || {}).value || ''; });
       var msg = document.getElementById('chat-app-msg'); var btn = document.getElementById('chat-app-save');
+      var empty = spec.fields.find(function(f) { return !keys[f.key].trim(); });
+      if (empty) { msg.textContent = ''; return needsField(document.getElementById('chat-app-' + empty.key), 'Paste the ' + (/^[A-Z][a-z]+ [a-z]/.test(empty.label) ? empty.label.charAt(0).toLowerCase() + empty.label.slice(1) : empty.label) + '.'); }
       msg.style.color = 'rgba(var(--fg-rgb),0.64)'; msg.textContent = 'Checking with ' + ((CHAT_APP_SPECS[app] && app) || 'the app') + '...'; btn.disabled = true;
       try {
         var r = await fetch('/api/chat-apps/' + app, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keys: keys }) });
         var j = await r.json().catch(function() { return {}; });
+        if (!r.ok && j.field && document.getElementById('chat-app-' + j.field)) { msg.textContent = ''; btn.disabled = false; return needsField(document.getElementById('chat-app-' + j.field), j.error); }
         if (!r.ok) { msg.style.color = 'var(--danger)'; msg.textContent = j.error || 'That did not work.'; btn.disabled = false; return; }
         closeChatAppSetup();
         if (typeof showToast === 'function') showToast((j.botName || 'The app') + ' is on. Press Connect to pair your account.');

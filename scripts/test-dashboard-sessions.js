@@ -235,7 +235,9 @@ test('a dashboard password has at least 8 characters, on the setup page and on t
   const route = server.slice(server.indexOf('app.post("/api/setup/password"'), server.indexOf('app.get("/api/setup/qr"'));
   assert.match(route, /if \(pw\.length < 8\) return res\.status\(400\)\.json\(\{ error: "Use at least 8 characters\." \}\);/);
   const setup = fs.readFileSync(path.join(__dirname, '..', 'webapp/views/setup.html'), 'utf8');
-  assert.match(setup, /id="pw-input" autocomplete="new-password" minlength="8" required/);
+  // Said at the password box, the app's one way (needs-field.js), not by the browser's own bubble.
+  assert.match(setup, /if \(!\$\("#pw-input"\)\.value\) return needsField\(\$\("#pw-input"\), "Type a password first\."\);/);
+  assert.match(setup, /function \(error, status\) \{ return status === 400 && !\/ADMIN_PASSWORD\/\.test\(error\) \? \$\("#pw-input"\) : null; \}\);/, 'too short is said there too');
 });
 
 test('logging out is a POST that clears what the browser kept, and a link elsewhere cannot do it', () => {

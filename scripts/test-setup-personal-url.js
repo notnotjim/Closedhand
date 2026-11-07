@@ -7,16 +7,17 @@ const source = fs.readFileSync(require.resolve('../webapp/public/setup-personal-
 const shared = fs.readFileSync(require.resolve('../webapp/public/account-number-claim'), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture(respond = () => ({ state: 'off' }), at = {}) {
-  const nodes = new Map(), storage = new Map(), calls = [], copied = [], opened = [], popups = [], replaced = [], timers = [], nudged = [];
+  const nodes = new Map(), storage = new Map(), calls = [], copied = [], opened = [], popups = [], replaced = [], timers = [], needs = [];
   let now = 10000, changes = 0;
-  const element = selector => ({ selector, value: '', hidden: false, handlers: {}, children: [], classList: { toggle(name, on) { this[name] = !!on; }, remove() {}, add(name) { if (name === 'is-nudged') nudged.push(selector); } },
+  const element = selector => ({ selector, value: '', hidden: false, handlers: {}, children: [], classList: { toggle(name, on) { this[name] = !!on; }, remove() {}, add() {} },
     addEventListener(name, fn) { this.handlers[name] = fn; }, removeAttribute(name) { delete this[name]; }, focus() {}, select() {}, scrollIntoView() {},
     replaceChildren(...children) { this.children = children; }, querySelectorAll() { return this.children; }, querySelector(inner) { return node(selector + ' ' + inner); } });
   function node(selector) {
     if (!nodes.has(selector)) nodes.set(selector, element(selector));
     return nodes.get(selector);
   }
-  const context = { window: { closed: 0, close() { this.closed++; }, open() {
+  // What a form still needs is said at its field (webapp/public/needs-field.js).
+  const context = { window: { closed: 0, close() { this.closed++; }, needsField(field, text) { needs.push([field.selector, text]); }, open() {
     const tab = { closed: false, close() { this.closed = true; }, location: { replace(url) { opened.push(url); } } };
     popups.push(tab); return tab;
   }, location: { assign(url) { opened.push(url); }, origin: 'http://localhost:3000', hostname: at.hostname || 'localhost', pathname: '/setup', search: '', hash: at.hash || '' },
@@ -33,7 +34,7 @@ function fixture(respond = () => ({ state: 'off' }), at = {}) {
   // The normal claim, which the anonymous panel stands in for while open.
   const ways = () => ['#url-how', '#url-start', '#url-anonymous'].map(node);
   const api = context.window.ClosedHandSetupUrl.mount({ querySelector: node, querySelectorAll: s => s === '[data-claim-way]' ? ways() : [] }, () => changes++);
-  return { api, calls, copied, storage, opened, popups, replaced, context, nudged, node: id => node('#' + id),
+  return { api, calls, copied, storage, opened, popups, replaced, context, needs, node: id => node('#' + id),
     async later() { const due = timers.splice(0); for (const fn of due) await fn(); for (let i = 0; i < 5; i++) await tick(); },
     event: (id, type) => node('#' + id).handlers[type]({ preventDefault() {} }),
     async update(id = 'first', password = true) { now += 5000; api.update(id, password); await tick(); },
@@ -165,8 +166,14 @@ test('once confirmed, setup says where Closedhand is, with Change to rename it',
   assert.equal(f.node('url-rename-form').hidden, false);
   f.node('url-new-name').value = ' Lucy Smith! '; f.node('url-new-name').handlers.input();
   assert.equal(f.node('url-new-preview').textContent, 'lucy-smith.closedhand.ai');
+  // A name too short to be one is said at its box, and nothing is sent.
+  f.node('url-new-name').value = 'L!';
   await f.event('url-rename-form', 'submit'); await tick();
-  assert.equal(f.node('url-status').textContent, 'That name is taken. Try another.');
+  assert.deepEqual(f.needs.at(-1), ['#url-new-name', 'Use 3 to 32 letters, numbers or hyphens, starting with a letter. A few names, like admin and mail, are kept back.']);
+  assert.equal(f.calls.filter(c => c.method === 'POST').length, 0);
+  f.node('url-new-name').value = ' Lucy Smith! ';
+  await f.event('url-rename-form', 'submit'); await tick();
+  assert.deepEqual(f.needs.at(-1), ['#url-new-name', 'That name is taken. Try another.'], 'a taken name is said at the name');
   assert.equal(f.node('url-rename-form').hidden, false, 'a refusal leaves the form open to try again');
   reply = { enabled: true, state: 'provisioning', ownershipConfirmed: true, renamedTo: 'https://lucy-smith.closedhand.ai' };
   await f.event('url-rename-form', 'submit'); await tick();
@@ -221,11 +228,15 @@ test('typing the code sends it once, clears it on success and keeps a refusal re
   let reply = { error: 'That code does not match. Check the code on closedhand.com and try again.' };
   const f = fixture(o => o.method === 'POST' ? reply : { state: 'pairing', enabled: true, pairingUrl: 'https://closedhand.com/phone-access/pair#ticket', addressName: 'example' });
   await f.update();
+  f.node('url-code').value = 'abc';
+  await f.event('url-code-form', 'submit'); await tick();
+  assert.deepEqual(f.needs.at(-1), ['#url-code', 'The code is 6 letters and numbers, as shown on closedhand.com.'], 'a short code is said at its box, unsent');
+  assert.equal(f.calls.filter(c => c.method === 'POST').length, 0);
   f.node('url-code').value = 'abc 234';
   await f.event('url-code-form', 'submit'); await tick();
   const sent = f.calls.filter(c => c.method === 'POST');
   assert.equal(sent.length, 1); assert.deepEqual(JSON.parse(sent[0].body), { code: 'abc 234' });
-  assert.match(f.node('url-status').textContent, /does not match/);
+  assert.deepEqual(f.needs.at(-1), ['#url-code', 'That code does not match. Check the code on closedhand.com and try again.'], 'a refused code is said at its box');
   assert.equal(f.node('url-code').value, 'abc 234', 'a refused code stays so it can be corrected');
   reply = { state: 'pairing', enabled: true, ownershipConfirmed: true };
   await f.event('url-code-form', 'submit'); await tick();
@@ -354,8 +365,7 @@ test('the claim waits for the Terms, agreed once here; then Claim uses a sign-in
   assert.equal(f.node('url-start').disabled, false, 'never disabled for the Terms');
   await f.event('url-form', 'submit'); await tick();
   assert.deepEqual(f.calls.filter(c => c.method === 'POST'), [], 'pressed unticked, nothing is claimed');
-  assert.deepEqual(f.nudged, ['#url-terms'], 'the Terms row lights briefly instead');
-  assert.equal(f.node('url-terms').querySelector('.terms-nudge').hidden, false, 'with its quiet helper line');
+  assert.deepEqual(f.needs, [['#url-terms', 'Tick to agree to the Terms first.']], 'said under the Terms row instead, the way every form says what it needs');
   assert.equal(f.popups.length, 0, 'and no window opens');
   assert.equal(f.node('url-how').textContent, 'You claim one with the account you connected above, and your Closedhand account stores that account’s email and nothing else.');
   f.node('url-terms-box').checked = true;
@@ -392,12 +402,12 @@ test('using Closedhand anonymously: a small button opens a panel in place, paid 
   f.event('url-anonymous', 'click'); for (let i = 0; i < 5; i++) await tick();
   // Pressed unticked: the Terms row, then the payment's own box, drawn to gently.
   await f.event('url-anon-go', 'click'); await tick();
-  assert.deepEqual(f.nudged, ['#url-terms']);
+  assert.deepEqual(f.needs, [['#url-terms', 'Tick to agree to the Terms first.']]);
   state = { ...state, termsAccepted: true };
   await f.update();
   assert.equal(f.node('url-anon-panel').hidden, false, 'still open');
   await f.event('url-anon-go', 'click'); await tick();
-  assert.deepEqual(f.nudged, ['#url-terms', '#url-anon-agree'], 'then the box agreeing the payment starts straight away');
+  assert.deepEqual(f.needs, [['#url-terms', 'Tick to agree to the Terms first.'], ['#url-anon-agree', 'Tick to agree first.']], 'then the box agreeing the payment starts straight away');
   assert.equal(f.calls.filter(c => c.method === 'POST').length, 0, 'nothing asked yet');
   f.node('url-anon-months').children[1].handlers.click();
   f.node('url-anon-agree-box').checked = true;

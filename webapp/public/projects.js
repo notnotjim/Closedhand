@@ -19,7 +19,7 @@
     const json = !(opts.body instanceof FormData);
     const res = await fetch(path, { ...opts, headers: json ? { "Content-Type": "application/json", ...(opts.headers || {}) } : opts.headers });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Something went wrong. Try again.");
+    if (!res.ok) throw Object.assign(new Error(data.error || "Something went wrong. Try again."), { field: data.field });
     return data;
   }
   const shortDate = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
@@ -101,7 +101,7 @@
     let pick = null;
     const choose = btn("goal-small", "Choose an emoji", () => {
       if (pick) { pick.remove(); pick = null; choose.textContent = "Choose an emoji"; return; }
-      pick = picker(emoji.value, taken, (e) => { emoji.value = e; pick.remove(); pick = null; choose.textContent = "Choose an emoji"; });
+      pick = picker(emoji.value, taken, (e) => { emoji.value = e; emoji.dispatchEvent(new Event("input", { bubbles: true })); pick.remove(); pick = null; choose.textContent = "Choose an emoji"; });
       emojiWrap.append(pick); choose.textContent = "Close";
       pick.querySelector("input").focus();
     });
@@ -171,8 +171,14 @@
     const save = el("button", "", p ? "Save" : "Start project"); save.type = "submit";
     buttons.append(save, btn("goal-small goal-quiet", "Cancel", () => { state.editing = null; if (!p) openNew(false); else render(); }));
     f.append(buttons);
+    // What is still needed is said at its field (needsField, the dashboard's
+    // one way), never only in a line under the whole tab.
+    const fieldOf = { name, emoji: emojiRow };
     f.onsubmit = async (ev) => {
       ev.preventDefault();
+      if (!name.value.trim()) return window.needsField(name, "Give it a name.");
+      if (!emoji.value.trim()) return window.needsField(emojiRow, "Choose one emoji for it.");
+      if (goal && goal.missing()) return;
       save.disabled = true;
       try {
         const typed = adding.map((c) => (c.kind === "note" ? { kind: "note", title: c.title, text: c.text } : { kind: "link", url: c.url, title: c.title }));
@@ -195,7 +201,7 @@
         state.editing = null;
         if (!p) openNew(false);
         await load();
-      } catch (e) { showError(e.message); save.disabled = false; }
+      } catch (e) { if (fieldOf[e.field]) window.needsField(fieldOf[e.field], e.message); else showError(e.message); save.disabled = false; }
     };
     if (p) f.append(moreActions(p));
     return f;
@@ -211,7 +217,7 @@
       pick.append(new Option("Merge another project into this one…", ""));
       for (const o of others) pick.append(new Option(`${o.emoji} ${o.name}`, o.id));
       row.append(pick, btn("goal-small", "Merge", async () => {
-        if (!pick.value) return;
+        if (!pick.value) return window.needsField(row, "Choose another project to merge into this one.");
         try { await api(`/api/projects/${p.id}/merge`, { method: "POST", body: JSON.stringify({ from: pick.value }) }); state.editing = null; await load(); } catch (e) { showError(e.message); }
       }));
       box.append(row);

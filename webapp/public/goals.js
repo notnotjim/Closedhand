@@ -5,13 +5,15 @@
 // reward, the steps, the check-in time and the progress feed. Edits here and
 // in chat change the same goal (lib/goals.js). A project card leaves a slot
 // (data-goal-for, its project's id) and this fills it; a goal is added in the
-// project's own form, as one of its optional parts.
+// project's own form, as one of its optional parts. The plan is Closedhand's
+// to work out: a goal with none gets one drafted as soon as it shows here
+// (POST /api/goals/:id/plan), for the person to change.
 (() => {
   const byId = (id) => document.getElementById(id);
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const DAY = ["S", "M", "T", "W", "T", "F", "S"];
   const DAYNAME = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  let state = { goals: [], open: new Set(), weekStart: null, timezone: null };
+  let state = { goals: [], open: new Set(), weekStart: null, timezone: null, drafting: new Set(), tried: new Set() };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
@@ -33,8 +35,22 @@
       state.goals = data.goals; state.weekStart = data.week_start; state.timezone = data.timezone;
       state.assistant = data.assistant_name || "Closedhand";
       render();
+      draftPlans();
     } catch (e) { const err = byId("projects-error"); if (err) { err.textContent = e.message; err.hidden = false; } }
   }
+
+  // A goal with a finish line and no plan yet gets one, once a page load.
+  const needsPlan = (g) => g.status === "active" && g.shape !== "habit" && !(g.plan || []).length;
+  function draftPlans() {
+    for (const g of state.goals) {
+      if (!needsPlan(g) || state.tried.has(g.id)) continue;
+      state.tried.add(g.id); state.drafting.add(g.id); render();
+      api(`/api/goals/${g.id}/plan`, { method: "POST" })
+        .then(() => { state.drafting.delete(g.id); return load(); })
+        .catch((e) => { state.drafting.delete(g.id); render(); alertIn(g.id, e.message); });
+    }
+  }
+  const drafting = () => el("span", "goal-drafting", `${state.assistant || "Closedhand"} is drafting the plan…`);
 
   const longDate = (v) => new Date(dayOf(v) + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 
@@ -84,6 +100,7 @@
     if (g.status !== "achieved") {
       if (g.habit) rows.push(["Habit", habitRow(g)]);
       if ((g.plan || []).length) rows.push(["Next", planRow(g)]);
+      else if (state.drafting.has(g.id)) rows.push(["Next", drafting()]);
       else if (g.stage) rows.push(["Now", el("span", "", g.stage)]);
     }
     if (!rows.length) return null;
@@ -154,14 +171,14 @@
         li.append(tick, body);
         list.append(li);
       });
-      d.append(list);
+      d.append(state.drafting.has(g.id) ? drafting() : list);
     }
-    if (g.shape !== "habit" && live) {
+    if (g.shape !== "habit" && live && !state.drafting.has(g.id)) {
       const add = el("form", "goal-add");
       const input = el("input"); input.placeholder = "Add a step"; input.maxLength = 200; input.setAttribute("aria-label", "Add a step");
       const go = el("button", "goal-small", "Add"); go.type = "submit";
       add.append(input, go);
-      add.onsubmit = async (ev) => { ev.preventDefault(); if (!input.value.trim()) return; go.disabled = true; try { await api(`/api/goals/${g.id}/steps`, { method: "POST", body: JSON.stringify({ text: input.value }) }); await load(); } catch (e) { go.disabled = false; alertIn(g.id, e.message); } };
+      add.onsubmit = async (ev) => { ev.preventDefault(); if (!input.value.trim()) return window.needsField(add, "Write the step first."); go.disabled = true; try { await api(`/api/goals/${g.id}/steps`, { method: "POST", body: JSON.stringify({ text: input.value }) }); await load(); } catch (e) { go.disabled = false; alertIn(g.id, e.message); } };
       d.append(add);
     }
 
@@ -206,13 +223,15 @@
     [1, 2, 3, 4, 5, 6, 0].forEach((d) => {
       const b = el("button", "goal-day" + (chosen.has(d) ? " on" : ""), DAY[d]); b.type = "button";
       b.setAttribute("aria-pressed", String(chosen.has(d))); b.setAttribute("aria-label", DAYNAME[d]);
-      b.onclick = () => { if (chosen.has(d)) chosen.delete(d); else chosen.add(d); b.classList.toggle("on"); b.setAttribute("aria-pressed", String(chosen.has(d))); };
+      b.onclick = () => { if (chosen.has(d)) chosen.delete(d); else chosen.add(d); b.classList.toggle("on"); b.setAttribute("aria-pressed", String(chosen.has(d))); window.clearNeeds(box); };
       days.append(b);
     });
     const time = el("input", "goal-time"); time.type = "time"; time.value = c.time || "19:00"; time.setAttribute("aria-label", "Check-in time");
     const save = el("button", "goal-small", "Save"); save.type = "button";
     save.onclick = async () => {
-      try { await api(`/api/goals/${g.id}`, { method: "PATCH", body: JSON.stringify({ check_in: chosen.size ? { days: [...chosen], time: time.value } : null }) }); await load(); }
+      if (!chosen.size) return window.needsField(days, "Pick at least one day.");
+      if (!time.value) return window.needsField(time, "Choose a time.");
+      try { await api(`/api/goals/${g.id}`, { method: "PATCH", body: JSON.stringify({ check_in: { days: [...chosen], time: time.value } }) }); await load(); }
       catch (e) { alertIn(g.id, e.message); }
     };
     box.append(days, time, save);
@@ -287,6 +306,14 @@
     return {
       box,
       focus: () => title.focus(),
+      // Something written for a goal but not the goal itself: asked for at
+      // the goal's box, rather than the rest dropped without a word.
+      missing() {
+        if (title.value.trim()) return false;
+        if (!(hr.checked ? cue.value.trim() : done.value.trim() || by.value)) return false;
+        window.needsField(title, "Write the goal first.");
+        return true;
+      },
       value() {
         if (!title.value.trim()) return null;
         const shape = hr.checked ? "habit" : "milestone";

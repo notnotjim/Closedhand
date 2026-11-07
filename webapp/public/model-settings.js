@@ -288,12 +288,26 @@
       }
       return !!key || !!(prior?.hasKey && prior.provider === provider && (prior.baseUrl || "") === base);
     }
+    // The first box a connection still needs, with what it wants, said there
+    // (needsField) when the person asks for its models.
+    function stillMissing(kind) {
+      var names = { primary: ["provider", "baseUrl", "apiKey"], background: ["backgroundProvider", "backgroundBaseUrl", "backgroundKey"], vision: ["visionProvider", "visionBaseUrl", "visionKey"] }[kind];
+      var provider = input()[kind].provider;
+      var at = !provider ? [names[0], "Choose a provider first."] : ["ollama", "custom"].includes(provider) ? [names[1], "Type the service URL first."] : [names[2], "Paste the API key from this provider first."];
+      var box = field(at[0]);
+      return box ? { field: box.closest("label") || box, text: at[1] } : null;
+    }
     async function loadModels(kind, quiet) {
       clearTimeout(loadTimers[kind]);
       var token = ++loads[kind], vision = kind === "vision", support = kind === "background";
       var retry = root.querySelector('[data-action="' + (kind === "primary" ? "load" : "load-" + kind) + '"]');
       retry.hidden = true;
-      if (!ready(kind)) { if (!quiet) show("Choose a provider and complete its connection details first.", "error"); return; }
+      if (!ready(kind)) {
+        var missing = !quiet && stillMissing(kind);
+        if (missing && window.needsField) window.needsField(missing.field, missing.text);
+        else if (!quiet) show("Choose a provider and complete its connection details first.", "error");
+        return;
+      }
       if (!quiet) show(vision ? "Loading image and video models…" : support ? "Loading support models…" : "Loading available models…");
       try {
         var body = input(); body.connection = kind;
@@ -355,7 +369,10 @@
       if (keyField) {
         check = { kind: "failed", error: KEY_AS_MODEL, visionNeeded: keyField === "visionModel" };
         if (keyField !== "model") region("extras").open = true;
-        renderCheck(); return;
+        renderCheck();
+        // Said at the Model ID box too, where the key was typed.
+        if (window.needsField) window.needsField(field(keyField).closest("label") || field(keyField), KEY_AS_MODEL);
+        return;
       }
       show(""); check = { kind: "checking" }; renderCheck();
       try {
