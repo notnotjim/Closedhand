@@ -65,15 +65,28 @@ function verifier(client) {
     },
   }); return module.exports;
 }
-for (const payload of [{ passed: true, criteria_results: [{ criterion: "Correct time", met: true }] }, { passed: false, criteria_results: [{ criterion: "Correct time", met: false }] }, { passed: "true", criteria_results: [] }, { passed: true, criteria_results: [] }, { nonsense: true }]) {
+for (const payload of [{ passed: true, criteria_results: [{ criterion: "Correct time", met: true }] }, { passed: false, criteria_results: [{ criterion: "Correct time", met: false }] }, { passed: "true", criteria_results: [] }, { passed: true, criteria_results: [] }, { passed: true, criteria_results: [{ criterion: "Correct time", met: false }] }, { nonsense: true }]) {
   test("completion evidence and strict verdict: " + JSON.stringify(payload), async () => {
     let request;
     const v = verifier({ messages: { create: async p => { request = p; return { content: [{ type: "text", text: JSON.stringify(payload) }] }; } } });
     const result = await v.verifyCompletion("Read departure", ["Correct time"], "20:00", ["search_cache"], "owner", exchange("x", "search_cache", {}, { departure: "20:00+07:00", source_id: "booking" }));
-    assert.equal(result.passed, payload.passed === true && payload.criteria_results?.length > 0 && payload.criteria_results.every(x => x.met));
+    assert.equal(result.passed, payload.passed === true && payload.criteria_results.every(x => x.met));
     assert.ok(request.messages[0].content.includes("20:00+07:00")); assert.ok(request.messages[0].content.includes("booking"));
   });
 }
+test("a verdict without its outcome by outcome list is still a verdict; a list must cover every outcome", async () => {
+  // As one LLM answered: passed, the two flags and feedback, no list.
+  const reply = (payload) => verifier({ messages: { create: async () => ({ content: [{ type: "text", text: JSON.stringify(payload) }] }) } });
+  const fail = await reply({ passed: false, claims_supported: false, needs_person: false, feedback: "The sources are not named." }).verifyCompletion("Sum up the rules", ["Sources named"], "Answer", [], "owner");
+  assert.equal(fail.status, "failed", "not unavailable: the task gets its one rewrite");
+  assert.equal(fail.feedback, "The sources are not named.");
+  assert.equal(fail.retry, true);
+  const pass = await reply({ passed: true, claims_supported: true, needs_person: false, feedback: "" }).verifyCompletion("Sum up the rules", ["Sources named"], "Answer", [], "owner");
+  assert.equal(pass.status, "passed");
+  const other = await reply({ passed: true, criteria_results: [{ criterion: "Something else", met: true }] }).verifyCompletion("Sum up the rules", ["Sources named"], "Answer", [], "owner");
+  assert.equal(other.passed, false, "a list that leaves out an outcome asked for does not pass");
+  assert.match(fs.readFileSync(path.join(__dirname, "../lib/verification.js"), "utf8"), /const CHECK_MS = 60000;[\s\S]*purpose: "verification", timeoutMs: CHECK_MS/, "a minute to read a long task's evidence");
+});
 test("the check says whether a rewrite could help", async () => {
     // Only skip the rewrite when both answers agree: every claim holds up, and
     // what is left needs the person. Either one alone still rewrites.
