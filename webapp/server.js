@@ -7439,10 +7439,19 @@ app.get("/api/goals", async (req, res) => {
       if (r.error) throw new Error("Could not load your goals.");
       ticks = r.data || [];
     }
+    // A step of the assistant's being done now, as a task (lib/goal-steps.js).
+    const stepTasks = (data || []).flatMap((g) => (g.plan || []).filter((s) => s.task_id && s.status === "todo").map((s) => s.task_id));
+    let onIt = new Set();
+    if (stepTasks.length) {
+      const r = await supabase.from("agent_tasks").select("id").eq("user_id", userId).in("id", stepTasks).in("status", ["pending", "running"]);
+      if (r.error) throw new Error("Could not load your goals.");
+      onIt = new Set((r.data || []).map((t) => t.id));
+    }
     res.json({
       timezone: tz, week_start: since, assistant_name: botName,
       goals: (data || []).map((g) => ({
         ...g,
+        plan: (g.plan || []).map((s) => (onIt.has(s.task_id) ? { ...s, on_it: true } : s)),
         this_week: ticks.filter((t) => t.goal_id === g.id).map((t) => t.at),
         check_in_text: g.check_in ? goalsTime.describeCheckIn(g.check_in) : null,
       })),

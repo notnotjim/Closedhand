@@ -51,6 +51,9 @@
     }
   }
   const drafting = () => el("span", "goal-drafting", `${state.assistant || "Closedhand"} is drafting the plan…`);
+  // A step of the assistant's being done now, as a task: said where the step
+  // is, as the plan being drafted is.
+  const onIt = () => el("span", "goal-on-it", `${state.assistant || "Closedhand"} is on it`);
 
   const longDate = (v) => new Date(dayOf(v) + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 
@@ -83,7 +86,8 @@
     const next = plan.find((s) => s.status === "todo");
     const done = plan.filter((s) => s.status !== "todo").length;
     const box = el("div");
-    box.append(el("span", "", next ? next.text + (next.due ? `, ${shortDate(next.due)}` : "") : "Every step done"));
+    box.append(el("span", "", next ? next.text + (next.due && !next.on_it ? `, ${shortDate(next.due)}` : "") : "Every step done"));
+    if (next && next.on_it) box.append(onIt());
     const wrap = el("div", "goal-progress");
     const bar = el("div", "goal-bar"); bar.setAttribute("role", "progressbar"); bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", String(plan.length)); bar.setAttribute("aria-valuenow", String(done));
     const fill = el("span", "goal-fill"); fill.style.width = `${Math.round((done / plan.length) * 100)}%`; bar.append(fill);
@@ -167,7 +171,7 @@
           catch (e) { li.classList.remove("ticking"); alertIn(g.id, e.message); }
         };
         const body = el("span", "goal-step-body");
-        body.append(el("span", "goal-step-text", s.text), el("span", "goal-step-meta", (s.owner === "closedhand" ? state.assistant || "Closedhand" : "You") + (s.due ? " · " + shortDate(s.due) : "")));
+        body.append(el("span", "goal-step-text", s.text), s.on_it ? onIt() : el("span", "goal-step-meta", (s.owner === "closedhand" ? state.assistant || "Closedhand" : "You") + (s.due ? " · " + shortDate(s.due) : "")));
         li.append(tick, body);
         list.append(li);
       });

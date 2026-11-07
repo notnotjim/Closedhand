@@ -105,5 +105,6 @@
   #goals-cheer.show { animation: none; }
 }
 /* Closedhand drafting a goal's plan: the line breathes until the plan is in. */
-.goal-drafting { display: block; color: var(--muted); animation: mp-pulse 1.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .goal-drafting { animation: none; } }
+.goal-drafting, .goal-on-it { display: block; color: var(--muted); animation: mp-pulse 1.6s ease-in-out infinite; }
+.goal-step .goal-on-it { display: inline; margin-left: 0.625rem; font-size: 0.7812rem; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .goal-drafting, .goal-on-it { animation: none; } }

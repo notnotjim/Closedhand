@@ -305,6 +305,13 @@ test("Closedhand's own steps start by themselves, one at a time, in the goal's p
     assert.equal(tables.agent_tasks.length, 2, "and is not started again by itself");
   });
   assert.match(read("lib/task-delivery.js"), /if \(table === "agent_tasks" && row\.runtime\?\.goalStep\) await require\("\.\/goal-steps"\)\.ran\(row\)/, "ticked after the result is posted");
+  const server = read("webapp/server.js");
+  assert.match(server, /from\("agent_tasks"\)\.select\("id"\)\.eq\("user_id", userId\)\.in\("id", stepTasks\)\.in\("status", \["pending", "running"\]\)/, "only while its task is going, and only the person's own tasks");
+  assert.match(server, /plan: \(g\.plan \|\| \[\]\)\.map\(\(s\) => \(onIt\.has\(s\.task_id\) \? \{ \.\.\.s, on_it: true \} : s\)\)/);
+  const tab = read("webapp/public/goals.js");
+  assert.match(tab, /const onIt = \(\) => el\("span", "goal-on-it", `\$\{state\.assistant \|\| "Closedhand"\} is on it`\);/);
+  assert.match(tab, /if \(next && next\.on_it\) box\.append\(onIt\(\)\);/, "on the card's Next line");
+  assert.match(tab, /s\.on_it \? onIt\(\) : el\("span", "goal-step-meta"/, "and on the step in the plan");
 });
 
 // Goal tools load by what the message says, the way mail and calendar do
