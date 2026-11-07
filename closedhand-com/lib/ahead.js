@@ -149,9 +149,9 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
 
   // Why this account can't pay ahead now, as words for it, or null when it can.
   async function refused(owner) {
-    if (await require('./maintainer').isMaintainer(db, env, owner.id)) return 'Closedhand Managed Models are already on for your account as the maintainer.';
+    if (await require('./maintainer').isMaintainer(db, env, owner.id)) return 'The Closedhand subscription is already on for your account as the maintainer.';
     if ((await db.query('SELECT 1 FROM plus_subscriptions WHERE owner_id = $1 AND status = ANY($2::text[])', [owner.id, LIVE])).rowCount) {
-      return 'You subscribe to Closedhand Managed Models by card. Paying ahead in crypto is instead of a subscription by card.';
+      return 'You have the Closedhand subscription by card. Paying ahead in crypto is instead of a subscription by card.';
     }
     if (!(await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount) return 'Claim your personal URL from Closedhand on your computer first.';
     return null;
@@ -166,7 +166,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     if (!cryptoOn()) throw no(503, 'Paying in crypto is not available just now.');
     if (extend) {
       const plan = await running(owner.id);
-      if (!plan) throw no(409, 'Carrying on in crypto is for Closedhand Managed Models paid ahead in crypto.');
+      if (!plan) throw no(409, 'Carrying on in crypto is for an account paid ahead in crypto.');
       if (extended(plan)) throw no(409, 'You can already carry on to the end of this month.');
       return invoice(owner, extendUsd, { extend: true });
     }

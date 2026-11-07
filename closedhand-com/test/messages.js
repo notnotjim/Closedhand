@@ -37,15 +37,15 @@ const someone = () => `203.0.113.${++senders}`;
 test('a message is kept with its page and reply email, and told to the maintainer at once in plain words', async () => {
   await fresh();
   const box = inbox();
-  assert.deepEqual(await box.receive({ message: '  Does the Mac app work on an older Intel Mac?\n\nThanks!  ', email: 'mira.okafor@example.com', page: '/managed-models' }, someone()), { ok: true });
+  assert.deepEqual(await box.receive({ message: '  Does the Mac app work on an older Intel Mac?\n\nThanks!  ', email: 'mira.okafor@example.com', page: '/pricing' }, someone()), { ok: true });
   const [kept] = (await db.query('SELECT * FROM site_messages')).rows;
   assert.equal(kept.message, 'Does the Mac app work on an older Intel Mac?\n\nThanks!');
   assert.equal(kept.reply_to, 'mira.okafor@example.com');
-  assert.equal(kept.page, '/managed-models');
+  assert.equal(kept.page, '/pricing');
   assert.deepEqual(Object.keys(kept).sort(), ['created_at', 'id', 'message', 'notice_id', 'page', 'reply_to'], 'nothing else about the sender, no internet address');
   const [notice] = (await db.query('SELECT * FROM operator_notices')).rows;
   assert.equal(notice.id, kept.notice_id);
-  assert.equal(notice.text, 'Closedhand: someone sent a message from closedhand.com (/managed-models). Their words, as sent: "Does the Mac app work on an older Intel Mac? Thanks!" Reply to them at mira.okafor@example.com.');
+  assert.equal(notice.text, 'Closedhand: someone sent a message from closedhand.com (/pricing). Their words, as sent: "Does the Mac app work on an older Intel Mac? Thanks!" Reply to them at mira.okafor@example.com.');
 });
 
 test('without an email the notice says there is no way to reply; a long message is quoted in part, short enough for the chat', async () => {
@@ -117,7 +117,7 @@ test('the website answers POST /api/message and every page people browse carries
     assert.equal(r.status, 400);
     assert.deepEqual(await r.json(), { error: 'Write your message first.' });
     assert.equal((await db.query('SELECT count(*)::int AS n FROM site_messages')).rows[0].n, 1);
-    for (const p of ['/', '/managed-models', '/pcl', '/ethos', '/architecture', '/privacy', '/terms', '/open', '/account', '/no-such-page']) {
+    for (const p of ['/', '/pricing', '/pcl', '/ethos', '/architecture', '/privacy', '/terms', '/open', '/account', '/no-such-page']) {
       assert.match(await (await fetch(base + p)).text(), /<script src="\/message-us\.js\?v=[0-9a-f]{12}" defer><\/script>/, p);
     }
     for (const p of ['/phone-access/pair', '/assistant-email/confirm']) {

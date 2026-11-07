@@ -1,4 +1,4 @@
-/* The Closedhand Managed Models page (views/managed-models.html), on the
+/* The Pricing page (views/pricing.html), on the
    reading page of ethos.css: wider, for its grid and table. */
 main.managed { width: min(100%, 62rem); padding-top: 3.5rem; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

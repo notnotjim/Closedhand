@@ -62,7 +62,7 @@ async function use({ unlessOwn = false, fresh = false } = {}) {
   const before = await settings();
   const key = require("./model-policy").openKey(before.included_api_key);
   const models = before.included_ai?.models;
-  if (!key || !models?.chat || !knownProvider(models.provider)) throw new Error("This Closedhand has no Managed Models to switch to.");
+  if (!key || !models?.chat || !knownProvider(models.provider)) throw new Error("This Closedhand has no plan from closedhand.com to switch to.");
   const own = () => unlessOwn && !!before.model_config && !before.model_config.included;
   if (own()) return false;
   const modelConfig = require("./model-config");

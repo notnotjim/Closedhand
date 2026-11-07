@@ -1,4 +1,4 @@
-// The Managed Models page as it is for this person: the price where they are,
+// The Pricing page as it is for this person: the price where they are,
 // the LLM Closedhand picks now, and the main button. Someone new downloads
 // Closedhand (the free days start in its setup); someone signed in with a
 // Closedhand of their own subscribes; someone who has them sees no button.

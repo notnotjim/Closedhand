@@ -227,8 +227,8 @@ test('paying in crypto asks for agreement first, and paying ahead is never for t
   assert.deepEqual(await refused({ months: 3, agreed: true }, { id: nowhere }), [409, 'Claim your personal URL from Closedhand on your computer first.']);
   const subscriber = await person();
   await db.query("INSERT INTO plus_subscriptions (owner_id, polar_subscription_id, status) VALUES ($1, 'sub_y', 'active')", [subscriber]);
-  assert.deepEqual(await refused({ months: 3, agreed: true }, { id: subscriber }), [409, 'You subscribe to Closedhand Managed Models by card. Paying ahead in crypto is instead of a subscription by card.']);
-  assert.deepEqual(await refused({ extend: true, agreed: true }), [409, 'Carrying on in crypto is for Closedhand Managed Models paid ahead in crypto.']);
+  assert.deepEqual(await refused({ months: 3, agreed: true }, { id: subscriber }), [409, 'You have the Closedhand subscription by card. Paying ahead in crypto is instead of a subscription by card.']);
+  assert.deepEqual(await refused({ extend: true, agreed: true }), [409, 'Carrying on in crypto is for an account paid ahead in crypto.']);
   assert.equal(w.state.made.length, 0, 'no invoice made for any of them');
 }));
 

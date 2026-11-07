@@ -159,7 +159,7 @@ test('allowances are counted per owner, and an owner may run three copies', asyn
 });
 
 test('without Closedhand Managed Models no new address is made, and one already made refuses mail with one plain line and sends nothing', async () => {
-  const off = "Closedhand's email address sends and receives mail only with Closedhand Managed Models, which this account doesn't have right now.";
+  const off = "Closedhand's email address sends and receives mail only with the Closedhand subscription, which this account doesn't have right now.";
   const nia = await signIn('google', google('g-nia', 'nia@example.com'));
   const first = await pair(copy(), nia.cookie, 'Pete', false);
   assert.equal(first.status, 403, 'not without them');

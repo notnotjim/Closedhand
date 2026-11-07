@@ -237,6 +237,7 @@ function accountPage(respond) {
     showToast: message => calls.push(["toast", message]),
     hostText: (computer) => computer,
   });
+  vm.runInContext(region(html, "    // The uncensored LLM's name as closedhand.com gives it", "    async function loadIncludedAi()"), state);
   vm.runInContext(region(html, "    function cancelAccountAction(action)", "    function switchTab(tabName)"), state);
   // When this month's fair use renews, said as Settings says it.
   vm.runInContext(region(html, "    function fairUseRenewsIn(iso)", "    // A date months away"), state);
@@ -297,7 +298,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
     plus: { available: true, active: false, prices: { plus: "$10" } } } } }));
   await own.state.loadMyAccount();
   assert.equal(own.el("my-plan-state").hidden, true, "nothing said about a plan they don't have");
-  assert.equal(own.el("my-plus-about").textContent, "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own. Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com.");
+  assert.equal(own.el("my-plus-about").textContent, "Subscribe to keep DeepSeek V4.1 Flash Abliterated every month, so you need no LLM provider of your own. DeepSeek V4.1 Flash Abliterated runs in a TEE, so nobody but you can read anything that goes in or comes out.");
   assert.equal(own.el("my-plus-fine").textContent, "Cancel any time.");
   assert.equal(own.el("my-fair-use").hidden, true);
   assert.equal(own.el("my-plus-get").textContent, "Subscribe \u00b7 $10 a month");
@@ -313,7 +314,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
     plus: { available: true, active: false, nearly: true, ahead_until: "2027-05-06T09:00:00.000Z", crypto, crypto_extend: "$30", prices: { plus: "$30", extend: "$30" } } } } });
   await paid.state.loadMyAccount();
   assert.deepEqual([paid.el("my-plan-status").textContent, paid.el("my-plan-status").className], ["Paid ahead", "plan-status on"]);
-  assert.equal(paid.el("my-plan-state").textContent, "Closedhand Managed Models are paid until 6 May 2027. You've used most of this month's fair use.");
+  assert.equal(paid.el("my-plan-state").textContent, "DeepSeek V4.1 Flash Abliterated is paid until 6 May 2027. You've used most of this month's fair use.");
   assert.equal(paid.el("my-fair-use").hidden, false, "this month's fair use, as one bar");
   assert.equal(paid.el("my-fair-use-renews").textContent, "This month's fair use renews in 6 days (" + soonDay + ").", "most of it used: in how many days it renews");
   assert.equal(paid.el("my-plus-get").hidden, true, "no subscription by card beside a plan paid in crypto");
@@ -365,7 +366,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
 
   const first = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "first-month", ends_at: day(20) }, used: 0.1, plus: { available: false } } } }));
   await first.state.loadMyAccount();
-  assert.equal(first.el("my-plan-state").textContent, "Your free 14 days of Closedhand Managed Models are running.", "their end is said in their last three days only");
+  assert.equal(first.el("my-plan-state").textContent, "Your free 14 days of DeepSeek V4.1 Flash Abliterated are running.", "their end is said in their last three days only");
   assert.equal(first.el("my-plus-get").hidden, true, "nothing on sale, nothing offered");
 
   const without = accountPage(() => ({ body: { account: null } }));
@@ -525,6 +526,7 @@ test("Polar's own forms open over the whole window in a frame, and only Polar's 
     showToast: () => {}, miniCelebration: () => { celebrated++; }, loadIncludedAi: () => {},
     myAccountSaid: (b) => { said = b; }, loadMyAccount: () => { reloaded++; },
   });
+  vm.runInContext(region(html, "    // The uncensored LLM's name as closedhand.com gives it", "    async function loadIncludedAi()"), state);
   vm.runInContext(region(html, "    var polarOpen = false;", "    // Back from Polar's page, through closedhand.com: what just happened."), state);
   await state.openPolar("checkout", "plus");
   const src = new URL(shown[0].src);
@@ -545,8 +547,8 @@ test("Polar's own forms open over the whole window in a frame, and only Polar's 
   assert.equal(celebrated, 1, "subscribing is celebrated");
   assert.deepEqual(asked.at(-1), ["POST", "/api/plus/welcome"], "and Closedhand moves onto it at once");
   assert.equal(els["plus-welcome"].hidden, false);
-  assert.equal(els["plus-welcome-what"].textContent, "Closedhand Managed Models are yours every month, and so is Closedhand's own email address.");
-  assert.equal(els["plus-welcome-state"].textContent, "Closedhand now runs on Closedhand Managed Models. Your own LLM provider stays in Settings, under Models.");
+  assert.equal(els["plus-welcome-what"].textContent, "DeepSeek V4.1 Flash Abliterated is yours every month, and so is Closedhand's own email address.");
+  assert.equal(els["plus-welcome-state"].textContent, "Closedhand now runs on DeepSeek V4.1 Flash Abliterated. Your own LLM provider stays in Settings, under Models.");
   assert.match(html, /<h3 id="llm-own-name">Your own LLM provider<\/h3>/, "and the way back to it is right there");
 
   // The frame itself (polar-form.js), the same in the web chat and the dashboard.
@@ -722,7 +724,7 @@ test("Models: a card for each way Closedhand can run, their own LLM provider fir
   const classes = () => { const on = new Set(); return { toggle: (c, yes) => { if (yes) on.add(c); else on.delete(c); }, contains: (c) => on.has(c) }; };
   const el = (id) => (els[id] ||= { id, hidden: false, textContent: "", className: "", style: {}, classList: classes(), querySelector: () => null,
     replaceChildren(...parts) { this.textContent = parts.map((p) => typeof p === "string" ? p : p.textContent).join(""); } });
-  const box = vm.createContext({ Date, document: { getElementById: el, createElement: () => ({ style: {} }) } });
+  const box = vm.createContext({ Date, document: { getElementById: el, createElement: () => ({ style: {} }), querySelectorAll: () => [] } });
   vm.runInContext(region(html, "    function accountLink(words) {", "    // Back to the person's own LLM provider, as Closedhand kept it.") + "\nthis.state = (s) => { includedState = s; llmStep = null; renderLlmOptions(); };", box);
   const word = (id) => els[id].hidden ? "" : `${els[id].textContent} (${els[id].className.trim()})`;
   const look = () => ({ own: word("llm-own-status"), managed: word("llm-managed-status"), ownCard: els["llm-own"].classList.contains("in-use"), managedCard: els["llm-managed"].classList.contains("in-use") });
@@ -731,10 +733,10 @@ test("Models: a card for each way Closedhand can run, their own LLM provider fir
   box.state({ state: "available", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" }, own: ["DeepSeek"] });
   assert.deepEqual(look(), { own: "In use (plan-status on)", managed: "Not in use (plan-status over)", ownCard: true, managedCard: false }, "which runs, said plainly on each card");
   assert.deepEqual([els["byok-panel"].style.display, els["own-ai-switch"].hidden, els["included-ai-use"].hidden, els["included-ai-confirm"].hidden], ["", true, false, true]);
-  assert.equal(els["included-ai-plan"].textContent, "Closedhand Managed Models come with your subscription, which you cancelled: it ends on 27 November. Resume it in My Account.", "the plan in one sentence; the plan itself is in My Account");
+  assert.equal(els["included-ai-plan"].textContent, "DeepSeek V4.1 Flash Abliterated comes with your subscription, which you cancelled: it ends on 27 November. Resume it in My Account.", "the plan in one sentence; the plan itself is in My Account");
   box.llmStepTo("managed");
   assert.deepEqual([els["included-ai-use"].hidden, els["included-ai-confirm"].hidden, look().own], [true, false, "In use (plan-status on)"], "looking is not switching");
-  assert.equal(els["included-ai-confirm-text"].textContent, "Closedhand will run on Closedhand Managed Models from now on. Switch back before 27 November to keep Closedhand replying. DeepSeek stays saved here, so you can switch back in one click.");
+  assert.equal(els["included-ai-confirm-text"].textContent, "Closedhand will run on DeepSeek V4.1 Flash Abliterated from now on. Switch back before 27 November to keep Closedhand replying. DeepSeek stays saved here, so you can switch back in one click.");
 
   // Managed Models in use, their own kept: theirs not in use, back in one click, named.
   box.state({ state: "in-use", plan: { name: "plus" }, ownKept: true, own: ["DeepSeek", "OpenAI"] });
@@ -749,7 +751,7 @@ test("Models: a card for each way Closedhand can run, their own LLM provider fir
   assert.deepEqual([els["own-ai-go"].hidden, els["own-ai-setup"].textContent, els["own-ai-setup"].className, els["byok-panel"].style.display], [true, "Set up your own LLM provider", "cta", "none"]);
   box.llmStepTo("own");
   assert.deepEqual([els["byok-panel"].style.display, els["byok-panel"].classList.contains("setting-up"), els["own-ai-setup"].hidden, els["own-ai-cancel"].hidden], ["", true, true, false]);
-  assert.equal(els["own-ai-line"].textContent, "Closedhand stays on Closedhand Managed Models until you choose Use these models below.");
+  assert.equal(els["own-ai-line"].textContent, "Closedhand stays on DeepSeek V4.1 Flash Abliterated until you choose Use these models below.");
 
   // Managed Models not theirs: no cards, just their own models.
   box.state(null);
@@ -795,11 +797,11 @@ test("the dashboard's later claim offers using Closedhand anonymously: the same 
   for (const words of ['class="btn-quiet btn-small" id="url-anonymous" type="button" data-claim-way>Use anonymously</button>',
     '<h3>Use Closedhand anonymously<span data-info="No email means no recovery: if you lose your account number, nobody can get you back in." data-info-label="Before you choose"></span></h3>',
     '<p>No email and no card: you get an account number and pay once in crypto, never renewed.</p>',
-    '<p class="anon-label">Includes Closedhand Managed Models, uncensored. Prices in US dollars:</p>',
+    '<p class="anon-label">Includes <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>. Prices in US dollars:</p>',
     `<span>I agree that what I pay for now starts straight away and can't be refunded once started.</span>`, '<p class="terms-nudge" hidden>Tick to agree first</p>',
     'id="url-anon-go" type="button">Pay and continue anonymously</button>', '<button class="quiet-link" id="url-anon-back" type="button">Back</button>',
     'hidden>Tick to agree to the Terms first</p>',
-    "With Managed Models, there is no company restricting what Closedhand can say or do, and nobody but you can read your conversations. All we ask is that you use Closedhand within the law.",
+    "With <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>, no company restricts what Closedhand can say or do, and nobody but you can read anything that goes in or comes out. All we ask is that you use Closedhand within the law.",
     "You claim one by signing in on closedhand.com below, and your Closedhand account stores your email and nothing else.",
     '<p class="url-number-label">Your account number</p>',
     "Your account number is the only way back into your Closedhand account, on closedhand.com or another computer. Nobody can recover a lost account number, not even closedhand.com, so keep yours somewhere safe, like a password manager.",

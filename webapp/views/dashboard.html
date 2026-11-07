@@ -2516,7 +2516,7 @@
               <!-- Agreed once, before either way of claiming, as in setup. -->
               <div class="terms-accept" id="phone-terms" hidden>
                 <label class="terms-check"><input type="checkbox" id="phone-terms-box" onchange="agreeDashboardTerms(this)"><span>I agree to the <a href="https://closedhand.com/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://closedhand.com/privacy" target="_blank" rel="noopener">Privacy&nbsp;policy</a></span></label>
-                <p class="account-action-desc">With Managed Models, there is no company restricting what Closedhand can say or do, and nobody but you can read your conversations. All we ask is that you use Closedhand within the law.</p>
+                <p class="account-action-desc">With <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>, no company restricts what Closedhand can say or do, and nobody but you can read anything that goes in or comes out. All we ask is that you use Closedhand within the law.</p>
                 <p class="terms-nudge" id="phone-terms-nudge" hidden>Tick to agree to the Terms first</p>
               </div>
               <button class="account-action-btn" id="phone-start" onclick="startDashboardLink()" data-claim-way>Claim your personal URL</button>
@@ -2529,7 +2529,7 @@
                 <p>No email and no card: you get an account number and pay once in crypto, never renewed.</p>
                 <!-- Paid for first: the months, as My Account offers paying ahead in crypto. -->
                 <div id="url-anon-choice" hidden>
-                  <p class="anon-label">Includes Closedhand Managed Models, uncensored. Prices in US dollars:</p>
+                  <p class="anon-label">Includes <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>. Prices in US dollars:</p>
                   <div class="anon-months" id="url-anon-months" role="group" aria-label="Months paid ahead"></div>
                   <div class="nudge-row" id="url-anon-agree">
                     <label class="terms-check"><input type="checkbox" id="url-anon-agree-box"><span>I agree that what I pay for now starts straight away and can't be refunded once started.</span></label>
@@ -2794,12 +2794,12 @@
                   <div id="byok-panel"></div>
                 </section>
                 <section class="choice-card" id="llm-managed" aria-labelledby="llm-managed-name" hidden>
-                  <header class="choice-head"><h3 id="llm-managed-name">Closedhand Managed Models</h3><span class="plan-status" id="llm-managed-status"></span></header>
-                  <p class="account-action-desc"><span id="llm-managed-model">DeepSeek V4.1 Flash, uncensored</span>, in sealed hardware: nobody but you can read what you send or what comes back. When a better uncensored LLM is available, Closedhand switches to it for you. <a class="text-link" href="https://closedhand.com/managed-models" target="_blank" rel="noopener">More about Managed Models</a></p>
+                  <header class="choice-head"><h3 id="llm-managed-name"><span data-llm-name>DeepSeek V4.1 Flash Abliterated</span></h3><span class="plan-status" id="llm-managed-status"></span></header>
+                  <p class="account-action-desc">Uncensored and running in a TEE, so nobody but you can read anything that goes in or comes out. When a better uncensored LLM is available, Closedhand switches to it for you. <a class="text-link" href="https://closedhand.com/pricing" target="_blank" rel="noopener">About the subscription</a></p>
                   <!-- What the person's plan means for them, in one sentence; the
                        plan itself, Resume included, is in My Account. -->
                   <p class="account-action-desc" id="included-ai-plan"></p>
-                  <button type="button" class="cta" id="included-ai-use" hidden onclick="llmStepTo('managed')">Use Closedhand Managed Models</button>
+                  <button type="button" class="cta" id="included-ai-use" hidden onclick="llmStepTo('managed')">Use <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span></button>
                   <!-- What switching means, before it happens. -->
                   <div class="included-ai-confirm" id="included-ai-confirm" hidden>
                     <p class="account-action-desc" id="included-ai-confirm-text"></p>
@@ -2901,7 +2901,7 @@
           <!-- Just subscribed: what is theirs now, and Closedhand moving onto it. -->
           <div class="settings-group plus-welcome" id="plus-welcome" role="status" hidden>
             <div class="settings-group-header">
-              <h2>Subscribed to Closedhand Managed Models</h2>
+              <h2>Subscribed to Closedhand</h2>
               <p class="section-desc" id="plus-welcome-what"></p>
               <p class="section-desc" id="plus-welcome-state"></p>
             </div>
@@ -2920,7 +2920,7 @@
                  keeping it, and what was paid with its invoices. -->
             <div class="settings-group" id="my-plan" hidden>
               <div class="settings-group-header">
-                <div class="plan-title"><h2>Closedhand Managed Models</h2><span class="plan-status" id="my-plan-status" hidden></span></div>
+                <div class="plan-title"><h2><span data-llm-name>DeepSeek V4.1 Flash Abliterated</span></h2><span class="plan-status" id="my-plan-status" hidden></span></div>
                 <p class="section-desc" id="my-plan-state"></p>
               </div>
               <div class="settings-group-body">
@@ -4802,20 +4802,28 @@
       var said, tail = " Your plan and this month's use are in ", end = '.';
       // Most of this month's fair use used: in how many days it renews, as My Account says.
       var renew = data.nearly && plan.fair_use_renews_at ? ' ' + fairUseRenewsIn(plan.fair_use_renews_at) : '';
-      if (plan.name === 'maintainer') { said = 'Closedhand Managed Models are on for your account as the maintainer, with no charge' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.'; tail = " This month's use is in "; }
-      else if (plan.name === 'ahead') { said = 'Closedhand Managed Models are paid ahead until ' + planDay(plan.ends_at) + '.' + renew + after; }
-      else if (plan.name === 'ended') { said = 'Closedhand Managed Models have ended. ' + (plan.was === 'ahead' ? 'Pay ahead again' : 'Subscribe again') + ' in '; tail = ''; end = ', or use your own LLM provider (free ones work too).'; }
-      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = 'Closedhand Managed Models come with your free 14 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
-      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : 'Closedhand Managed Models come with your free 14 days.'; }
-      else if (plan.name === 'plus' && plan.ends_at) { said = 'Closedhand Managed Models come with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + renew + after; tail = ' Resume it in '; }
-      else if (plan.name === 'plus') { said = 'Closedhand Managed Models come with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.' + renew; }
+      if (plan.name === 'maintainer') { said = llmName() + ' is on for your account as the maintainer, with no charge' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.'; tail = " This month's use is in "; }
+      else if (plan.name === 'ahead') { said = llmName() + ' is paid ahead until ' + planDay(plan.ends_at) + '.' + renew + after; }
+      else if (plan.name === 'ended') { said = 'Your plan has ended. ' + (plan.was === 'ahead' ? 'Pay ahead again' : 'Subscribe again') + ' in '; tail = ''; end = ', or use your own LLM provider (free ones work too).'; }
+      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = llmName() + ' comes with your free 14 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
+      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? llmName() + ' comes with your free 14 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : llmName() + ' comes with your free 14 days.'; }
+      else if (plan.name === 'plus' && plan.ends_at) { said = llmName() + ' comes with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + renew + after; tail = ' Resume it in '; }
+      else if (plan.name === 'plus') { said = llmName() + ' comes with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.' + renew; }
       else {
         var left = Date.parse(plan.ends_at) - Date.now();
-        said = left > 0 && left <= 3 * 86400000 ? 'Closedhand Managed Models come with your free 14 days, until ' + planDay(plan.ends_at) + '.' : 'Closedhand Managed Models come with your free 14 days.';
+        said = left > 0 && left <= 3 * 86400000 ? llmName() + ' comes with your free 14 days, until ' + planDay(plan.ends_at) + '.' : llmName() + ' comes with your free 14 days.';
       }
       document.getElementById('included-ai-plan').replaceChildren(said + tail, accountLink('My Account'), end);
     }
     var includedState = null, llmStep = null;
+    // The uncensored LLM's name as closedhand.com gives it, in every
+    // [data-llm-name] and every sentence that names it.
+    var LLM_NAME = 'DeepSeek V4.1 Flash Abliterated';
+    function llmName() { return LLM_NAME; }
+    function setLlmName(name) {
+      if (name) LLM_NAME = name;
+      document.querySelectorAll('[data-llm-name]').forEach(function (el) { el.textContent = LLM_NAME; });
+    }
     async function loadIncludedAi() {
       var data = null;
       try {
@@ -4838,7 +4846,7 @@
       var status = function (el, word, kind) { el.textContent = word || ''; el.className = 'plan-status ' + (kind || ''); el.hidden = !word; };
       $('llm-options').classList.toggle('alone', !data);
       $('llm-managed').hidden = !data;
-      if (data && data.name) $('llm-managed-model').textContent = data.name;
+      setLlmName(data && data.name);
       $('llm-own').classList.toggle('in-use', !!data && !inUse);
       $('llm-managed').classList.toggle('in-use', inUse);
       status($('llm-own-status'), data ? (inUse ? 'Not in use' : 'In use') : '', inUse ? 'over' : 'on');
@@ -4850,7 +4858,7 @@
       if (settingUp) { var editor = byok.querySelector('details.model-editor'); if (editor) editor.open = true; }
       $('own-ai-switch').hidden = !inUse;
       if (inUse) {
-        $('own-ai-line').textContent = settingUp ? 'Closedhand stays on Closedhand Managed Models until you choose Use these models below.'
+        $('own-ai-line').textContent = settingUp ? 'Closedhand stays on ' + llmName() + ' until you choose Use these models below.'
           : data.ownKept ? (own.name || 'Your own LLM provider') + (own.many ? ' are saved as you set them up.' : ' is saved as you set it up.')
           : 'Any LLM provider, with an API key of your own. Free ones work too.';
         $('own-ai-go').hidden = settingUp || !data.ownKept;
@@ -4870,7 +4878,7 @@
       if (switching) {
         var plan = data.plan || {};
         var until = plan.name === 'plus' && plan.ends_at ? ' Switch back before ' + planDay(plan.ends_at) + ' to keep Closedhand replying.' : '';
-        $('included-ai-confirm-text').textContent = 'Closedhand will run on Closedhand Managed Models from now on.' + until + ' ' + (own.name || 'Your own LLM provider') + (own.many ? ' stay' : ' stays') + ' saved here, so you can switch back in one click.';
+        $('included-ai-confirm-text').textContent = 'Closedhand will run on ' + llmName() + ' from now on.' + until + ' ' + (own.name || 'Your own LLM provider') + (own.many ? ' stay' : ' stays') + ' saved here, so you can switch back in one click.';
       }
     }
     // Back to the person's own LLM provider, as Closedhand kept it.
@@ -4894,7 +4902,7 @@
         var res = await fetch('/api/included-ai/use', { method: 'POST' });
         var data = await res.json().catch(function () { return {}; });
         if (!res.ok) throw new Error(data.error || 'Could not switch.');
-        showToast('Closedhand now runs on Closedhand Managed Models.');
+        showToast('Closedhand now runs on ' + llmName() + '.');
         resetModelsPanel();
       } catch (e) {
         showToast(e.message, true);
@@ -5251,7 +5259,7 @@
         for (const id of ["my-plus-about", "my-plus-fine", "my-plus-get", "my-plus-extend", "my-plus-ways", "my-card-divider", "my-card-row", "my-plus-divider", "action-plus-cancel", "action-plus-keep"]) $(id).hidden = true;
         // Its state says when the fair use renews, always.
         bar(null);
-        $("my-plan-state").textContent = "Closedhand Managed Models are on for your account as the maintainer, with no charge." + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + "." : "");
+        $("my-plan-state").textContent = llmName() + " is on for your account as the maintainer, with no charge." + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + "." : "");
         $("my-plan-state").hidden = false;
         await loadMyPayments(false);
         return;
@@ -5265,14 +5273,14 @@
       const crypto = !!p.ahead_until;
       if (plan.name === "ahead") {
         status("Paid ahead", "on");
-        state.push("Closedhand Managed Models are paid until " + longDay(plan.ends_at) + ".");
+        state.push(llmName() + " is paid until " + longDay(plan.ends_at) + ".");
       } else if (plan.name === "first-month") {
         const left = Date.parse(plan.ends_at) - Date.now();
-        state.push(left > 0 && left <= 3 * 86400000 ? "Your free 14 days of Closedhand Managed Models run until " + day(plan.ends_at) + "." : "Your free 14 days of Closedhand Managed Models are running.");
+        state.push(left > 0 && left <= 3 * 86400000 ? "Your free 14 days of " + llmName() + " run until " + day(plan.ends_at) + "." : "Your free 14 days of " + llmName() + " are running.");
       } else if (wasPlus) {
         status("Ended", "over");
         state.push(plan.ended_at ? "Your subscription ended on " + day(plan.ended_at) + "." : "Your subscription has ended.");
-      } else if (plan.name === "ended") state.push("Your free 14 days of Closedhand Managed Models have ended.");
+      } else if (plan.name === "ended") state.push("You no longer have " + llmName() + ".");
       if (["first-month", "plus", "ahead"].includes(plan.name)) bar(plan.fair_use_renews_at); else $("my-fair-use").hidden = true;
       $("my-plus-about").hidden = $("my-plus-fine").hidden = !p.available;
       $("my-plus-get").hidden = !p.available || p.active || crypto || !!account.anonymous;
@@ -5309,9 +5317,9 @@
       renderWays(p, crypto, p.available && !p.active, !!account.anonymous);
       if (p.available) {
         // An account made with an account number pays in crypto only.
-        $("my-plus-about").textContent = account.anonymous ? "Pay ahead for Closedhand Managed Models in crypto, so you need no LLM provider of your own. With an account number, Closedhand Managed Models are paid in crypto only, never by card, so nothing ties your account to your name."
-          : "Subscribe to keep Closedhand Managed Models every month, so you need no LLM provider of your own"
-          + (plan.email ? ", and for Closedhand's own email address" : "") + ". Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com."
+        $("my-plus-about").textContent = account.anonymous ? "Pay ahead for " + llmName() + " in crypto, so you need no LLM provider of your own. With an account number you pay in crypto only, never by card, so nothing ties your account to your name."
+          : "Subscribe to keep " + llmName() + " every month, so you need no LLM provider of your own"
+          + (plan.email ? ", and for Closedhand's own email address" : "") + ". " + llmName() + " runs in a TEE, so nobody but you can read anything that goes in or comes out."
           // Never had the free days: the subscription's first 14 days are them (Polar's trial).
           + (p.free_month ? " The first 14 days are free, then " + (prices.plus || "a monthly price") + " a month." : "");
         $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 14 days free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
@@ -5399,7 +5407,7 @@
       for (const p of shown) {
         const li = document.createElement("li"), what = document.createElement("span"), get = document.createElement("button");
         what.textContent = [p.at ? new Date(p.at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : null,
-          (p.what === "extend" ? "Carry on to the end of the month" : "Managed Models" + (p.months ? ", " + p.months + " months" : "")) + (p.crypto ? " in crypto" : ""), p.amount, p.refunded ? "Refunded" : null].filter(Boolean).join(" \u00b7 ");
+          (p.what === "extend" ? "Carry on to the end of the month" : (p.crypto ? "Paid ahead" : "Subscription") + (p.months ? ", " + p.months + " months" : "")) + (p.crypto ? " in crypto" : ""), p.amount, p.refunded ? "Refunded" : null].filter(Boolean).join(" \u00b7 ");
         get.type = "button"; get.className = "quiet-link"; get.textContent = "Invoice";
         get.onclick = () => openInvoice(p.id, get);
         // A crypto payment's record is closedhand.com's own: no invoice to fetch.
@@ -5500,14 +5508,14 @@
     async function plusWelcome() {
       const box = document.getElementById("plus-welcome"), state = document.getElementById("plus-welcome-state");
       myAccountSaid("");
-      document.getElementById("plus-welcome-what").textContent = "Closedhand Managed Models are yours every month, and so is Closedhand's own email address.";
-      state.textContent = "Moving Closedhand onto Closedhand Managed Models now.";
+      document.getElementById("plus-welcome-what").textContent = llmName() + " is yours every month, and so is Closedhand's own email address.";
+      state.textContent = "Moving Closedhand onto " + llmName() + " now.";
       box.hidden = false;
       miniCelebration();
       loadMyAccount();
       let inUse = false;
       try { const r = await fetch("/api/plus/welcome", { method: "POST" }); inUse = r.ok && (await r.json()).inUse === true; } catch (_) {}
-      state.textContent = inUse ? "Closedhand now runs on Closedhand Managed Models. Your own LLM provider stays in Settings, under Models." : "Closedhand moves onto Closedhand Managed Models within the hour.";
+      state.textContent = inUse ? "Closedhand now runs on " + llmName() + ". Your own LLM provider stays in Settings, under Models." : "Closedhand moves onto " + llmName() + " within the hour.";
       loadMyAccount();
       if (typeof loadIncludedAi === "function") loadIncludedAi();
     }
@@ -5564,7 +5572,7 @@
     function myAccountSaid(back) {
       const said = document.getElementById("my-account-said");
       said.textContent = back === "extended" ? "Done: you can carry on to the end of the month." : back === "card" ? "The card for your subscription is changed."
-        : back === "ahead" ? "Thank you. Closedhand Managed Models are paid ahead once the payment is confirmed, usually within the hour."
+        : back === "ahead" ? "Thank you. You're paid ahead once the payment is confirmed, usually within the hour."
         : back === "carrying" ? "Thank you. You can carry on to the end of the month once the payment is confirmed, usually within the hour." : "";
       said.hidden = !said.textContent;
     }
@@ -6527,7 +6535,7 @@
         usagePrices = data.prices || {};
         usageListed = data.listed || {};
         const cost = usageManaged ? null : usageCost(usageRows);
-        const beside = managedCalls ? ', and ' + managedCalls.toLocaleString() + (managedCalls === 1 ? ' call' : ' calls') + ' on Closedhand Managed Models.' : '.';
+        const beside = managedCalls ? ', and ' + managedCalls.toLocaleString() + (managedCalls === 1 ? ' call' : ' calls') + ' on ' + llmName() + '.' : '.';
         document.getElementById('usage-sub').textContent = usageManaged ? 'What Closedhand has been doing.'
           : cost === null ? 'Tokens Closedhand used with your LLM provider' + beside
           : 'About ' + (cost < 0.01 ? 'under $0.01' : '$' + cost.toFixed(2)) + ' with your LLM provider over these ' + usageDays + ' days' + beside;
@@ -6539,7 +6547,7 @@
     }
 
     // Managed Models by that name alone, never the LLMs Closedhand picked.
-    function modelLabel(m) { return m === 'managed' ? 'Closedhand Managed Models' : m; }
+    function modelLabel(m) { return m === 'managed' ? llmName() : m; }
 
     function renderUsage(rows) {
       const tilesEl = document.getElementById('usage-tiles');
@@ -8865,7 +8873,7 @@
     var _teamLow = null, _teamLeft = null;
     function lowNote() {
       if (_teamLow === 'free') return 'Your LLM\'s free plan has ' + _teamLeft + ' requests left today, and a team can use that many quickly. If they run out, the team pauses and carries on by itself when they\'re back.';
-      if (_teamLow === 'fair-use') return 'This month\'s Managed Models use is close to its fair-use limit, so a team may pause partway. It carries on by itself when there\'s more.';
+      if (_teamLow === 'fair-use') return 'This month\'s use of ' + llmName() + ' is close to its fair-use limit, so a team may pause partway. It carries on by itself when there\'s more.';
       return 'Your LLM provider\'s credit is nearly used up, so a team may pause partway. It carries on by itself once there\'s more.';
     }
     function bigTeamNote(n) {

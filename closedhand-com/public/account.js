@@ -85,36 +85,38 @@
   }
   function plus() {
     const p = data.plus || {}, prices = p.prices || {}, plan = data.plan || {};
+    // The uncensored LLM Closedhand provides, by the name closedhand.com gives it.
+    const model = data.model || 'DeepSeek V4.1 Flash Abliterated';
     const state = [];
     $('ahead').hidden = true; $('agree').hidden = true;
-    // The maintainer's own account: Managed Models with no charge and this
+    // The maintainer's own account: the subscription with no charge and this
     // month's fair use, with nothing to buy, cancel or carry on.
     if (plan.name === 'maintainer') {
       for (const id of ['plus-about', 'plus-get', 'plus-extend', 'plus-manage', 'plus-fine']) $(id).hidden = true;
       // Its state says when the fair use renews, always.
       if (typeof data.used === 'number') bar({}); else $('fair-use').hidden = true;
-      $('plus-state').textContent = 'Closedhand Managed Models are on for your account as the maintainer, with no charge.' + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + '.' : '');
+      $('plus-state').textContent = model + ' is on for your account as the maintainer, with no charge.' + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + '.' : '');
       $('plus-state').hidden = false;
       return;
     }
     const crypto = !!p.ahead_until;
-    if (plan.name === 'ahead') state.push('Closedhand Managed Models are paid until ' + longDay(plan.ends_at) + '.');
+    if (plan.name === 'ahead') state.push(model + ' is paid until ' + longDay(plan.ends_at) + '.');
     else if (plan.name === 'first-month') {
       const left = Date.parse(plan.ends_at) - Date.now();
-      state.push(left > 0 && left <= 3 * 86400000 ? 'Your free 14 days of Closedhand Managed Models run until ' + day(plan.ends_at) + '.' : 'Your free 14 days of Closedhand Managed Models are running.');
-    } else if (plan.name === 'ended') state.push('Closedhand Managed Models have ended.');
+      state.push(left > 0 && left <= 3 * 86400000 ? 'Your free 14 days of ' + model + ' run until ' + day(plan.ends_at) + '.' : 'Your free 14 days of ' + model + ' are running.');
+    } else if (plan.name === 'ended') state.push('You no longer have ' + model + '.');
     if (['first-month', 'plus', 'ahead'].includes(plan.name)) bar(plan); else $('fair-use').hidden = true;
     const showState = () => { $('plus-state').textContent = state.join(' '); $('plus-state').hidden = !state.length; };
     if (!p.available) { $('plus-about').hidden = true; $('plus-fine').hidden = true; return showState(); }
     const email = data.plan?.email;
     $('plus-about').hidden = p.active || crypto;
-    // Their name links to what they are (closedhand.com/managed-models).
+    // The LLM's name links to what the subscription is (closedhand.com/pricing).
     const about = document.createElement('a');
-    about.href = '/managed-models'; about.textContent = 'Closedhand Managed Models';
+    about.href = '/pricing'; about.textContent = model;
     // An account made with an account number pays in crypto only.
-    if (data.anonymous) $('plus-about').replaceChildren('Pay ahead for ', about, ' in crypto, so you need no LLM provider of your own. With an account number, Closedhand Managed Models are paid in crypto only, never by card, so nothing ties your account to your name.');
+    if (data.anonymous) $('plus-about').replaceChildren('Pay ahead for ', about, ' in crypto, so you need no LLM provider of your own. With an account number, you pay in crypto only, never by card, so nothing ties your account to your name.');
     else $('plus-about').replaceChildren('Subscribe to keep ', about, ' every month, so you need no LLM provider of your own'
-      + (email ? ", and for Closedhand's own email address" : '') + ". Closedhand Managed Models run in sealed hardware, so nobody but you can read what you send or what comes back, not even closedhand.com."
+      + (email ? ", and for Closedhand's own email address" : '') + '. ' + model + ' runs in a TEE, so nobody but you can read anything that goes in or comes out.'
       // Never had the free days: the subscription's first 14 days are them (Polar's trial).
       + (p.free_month ? ' The first 14 days are free, then ' + (prices.plus || 'a monthly price') + ' a month.' : ''));
     $('plus-get').hidden = p.active || crypto || !!data.anonymous;
@@ -196,9 +198,9 @@
   $('plus-manage').addEventListener('click', () => goTo('/api/plus/manage', $('plus-manage')));
   // Back from Polar's checkout.
   const back = new URLSearchParams(location.search).get('plus');
-  const welcome = back === 'welcome' ? 'You subscribe to Closedhand Managed Models now. Your Closedhand picks it up within the hour.'
+  const welcome = back === 'welcome' ? 'Your Closedhand subscription has started. Your Closedhand moves onto ' + (data?.model || 'DeepSeek V4.1 Flash Abliterated') + ' within the hour.'
     : back === 'extended' ? 'Done: you can carry on to the end of the month.'
-    : back === 'ahead' ? 'Thank you. Closedhand Managed Models are paid ahead once the payment is confirmed, usually within the hour.'
+    : back === 'ahead' ? 'Thank you. Your account is paid ahead once the payment is confirmed, usually within the hour.'
     : back === 'carrying' ? 'Thank you. You can carry on to the end of the month once the payment is confirmed, usually within the hour.' : '';
   $('delete').addEventListener('click', () => {
     const text = $('confirm-text');

@@ -65,7 +65,7 @@ function createRelay({ db, owner: signedIn, secret, env = process.env, baseUrl =
       if (row && (row.owner_id !== owner || !p.equal(row.secret_hash, proof.hash) || row.public_key !== proof.publicKey)) return res.status(403).json({ error: 'This address belongs to another Closedhand.' });
       if (!row) {
         // A new address only comes with Closedhand Managed Models; one already made stays with the account.
-        if (!(await usage.entitled(db, owner))) return res.status(403).json({ error: 'Closedhand\u2019s email address comes with Closedhand Managed Models. See closedhand.com/managed-models.', managedModels: true });
+        if (!(await usage.entitled(db, owner))) return res.status(403).json({ error: 'Closedhand\u2019s email address comes with the Closedhand subscription. See closedhand.com/pricing.', managedModels: true });
         const prefix = proof.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'closedhand';
         row = mustWrite(await db.rpc('provision_mail_relay_account', { installation: proof.id, owner, proof_hash: proof.hash, public_key_text: proof.publicKey, sender_address: prefix + '-' + crypto.randomBytes(4).toString('hex') + '@' + p.DOMAIN, verified_email: email }))[0];
         if (!row) return res.status(409).json({ error: 'This account already has three Closedhand email addresses. Pause one before adding another.' });

@@ -50,7 +50,7 @@ async function check(env = process.env, request = fetch) {
     try { lines.push(`${name}: ${verdict(await run(), ok)}`); }
     catch (e) { lines.push(`${name}: could not reach Polar (${e.message})`); }
   }
-  for (const [name, id] of [['Managed Models subscription', env.POLAR_PLUS_PRODUCT_ID], ['Carrying on past fair use', env.POLAR_EXTEND_PRODUCT_ID]]) {
+  for (const [name, id] of [['Closedhand subscription', env.POLAR_PLUS_PRODUCT_ID], ['Carrying on past fair use', env.POLAR_EXTEND_PRODUCT_ID]]) {
     if (!id) { lines.push(`${name}: no product set`); continue; }
     try {
       const { status, json } = await call('/v1/products/' + encodeURIComponent(id));

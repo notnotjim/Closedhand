@@ -303,7 +303,7 @@ test("a routine that failed says so in plain words, that it tries again by itsel
   assert.match(failedNote({ automation_id: "a2", runtime: { config: { name: "New invoice", trigger_type: "event" } }, error: used }), /It will try again next time\.$/);
   assert.match(failedNote({ automation_id: "a3", runtime: { config: { name: "Tidy inbox", trigger_type: "manual" } }, error: used }), /Say "try again" and I'll start it fresh\.$/, "one that runs only when asked waits to be asked");
   const managed = { profile: { settings: { model_config: { included: true }, included_api_key: "sealed" } } };
-  assert.equal(stopReason(used, managed), "this month's Managed Models use has reached its fair-use limit", "the words a paused task uses");
+  assert.equal(stopReason(used, managed), "this month's use of DeepSeek V4.1 Flash Abliterated has reached its fair-use limit", "the words a paused task uses");
   assert.equal(stopReason("The LLM kept asking to slow down."), "your LLM kept asking it to slow down");
   assert.match(failedNote({ automation_id: "a1", runtime: { config: { name: "Book the table", trigger_type: "scheduled", run_once: true } }, error: "fetch failed" }), /Say "try again" and I'll start it fresh\.$/, "one set for a single date does not run again");
   const src = fs.readFileSync(path.join(__dirname, "..", "lib", "task-delivery.js"), "utf8");

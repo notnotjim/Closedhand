@@ -718,8 +718,8 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       return res.json({ url: await plus.extend(owner, origin) });
     }
     if (req.body?.kind === 'ahead') return crypto({ months: req.body.months });
-    if (now.active) return res.status(409).json({ error: 'You already subscribe to Managed Models.' });
-    if (now.ahead_until) return res.status(409).json({ error: 'Closedhand Managed Models are paid ahead in crypto for your account, so there is no subscription by card to start.' });
+    if (now.active) return res.status(409).json({ error: 'You already have the Closedhand subscription.' });
+    if (now.ahead_until) return res.status(409).json({ error: 'Your account is paid ahead in crypto, so there is no subscription by card to start.' });
     const every = Number(req.body?.months || 1);
     const why = await plus.cannotSubscribe(owner, every, agreed);
     if (why) return res.status(400).json({ error: why });
@@ -727,12 +727,12 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   });
   forPlus('post', 'card', async (ownerId, origin, req, res) => {
     const session = await plus.cardSession(ownerId);
-    if (!session) return res.status(409).json({ error: 'You have not subscribed to Managed Models.' });
+    if (!session) return res.status(409).json({ error: 'You don’t have the Closedhand subscription.' });
     res.json(session);
   });
   forPlus('post', 'cancel', async (ownerId, origin, req, res) => {
     const now = await plus.setCancel(ownerId, req.body?.cancel === true);
-    if (!now) return res.status(409).json({ error: 'You have not subscribed to Managed Models.' });
+    if (!now) return res.status(409).json({ error: 'You don’t have the Closedhand subscription.' });
     res.json({ plus: now });
   });
   forPlus('get', 'payments', async (ownerId, origin, req, res) => {
@@ -829,7 +829,9 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       // A sign-in whose account was deleted is no sign-in at all.
       const offered = enabled() && await includedAi.offered({ ip: req.ip });
       const details = person ? await detailsOf(owner, req.headers['cf-ipcountry']) : { signIns: [] };
-      res.json({ signedIn: !!person, provider, email, emailVerified, url, address, available: enabled(), includedAi: offered, ...(offered ? { includedAiModel: includedAi.current().chat } : {}), ...details });
+      // The uncensored LLM Closedhand provides, by the name people know it by.
+      const model = includedAi.current()?.name || null;
+      res.json({ signedIn: !!person, provider, email, emailVerified, url, address, available: enabled(), includedAi: offered, ...(offered ? { includedAiModel: includedAi.current().chat } : {}), ...(model ? { model } : {}), ...details });
     } catch (e) {
       console.error('[addresses] account:', e.message);
       res.status(503).json({ error: 'Could not look up your account. Please try again.' });

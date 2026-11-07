@@ -19,7 +19,7 @@ test("a clear refusal at the start of a short reply counts; missing things and l
 test("offered after the answer as a follow-on, once in 30 days, never while Managed Models answer", async () => {
   const store = own();
   const first = await offer.addOffer({ store, reply: "I can't help with that.", platform: "whatsapp", now: NOW, link: null });
-  assert.match(first, /^I can't help with that\.\n\n\[\[next\]\]\n\nYour LLM provider chose not to answer that\. With Closedhand Managed Models, what Closedhand answers is up to you, and nobody but you can read what you ask\. closedhand\.com\/subscribe$/);
+  assert.match(first, /^I can't help with that\.\n\n\[\[next\]\]\n\nYour LLM provider chose not to answer that\. With DeepSeek V4\.1 Flash Abliterated, what Closedhand answers is up to you, and nobody but you can read anything that goes in or comes out\. closedhand\.com\/subscribe$/);
   assert.equal(store.profile.settings.refusal_offer_at, new Date(NOW).toISOString());
   assert.equal(await offer.addOffer({ store, reply: "I can't help with that.", platform: "whatsapp", now: NOW + 29 * 86400000, link: null }), "I can't help with that.");
   assert.match(await offer.addOffer({ store, reply: "I can't help with that.", platform: "whatsapp", now: NOW + 31 * 86400000, link: null }), /\[\[next\]\]/);
@@ -30,7 +30,7 @@ test("offered after the answer as a follow-on, once in 30 days, never while Mana
 
 test("where to get them follows the plan: back in Settings, paying ahead again, or the subscription", () => {
   const live = { included_api_key: "sealed", included_ai: { plan: { name: "plus" } } };
-  assert.match(offer.offerText(live, "https://quiet-fern-12.closedhand.ai/dashboard#settings", true), /Switch to Managed Models in the \[dashboard\]\(https:\/\/quiet-fern-12\.closedhand\.ai\/dashboard#settings\)\.$/);
+  assert.match(offer.offerText(live, "https://quiet-fern-12.closedhand.ai/dashboard#settings", true), /Switch to DeepSeek V4\.1 Flash Abliterated in the \[dashboard\]\(https:\/\/quiet-fern-12\.closedhand\.ai\/dashboard#settings\)\.$/);
   assert.match(offer.offerText({ included_ai: { plan: { name: "ended", was: "ahead" } } }, null, false), /Pay ahead again in My Account\.$/);
   assert.match(offer.offerText({}, null, true), /\[closedhand\.com\/subscribe\]\(https:\/\/closedhand\.com\/subscribe\)$/);
 });

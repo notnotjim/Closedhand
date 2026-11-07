@@ -21,7 +21,7 @@ const PLUS = '11111111-1111-4111-8111-111111111111', EXTEND = '22222222-2222-422
 const SIX = '66666666-6666-4666-8666-666666666666', TWELVE = '12121212-1212-4121-8121-121212121212';
 const PAY = 'https://pay.example.test', STORE = 'StoreFixture1';
 const GOOGLE_APP = '123456789012-closedhanddesktop.apps.googleusercontent.com';
-const CARDLESS = 'Your Closedhand account uses an account number, so Closedhand Managed Models are paid ahead in crypto, never by card.';
+const CARDLESS = 'Your Closedhand account uses an account number, so you pay ahead in crypto, never by card.';
 const WRONG = "That account number didn't work. Check the number and try again.";
 const googleKeys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const env = {
@@ -246,7 +246,7 @@ test('an account made with an account number pays in crypto only, on closedhand.
 
   // While the plan paid ahead runs, there is no subscription to start, and once
   // it ends, still none by card.
-  const AHEAD = 'Closedhand Managed Models are paid ahead in crypto for your account, so there is no subscription by card to start.';
+  const AHEAD = 'Your account is paid ahead in crypto, so there is no subscription by card to start.';
   const refusals = async expected => {
     for (const body of [{ months: 1 }, { months: 1, agreed: true }, { months: 6, agreed: true }]) {
       const r = await call('POST', '/api/plus/checkout', body, signedIn(cookie));

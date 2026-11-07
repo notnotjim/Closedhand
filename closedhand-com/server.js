@@ -110,7 +110,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   app.get('/ethos', page('ethos.html'));
   app.get('/architecture', page('architecture.html'));
   app.get('/pcl', page('pcl.html'));
-  app.get('/managed-models', page('managed-models.html'));
+  app.get('/pricing', page('pricing.html'));
   app.get('/privacy', page('privacy.html'));
   app.get('/terms', page('terms.html'));
   app.get('/open', page('open.html'));

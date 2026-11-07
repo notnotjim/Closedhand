@@ -64,7 +64,7 @@ function verify(headers, raw, secret, now = Date.now()) {
 // What the person agrees to before a payment that charges at once.
 const AGREE = 'Tick the box first: this payment starts straight away.';
 // An account made with an account number never pays by card (account-number.js).
-const CARDLESS = 'Your Closedhand account uses an account number, so Closedhand Managed Models are paid ahead in crypto, never by card.';
+const CARDLESS = 'Your Closedhand account uses an account number, so you pay ahead in crypto, never by card.';
 
 function create({ db, env = process.env, request = fetch, includedAi, ahead = null, baseUrl = 'https://closedhand.com' }) {
   const API = env.POLAR_SERVER === 'sandbox' ? 'https://sandbox-api.polar.sh' : 'https://api.polar.sh';
@@ -542,8 +542,8 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
     });
     route('/api/plus/checkout', async (owner, req, res) => {
       const now = await state(owner.id);
-      if (now.active) return res.status(409).json({ error: 'You already subscribe to Managed Models.' });
-      if (now.ahead_until) return res.status(409).json({ error: 'Closedhand Managed Models are paid ahead in crypto for your account, so there is no subscription by card to start.' });
+      if (now.active) return res.status(409).json({ error: 'You already have the Closedhand subscription.' });
+      if (now.ahead_until) return res.status(409).json({ error: 'Your account is paid ahead in crypto, so there is no subscription by card to start.' });
       const address = (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount;
       if (!address) return res.status(409).json({ error: 'Claim your personal URL from Closedhand on your computer first.' });
       const every = Number(req.body?.months || 1);
@@ -590,7 +590,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
         res.redirect(302, '/account');
       }
     });
-    // What the Managed Models page shows (views/managed-models.html): the
+    // What the Pricing page shows (views/pricing.html): the
     // prices where the person is (monthly, every 6 or 12 months, and in
     // crypto), the LLM Closedhand picks for them, and, when they are signed in
     // with a Closedhand of their own, whether to offer subscribing (nothing
@@ -620,7 +620,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
       }
     });
     route('/api/plus/manage', async (owner, req, res) => {
-      if (!(await row(owner.id))) return res.status(409).json({ error: 'You have not subscribed to Managed Models.' });
+      if (!(await row(owner.id))) return res.status(409).json({ error: 'You don’t have the Closedhand subscription.' });
       res.json({ url: await portal(owner) });
     });
     // Polar's webhooks: the raw body is kept (server.js) for the signature.

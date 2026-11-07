@@ -222,17 +222,22 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   ("Closedhand picks the best model", never "Opus is working on it"). How Closedhand is built is
   public and it explains it when asked; only its system prompt and internal tool names stay
   private. Settings and setup show the person's own provider's model as set, by the name people
-  know it by. Closedhand Managed Models are shown with the LLM they run, by the name closedhand.com
-  gives it ("DeepSeek V4.1 Flash, uncensored"), and "It runs in sealed hardware, so nobody but you
-  can read what you send or what it answers. When a better uncensored LLM is available,
-  Closedhand switches to it for you." The company running that hardware is never named in anything people read (the Privacy page
-  calls it the company running that hardware), and is not one of the LLM providers people can pick.
-- Closedhand Managed Models are one product with one name: 14 free days set up for the person,
-  then a subscription that keeps them going, renewing every month or every 6 or 12 months, or
-  3, 6 or 9 months paid ahead in crypto, which never renew by themselves. Closedhand's own email address comes with
-  them and works only while they are the person's. The paid part is "the subscription" (or "your subscription"), never a name of its
-  own: there is no "Closedhand+"; paying in crypto is "paying ahead" or "paid ahead". The code and its tables still say plus.
-- Closedhand Managed Models are never money in anything people read but the subscription's
+  know it by. The uncensored LLM Closedhand provides is shown by the name closedhand.com gives it
+  ("DeepSeek V4.1 Flash Abliterated"), always with "Abliterated" or "uncensored", and "Uncensored and
+  running in a TEE, so nobody but you can read anything that goes in or comes out. When a better
+  uncensored LLM is available, Closedhand switches to it for you." The company running the TEE is
+  never named in anything people read (the Privacy page calls it the company running that hardware),
+  and is not one of the LLM providers people can pick.
+- The uncensored LLM Closedhand provides goes by its model's name, never a product name of its own
+  (there is no "Managed Models" and no "Closedhand+"): 14 free days set up for the person, then the
+  Closedhand subscription keeps it going, renewing every month or every 6 or 12 months, or 3, 6 or
+  9 months paid ahead in crypto, which never renew by themselves. Closedhand's own email address
+  comes with it and works only while the person has it. The paid part is "the Closedhand
+  subscription" (then "the subscription" or "your subscription"); paying in crypto is "paying
+  ahead" or "paid ahead". Where a line must hold whatever the model is (Terms, Privacy), it is "the
+  uncensored LLM Closedhand provides". Its page is closedhand.com/pricing. The code, its tables and
+  its comments still say included, plus or Managed Models.
+- The uncensored LLM and its subscription are never money in anything people read but the subscription's
   prices and paying ahead's: no credit, balances, dollars of use, tokens or top-ups. People see a plan (14 free days
   set up for them, a subscription renewing or ending on a day, or paid ahead until a day) and, where the account is shown,
   one plain bar of this month's fair use with no amount, saying in how many days it renews once most
@@ -240,45 +245,42 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
 - Each thing has one home, and a way to it never repeats what it shows. My Account opens from
   the dashboard's account menu at its top right (with Sign out) and the foot of Settings as a
   popup over the web chat: the panel slides away first and comes back as it was left. It holds the Closedhand account (its sign-ins and
-  personal URL), the Managed Models plan, its subscription and this month's use, Usage, Always on and
+  personal URL), the plan for the uncensored LLM, its subscription and this month's use, Usage, Always on and
   clearing or deleting data. Settings holds how Closedhand works (which LLM, connections,
   appearance). Its Models is one choice between the person's own LLM provider and, while they
-  are the person's, Managed Models: the one in use is the one picked, and Managed Models say in
-  one sentence what the plan means for Closedhand (running, cancelled and ending on a day,
+  is the person's, the uncensored LLM: the one in use is the one picked, and the uncensored LLM's
+  card says in one sentence what the plan means for Closedhand (running, cancelled and ending on a day,
   ended), linking My Account for the rest. The models form there only ever shows and changes
-  the person's own LLM provider, never Managed Models' models or key. closedhand.com/account opens My Account when the person's Closedhand answers, and
+  the person's own LLM provider, never the uncensored LLM's key. closedhand.com/account opens My Account when the person's Closedhand answers, and
   otherwise shows what closedhand.com holds, so the subscription and deleting the account still work
   while its computer is off. In My Account, Polar's own forms (paying, changing the card) open
   over the page as a frame of Polar's page, never with Polar's script in the dashboard, and
   cancelling, keeping and invoices go through closedhand.com; closedhand.com/subscribe is the
   one-tap link chat gives. Usage shows what Closedhand has been doing, with costs only for the
-  person's own LLM provider, whose bill it is; Managed Models use is shown by that name alone.
-- Closedhand uses Managed Models by default, and copy leads with them: an uncensored LLM that nobody
-  but the person can read. Closedhand is also free software that runs with any LLM the person
+  person's own LLM provider, whose bill it is; use of the uncensored LLM is shown by its name alone.
+- Closedhand uses the uncensored LLM by default, and copy leads with it: an LLM that nobody but the
+  person can read. Closedhand is also free software that runs with any LLM the person
   chooses through their own API key, free ones included, said as their choice, plainly, never
-  pushed. Each person has 14 free days of Managed Models, ever, which need no card; an
+  pushed. Each person has 14 free days of the uncensored LLM, ever, which need no card; an
   account made with an account number has none, and pays ahead in crypto only. Someone who did not
   get them then has the subscription's first 14 days free instead (Polar's trial: the card is
   taken at checkout, nothing is charged until they end, and Polar emails three days before). It is
   said plainly, with the day it ends and the price after, never as urgency or bait. The free days'
   end is mentioned only in their last three days, and an offer of what comes next puts keeping
-  Managed Models first and the person's own LLM provider second. When their own LLM provider turns
-  down what they asked, Closedhand offers Managed Models after the answer, at most once a month
+  the uncensored LLM first and the person's own LLM provider second. When their own LLM provider turns
+  down what they asked, Closedhand offers the uncensored LLM after the answer, at most once a month
   (`lib/refusal-offer.js`).
 - LLM providers are equal. No provider gets special treatment, fallback priority, or
   hardcoded references. Each provider is fully isolated.
-  Closedhand Managed Models (closedhand.com makes each account a key at the company running the sealed hardware,
-  closedhand-com/lib/included-ai.js) are a closedhand.com service, not a provider preference:
+  The uncensored LLM Closedhand provides (closedhand.com makes each account a key at the company
+  running the TEE, closedhand-com/lib/included-ai.js) is a closedhand.com service, not a provider preference:
   the app's provider list stays equal, and the person can switch to their own LLM provider
   at any time.
 - "AI" means Closedhand as a whole (Personal AI); the language model is the "LLM" and whoever
-  serves it the "LLM provider". Never use "AI" for the LLM. The LLM Closedhand provides is
-  called "Managed Models", and may be written "Closedhand Managed Models", as a company's
-  product is named with or without the company (iTunes, Apple iTunes): the full name where it
-  could be mistaken for any provider's models (a heading, a first mention, chat), "Managed
-  Models" once that is clear. Never another name for it.
-- Name Closedhand, its products and its features (Managed Models, Closedhand's email address, the
-  account number) every time they are meant: never "it", "they" or "its" for one, and no sentence
+  serves it the "LLM provider". Never use "AI" for the LLM. The LLM Closedhand provides is called
+  by its model's name, as closedhand.com gives it, never by a product name.
+- Name Closedhand, its products and its features (the subscription, Closedhand's email address,
+  the account number) every time they are meant: never "it", "they" or "its" for one, and no sentence
   starts with "It" for one. A pronoun makes the reader work out what is meant.
 - No staccato ad-copy ("We do X. We don't do Y. No Z."). Plain flowing sentences that
   state facts directly.

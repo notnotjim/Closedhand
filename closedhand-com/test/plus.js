@@ -576,7 +576,7 @@ test('the Polar check says which rights the token has and the prices, never the 
   assert.match(out, /subscriptions:write \(stopping one\): allowed/);
   assert.match(out, /checkouts:write \(subscribing\): allowed/);
   assert.match(out, /orders:read \(payments and invoices in My Account\): allowed/);
-  assert.match(out, /Managed Models subscription: 10\.00 USD, every month/);
+  assert.match(out, /Closedhand subscription: 10\.00 USD, every month/);
   assert.match(out, /Carrying on past fair use: 10\.00 USD, once/);
   assert.doesNotMatch(out, /polar-token|secret detail/);
   assert.ok(seen.every(h => h === 'Bearer polar-token'));

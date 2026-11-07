@@ -150,7 +150,7 @@ test('Closedhand\'s email address works only while Managed Models are the accoun
   const sentToday = (email, sent) => db.query(
     'INSERT INTO mail_relay_usage (owner_key, period, sent) VALUES ($1, $2, $3) ON CONFLICT (owner_key, period) DO UPDATE SET sent = EXCLUDED.sent', [owner(email) + ':daily', today, sent]);
 
-  const off = "Closedhand's email address sends and receives mail only with Closedhand Managed Models, which this account doesn't have right now.";
+  const off = "Closedhand's email address sends and receives mail only with the Closedhand subscription, which this account doesn't have right now.";
   const noneEmail = `none${people}@example.com`, freeEmail = `free${people}@example.com`, overEmail = `over${people}@example.com`, plusEmail = `plus${people}@example.com`;
   const none = await mailbox(await person(noneEmail), noneEmail);
   const freeOwner = await person(freeEmail), free = await mailbox(freeOwner, freeEmail);

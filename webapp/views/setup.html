@@ -488,8 +488,8 @@
         </button>
         <div class="card-body">
           <div id="model-included" hidden>
-            <p class="model-current"><strong>Closedhand Managed Models</strong><span id="model-included-line" class="status"></span></p>
-            <p class="note"><span id="model-included-name">DeepSeek V4.1 Flash, uncensored</span>, in sealed hardware: nobody but you can read what you send or what comes back. When a better uncensored LLM is available, Closedhand switches to it for you.</p>
+            <p class="model-current"><strong id="model-included-name">DeepSeek V4.1 Flash Abliterated</strong><span id="model-included-line" class="status"></span></p>
+            <p class="note">Uncensored and running in a TEE, so nobody but you can read anything that goes in or comes out. When a better uncensored LLM is available, Closedhand switches to it for you.</p>
             <p class="quiet-links"><a href="#" id="model-own">Use your own LLM provider instead</a></p>
           </div>
           <div id="model-own-account">
@@ -734,7 +734,7 @@
                        sign-in above, which waits for it). -->
                   <div class="terms-accept" id="url-terms">
                     <label class="terms-check"><input type="checkbox" id="url-terms-box"><span>I agree to the <a href="https://closedhand.com/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://closedhand.com/privacy" target="_blank" rel="noopener">Privacy&nbsp;policy</a></span></label>
-                    <p class="note">With Managed Models, there is no company restricting what Closedhand can say or do, and nobody but you can read your conversations. All we ask is that you use Closedhand within the law.</p>
+                    <p class="note">With <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>, no company restricts what Closedhand can say or do, and nobody but you can read anything that goes in or comes out. All we ask is that you use Closedhand within the law.</p>
                     <p class="terms-nudge" id="url-terms-nudge" hidden>Tick to agree to the Terms first</p>
                   </div>
                   <button class="save-btn" id="url-start" type="submit" data-claim-way>Claim your personal URL</button>
@@ -746,7 +746,7 @@
                     <p>No email and no card: you get an account number and pay once in crypto, never renewed.</p>
                     <!-- Paid for first: the months, as My Account offers paying ahead in crypto. -->
                     <div id="url-anon-choice" hidden>
-                      <p class="anon-label">Includes Closedhand Managed Models, uncensored. Prices in US dollars:</p>
+                      <p class="anon-label">Includes <span data-llm-name>DeepSeek V4.1 Flash Abliterated</span>. Prices in US dollars:</p>
                       <div class="anon-months" id="url-anon-months" role="group" aria-label="Months paid ahead"></div>
                       <div class="nudge-row" id="url-anon-agree">
                         <label class="terms-check"><input type="checkbox" id="url-anon-agree-box"><span>I agree that what I pay for now starts straight away and can't be refunded once started.</span></label>
@@ -1025,7 +1025,7 @@
   function renderIncluded(state) {
     $("#model-included").hidden = !included();
     $("#model-own-account").hidden = included();
-    if (state.modelIncludedName) $("#model-included-name").textContent = state.modelIncludedName;
+    if (state.modelIncludedName) document.querySelectorAll("#model-included-name, [data-llm-name]").forEach((el) => { el.textContent = state.modelIncludedName; });
     $("#model-included-line").textContent = state.modelIncluded === "ready" ? "Ready."
       : personalUrl.settled() ? "Getting it ready." : "Ready once your personal URL is claimed.";
   }
@@ -1204,7 +1204,7 @@
     // Done-notes: name what's connected without exposing anything secret.
     var provLabel = state.chatProviderLabel || (state.chatProvider === "deepinfra" ? "DeepInfra" : state.chatProvider);
     renderIncluded(state);
-    $("#model-done-note").textContent = included() ? "Closedhand Managed Models"
+    $("#model-done-note").textContent = included() ? $("#model-included-name").textContent
       : provLabel ? "Models connected through " + provLabel
       : "";
     chatDoneNote(state);

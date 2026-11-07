@@ -2122,7 +2122,7 @@ app.get("/api/included-ai", async (req, res) => {
     res.json({ state: inUse ? "in-use" : "available", name: settings.included_ai?.name || null, plan: settings.included_ai?.plan || null, price: settings.included_ai?.prices?.plus || null,
       nearly: !!fair && fair.used >= fair.limit * included.NEARLY_USED, ownKept: !!settings.own_model_config?.connections, own });
   } catch (e) {
-    res.status(503).json({ error: "Could not read Closedhand Managed Models just now." });
+    res.status(503).json({ error: "Could not read your plan just now." });
   }
 });
 app.post("/api/included-ai/use", async (req, res) => {
@@ -2130,7 +2130,7 @@ app.post("/api/included-ai/use", async (req, res) => {
     await require("./included-ai-setup").use();
     res.json({ success: true });
   } catch (e) {
-    res.status(400).json({ error: e.message || "Could not switch to Closedhand Managed Models." });
+    res.status(400).json({ error: e.message || "Could not switch LLM just now." });
   }
 });
 // Back to the person's own LLM provider, as kept when they switched.

@@ -12,7 +12,7 @@ Assistants from the big AI labs run on their servers, with their models, on thei
 
 **Your LLM can be local too.** Models keep getting smarter and smaller, and today's best will soon run well on an ordinary laptop. Running a model fully locally means nothing if the harness around it (the software that lets it remember, search and act for you) sends your data back to the company that made it. Closedhand is a harness that runs entirely on your machine and doesn't report back to anyone, and it's simple enough for anyone to set up. Pair it with a local model and your conversations are completely sealed, with no company able to see what you ask.
 
-**Any LLM, no bias.** Every frontier lab's assistant runs on that lab's models. Closedhand has no model of its own to push, so it works with any LLM from any provider and you can switch the day a better one comes out because its only loyalty is to giving you the best possible results. If you'd rather not manage model keys yourself, Closedhand Managed Models picks the best LLM for each job and only uses providers with zero data retention.
+**Any LLM, no bias.** Every frontier lab's assistant runs on that lab's models. Closedhand has no model of its own to push, so it works with any LLM from any provider and you can switch the day a better one comes out because its only loyalty is to giving you the best possible results. If you'd rather not manage model keys yourself, Closedhand uses DeepSeek V4.1 Flash Abliterated by default, an uncensored LLM running in a TEE so nobody but you can read anything that goes in or comes out.
 
 **Closedhand can't police you.** Closed assistants check your conversations against their owner's rules and can refuse, flag or ban you for whatever that company decides is misuse. The same company can raise prices, withdraw a model overnight or cut users off when a government tells it to, which leaves you with a restricted, revocable version of the technology while the company and its partners get the real thing. An open model you've downloaded can't be taken back, and Closedhand runs any of them, including uncensored and abliterated ones (open models with their built-in refusals stripped out), with the same memory, connections and tools as any other LLM, which makes it the agent closed AI can never be.
 
@@ -57,7 +57,7 @@ Working on Closedhand itself? Build from source with `docker compose -f docker-c
 
 **Setup.** The setup page opens in your browser (or at **http://localhost:3000**) and ticks off each step as it sees it done:
 
-1. **Models.** Closedhand Managed Models, with 14 days at no charge and no card needed, or your own LLM provider.
+1. **Models.** DeepSeek V4.1 Flash Abliterated, the uncensored LLM Closedhand provides, with 14 free days and no card needed, or your own LLM provider.
 2. **A password** for your dashboard.
 3. **Email and calendar.** Google, Microsoft or both. Google takes one sign-in through Closedhand's own Google app, or about five minutes through a free Google Cloud project of your own, which setup walks you through.
 4. **Your personal URL**, so you can open Closedhand from your phone or any browser.
@@ -87,7 +87,7 @@ By the time you say hello, Closedhand has already read your inbox and calendar.
 
 ## LLMs
 
-Closedhand uses Closedhand Managed Models by default: DeepSeek V4.1 Flash, uncensored, in sealed hardware, so nobody but you can read what you send or what comes back. When a better uncensored LLM is available, Closedhand switches to it for you. Closedhand Managed Models come with 14 days at no charge, once per person, and then carry on with a subscription, monthly or every 6 or 12 months, or paid ahead in crypto for 3, 6 or 9 months.
+Closedhand uses an uncensored LLM by default: DeepSeek V4.1 Flash Abliterated, running in a TEE so nobody but you can read anything that goes in or comes out. When a better uncensored LLM is available, Closedhand switches to it for you. You get 14 free days of it, once per person, and then the Closedhand subscription keeps it going, monthly or every 6 or 12 months, or paid ahead in crypto for 3, 6 or 9 months. Its page is [closedhand.com/pricing](https://closedhand.com/pricing).
 
 Closedhand is also free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does. You can switch between them at any time.
 
@@ -107,7 +107,7 @@ Setup gives Closedhand a personal URL, two ordinary words and a number like ambe
 
 Claiming the URL creates your Closedhand account on closedhand.com. You sign in to it with Google or Microsoft, and it stores your email and nothing else; the [privacy page](https://closedhand.com/privacy) lists the routing details it needs to carry the connection. Connecting Google or Microsoft through Closedhand's own app claims the URL with that same sign-in. With your own Google project, setup asks for a second sign-in on closedhand.com, because closedhand.com can't trust a sign-in made by someone else's project.
 
-Or use Closedhand anonymously. Your Closedhand account then has an account number instead of an email, and closedhand.com stores no email, only a one-way fingerprint of the account number. Your account number is the only way back in, and nobody can recover a lost account number. An account like this starts by paying ahead in crypto for Closedhand Managed Models, and pays in crypto only, never by card.
+Or use Closedhand anonymously. Your Closedhand account then has an account number instead of an email, and closedhand.com stores no email, only a one-way fingerprint of the account number. Your account number is the only way back in, and nobody can recover a lost account number. An account like this starts by paying ahead in crypto for DeepSeek V4.1 Flash Abliterated, and pays in crypto only, never by card.
 
 You can rename the URL in **Settings → Personal URL**; the old address points to the new one for 30 days. **Delete account** in My Account deletes your Closedhand account and everything Closedhand keeps on that computer. Without the computer, sign in at closedhand.com/account to delete the account alone.
 

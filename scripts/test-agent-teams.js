@@ -397,7 +397,7 @@ test("the task pauses, says so once, waits for as long as it takes, and asks bef
   assert.match(dash, /'Your LLM is working again\. Finish it, or delete it if it\\'s no longer needed\.'/);
   assert.match(dash, />Finish it<\/button>/);
   assert.match(dash, /\|\| \(a\.status === 'blocked' && !!\(a\.runtime && a\.runtime\.allowance\)\); \};/);
-  assert.match(dash, /This month\\'s Managed Models use is close to its fair-use limit, so a team may pause partway\. It carries on by itself when there\\'s more\./);
+  assert.match(dash, /This month\\'s use of ' \+ llmName\(\) \+ ' is close to its fair-use limit, so a team may pause partway\. It carries on by itself when there\\'s more\./);
 });
 
 test("carrying on after a pause uses the LLM chosen now, and keeps the parts already done, whatever LLM did them", async () => {

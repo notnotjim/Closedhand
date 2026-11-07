@@ -44,9 +44,9 @@
     heading.append(document.createTextNode(' '), el('span', 'Beta', 'badge badge-soon'));
     if (locked) {
       if (state.address) content.append(el('strong', state.address, 'assistant-email-kept'));
-      content.append(el('p', (state.address ? 'The address is kept for you. ' : '') + 'Unlock with Closedhand Managed Models.', 'section-desc'));
+      content.append(el('p', (state.address ? 'The address is kept for you. ' : '') + 'Unlock with the Closedhand subscription.', 'section-desc'));
       const unlock = el('a', 'Unlock', 'conn-btn conn-btn-manage assistant-email-unlock');
-      unlock.href = 'https://closedhand.com/managed-models'; unlock.target = '_blank'; unlock.rel = 'noopener';
+      unlock.href = 'https://closedhand.com/pricing'; unlock.target = '_blank'; unlock.rel = 'noopener';
       content.append(unlock);
       return;
     }
