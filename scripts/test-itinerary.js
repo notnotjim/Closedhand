@@ -78,38 +78,52 @@ test("each card involved says what it clashes with, in the places Closedhand's l
   assert.deepEqual(itinerary.lines(found, {}), {}, "nothing shows before their LLM has judged it: far apart alone is not a clash");
   const judgedReal = { clashes: { "f:flight-XQ309-2026-12-11": { items: Object.fromEntries(found[0].items.map((it) => [it.id, { state: "real" }])) } } };
   assert.deepEqual(itinerary.lines(found, judgedReal), {
-    "b-stay": "Clashes with XQ309, which flies you to YYZ before this.",
-    "b-dent": "Clashes with XQ309, which flies you to YYZ before this.",
-    "flight-XQ301-2026-12-14": "Clashes with XQ309, which flies you to YYZ before this.",
+    "b-stay": "XQ309 flies you to YYZ before this.",
+    "b-dent": "XQ309 flies you to YYZ before this.",
+    "flight-XQ301-2026-12-14": "XQ309 flies you to YYZ before this.",
     "flight-XQ309-2026-12-11": "Clashes with what's booked after it.",
   }, "judged real, before the places are named");
   const named = { clashes: { "f:flight-XQ309-2026-12-11": { place: "Toronto", from: "Lisbon", items: { "b-stay": { state: "asked" }, "b-dent": { state: "asked" }, "flight-XQ301-2026-12-14": { state: "asked" } } } } };
-  assert.equal(itinerary.lines(found, named)["b-dent"], "Clashes with XQ309: you'd be in Toronto by then.");
+  assert.equal(itinerary.lines(found, named)["b-dent"], "You'd be in Toronto by then, on XQ309.");
   assert.equal(itinerary.lines(found, named)["flight-XQ309-2026-12-11"], "Clashes with your plans in Lisbon after it.");
-  for (const state of ["settled", "quiet", "open"]) {
+  for (const state of ["settled", "quiet", "open", "gone"]) {
     const done = { clashes: { "f:flight-XQ309-2026-12-11": { items: Object.fromEntries(found[0].items.map((it) => [it.id, { state }])) } } };
     assert.deepEqual(itinerary.lines(found, done), {}, state);
   }
   // Server and cards: the line rides with each booking and flight Upcoming loads.
   const server = read("webapp/server.js"), dash = read("webapp/views/dashboard.html");
-  assert.match(server, /\.\.\.b, over: bookingOver\(b, now\), clash: clash\[b\.id\] \|\| null,/);
-  assert.match(server, /f\.clash = clash\[f\._key\] \|\| null;/);
+  assert.match(server, /\.\.\.b, over: bookingOver\(b, now\), clash: clash\.lines\[b\.id\] \|\| null, clash_asks: clash\.asks\[b\.id\] \|\| null,/);
+  assert.match(server, /f\.clash = clash\.lines\[f\._key\] \|\| null;\n\s*f\.clash_asks = clash\.asks\[f\._key\] \|\| null;/);
+  assert.match(server, /return \{ lines: itinerary\.lines\(found, record\), asks: itinerary\.asks\(found, record\) \};/);
   assert.match(server, /supabase\.from\("facts"\)\.select\("value"\)\.eq\("user_id", userId\)\.eq\("key", "_itinerary-clashes"\)/);
-  assert.match(dash, /clashHtml\(b\.clash\) \+ sourceDocsHtml\(b\.source_mail\)/);
-  assert.match(dash, /\$\{clashHtml\(f\.clash\)\}/);
-  assert.match(dash, /\.upcoming-clash \{[^}]*color: var\(--fg-quiet\);/, "in the neutral: yellow is the account's, red is for what went wrong");
+  assert.match(dash, /clash: clashHtml\(b\.clash, b\.clash_asks\), docs: sourceDocsHtml\(b\.source_mail\)/);
+  assert.match(dash, /clash: clashHtml\(f\.clash, f\.clash_asks\), docs: sourceDocsHtml\(f\.source_mail\)/);
+  assert.match(dash, /\.up-clash \{[^}]*color: var\(--fg-quiet\); \}/, "in the neutral: yellow is the account's, red is for what went wrong");
+  // When Closedhand asked, and where, under the line, from the record.
+  const asked = { clashes: { "f:flight-XQ309-2026-12-11": { place: "Toronto", from: "Lisbon", asks: [{ at: "2026-12-01T09:00:00Z", in: ["WhatsApp"] }, { at: "2026-12-02T10:00:00Z", in: ["WhatsApp"] }], items: { "b-stay": { state: "asked" }, "b-dent": { state: "quiet" } } } } };
+  const asks = itinerary.asks(found, asked);
+  assert.deepEqual(Object.keys(asks).sort(), ["b-stay", "flight-XQ309-2026-12-11"], "only for the lines shown");
+  assert.equal(asks["b-stay"].length, 2);
+  const old = { clashes: { "f:flight-XQ309-2026-12-11": { asked: "2026-12-01T09:00:00Z", items: { "b-stay": { state: "asked" } } } } };
+  assert.deepEqual(itinerary.asks(found, old)["b-stay"], [{ at: "2026-12-01T09:00:00Z", in: [] }], "a question asked before asks were kept still says when");
+  const fns = new Function("shortDay", dash.slice(dash.indexOf("    function askedLine("), dash.indexOf("    // A booking found in a chat says which chat")) + "; return { askedLine, whenAsked };")((iso) => new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", ""));
+  assert.equal(fns.askedLine([{ at: "2026-11-07T09:00:00Z", in: ["WhatsApp"] }]), "Closedhand asked you in WhatsApp on Sat 7 Nov.");
+  const now = new Date(), morning = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0).toISOString();
+  assert.equal(fns.askedLine([{ at: "2026-11-07T09:00:00Z", in: ["WhatsApp"] }, { at: morning, in: ["WhatsApp"] }]), "Closedhand asked you in WhatsApp on Sat 7 Nov, and again this morning.");
 });
 
 // lib/itinerary-check.js with the store and its neighbours stood in.
 function check(facts) {
   const ctx = require("../lib/context");
   ctx.store = { facts };
-  const bPath = require.resolve("../lib/bookings");
+  const bPath = require.resolve("../lib/bookings"), oPath = require.resolve("../lib/plans-off"), sPath = require.resolve("../lib/storage");
   const removed = [];
-  require.cache[bPath] = { id: bPath, filename: bPath, loaded: true, exports: { removeBooking: async (userId, id) => { removed.push(id); return true; }, listUpcoming: async () => [] } };
+  require.cache[bPath] = { id: bPath, filename: bPath, loaded: true, exports: { cancelBooking: async (userId, id, said) => { removed.push([id, said]); return true; }, listUpcoming: async () => [] } };
+  require.cache[oPath] = { id: oPath, filename: oPath, loaded: true, exports: { review: async () => ({ checked: 0, off: [] }) } };
+  require.cache[sPath] = { id: sPath, filename: sPath, loaded: true, exports: { saveStore() {} } };
   const cPath = require.resolve("../lib/itinerary-check");
   delete require.cache[cPath];
-  return { mod: require("../lib/itinerary-check"), removed, restore() { delete require.cache[bPath]; delete require.cache[cPath]; ctx.store = null; } };
+  return { mod: require("../lib/itinerary-check"), removed, restore() { for (const p of [bPath, oPath, sPath, cPath]) delete require.cache[p]; ctx.store = null; } };
 }
 
 test("a clash is judged by the person's LLM and put to them once; a new item clashing with the same flight is asked about on its own", async () => {
@@ -118,7 +132,7 @@ test("a clash is judged by the person's LLM and put to them once; a new item cla
   try {
     const judged = [], told = [];
     const judge = async (userId, clash, picture, only) => { judged.push([...only]); assert.match(picture, /Flight XQ309: LIS .* -> YYZ/); return { clashing: [...only], ask: true, message: "Your new XQ309 takes you home on 11 Dec, but you're still booked in Lisbon after it. Are you cutting the trip short?", place: "Toronto", from: "Lisbon" }; };
-    const tell = async (userId, store, text) => { told.push(text); return true; };
+    const tell = async (userId, store, text) => { told.push(text); return ["WhatsApp"]; };
     const r1 = await mod.review("u1", { bookings: [stay], judge, tell, now: NOW });
     assert.deepEqual(r1, { found: 1, asked: 1 });
     assert.deepEqual(judged, [["b-stay", "flight-XQ301-2026-12-14"]]);
@@ -145,7 +159,7 @@ test("a clash its look found nothing to ask about stays quiet, and one it could 
   const { mod, restore } = check(facts);
   try {
     let verdict = null, told = 0;
-    const deps = { bookings: [stay], judge: async () => verdict, tell: async () => { told++; return true; }, now: NOW };
+    const deps = { bookings: [stay], judge: async () => verdict, tell: async () => { told++; return ["WhatsApp"]; }, now: NOW };
     await mod.review("u1", deps);
     const items = () => Object.values(mod.readRecord(facts).clashes["f:flight-XQ309-2026-12-11"].items).map((it) => it.state);
     assert.deepEqual(items(), ["open", "open"], "not judged: still open");
@@ -163,12 +177,14 @@ test("the person's answer settles it: what no longer stands comes off their plan
   const facts = { ...trip, "flight-XQ309-2026-12-11": early };
   const { mod, removed, restore } = check(facts);
   try {
-    await mod.review("u1", { bookings: [stay, dentist], judge: async (u, c, p, only) => ({ clashing: [...only], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }), tell: async () => true, now: NOW });
+    await mod.review("u1", { bookings: [stay, dentist], judge: async (u, c, p, only) => ({ clashing: [...only], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }), tell: async () => ["WhatsApp"], now: NOW });
     assert.deepEqual((await mod.settle("u1", { clash: "f:nope" })).error, "No clash with that id. The time block lists the open ones.");
     const r = await mod.settle("u1", { clash: "f:flight-XQ309-2026-12-11", drop: ["b-stay", "b-dent", "flight-XQ301-2026-12-14"] });
     assert.deepEqual(r, { success: true, dropped: ["Casa do Rio, 4 nights", "Check-up at Clinica Alfama", "XQ301"], kept: [] });
-    assert.deepEqual(removed, ["b-stay", "b-dent"], "bookings come off as the dashboard's x takes them off");
-    assert.equal(JSON.parse(facts["flight-XQ301-2026-12-14"].value).supersededBy, "removed", "and a flight is no longer tracked");
+    assert.deepEqual(removed, [["b-stay", { by: "you" }], ["b-dent", { by: "you" }]], "bookings go to Cancelled plans as the dashboard's x sends them, saying the person said so");
+    const xq301 = JSON.parse(facts["flight-XQ301-2026-12-14"].value);
+    assert.equal(xq301.supersededBy, "removed", "and a flight is no longer tracked");
+    assert.equal(xq301.cancelled.by, "you", "and is listed under Cancelled plans, saying so");
     assert.equal(itinerary.flightsFrom(facts).some((f) => f.number === "XQ301"), false);
     assert.deepEqual(mod.openClashes(facts), []);
     assert.equal(require("../lib/time-context").clashContext(facts), "");
@@ -199,7 +215,7 @@ test("only what the person's LLM judges a real clash is shown or asked about", a
     const told = [];
     // The stay needs them there; the check-up, say, turned out to be a video call.
     const judge = async () => ({ clashing: ["b-stay"], ask: true, message: "Your new XQ309 leaves Lisbon on 11 Dec, but Casa do Rio is booked to the 15th. Are you cutting the trip short?", place: "Toronto", from: "Lisbon" });
-    await mod.review("u1", { bookings: [stay, dentist], judge, tell: async (u, s, t) => { told.push(t); return true; }, now: NOW });
+    await mod.review("u1", { bookings: [stay, dentist], judge, tell: async (u, s, t) => { told.push(t); return ["WhatsApp"]; }, now: NOW });
     const record = mod.readRecord(facts);
     const states = Object.fromEntries(Object.entries(record.clashes["f:flight-XQ309-2026-12-11"].items).map(([id, it]) => [id, it.state]));
     assert.equal(states["b-stay"], "asked");
@@ -213,7 +229,7 @@ test("only what the person's LLM judges a real clash is shown or asked about", a
     const facts2 = { ...trip, "flight-XQ309-2026-12-11": early };
     const second = check(facts2);
     try {
-      await second.mod.review("u1", { bookings: [stay], judge: async () => ({ clashing: ["b-stay"], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }), tell: async () => false, now: NOW });
+      await second.mod.review("u1", { bookings: [stay], judge: async () => ({ clashing: ["b-stay"], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }), tell: async () => [], now: NOW });
       assert.equal(second.mod.readRecord(facts2).clashes["f:flight-XQ309-2026-12-11"].items["b-stay"].state, "real");
       assert.equal(second.mod.openClashes(facts2).length, 1, "and in Closedhand's picture");
     } finally { second.restore(); }
@@ -226,4 +242,72 @@ test("every scheduled bookings pass judges clashes, not only one that found a bo
   const src = read("lib/bookings.js");
   const pass = src.slice(src.indexOf("const pass = async () => {"), src.indexOf("setTimeout(pass, FIRST_SCAN_DELAY_MS)"));
   assert.match(pass, /await scanBookings\(u\.userId\);\n[\s\S]*?try \{ await require\("\.\/itinerary-check"\)\.review\(u\.userId\); \}/);
+});
+
+// A trip of its own: settling a clash in an earlier test marked the shared
+// flights as no longer tracked.
+const ownTrip = () => ({
+  "flight-XQ300-2026-12-10": flight("XQ300", "YYZ", YYZ, "2026-12-09T22:00:00-05:00", "LIS", LIS, "2026-12-10T10:05:00+00:00"),
+  "flight-XQ301-2026-12-14": flight("XQ301", "LIS", LIS, "2026-12-14T12:30:00+00:00", "YYZ", YYZ, "2026-12-14T15:40:00-05:00"),
+  "flight-XQ309-2026-12-11": flight("XQ309", "LIS", LIS, "2026-12-11T13:00:00+00:00", "YYZ", YYZ, "2026-12-11T16:10:00-05:00"),
+});
+
+// Asked once and left, a question read as if Closedhand had forgotten it: the
+// plans stayed on Upcoming with nothing more said. Unanswered, it is asked
+// again a day later, then in the day and a half before each plan it is about.
+test("a question with no answer is asked again a day later, then before each plan it is about, never within half a day", async () => {
+  const facts = ownTrip();
+  const { mod, restore } = check(facts);
+  try {
+    const told = [], nudged = [];
+    const H = 3600000;
+    const deps = (now) => ({ bookings: [stay], now, judge: async (u, c, p, only) => ({ clashing: [...only], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }),
+      nudge: async (u, rec, open) => { nudged.push(open.map((it) => it.id)); return "Still booked in Lisbon from Thu 10 Dec. Is that off?"; },
+      tell: async (u, s, t) => { told.push(t); return ["WhatsApp"]; } });
+    await mod.review("u1", deps(NOW));
+    assert.equal(told.length, 1);
+    await mod.review("u1", deps(NOW + 6 * H));
+    assert.equal(told.length, 1, "not again the same day");
+    await mod.review("u1", deps(NOW + 25 * H));
+    assert.equal(told.length, 2, "again once a day has passed");
+    assert.deepEqual(nudged[0], ["b-stay", "flight-XQ301-2026-12-14"], "about what is still open");
+    await mod.review("u1", deps(NOW + 4 * 24 * H));
+    assert.equal(told.length, 2, "then quiet until the plan nears");
+    const stayAt = Date.parse(stay.starts_at);
+    await mod.review("u1", deps(stayAt - 30 * H));
+    assert.equal(told.length, 3, "again in the day and a half before the stay");
+    await mod.review("u1", deps(stayAt - 12 * H));
+    assert.equal(told.length, 3, "once for that plan");
+    const flightAt = Date.parse("2026-12-14T12:30:00+00:00");
+    await mod.review("u1", deps(flightAt - 20 * H));
+    assert.equal(told.length, 4, "and again before the next one");
+    assert.deepEqual(nudged.at(-1), ["flight-XQ301-2026-12-14"], "only what is still to come");
+    const rec = mod.readRecord(facts).clashes["f:flight-XQ309-2026-12-11"];
+    assert.equal(rec.asks.length, 4);
+    assert.deepEqual(rec.asks[0].in, ["WhatsApp"], "each time says where it went");
+    // Once they answer, nothing more.
+    await mod.settle("u1", { clash: "f:flight-XQ309-2026-12-11", drop: [] });
+    await mod.review("u1", deps(flightAt - 2 * H));
+    assert.equal(told.length, 4);
+  } finally { restore(); }
+});
+
+test("proof comes first: a plan found to be off leaves the question, and nothing is asked about it again", async () => {
+  const facts = ownTrip();
+  const { mod, restore } = check(facts);
+  try {
+    const told = [], order = [];
+    const booked = { ...stay };
+    const base = { bookings: [booked], judge: async (u, c, p, only) => { order.push("judge"); return { clashing: [...only], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }; },
+      nudge: async () => "Still on?", tell: async (u, s, t) => { told.push(t); return ["WhatsApp"]; } };
+    await mod.review("u1", { ...base, now: NOW, plansOff: async () => { order.push("proof"); } });
+    assert.deepEqual(order, ["proof", "judge"], "proof is looked for before anything is judged or asked");
+    // The stay's own email says it is cancelled: lib/plans-off.js takes it off.
+    await mod.review("u1", { ...base, now: NOW + 25 * 3600000, plansOff: async () => { booked.status = "cancelled"; } });
+    const rec = mod.readRecord(facts).clashes["f:flight-XQ309-2026-12-11"];
+    assert.equal(rec.items["b-stay"].state, "gone", "off the question");
+    assert.equal(rec.items["flight-XQ301-2026-12-14"].state, "asked", "the rest still open");
+    assert.deepEqual(mod.openClashes(facts)[0].items.map((it) => it.id), ["flight-XQ301-2026-12-14"]);
+    assert.equal(told.length, 2, "asked again only about the flight");
+  } finally { restore(); }
 });

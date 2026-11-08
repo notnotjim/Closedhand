@@ -6923,6 +6923,30 @@ app.get("/api/mail/attachment", async (req, res) => {
   }
 });
 
+// An email's text keeps each link's address beside its words, "the booking
+// (https://…)" (lib/file-reader.js htmlText). On Closedhand's copy the words
+// are the link, up to the six before it, and the address is not shown: a
+// long tracking address took up half a phone's screen. A bare address shows
+// as its site.
+const CALENDAR_FILE = /\.(ics|vcs)$/i;
+const LINKED = /( ?)\((https?:\/\/[^\s()]+)\)|https?:\/\/[^\s()<>"]+/g;
+function linkedBody(text, e) {
+  const site = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (_) { return "link"; } };
+  const a = (u, words) => `<a href="${e(u)}" target="_blank" rel="noopener noreferrer">${e(words)}</a>`;
+  return String(text).split("\n").map((line) => {
+    let html = "", last = 0;
+    for (const m of line.matchAll(LINKED)) {
+      const before = line.slice(last, m.index);
+      if (m[2]) {
+        const w = /^([\s\S]*?\s)??((?:\S+\s+){0,5}\S+)$/.exec(before.replace(/\s+$/, ""));
+        html += w ? e(w[1] || "") + a(m[2], w[2]) : e(before) + a(m[2], site(m[2]));
+      } else html += e(before) + a(m[0], site(m[0]));
+      last = m.index + m[0].length;
+    }
+    return html + e(line.slice(last));
+  }).join("\n");
+}
+
 // Closedhand's own copy of one email, for mail with no web address of its
 // own (IMAP), and for Gmail on an iPhone or iPad: who sent it, when, what it
 // says and its files. There a Gmail address opens in Safari on Gmail's phone
@@ -6943,15 +6967,16 @@ app.get("/mail", async (req, res) => {
     const m = row.data || {};
     const e = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const when = m.date && !isNaN(Date.parse(m.date)) ? new Date(m.date).toUTCString() : e(m.date);
-    const files = mailFiles(m).map((f, n) => `<a class="file" href="/api/mail/attachment?${e(mailQuery(source, id))}&amp;n=${n}" target="_blank" rel="noopener">${e(f.filename)}</a>`).join("");
+    // A calendar file only adds what Upcoming already shows, as on the card.
+    const files = mailFiles(m).map((f, n) => CALENDAR_FILE.test(f.filename) || /calendar/i.test(f.mimeType || "") ? "" : `<a class="file" href="/api/mail/attachment?${e(mailQuery(source, id))}&amp;n=${n}" target="_blank" rel="noopener">${e(f.filename)}</a>`).join("");
     const web = openUrlFor({ source, external_id: id, data: m });
     const gmail = /^https:\/\/mail\.google\.com\//.test(web);
     const ios = /\biP(hone|ad|od)\b/.test(String(req.get("user-agent") || ""));
     const own = web.startsWith("https://") ? `<a class="open" href="${e(gmail && ios ? "googlegmail://" : web)}">Open in ${gmail ? "Gmail" : "Outlook"}</a>` : "";
     res.set({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'" });
     res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><title>${e(m.subject || "Email")}</title>
-<style>html{font-size:100%}@media screen and (hover:hover) and (pointer:fine){html{font-size:90%}}body{margin:0;background:#111;color:#EFE6D6;font:0.9375rem/1.55 -apple-system,system-ui,sans-serif}main{max-width:47.5rem;margin:0 auto;padding:1.5rem 1rem 3rem}h1{font-size:1.25rem;line-height:1.3;margin:0 0 0.75rem}.meta{color:#B6AFA4;font-size:0.8125rem;margin:0 0 0.25rem}.files{display:flex;flex-wrap:wrap;gap:0.5rem;margin:1rem 0}.file{border:1px solid rgba(239,230,214,.16);border-radius:0.375rem;padding:0.25rem 0.625rem;color:#EFE6D6;text-decoration:none;font-size:0.8125rem}.body{white-space:pre-wrap;word-wrap:break-word;margin-top:1.25rem;border-top:1px solid rgba(239,230,214,.12);padding-top:1rem}.open{display:inline-block;margin:0.75rem 0 0;border:1px solid rgba(239,230,214,.24);border-radius:0.5rem;padding:0.375rem 0.875rem;color:#EFE6D6;text-decoration:none;font-size:0.875rem}</style></head>
-<body><main><h1>${e(m.subject || "(no subject)")}</h1><p class="meta">From ${e(m.from)}</p>${m.to ? `<p class="meta">To ${e(m.to)}</p>` : ""}<p class="meta">${when}</p>${own}${files ? `<div class="files">${files}</div>` : ""}<div class="body">${e(m.body || m.snippet || "")}</div></main></body></html>`);
+<style>html{font-size:100%}@media screen and (hover:hover) and (pointer:fine){html{font-size:90%}}body{margin:0;background:#111;color:#EFE6D6;font:0.9375rem/1.55 -apple-system,system-ui,sans-serif}.body a{color:#E59B89;text-underline-offset:2px}main{max-width:47.5rem;margin:0 auto;padding:1.5rem 1rem 3rem}h1{font-size:1.25rem;line-height:1.3;margin:0 0 0.75rem}.meta{color:#B6AFA4;font-size:0.8125rem;margin:0 0 0.25rem}.files{display:flex;flex-wrap:wrap;gap:0.5rem;margin:1rem 0}.file{border:1px solid rgba(239,230,214,.16);border-radius:0.375rem;padding:0.25rem 0.625rem;color:#EFE6D6;text-decoration:none;font-size:0.8125rem}.body{white-space:pre-wrap;word-wrap:break-word;margin-top:1.25rem;border-top:1px solid rgba(239,230,214,.12);padding-top:1rem}.open{display:inline-block;margin:0.75rem 0 0;border:1px solid rgba(239,230,214,.24);border-radius:0.5rem;padding:0.375rem 0.875rem;color:#EFE6D6;text-decoration:none;font-size:0.875rem}</style></head>
+<body><main><h1>${e(m.subject || "(no subject)")}</h1><p class="meta">From ${e(m.from)}</p>${m.to ? `<p class="meta">To ${e(m.to)}</p>` : ""}<p class="meta">${when}</p>${own}${files ? `<div class="files">${files}</div>` : ""}<div class="body">${linkedBody(m.body || m.snippet || "", e)}</div></main></body></html>`);
   } catch (err) {
     console.error("[mail] view error:", err.message);
     res.status(500).send("Could not open that email. Try again.");
@@ -6962,7 +6987,8 @@ app.get("/mail", async (req, res) => {
 // lib/itinerary.js), worked out afresh from what Upcoming shows: a quiet line
 // on each card involved until the person settles it in chat, or Closedhand's
 // look at it found nothing to ask (lib/itinerary-check.js keeps that under
-// _itinerary-clashes). { [booking id or flight key]: line }.
+// _itinerary-clashes), with when and where Closedhand asked about it.
+// { lines: { [booking id or flight key]: line }, asks: { [id]: [{ at, in }] } }.
 async function clashLines(userId) {
   try {
     const since = new Date(Date.now() - 24 * 3600000).toISOString();
@@ -6975,10 +7001,10 @@ async function clashLines(userId) {
     const found = itinerary.clashes({ flights: itinerary.flightsFrom(Object.fromEntries((flights.data || []).map((r) => [r.key, r.value]))), bookings: bookings.data || [] });
     let record = {};
     try { let v = JSON.parse(kept.data?.value || "{}"); if (typeof v?.value === "string") v = JSON.parse(v.value); record = v || {}; } catch (_) {}
-    return itinerary.lines(found, record);
+    return { lines: itinerary.lines(found, record), asks: itinerary.asks(found, record) };
   } catch (e) {
     console.error("[itinerary] clash lines:", e.message);
-    return {};
+    return { lines: {}, asks: {} };
   }
 }
 
@@ -6994,7 +7020,7 @@ app.get("/api/bookings", async (req, res) => {
     const now = Date.now();
     const clash = await clashLines(userId);
     const rows = await Promise.all((data || []).map(async (b) => ({
-      ...b, over: bookingOver(b, now), clash: clash[b.id] || null,
+      ...b, over: bookingOver(b, now), clash: clash.lines[b.id] || null, clash_asks: clash.asks[b.id] || null,
       source_mail: await sourceMail(userId, { emailId: b.source_email_id, reference: b.reference }).catch(() => null),
     })));
     res.json(rows);
@@ -7004,19 +7030,36 @@ app.get("/api/bookings", async (req, res) => {
   }
 });
 
-app.delete("/api/bookings/:id", async (req, res) => {
+// The x on a card takes a plan off, to Cancelled plans, and Put back brings
+// it back: nothing is deleted, so neither asks first. A booking's change is
+// stamped as Closedhand's own, so an email sent before it does not undo it,
+// and one put back is not taken off again for what was already said
+// (details.kept, lib/plans-off.js).
+app.post("/api/bookings/:id/:action(cancel|restore)", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
-  const { error } = await supabase.from("bookings").delete().eq("user_id", userId).eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: "Could not remove it" });
-  res.json({ success: true });
+  try {
+    const { data: row, error: readError } = await supabase.from("bookings").select("details").eq("user_id", userId).eq("id", req.params.id).maybeSingle();
+    if (readError) throw readError;
+    if (!row) return res.status(404).json({ error: "Not found" });
+    const at = new Date().toISOString();
+    const details = { ...(row.details || {}), changed_by_closedhand: at };
+    if (req.params.action === "cancel") details.cancelled = { by: "you", at };
+    else { delete details.cancelled; details.kept = at; }
+    const { error } = await supabase.from("bookings").update({ status: req.params.action === "cancel" ? "cancelled" : "confirmed", details, updated_at: at }).eq("user_id", userId).eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[bookings] " + req.params.action + " error:", e.message);
+    res.status(500).json({ error: "Could not change it" });
+  }
 });
 
-// A flight that is not theirs, removed from Upcoming. It stays saved, marked,
-// so the scan that found it does not add it again: a marked flight is passed
-// over everywhere, and only a change email moving the booking onto it brings
-// it back (lib/flight-bookings.js).
-app.delete("/api/flights/:key", async (req, res) => {
+// A flight taken off stays saved, marked, so the scan that found it does not
+// add it again: a marked flight is passed over everywhere, and only Put back
+// or a change email moving the booking onto it brings it back
+// (lib/flight-bookings.js).
+app.post("/api/flights/:key/:action(cancel|restore)", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
   const key = String(req.params.key || "");
@@ -7029,14 +7072,18 @@ app.delete("/api/flights/:key", async (req, res) => {
     const outer = JSON.parse(row.value);
     const wrapped = outer && typeof outer.value === "string";
     const flight = wrapped ? JSON.parse(outer.value) : outer;
-    const marked = { ...flight, supersededBy: "removed", supersededAt: new Date().toISOString() };
+    const at = new Date().toISOString();
+    let marked;
+    if (req.params.action === "cancel") marked = { ...flight, supersededBy: "removed", supersededAt: at, cancelled: { by: "you", at } };
+    else if (flight.supersededBy === "removed") { marked = { ...flight, kept: at }; delete marked.supersededBy; delete marked.supersededAt; delete marked.cancelled; }
+    else return res.status(400).json({ error: "Not taken off" });
     const value = JSON.stringify(wrapped ? { ...outer, value: JSON.stringify(marked) } : marked);
-    const { error } = await supabase.from("facts").update({ value, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("key", key);
+    const { error } = await supabase.from("facts").update({ value, updated_at: at }).eq("user_id", userId).eq("key", key);
     if (error) throw error;
     res.json({ success: true });
   } catch (e) {
-    console.error("[flights] remove error:", e.message);
-    res.status(500).json({ error: "Could not remove it" });
+    console.error("[flights] " + req.params.action + " error:", e.message);
+    res.status(500).json({ error: "Could not change it" });
   }
 });
 
@@ -7064,15 +7111,19 @@ app.get("/api/flights", async (req, res) => {
           return f;
         } catch { return null; }
       })
+      // One taken off (supersededBy "removed") is listed under Cancelled
+      // plans, saying how; one replaced by another flight is not listed.
       .filter(f => {
-        if (!f || f.supersededBy || !f.departure?.dateTime) return false;
+        if (!f || !f.departure?.dateTime || (f.supersededBy && f.supersededBy !== "removed")) return false;
+        if (f.supersededBy) f.cancelled = f.cancelled || { by: "you", at: f.supersededAt || null };
         return new Date(f.departure.dateTime).getTime() > cutoff;
       })
       .sort((a, b) => new Date(a.departure.dateTime) - new Date(b.departure.dateTime));
 
     const clash = await clashLines(userId);
     await Promise.all(flights.map(async (f) => {
-      f.clash = clash[f._key] || null;
+      f.clash = clash.lines[f._key] || null;
+      f.clash_asks = clash.asks[f._key] || null;
       f.source_mail = await sourceMail(userId, { emailId: f.emailId, reference: f.confirmationCode }).catch(() => null);
     }));
     res.json(flights);

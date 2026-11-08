@@ -37,6 +37,7 @@ test('bad input is refused with a reason, a cancellation is recorded', async () 
   written = null;
   assert.equal((await recordChange('u', { id: 'b1', status: 'cancelled' })).status, 'cancelled');
   assert.equal(written.status, 'cancelled');
+  assert.deepEqual({ by: written.details.cancelled.by, why: written.details.cancelled.why }, { by: 'closedhand', why: 'Closedhand cancelled it for you.' }, 'Cancelled plans says who cancelled it');
 });
 
 test('the tool exists, chat and agents are told to use it, the card shows the move', () => {
@@ -46,9 +47,9 @@ test('the tool exists, chat and agents are told to use it, the card shows the mo
   for (const f of ['engine.js', 'agents.js']) assert.match(fs.readFileSync(path.join(root, 'lib', f), 'utf8'), /record it with booking_update straight away/, f);
   const dash = fs.readFileSync(path.join(root, 'webapp', 'views', 'dashboard.html'), 'utf8');
   assert.match(dash, /<span class="booking-moved">moved from ' \+ escHtml\(movedFrom\)/);
-  assert.match(dash, /if \(b\.reference\) details\.push/);
-  assert.match(dash, /var showProvider = b\.provider && String\(b\.provider\)\.trim\(\)\.toLowerCase\(\) !== String\(b\.title\)\.trim\(\)\.toLowerCase\(\);/);
-  assert.match(dash, /const field = \(label, v\) => \{ if \(v \|\| soon\)/);
+  assert.match(dash, /if \(b\.reference\) facts\.push\(fact\('Ref', b\.reference\)\);/);
+  assert.match(dash, /if \(b\.provider && !holds\(title, b\.provider\)\) sub\.push\(b\.provider\);/, "the venue's name said once");
+  assert.match(dash, /const known = \(label, v\) => \{ if \(v\) facts\.push\(fact\(label, v\)\); \};/, "only what is known: a row of TBCs said nothing");
 });
 
 test('a change Closedhand made stands against an older email, and a newer email wins', () => {

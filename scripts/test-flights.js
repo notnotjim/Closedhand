@@ -126,11 +126,13 @@ test('live checker ignores superseded flights and saves timezone enrichment even
 });
 test('dashboard renders airport-local clocks using the shipped browser helper', () => {
   const html = fs.readFileSync(path.join(root, 'webapp/views/dashboard.html'), 'utf8');
-  const render = html.slice(html.indexOf('    function renderFlightCard('), html.indexOf('    // === Load flights ==='));
-  const scope = { getFlightStatusInfo: () => ({ cls: 'scheduled', label: 'Scheduled' }), escHtml: String, fmtFlightTime: clock.time, sourceDocsHtml: () => '', clashHtml: () => '', UPCOMING_ICON: { flight: '[plane]' } };
+  const fn = (name) => { const s = html.indexOf(`    function ${name}(`); return html.slice(s, html.indexOf('\n    }\n', s) + 6); };
+  const render = fn('upcomingEntry') + html.slice(html.indexOf('    function flightEntry('), html.indexOf('    // === Load flights ==='));
+  const scope = { getFlightStatusInfo: () => ({ cls: 'scheduled', label: 'Scheduled' }), escHtml: String, fact: (l, v) => l + ' ' + v, fmtFlightTime: clock.time, sourceDocsHtml: () => '', clashHtml: () => '', UPCOMING_ICON: { flight: '[plane]', x: '' }, AIRPORT_CITY: {}, escAttribute: String };
   vm.runInNewContext(render, scope);
-  const card = scope.renderFlightCard(next);
-  assert.match(card, />20:00</); assert.match(card, />21:20</);
+  const card = scope.flightEntry(next);
+  assert.match(card, /<div class="up-time">20:00<span class="up-end"><span class="up-end-word">lands <\/span><span class="up-end-arrow">\u2192 <\/span>21:20<\/span><\/div>/);
+  assert.doesNotMatch(card, /Scheduled/, "a status every flight would show is not shown");
   assert.ok(!card.includes('22:00'));
   assert.match(html, /<script src="\/flight-time.js"><\/script>/);
   assert.equal(fs.readFileSync(path.join(root, 'webapp/public/flight-time.js'), 'utf8'), fs.readFileSync(path.join(root, 'lib/flight-time.js'), 'utf8'));
@@ -144,7 +146,7 @@ test('flights API excludes superseded records and keeps authentication enforced'
   const state = facts(); apply(state, reconcileFlights(state, [change], [email], now));
   const query = { select() { return this; }, eq(column, value) { assert.equal(column, 'user_id'); assert.equal(value, user); return this; }, async like() { return { data: Object.entries(state).map(([key,value]) => ({key,value:JSON.stringify(value)})) }; } };
   class FixedDate extends Date { static now() { return now; } }
-  vm.runInNewContext(source.slice(start, end), { Date: FixedDate, process: {env:{}}, console, getUserIdFromRequest: () => user, supabase: { from: () => query }, sourceMail: async () => null, clashLines: async () => ({}), app: { get: (_,fn) => { handler = fn; } } });
+  vm.runInNewContext(source.slice(start, end), { Date: FixedDate, process: {env:{}}, console, getUserIdFromRequest: () => user, supabase: { from: () => query }, sourceMail: async () => null, clashLines: async () => ({ lines: {}, asks: {} }), app: { get: (_,fn) => { handler = fn; } } });
   const res = { json(value) { payload = value; }, status(code) { status = code; return this; } };
   await handler({}, res);
   assert.deepEqual(Array.from(payload, f => f.flightNumber), ['XY648']);

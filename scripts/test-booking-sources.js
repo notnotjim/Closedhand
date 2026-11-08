@@ -115,7 +115,7 @@ test('the dashboard opens the email from its own chip, lists the files and moves
   assert.match(dash, /'<a class="source-doc source-mail" href="' \+ escHtml\(mail\)/);
   assert.doesNotMatch(dash, /openSourceMail|has-source/, 'the card itself is not a second link to the same email');
   assert.match(dash, /\(docs\.length > 2 \? '<button type="button" class="source-doc-more"/);
-  assert.match(dash, /var over = rows\.filter\(function\(b\) \{ return b\.over; \}\);/);
+  assert.match(dash, /var over = live\.filter\(function\(b\) \{ return b\.over; \}\);/);
   assert.match(dash, /<div id="recent-bookings"><\/div>/);
 });
 
@@ -124,9 +124,33 @@ test("Upcoming reads everything connected, and a booking from a chat says where 
   assert.match(dash, />Nothing coming up\. Reminders and bookings from everything you've connected show here\.</);
   assert.doesNotMatch(dash, /from your mail show here/);
   assert.match(dash, /appointment: lineIcon\('M4 5h16v15H4zM4 10h16M8 3v4M16 3v4'\),/, "an appointment drawn as a calendar, in the app's line style");
-  assert.match(dash, /sourceDocsHtml\(b\.source_mail\) \+ chatSourceHtml\(det\.from_chat\)/);
-  assert.match(dash, /title="' \+ escHtml\('From your ' \+ c\.app \+ ' chat' \+ \(c\.name \? ' with ' \+ c\.name : ''\)\) \+ '"/);
+  assert.match(dash, /docs: sourceDocsHtml\(b\.source_mail\), from: chatSourceHtml\(det\.from_chat\),/);
+  // Said in words, not a button: there is no way to open one chat from here.
+  const chat = dash.slice(dash.indexOf("    function chatSourceHtml(c) {"), dash.indexOf("    // The email a booking came from"));
+  assert.match(chat, /'<span>' \+ escHtml\('From your ' \+ c\.app \+ ' chat' \+ \(c\.name \? ' with ' \+ c\.name : ''\)\) \+ '<\/span><\/div>'/);
+  assert.doesNotMatch(chat, /source-doc|<a |<button/, "not shaped like the email's chip");
   const defs = read("lib/tools/definitions.js");
   assert.match(defs, /Upcoming bookings picked out of the user's email, chats and connected services/);
   assert.match(read("lib/engine.js"), /"bookings from mail and chats \(trains, hotels, tickets, appointments\): list, scan, record a change, settle plans that clash"/);
+});
+
+// Closedhand's copy of an email showed every link's address in full beside
+// its words: a tracking address took up half a phone's screen. The words are
+// the link now; a calendar file is left out, as on the card.
+test("Closedhand's copy of an email makes a link of its words and leaves calendar files out", () => {
+  const server = read("webapp/server.js");
+  const src = server.slice(server.indexOf("const CALENDAR_FILE ="), server.indexOf("// Closedhand's own copy of one email"));
+  const { linkedBody, CALENDAR_FILE } = new Function(src + "; return { linkedBody, CALENDAR_FILE };")();
+  const e = (v) => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const body = "Example Trips (https://email.example.com/c/eJxLongTrackingToken123)\n\nFor more info, open Help & support (https://email.example.com/c/help)\nSee https://www.example.com/trips/123 for the rest.";
+  const html = linkedBody(body, e);
+  assert.match(html, /^<a href="https:\/\/email\.example\.com\/c\/eJxLongTrackingToken123" target="_blank" rel="noopener noreferrer">Example Trips<\/a>/);
+  assert.match(html, /For <a href="https:\/\/email\.example\.com\/c\/help"[^>]*>more info, open Help &amp; support<\/a>/, "the six words before it at most");
+  assert.match(html, /See <a href="https:\/\/www\.example\.com\/trips\/123"[^>]*>example\.com<\/a> for the rest\./, "a bare address shows as its site");
+  assert.doesNotMatch(html.replace(/href="[^"]*"/g, ""), /https?:\/\//, "no address shown");
+  assert.equal(linkedBody("<b>not a tag</b>", e), "&lt;b&gt;not a tag&lt;/b&gt;", "the rest is text");
+  assert.ok(CALENDAR_FILE.test("SP69152801_80304326.ics") && !CALENDAR_FILE.test("E-ticket.pdf"));
+  const view = server.slice(server.indexOf('app.get("/mail"'), server.indexOf('app.get("/api/bookings"'));
+  assert.match(view, /CALENDAR_FILE\.test\(f\.filename\) \|\| \/calendar\/i\.test\(f\.mimeType \|\| ""\) \? "" :/);
+  assert.match(view, /<div class="body">\$\{linkedBody\(m\.body \|\| m\.snippet \|\| "", e\)\}<\/div>/);
 });

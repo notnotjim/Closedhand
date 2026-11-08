@@ -83,7 +83,8 @@ test("Upcoming says what, what kind and when; what already happened folds under 
   assert.match(dashboard, /upcomingRow\(\{ icon: UPCOMING_ICON\.reminder, title: reminderTitle\(r\.name\), kind: r\.repeats \? 'Reminder, ' \+ r\.repeats : 'Reminder', when: r\.next_at \? FlightTime\.time\(r\.next_at, where\) : '' \}\)/, "the note Closedhand left itself is not shown");
   assert.doesNotMatch(dashboard, /esc\(r\.task/, "no reminder prompt on the dashboard");
   assert.doesNotMatch(dashboard, /_showPastReminders|Show \d+ that already ran|that already ran<\/a>/);
-  assert.match(dashboard, /<button type="button" class="mc-section-label archive-row" id="past-toggle" aria-expanded="false" aria-controls="past-body" onclick="togglePast\(\)">Past <span class="count" id="past-count"><\/span><span class="chevron-down"><\/span><\/button>/, "Past is a heading row like Archived");
+  assert.match(dashboard, /<button type="button" class="mc-section-label archive-row" id="past-toggle" aria-expanded="false" aria-controls="past-body" onclick="toggleFold\('past'\)">Past <span class="count" id="past-count"><\/span><span class="chevron-down"><\/span><\/button>/, "Past is a heading row like Archived");
+  assert.match(dashboard, /<button type="button" class="mc-section-label archive-row" id="cancelled-toggle" aria-expanded="false" aria-controls="cancelled-body" onclick="toggleFold\('cancelled'\)">Cancelled plans <span class="count" id="cancelled-count"><\/span><span class="chevron-down"><\/span><\/button>/, "and so is Cancelled plans");
   assert.match(dashboard, /<div id="past-body" hidden>\n\s*<div id="reminders-past"><\/div>\n\s*<div id="recent-flights"><\/div>/, "reminders that ran and flights flown, folded away");
   assert.match(read("lib/tools/definitions.js"), /What it is for, in a few plain words, as the person sees it under Upcoming on the dashboard: 'Plumber visit', 'Renew the car insurance'\. Not a slug\./);
 });
@@ -201,64 +202,88 @@ test("Upcoming is one timeline: every kind under the same date headings, soonest
   ctx.setUpcoming("flights", [ctx.upcomingItem("2027-03-13T14:20:00Z", tz, "[flight]")]);
   ctx.setUpcoming("reminders", [ctx.upcomingItem("2027-03-12T09:15:00Z", tz, "[reminder]"), ctx.upcomingItem("2027-03-13T08:00:00Z", tz, "[reminder 2]")]);
   const headings = el.innerHTML.match(/<div class="flights-date-header">[^<]*/g).map((h) => h.replace(/<[^>]*>/, ""));
-  assert.deepEqual(headings, [FlightTime.dateLabel("2027-03-12T09:15:00Z", tz), FlightTime.dateLabel("2027-03-13T14:20:00Z", tz)], "a reminder's date is a heading like a flight's");
+  assert.deepEqual(headings, ["Fri 12 Mar 2027", "Sat 13 Mar 2027"], "a reminder's date is a heading like a flight's, with its year when it is not this one");
+  const soon = { innerHTML: "" };
+  const ctx2 = { FlightTime, esc: (t) => String(t), document: { getElementById: (id) => (id === "upcoming-list" ? soon : null) }, updateUpcomingEmpty() {} };
+  vm.runInNewContext(dashboard.slice(start, end) + "\nthis.setUpcoming = setUpcoming; this.upcomingItem = upcomingItem;", ctx2);
+  const now = Date.now(), here = { tz: Intl.DateTimeFormat().resolvedOptions().timeZone };
+  ctx2.setUpcoming("reminders", [ctx2.upcomingItem(new Date(now + 60000).toISOString(), here, "[soon]"), ctx2.upcomingItem(new Date(now + 86400000).toISOString(), here, "[tomorrow]")]);
+  assert.match(soon.innerHTML, /<div class="flights-date-header">Today<span class="flights-away">\w{3} \d{1,2} \w{3,4}<\/span><\/div>\[soon\]<div class="flights-date-header">Tomorrow<span class="flights-away">/, "today and tomorrow by name, then the date, no year");
   assert.ok(el.innerHTML.indexOf("[reminder]") < el.innerHTML.indexOf("[reminder 2]") && el.innerHTML.indexOf("[reminder 2]") < el.innerHTML.indexOf("[flight]"), "in time order across kinds, under one heading per day");
   assert.doesNotMatch(dashboard, /id="reminders-list"|id="flights-list"|id="bookings-list"|id="goal-checkins-list"/, "one list, not four");
 });
 
-test("a hotel stay holds what happens while you are there: check-in on top, each night said, check-out below", () => {
+test("a hotel stay is a check-in row, a line each day between saying which night it is, and a check-out row", () => {
   const FlightTime = require("../webapp/public/flight-time.js");
   const timeline = dashboard.slice(dashboard.indexOf("    var _upcoming = {"), dashboard.indexOf("    function updateUpcomingEmpty() {"));
-  const stays = dashboard.slice(dashboard.indexOf("    function localDay("), dashboard.indexOf("    // Flights and bookings Closedhand found are removed"));
+  const stays = dashboard.slice(dashboard.indexOf("    function localDay("), dashboard.indexOf("    function flightEntry(f) {"));
   const el = { innerHTML: "" };
-  const ctx = { FlightTime, esc: (t) => String(t), escHtml: (t) => String(t), updateUpcomingEmpty() {}, UPCOMING_ICON: { checkout: "" },
+  const ctx = { FlightTime, esc: (t) => String(t), escHtml: (t) => String(t), updateUpcomingEmpty() {}, UPCOMING_ICON: { checkout: "", hotel: "", x: "" },
     fmtBookingTime: (iso, tz) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz }),
     document: { getElementById: (id) => (id === "upcoming-list" ? el : null) } };
-  vm.runInNewContext(timeline + stays + "\nthis.setUpcoming = setUpcoming; this.upcomingItem = upcomingItem; this.stayOf = stayOf; this.renderCheckoutCard = renderCheckoutCard;", ctx);
+  vm.runInNewContext(fn("upcomingEntry") + fn("stayName") + timeline + stays + "\nthis.setUpcoming = setUpcoming; this.upcomingItem = upcomingItem; this.stayOf = stayOf; this.checkoutEntry = checkoutEntry; this.stayName = stayName;", ctx);
   const seoul = { tz: "Asia/Seoul" };
   const hotel = { id: "h1", kind: "hotel", title: "Hotel Aurora Seoul, 3 nights", status: "confirmed", timezone: "Asia/Seoul", starts_at: "2027-11-08T06:00:00Z", ends_at: "2027-11-11T02:00:00Z" };
-  const checkIn = Object.assign(ctx.upcomingItem(hotel.starts_at, seoul, "[check in]"), { stay: ctx.stayOf(hotel) });
-  const checkOut = Object.assign(ctx.upcomingItem(hotel.ends_at, seoul, ctx.renderCheckoutCard(hotel)), { stayEnd: "h1" });
+  const stay = ctx.stayOf(hotel);
+  assert.equal(stay.name, "Hotel Aurora Seoul", "the row says how many nights, so the name does not");
+  const checkIn = Object.assign(ctx.upcomingItem(hotel.starts_at, seoul, "[check in]"), { stay });
+  const checkOut = Object.assign(ctx.upcomingItem(hotel.ends_at, seoul, ctx.checkoutEntry(hotel, stay)), { stayEnd: "h1" });
   ctx.setUpcoming("flights", [ctx.upcomingItem("2027-11-08T00:10:00Z", { tz: "Asia/Tokyo" }, "[flight out]"), ctx.upcomingItem("2027-11-11T06:05:00Z", seoul, "[flight back]")]);
   ctx.setUpcoming("reminders", [ctx.upcomingItem("2027-11-11T02:00:00Z", seoul, "[same minute]")]);
   ctx.setUpcoming("bookings", [checkIn, checkOut, ctx.upcomingItem("2027-11-09T02:00:00Z", seoul, "[implant]"),
     ctx.upcomingItem("2027-11-10T10:30:00Z", seoul, "[dinner]"), ctx.upcomingItem("2027-11-11T01:30:00Z", seoul, "[follow-up]")]);
   const html = el.innerHTML;
   const at = (s) => html.indexOf(s);
-  assert.ok(at("[flight out]") < at('<div class="stay">[check in]<div class="stay-inside">'), "the flight there comes before the stay");
-  const inside = html.slice(at('<div class="stay-inside">'), at("Check out"));
-  for (const s of ["[implant]", "[dinner]", "[follow-up]"]) assert.ok(inside.includes(s), s + " is inside the stay");
-  assert.match(inside, /night 2 of 3[\s\S]*\[implant\][\s\S]*last night[\s\S]*\[dinner\][\s\S]*check-out day[\s\S]*\[follow-up\]/, "each day says which night it is");
-  assert.match(html, /<\/div><div class="flight-card">[\s\S]*Check out<\/span><div[^>]*>Hotel Aurora Seoul, 3 nights \u00b7 by 11:00<\/div>[\s\S]*?<\/div><\/div>\[same minute\]/, "the check-out closes the stay, before anything at the same minute");
-  assert.ok(at("[same minute]") < at("[flight back]"), "and what follows it is after the stay");
-  assert.equal(ctx.stayOf({ ...hotel, status: "cancelled" }), null, "a cancelled stay is a plain card");
-  assert.equal(ctx.stayOf({ ...hotel, ends_at: null }), null, "so is one with no check-out");
-  assert.equal(ctx.stayOf({ ...hotel, kind: "restaurant" }), null, "only a stay holds things");
-  assert.match(dashboard, /\.stay::before \{ content: ''; position: absolute; left: 1\.3125rem;/, "a line down from the check-in card's icon");
+  assert.ok(at("[flight out]") < at("[check in]"), "the flight there comes before the stay");
+  assert.doesNotMatch(html, /class="stay"|stay-inside/, "no bracket");
+  assert.match(html, /Tue 9 Nov 2027<\/div><div class="up-stay"><span>Staying at <b>Hotel Aurora Seoul<\/b>, night 2 of 3<\/span><span class="up-nights" aria-hidden="true"><i class="on"><\/i><i class="on"><\/i><i><\/i><\/span><\/div>\[implant\]/, "each day between says which night it is, a dot a night");
+  assert.match(html, /Wed 10 Nov 2027<\/div><div class="up-stay"><span>Staying at <b>Hotel Aurora Seoul<\/b>, night 3 of 3/);
+  const lastDay = html.slice(at("Thu 11 Nov 2027"));
+  assert.doesNotMatch(lastDay, /up-stay/, "the check-out day has its check-out row instead");
+  assert.match(lastDay, /\[follow-up\][\s\S]*Check out of Hotel Aurora Seoul[\s\S]*End of a 3-night stay[\s\S]*\[same minute\][\s\S]*\[flight back\]/, "the check-out comes before anything at the same minute, and what follows is after the stay");
+  // A stay under way: its check-in row is gone, its nights still said.
+  const el2 = { innerHTML: "" };
+  ctx.document = { getElementById: (id) => (id === "upcoming-list" ? el2 : null) };
+  ctx.setUpcoming("flights", []); ctx.setUpcoming("reminders", []);
+  ctx.setUpcoming("bookings", [Object.assign(ctx.upcomingItem(hotel.starts_at, seoul, ""), { stay }), checkOut, ctx.upcomingItem("2027-11-09T02:00:00Z", seoul, "[implant]")]);
+  assert.match(el2.innerHTML, /^<div class="flights-date-header">Tue 9 Nov 2027<\/div><div class="up-stay">/, "no heading for the day it began");
+  assert.equal(ctx.stayOf({ ...hotel, status: "cancelled" }), null, "a cancelled stay is no stay");
+  assert.equal(ctx.stayOf({ ...hotel, ends_at: null }), null, "nor is one with no check-out");
+  assert.equal(ctx.stayOf({ ...hotel, kind: "restaurant" }), null, "only a hotel is a stay");
 });
 
-test("flights and bookings found for you are removed the same way, from the same x, and both ask first", () => {
-  assert.match(dashboard, /onclick="confirmBookingRemove\(this, \\'' \+ b\.id \+ '\\'\)"/);
-  assert.match(dashboard, /onclick="confirmFlightRemove\(this, '\$\{escHtml\(f\._key\)\}'\)"/);
-  assert.match(dashboard, /askFirst\(btn, \{ text: 'Remove this booking from Upcoming for good\?', yes: 'Remove' \}\)/);
-  assert.match(dashboard, /askFirst\(btn, \{ text: 'Remove this flight\? Closedhand stops tracking it\.', yes: 'Remove' \}\)/);
-  assert.doesNotMatch(dashboard, /onclick="removeBooking\(/, "nothing removes without asking");
+test("flights and bookings go to Cancelled plans the same way, from the same quiet x, and come back with Put back", () => {
+  assert.match(dashboard, /x: b\.over \? null : "cancelPlan\('bookings', '" \+ escAttribute\(b\.id\) \+ "'\)",/);
+  assert.match(dashboard, /x: f\._key && !status\.past \? "cancelPlan\('flights', '" \+ escAttribute\(f\._key\) \+ "'\)" : null,/);
+  assert.match(dashboard, /title="Not going ahead\? Take it off" aria-label="Not going ahead\? Take it off"/);
+  assert.doesNotMatch(dashboard, /confirmBookingRemove|confirmFlightRemove|Remove this booking from Upcoming for good/, "nothing is deleted, so nothing asks first");
+  assert.match(dashboard, /restore: "restorePlan\('bookings', '" \+ escAttribute\(b\.id\) \+ "'\)"/);
+  assert.match(dashboard, /restore: f\.cancelled && f\._key \? "restorePlan\('flights', '" \+ escAttribute\(f\._key\) \+ "'\)" : null/, "a flight the airline cancelled cannot be put back");
   const server = read("webapp/server.js");
-  assert.match(server, /app\.delete\("\/api\/flights\/:key"/);
-  assert.match(server, /const marked = \{ \.\.\.flight, supersededBy: "removed", supersededAt: new Date\(\)\.toISOString\(\) \};/, "kept and marked, so the scan that found it does not add it again");
+  assert.doesNotMatch(server, /app\.delete\("\/api\/(bookings|flights)\//);
+  assert.match(server, /app\.post\("\/api\/bookings\/:id\/:action\(cancel\|restore\)"/);
+  assert.match(server, /app\.post\("\/api\/flights\/:key\/:action\(cancel\|restore\)"/);
+  assert.match(server, /if \(req\.params\.action === "cancel"\) marked = \{ \.\.\.flight, supersededBy: "removed", supersededAt: at, cancelled: \{ by: "you", at \} \};/, "kept and marked, so the scan that found it does not add it again");
+  assert.match(server, /else \{ delete details\.cancelled; details\.kept = at; \}/, "put back, and not taken off again for what was already said");
   assert.match(server, /if \(!\/\^flight-\[A-Za-z0-9-\]\+\$\/\.test\(key\)\) return res\.status\(400\)/, "only a flight's own key");
+  // How each one is known, in the words the person approved.
+  const why = new Function("shortDay", dashboard.slice(dashboard.indexOf("    function cancelledWhy("), dashboard.indexOf("    function cancelledEntry(")) + "; return cancelledWhy;")(() => "Sun 8 Nov");
+  assert.equal(why({ by: "you", at: "2026-11-08T10:00:00Z", in: "WhatsApp" }), "You told Closedhand it's off, in WhatsApp on Sun 8 Nov.");
+  assert.equal(why({ by: "you", at: "2026-11-08T10:00:00Z" }), "You took it off on Sun 8 Nov.");
+  assert.equal(why({ by: "closedhand", why: "Tasca Verde emailed on Sat 7 Nov that the table is cancelled." }), "Tasca Verde emailed on Sat 7 Nov that the table is cancelled.");
+  assert.equal(why(null, "Example Air"), "Example Air cancelled this flight.");
 });
 
 test("Upcoming is its own tab, second, and every link to what is coming up opens it", () => {
   assert.match(dashboard, /data-tab="connections"[^\n]*>Connections<\/button>\n\s*<button class="tab" data-tab="upcoming" onclick="switchTab\('upcoming'\)">Upcoming<\/button>\n\s*<button class="tab" data-tab="agents"/);
   const upcoming = dashboard.slice(dashboard.indexOf('id="tab-upcoming"'), dashboard.indexOf("<!-- Settings Tab Content -->"));
   assert.match(upcoming, /<p class="goals-intro">Your bookings, flights and reminders from everything you've connected, soonest first\.<\/p>/);
-  assert.match(upcoming, /<div id="upcoming-list"><\/div>[\s\S]*<div id="past-section" hidden>/);
+  assert.match(upcoming, /<div id="upcoming-list"><\/div>[\s\S]*<div id="cancelled-section" hidden>[\s\S]*<div id="past-section" hidden>/);
   const agents = dashboard.slice(dashboard.indexOf('id="tab-agents"'), dashboard.indexOf('id="tab-upcoming"'));
   assert.doesNotMatch(agents, /upcoming-list|past-section/, "not on Agents");
   assert.match(dashboard, /if \(tabName === 'upcoming'\) loadUpcoming\(\);/);
   assert.match(dashboard, /\{ tab: 'upcoming', text: 'Upcoming is what is coming up:/, "the tour shows it");
-  assert.match(dashboard, /\.flights-away \{ color: var\(--muted\);/, "how far away a day is, in a neutral colour: the accent is Closedhand's");
+  assert.match(dashboard, /\.flights-away \{ color: var\(--dim\);/, "the date beside Today, in a neutral colour: the accent is Closedhand's");
   assert.doesNotMatch(dashboard.slice(dashboard.indexOf("var UPCOMING_ICON"), dashboard.indexOf("function updateUpcomingEmpty")), /&#\d{4,6};&#65039;|\\u\{1F|'\\u23F0'/, "line icons, no emoji");
   assert.match(read("lib/flights-scheduler.js"), /dashboardUrl\(link\.platform, "upcoming"\)/);
   assert.match(read("lib/flights.js"), /dashboardUrl\(link\.platform, "upcoming"\)/);
@@ -269,20 +294,20 @@ test("Upcoming is its own tab, second, and every link to what is coming up opens
 test("a reminder about an appointment shows the appointment's time, and when it will remind beside it", async () => {
   const FlightTime = require("../webapp/public/flight-time.js");
   const timeline = dashboard.slice(dashboard.indexOf("    var _upcoming = {"), dashboard.indexOf("    function updateUpcomingEmpty() {"));
-  const reminders = dashboard.slice(dashboard.indexOf("    function reminderTitle(name) {"), dashboard.indexOf("    async function loadFlights() {"));
+  const reminders = fn("upcomingEntry") + fn("upcomingRow") + dashboard.slice(dashboard.indexOf("    function reminderTitle(name) {"), dashboard.indexOf("    async function loadFlights() {"));
   const els = { "upcoming-list": { innerHTML: "" }, "reminders-past": { innerHTML: "" } };
   const rows = [
     { name: "Plumber visit", next_at: "2027-03-12T07:30:00Z", event_at: "2027-03-12T09:00:00Z", timezone: "Europe/Lisbon", repeats: null },
     { name: "Water the plants", next_at: "2027-03-13T18:00:00Z", timezone: "Europe/Lisbon", repeats: "every Sat" },
   ];
-  const ctx = { FlightTime, console, esc: (t) => String(t), updateUpcomingEmpty() {}, UPCOMING_ICON: { reminder: "", done: "" },
+  const ctx = { FlightTime, console, esc: (t) => String(t), escHtml: (t) => String(t), shortDay: () => "", updateUpcomingEmpty() {}, UPCOMING_ICON: { reminder: "", done: "" },
     document: { getElementById: (id) => els[id] || null },
     fetch: async () => ({ ok: true, json: async () => rows }) };
   vm.runInNewContext(timeline + reminders + "\nthis.loadReminders = loadReminders;", ctx);
   await ctx.loadReminders();
   const html = els["upcoming-list"].innerHTML;
-  assert.match(html, /Plumber visit<\/span><span class="upcoming-kind">Reminder at 07:30<\/span><\/span><span class="upcoming-when">09:00<\/span>/, "the event's time, the reminder's beside it");
-  assert.match(html, /Water the plants<\/span><span class="upcoming-kind">Reminder, every Sat<\/span><\/span><span class="upcoming-when">18:00<\/span>/, "a plain reminder still shows when it fires");
+  assert.match(html, /<div class="up-time">09:00<\/div><div class="up-body"><div class="up-title"><span class="up-icon"><\/span><span class="up-name">Plumber visit<\/span><\/div><div class="up-sub">Reminder at 07:30<\/div>/, "the event's time, the reminder's under it");
+  assert.match(html, /<div class="up-time">18:00<\/div><div class="up-body"><div class="up-title"><span class="up-icon"><\/span><span class="up-name">Water the plants<\/span><\/div><div class="up-sub">Reminder, every Sat<\/div>/, "a plain reminder still shows when it fires");
   assert.match(read("migrations/056_reminder_event_time.sql"), /ALTER TABLE schedules ADD COLUMN IF NOT EXISTS event_at timestamptz;/);
   assert.match(read("lib/tools/definitions.js"), /event_at: \{\n\s*type: "string",\n\s*description: "When the reminder is about something at a set time/);
   assert.match(read("user-store.js"), /run_once: runOnce, timezone, platform, event_at: eventAt, kind: kind === "task" \? "task" : "reminder" \}/);
@@ -398,11 +423,11 @@ test("a task waiting for an answer stops like any working task, never deletes", 
 
 // On a phone a booking's or flight's status and its x wrapped onto a line of
 // their own at the bottom left; they stay top right, the route beneath.
-test("on a phone an Upcoming card keeps its status and x at the top right", () => {
-  assert.match(dashboard, /@media \(max-width: 600px\) \{\n\s+\.upcoming-card-main \{ order: 1; flex-basis: 100%; \}\n\s+\.upcoming-card-row \.flight-status-badge \{ margin-left: auto; \}/);
-  assert.equal((dashboard.match(/class="upcoming-card-row"/g) || []).length, 2, "bookings and flights both");
-  assert.equal((dashboard.match(/class="upcoming-card-main"/g) || []).length, 2);
-  // Its own names: .upcoming-row is a reminder's row, and lent the card's
-  // inner row a reminder's border and margin.
-  assert.equal((dashboard.match(/class="upcoming-row"/g) || []).length, 0);
+test("on a phone each Upcoming row keeps its time column and x, and its details sit under the title", () => {
+  const phone = dashboard.slice(dashboard.indexOf("    /* === Upcoming === */"), dashboard.indexOf("    /* === Location & Weather Widget === */"));
+  assert.match(phone, /@media \(max-width: 600px\) \{\n\s+\.up-item, \.up-gone \{ grid-template-columns: 3\.25rem minmax\(0, 1fr\) 2rem;/);
+  assert.match(phone, /\.up-end-word \{ display: none; \}\n\s+\.up-end-arrow \{ display: inline; \}/, "\"lands 15:55\" is \"\u2192 15:55\" on a phone");
+  assert.match(phone, /\.up-sub, \.up-facts, \.up-route, \.up-from, \.up-body \.source-docs \{ padding-left: 0; \}/);
+  assert.match(phone, /\.source-doc \{ min-height: 2\.25rem;/, "an email or file is big enough to tap");
+  assert.equal((dashboard.match(/upcoming-card-row|upcoming-card-main|class="upcoming-row"/g) || []).length, 0, "one row shape for everything");
 });

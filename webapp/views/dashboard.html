@@ -312,7 +312,6 @@
     .name-row { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
     .name-row label { font-size: 0.9375rem; color: var(--fg); }
     .name-row input { flex: 0 1 13.75rem; min-width: 8.75rem; padding: 0.4375rem 0.625rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.5rem; color: var(--fg); font: inherit; font-size: 0.9375rem; }
-        .booking-moved { margin-left: 0.375rem; padding: 1px 0.375rem; border-radius: 0.375rem; background: rgba(var(--accent-rgb),0.14); color: var(--accent-soft); font-size: 0.625rem; }
     /* Something here stopped working: a red mark where the tick goes, and a
        red dot on the tab. */
     .int-card .int-badge.problem { display: inline-flex; align-items: center; justify-content: center; width: 1.125rem; height: 1.125rem; border-radius: 50%; background: var(--accent); color: #FFF; font-size: 0.75rem; font-weight: 700; line-height: 1; }
@@ -1333,75 +1332,78 @@
       border-color: rgba(var(--danger-rgb),0.5);
     }
 
-    /* === Flight Tracking === */
+    /* === Upcoming === */
     #flights-empty {
       font-size: 0.8125rem; color: rgba(var(--fg-rgb),0.6); padding: 1rem;
     }
     .flights-loading {
       text-align: center; color: var(--muted); padding: 1.25rem; font-size: 0.8125rem;
     }
-    .flights-date-header {
-      font-size: 0.875rem; font-weight: 600; color: rgba(var(--fg-rgb),0.85);
-      margin: 1rem 0 0.5rem;
-    }
-    .flights-date-header:first-child { margin-top: 0.5rem; }
-    .flights-away { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
-    /* A hotel stay holds what happens while you are there: its check-in card
-       on top, a line down from its icon, its check-out card below. */
-    .stay { position: relative; margin-bottom: 0.625rem; }
-    .stay::before { content: ''; position: absolute; left: 1.3125rem; top: 1.5rem; bottom: 1.5rem; width: 2px; border-radius: 1px; background: rgba(var(--fg-rgb),0.22); }
-    .stay > .flight-card { position: relative; z-index: 1; background: var(--raised); }
-    .stay > .flight-card:last-child { margin-bottom: 0; }
-    .stay-inside { margin-left: 2.5rem; padding: 0.125rem 0; }
-    /* One line each under Upcoming: what it is, what kind, and when. */
-    #tab-upcoming .upcoming-row { display: flex; align-items: center; gap: 0.625rem; width: 100%; padding: 0.5rem 0.75rem; margin: 0 0 0.375rem; border: 1px solid rgba(var(--fg-rgb),0.1); border-radius: 0.5rem; background: none; color: inherit; font: inherit; text-align: left; }
-    #tab-upcoming button.upcoming-row { cursor: pointer; }
-    #tab-upcoming button.upcoming-row:hover { border-color: rgba(var(--fg-rgb),0.22); }
-    .upcoming-row .upcoming-icon { flex: none; display: inline-flex; color: var(--muted); }
-    .upcoming-card-icon { display: inline-flex; vertical-align: -0.125rem; margin-right: 0.375rem; color: var(--muted); }
-    .upcoming-row .upcoming-what { flex: 1; min-width: 0; }
-    .upcoming-row .upcoming-title { display: block; font-size: 0.875rem; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .upcoming-row .upcoming-kind { display: block; margin-top: 1px; font-size: 0.75rem; color: rgba(var(--fg-rgb),0.6); }
-    .upcoming-row .upcoming-when { flex: none; font-size: 0.8125rem; color: var(--muted); white-space: nowrap; }
-    .upcoming-row.past { opacity: 0.6; }
-    #past-section { margin-top: 1.5rem; }
-
-    .flight-card {
-      background: rgba(var(--raised-rgb),0.9);
-      border: 1px solid rgba(var(--fg-rgb),0.06);
-      border-radius: 0.75rem;
-      overflow: hidden;
-      margin-bottom: 0.625rem;
-    }
-    .flight-status-bar {
-      height: 0.1875rem; width: 100%;
-    }
-    .flight-status-bar.on-time { background: var(--accent-strong); }
-    .flight-status-bar.delayed { background: var(--warn); }
-    .flight-status-bar.cancelled { background: var(--accent-strong); }
-    .flight-status-bar.landed { background: var(--slate); }
-    .flight-status-bar.in-flight { background: var(--accent-strong); }
-    .flight-status-bar.scheduled { background: rgba(var(--fg-rgb),0.4); }
-
-    .flight-card-body {
-      padding: 0.875rem 1rem;
-    }
-    /* On a phone a card's status and its x stay at the top right, beside the
-       name, and the route or time takes the line under them; wrapping left
-       them on a line of their own at the bottom left. */
-    @media (max-width: 600px) {
-      .upcoming-card-main { order: 1; flex-basis: 100%; }
-      .upcoming-card-row .flight-status-badge { margin-left: auto; }
-    }
-    .flight-header {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.625rem;
-    }
-    .flight-number {
-      font-size: 0.9375rem; font-weight: 600; color: var(--fg);
-    }
-    .flight-airline {
-      font-size: 0.875rem; color: var(--muted); margin-left: 0.5rem;
-    }
+    /* One timeline: each day under its heading ("Today", "Tomorrow", then the
+       date), each plan a row with its time on the left, what it is, and only
+       what helps at the door. Nothing says what every row would say
+       ("Booked"); a status shows only when it is news. */
+    .flights-date-header { display: flex; align-items: baseline; gap: 0.5rem; margin: 2rem 0 0; padding-bottom: 0.625rem; border-bottom: 1px solid rgba(var(--fg-rgb),0.09); font-size: 0.9375rem; font-weight: 600; color: var(--fg); }
+    .flights-date-header:first-child { margin-top: 1.25rem; }
+    .flights-away { color: var(--dim); font-weight: 400; }
+    .up-item, .up-gone { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 2rem; gap: 0 1rem; padding: 1rem 0; border-bottom: 1px solid rgba(var(--fg-rgb),0.06); }
+    .up-time { font-size: 0.875rem; font-weight: 600; line-height: 1.375rem; color: var(--fg); font-variant-numeric: tabular-nums; }
+    .up-end { display: block; font-size: 0.75rem; font-weight: 400; line-height: 1rem; color: var(--dim); }
+    .up-end-arrow { display: none; }
+    .up-title { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.5625rem; font-size: 0.9375rem; font-weight: 600; line-height: 1.375rem; color: var(--fg); }
+    .up-icon { display: inline-flex; color: var(--muted); }
+    .up-name { min-width: 0; overflow-wrap: anywhere; }
+    .up-title .flight-status-badge { font-size: 0.75rem; }
+    .up-sub { margin-top: 0.125rem; padding-left: 1.5625rem; font-size: 0.8125rem; color: var(--muted); }
+    .up-facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin-top: 0.375rem; padding-left: 1.5625rem; font-size: 0.78125rem; color: var(--dim); }
+    .up-facts b { font-weight: 500; color: var(--fg-quiet); }
+    .up-facts a { color: var(--accent-link); }
+    .booking-moved { padding: 1px 0.375rem; border-radius: 0.375rem; background: rgba(var(--accent-rgb),0.14); color: var(--accent-soft); }
+    .up-route { display: flex; align-items: center; gap: 0.625rem; max-width: 26.25rem; margin-top: 0.625rem; padding-left: 1.5625rem; font-size: 0.75rem; color: var(--dim); }
+    .up-code { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; color: var(--fg); }
+    .up-line { position: relative; flex: 1; height: 1px; background: rgba(var(--fg-rgb),0.18); }
+    .up-plane { position: absolute; left: 50%; top: -0.5rem; display: flex; padding: 0 0.375rem; transform: translateX(-50%); background: var(--bg); color: var(--muted); }
+    .up-plane .ui-icon { width: 0.875rem; height: 0.875rem; }
+    /* Plans that cannot all be true: one quiet line on each row involved, in
+       the neutral, saying when Closedhand asked, until it is settled in chat. */
+    .up-clash { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0.75rem 0 0 1.5625rem; padding: 0.625rem 0.75rem; border-radius: 0.5rem; background: rgba(var(--fg-rgb),0.04); font-size: 0.78125rem; line-height: 1.5; color: var(--fg-quiet); }
+    .up-clash .ui-icon { flex: none; width: 0.9375rem; height: 0.9375rem; margin-top: 2px; color: var(--muted); }
+    .up-asked { display: block; color: var(--dim); }
+    /* Where a plan was found: its email and files are links; a chat it came
+       from is said, not a button, since a chat cannot be opened from here. */
+    .up-body .source-docs { margin-top: 0.75rem; padding: 0 0 0 1.5625rem; }
+    .source-docs { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .source-doc { display: inline-flex; align-items: center; gap: 0.375rem; max-width: 100%; padding: 0.3125rem 0.625rem; border: 1px solid rgba(var(--fg-rgb),0.13); border-radius: 0.4375rem; font-size: 0.75rem; color: var(--fg-quiet); text-decoration: none; }
+    .source-doc svg { flex-shrink: 0; color: var(--dim); }
+    .source-doc img { flex-shrink: 0; display: block; }
+    .source-doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 15rem; }
+    .source-doc:hover { border-color: rgba(var(--accent-rgb),0.6); }
+    .source-doc-more { background: none; border: 0; padding: 0.25rem 2px; font: inherit; font-size: 0.75rem; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+    .up-from { display: flex; align-items: center; gap: 0.375rem; margin-top: 0.625rem; padding-left: 1.5625rem; font-size: 0.75rem; color: var(--dim); }
+    .up-from img { width: 0.8125rem; height: 0.8125rem; }
+    /* The x takes a plan off to Cancelled plans, where it can be put back:
+       nothing is lost, so it is quiet and asks nothing. */
+    .up-x { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 0.4375rem; background: none; color: var(--faint); cursor: pointer; }
+    .up-x:hover, .up-x:focus-visible { background: rgba(var(--fg-rgb),0.06); color: var(--fg); }
+    /* A hotel stay: its check-in is a row, each day between says which night
+       it is, and its check-out is a short row on its day. */
+    .up-stay { display: flex; align-items: center; gap: 0.625rem; margin-top: 0.75rem; padding: 0.5625rem 0.75rem; border-radius: 0.5625rem; background: var(--raised); font-size: 0.8125rem; color: var(--muted); }
+    .up-stay b { font-weight: 500; color: var(--fg); }
+    .up-nights { display: flex; gap: 0.3125rem; margin-left: auto; }
+    .up-nights i { display: block; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: rgba(var(--fg-rgb),0.16); }
+    .up-nights i.on { background: var(--fg); }
+    .up-item.small .up-title { font-weight: 500; color: var(--fg-quiet); }
+    .up-item.past { opacity: 0.6; }
+    .up-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+    .up-open:hover { text-decoration: underline; text-underline-offset: 2px; }
+    .up-gone { grid-template-columns: 4.5rem minmax(0, 1fr) auto; align-items: start; padding: 0.875rem 0; }
+    .up-gone .up-time { font-size: 0.8125rem; font-weight: 400; color: var(--dim); }
+    .up-gone .up-title { font-size: 0.875rem; font-weight: 400; color: var(--muted); }
+    .up-gone .up-icon { color: var(--faint); }
+    .up-gone .up-sub { font-size: 0.78125rem; color: var(--dim); }
+    .up-putback { padding: 0; border: 0; background: none; font: inherit; font-size: 0.78125rem; line-height: 1.375rem; color: var(--accent-link); cursor: pointer; }
+    #cancelled-section, #past-section { margin-top: 2rem; }
+    #cancelled-section + #past-section { margin-top: 1.25rem; }
     .flight-status-badge {
       font-size: 0.8125rem; font-weight: 600; padding: 2px 0.5rem; border-radius: 0.625rem;
     }
@@ -1411,69 +1413,17 @@
     .flight-status-badge.landed { background: rgba(var(--slate-rgb),0.15); color: var(--slate); }
     .flight-status-badge.in-flight { background: rgba(var(--accent-rgb),0.15); color: var(--accent-strong); }
     .flight-status-badge.scheduled { background: rgba(var(--raised-rgb),0.15); color: var(--muted); }
-
-    .flight-route {
-      display: flex; align-items: center; gap: 0; margin-bottom: 0.5rem;
-    }
-    .flight-airport {
-      text-align: center; min-width: 3.75rem;
-    }
-    .flight-airport-code {
-      font-size: 1.375rem; font-weight: 700; color: var(--fg); letter-spacing: 1px;
-    }
-    .flight-airport-time {
-      font-size: 0.8125rem; color: var(--muted); margin-top: 2px;
-    }
-    .flight-route-line {
-      flex: 1; display: flex; align-items: center; position: relative; height: 1.5rem; margin: 0 0.5rem;
-    }
-    .flight-route-track {
-      width: 100%; height: 1px; background: rgba(var(--fg-rgb),0.15);
-    }
-    .flight-route-plane {
-      position: absolute; font-size: 0.875rem; top: 50%; transform: translate(-50%, -50%);
-      color: var(--fg); filter: drop-shadow(0 0 0.25rem rgba(var(--fg-rgb),0.3));
-    }
-    .flight-details {
-      display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.375rem;
-    }
-    /* Plans that cannot all be true: one quiet line on each card involved,
-       in the neutral, with a thin rule beside it, until settled in chat. */
-    .upcoming-clash { margin: 0 0.875rem 0.75rem; padding-left: 0.625rem; border-left: 2px solid rgba(var(--fg-rgb),0.28); font-size: 0.75rem; line-height: 1.45; color: var(--fg-quiet); }
-    /* A card made from an email opens it; the booking's files sit under it. */
-    .source-docs { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0 0.875rem 0.75rem; }
-    .source-doc { display: inline-flex; align-items: center; gap: 0.375rem; max-width: 100%; padding: 0.25rem 0.625rem; border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.375rem; font-size: 0.75rem; color: var(--fg-quiet); text-decoration: none; }
-    .source-doc svg { flex-shrink: 0; color: var(--muted); }
-    .source-doc img { flex-shrink: 0; display: block; }
-    .source-doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 15rem; }
-    .source-doc:hover { border-color: rgba(var(--accent-rgb),0.6); }
-    .source-doc-more { background: none; border: 0; padding: 0.25rem 2px; font: inherit; font-size: 0.75rem; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-    .flight-detail {
-      font-size: 0.8125rem; color: var(--muted);
-    }
-    .flight-detail span {
-      color: var(--fg);
-    }
-    .flight-detail.delay-highlight {
-      color: var(--warn);
-    }
-    .flight-detail.delay-highlight span {
-      color: var(--warn);
-      font-weight: 600;
-    }
-
-    .flight-globe-route {
-      display: flex; gap: 0.875rem; align-items: center;
-    }
-    .flight-globe-wrap {
-      flex-shrink: 0;
-      width: 5.625rem; height: 5.625rem;
-    }
-    .flight-globe-wrap svg {
-      display: block;
-    }
-    .flight-main {
-      flex: 1; min-width: 0;
+    @media (max-width: 600px) {
+      .up-item, .up-gone { grid-template-columns: 3.25rem minmax(0, 1fr) 2rem; gap: 0 0.625rem; }
+      .up-gone { grid-template-columns: 3.25rem minmax(0, 1fr) auto; }
+      .up-time { font-size: 0.9375rem; }
+      .up-title { font-size: 1rem; }
+      .up-end-word { display: none; }
+      .up-end-arrow { display: inline; }
+      .up-sub, .up-facts, .up-route, .up-from, .up-body .source-docs { padding-left: 0; }
+      .up-sub { font-size: 0.875rem; }
+      .up-clash { margin-left: 0; }
+      .source-doc { min-height: 2.25rem; padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
     }
 
     /* === Location & Weather Widget === */
@@ -1736,7 +1686,7 @@
     /* Archived: a heading row like the list's own, closed until wanted. */
     /* Specific enough to beat the dashboard's general button padding and size,
        so it lines up with the headings above it exactly. */
-    #auto-active-list .archive-row, #pages-list .archive-row, #past-section .archive-row { width: 100%; background: none; border: 0; padding: 0; font-size: 0.8125rem; cursor: pointer; font-family: inherit; text-align: left; }
+    #auto-active-list .archive-row, #pages-list .archive-row, #past-section .archive-row, #cancelled-section .archive-row { width: 100%; background: none; border: 0; padding: 0; font-size: 0.8125rem; cursor: pointer; font-family: inherit; text-align: left; }
     .archive-row:hover, .archive-row:focus-visible { color: var(--fg); }
     .archive-row .count { font-weight: 500; letter-spacing: 0; }
     .archive-row .chevron-down { width: 0.375rem; height: 0.375rem; margin: -0.1875rem 2px 0; }
@@ -2428,8 +2378,8 @@
       </div>
 
       <!-- Upcoming: reminders, tracked flights, goal check-ins and bookings
-           picked out of everything connected, soonest first; a hotel stay
-           holds what happens during it (renderUpcoming). -->
+           picked out of everything connected, soonest first, each day saying
+           which night of a hotel stay it is (renderUpcoming). -->
       <div class="tab-content" id="tab-upcoming">
         <div style="padding-top:1rem;">
           <p class="goals-intro">Your bookings, flights and reminders from everything you've connected, soonest first.</p>
@@ -2437,9 +2387,15 @@
           <div id="upcoming-list"></div>
           <div id="flights-empty" style="display:none;font-size:0.8125rem;color:rgba(var(--fg-rgb),0.6);padding:0.5rem 0;">Nothing coming up. Reminders and bookings from everything you've connected show here.</div>
 
+          <!-- Cancelled plans: what was taken off, by the person or on proof, and what its provider cancelled, folded away, each with how it is known -->
+          <div id="cancelled-section" hidden>
+            <button type="button" class="mc-section-label archive-row" id="cancelled-toggle" aria-expanded="false" aria-controls="cancelled-body" onclick="toggleFold('cancelled')">Cancelled plans <span class="count" id="cancelled-count"></span><span class="chevron-down"></span></button>
+            <div id="cancelled-body" hidden></div>
+          </div>
+
           <!-- Past: reminders that ran, flights already flown and bookings already over, folded away -->
           <div id="past-section" hidden>
-            <button type="button" class="mc-section-label archive-row" id="past-toggle" aria-expanded="false" aria-controls="past-body" onclick="togglePast()">Past <span class="count" id="past-count"></span><span class="chevron-down"></span></button>
+            <button type="button" class="mc-section-label archive-row" id="past-toggle" aria-expanded="false" aria-controls="past-body" onclick="toggleFold('past')">Past <span class="count" id="past-count"></span><span class="chevron-down"></span></button>
             <div id="past-body" hidden>
               <div id="reminders-past"></div>
               <div id="recent-flights"></div>
@@ -6829,69 +6785,38 @@
     }
     window.exportUsage = exportUsage;
 
-    // === Airport coordinate lookup (IATA → [lat, lon]) ===
-    const AIRPORT_COORDS = {
-      // North America
-      ATL:[33.64,-84.43],LAX:[33.94,-118.41],ORD:[41.97,-87.91],DFW:[32.90,-97.04],
-      DEN:[39.86,-104.67],JFK:[40.64,-73.78],SFO:[37.62,-122.38],SEA:[47.45,-122.31],
-      LAS:[36.08,-115.15],MCO:[28.43,-81.31],EWR:[40.69,-74.17],MIA:[25.80,-80.29],
-      PHX:[33.43,-112.01],IAH:[29.98,-95.34],BOS:[42.37,-71.02],MSP:[44.88,-93.22],
-      FLL:[26.07,-80.15],DTW:[42.21,-83.35],PHL:[39.87,-75.24],LGA:[40.77,-73.87],
-      BWI:[39.18,-76.67],SLC:[40.79,-111.98],DCA:[38.85,-77.04],SAN:[32.73,-117.19],
-      IAD:[38.94,-77.46],TPA:[27.98,-82.53],AUS:[30.19,-97.67],BNA:[36.12,-86.68],
-      HNL:[21.32,-157.92],PDX:[45.59,-122.60],STL:[38.75,-90.37],OAK:[37.72,-122.22],
-      YYZ:[43.68,-79.63],YVR:[49.19,-123.18],YUL:[45.47,-73.74],MEX:[19.44,-99.07],
-      CUN:[21.04,-86.87],
-      // Europe
-      LHR:[51.47,-0.46],LGW:[51.15,-0.19],STN:[51.89,0.26],LTN:[51.87,-0.37],
-      MAN:[53.35,-2.27],EDI:[55.95,-3.37],BHX:[52.45,-1.75],BRS:[51.38,-2.72],
-      GLA:[55.87,-4.43],BFS:[54.66,-6.22],NCL:[55.04,-1.69],
-      CDG:[49.01,2.55],ORY:[48.72,2.36],FRA:[50.03,8.57],AMS:[52.31,4.76],
-      MUC:[48.35,11.79],BER:[52.36,13.51],ZRH:[47.46,8.55],VIE:[48.11,16.57],
-      FCO:[41.80,12.25],MXP:[45.63,8.72],NAP:[40.89,14.29],
-      MAD:[40.47,-3.57],BCN:[41.30,2.08],PMI:[39.55,2.74],AGP:[36.67,-4.50],
-      ALC:[38.28,-0.56],TFS:[28.04,-16.57],FAO:[37.01,-7.97],LIS:[38.77,-9.13],
-      OPO:[41.24,-8.68],DUB:[53.42,-6.27],
-      OSL:[60.19,11.10],CPH:[55.62,12.66],ARN:[59.65,17.92],HEL:[60.32,24.96],
-      WAW:[52.17,20.97],PRG:[50.10,14.26],BUD:[47.44,19.26],ATH:[37.94,23.94],
-      IST:[41.26,28.74],AYT:[36.90,30.80],
-      // Middle East
-      DXB:[25.25,55.36],AUH:[24.43,54.65],DOH:[25.26,51.57],RUH:[24.96,46.70],
-      JED:[21.68,39.16],TLV:[32.01,34.89],AMM:[31.72,35.99],
-      // Asia
-      PVG:[31.14,121.81],SHA:[31.20,121.34],PEK:[40.08,116.58],PKX:[39.51,116.41],
-      CAN:[23.39,113.30],SZX:[22.64,113.81],HKG:[22.31,113.92],CTU:[30.58,103.95],
-      CKG:[29.72,106.64],KMG:[24.99,102.74],XIY:[34.44,108.75],HGH:[30.23,120.43],
-      WUH:[30.78,114.21],NKG:[31.74,118.86],TAO:[36.27,120.37],
-      TPE:[25.08,121.23],KHH:[22.58,120.35],
-      NRT:[35.77,140.39],HND:[35.55,139.78],KIX:[34.43,135.24],
-      ICN:[37.46,126.44],GMP:[37.56,126.79],
-      BKK:[13.69,100.75],DMK:[13.91,100.61],
-      SIN:[1.36,103.99],KUL:[2.75,101.71],CGK:[-6.13,106.66],
-      MNL:[14.51,121.02],SGN:[10.82,106.65],HAN:[21.22,105.81],
-      DEL:[28.56,77.10],BOM:[19.09,72.87],BLR:[13.20,77.71],
-      CMB:[7.18,79.88],MLE:[4.19,73.53],DPS:[-8.75,115.17],
-      // Africa
-      JNB:[-26.13,28.24],CPT:[-33.96,18.60],CAI:[30.12,31.41],
-      CMN:[33.37,-7.59],RAK:[31.61,-8.04],NBO:[-1.32,36.93],
-      ADD:[8.98,38.80],LOS:[6.58,3.32],HRG:[27.18,33.80],SSH:[27.98,34.39],
-      // South America
-      GRU:[-23.43,-46.47],GIG:[-22.81,-43.25],EZE:[-34.82,-58.54],
-      SCL:[-33.39,-70.79],BOG:[4.70,-74.15],LIM:[-12.02,-77.11],
-      // Oceania
-      SYD:[-33.95,151.18],MEL:[-37.67,144.84],BNE:[-27.38,153.12],
-      PER:[-31.94,115.97],AKL:[-37.01,174.79],
+    // === Upcoming ===
+    // A flight is named by its cities, where its airports are known here, and
+    // by its airport codes where not.
+    const AIRPORT_CITY = {
+      ATL: 'Atlanta', LAX: 'Los Angeles', ORD: 'Chicago', DFW: 'Dallas', DEN: 'Denver', JFK: 'New York', SFO: 'San Francisco', SEA: 'Seattle',
+      LAS: 'Las Vegas', MCO: 'Orlando', EWR: 'Newark', MIA: 'Miami', PHX: 'Phoenix', IAH: 'Houston', BOS: 'Boston', MSP: 'Minneapolis',
+      FLL: 'Fort Lauderdale', DTW: 'Detroit', PHL: 'Philadelphia', LGA: 'New York', BWI: 'Baltimore', SLC: 'Salt Lake City', DCA: 'Washington', SAN: 'San Diego',
+      IAD: 'Washington', TPA: 'Tampa', AUS: 'Austin', BNA: 'Nashville', HNL: 'Honolulu', PDX: 'Portland', STL: 'St Louis', OAK: 'Oakland',
+      YYZ: 'Toronto', YVR: 'Vancouver', YUL: 'Montreal', MEX: 'Mexico City', CUN: 'Cancún',
+      LHR: 'London', LGW: 'London', STN: 'London', LTN: 'London', LCY: 'London', MAN: 'Manchester', EDI: 'Edinburgh', BHX: 'Birmingham', BRS: 'Bristol',
+      GLA: 'Glasgow', BFS: 'Belfast', NCL: 'Newcastle', CDG: 'Paris', ORY: 'Paris', FRA: 'Frankfurt', AMS: 'Amsterdam', MUC: 'Munich', BER: 'Berlin',
+      ZRH: 'Zurich', GVA: 'Geneva', VIE: 'Vienna', FCO: 'Rome', MXP: 'Milan', LIN: 'Milan', NAP: 'Naples', VCE: 'Venice', MAD: 'Madrid', BCN: 'Barcelona',
+      PMI: 'Palma', AGP: 'Málaga', ALC: 'Alicante', TFS: 'Tenerife', FAO: 'Faro', LIS: 'Lisbon', OPO: 'Porto', DUB: 'Dublin', BRU: 'Brussels', NCE: 'Nice',
+      OSL: 'Oslo', CPH: 'Copenhagen', ARN: 'Stockholm', HEL: 'Helsinki', WAW: 'Warsaw', PRG: 'Prague', BUD: 'Budapest', ATH: 'Athens',
+      IST: 'Istanbul', SAW: 'Istanbul', AYT: 'Antalya',
+      DXB: 'Dubai', AUH: 'Abu Dhabi', DOH: 'Doha', RUH: 'Riyadh', JED: 'Jeddah', TLV: 'Tel Aviv', AMM: 'Amman',
+      PVG: 'Shanghai', SHA: 'Shanghai', PEK: 'Beijing', PKX: 'Beijing', CAN: 'Guangzhou', SZX: 'Shenzhen', HKG: 'Hong Kong', CTU: 'Chengdu',
+      CKG: 'Chongqing', KMG: 'Kunming', XIY: "Xi'an", HGH: 'Hangzhou', WUH: 'Wuhan', NKG: 'Nanjing', TAO: 'Qingdao', TPE: 'Taipei', KHH: 'Kaohsiung',
+      NRT: 'Tokyo', HND: 'Tokyo', KIX: 'Osaka', ITM: 'Osaka', FUK: 'Fukuoka', CTS: 'Sapporo', ICN: 'Seoul', GMP: 'Seoul', PUS: 'Busan', CJU: 'Jeju',
+      BKK: 'Bangkok', DMK: 'Bangkok', HKT: 'Phuket', SIN: 'Singapore', KUL: 'Kuala Lumpur', CGK: 'Jakarta', MNL: 'Manila', SGN: 'Ho Chi Minh City',
+      HAN: 'Hanoi', DEL: 'Delhi', BOM: 'Mumbai', BLR: 'Bengaluru', CMB: 'Colombo', MLE: 'Malé', DPS: 'Bali',
+      JNB: 'Johannesburg', CPT: 'Cape Town', CAI: 'Cairo', CMN: 'Casablanca', RAK: 'Marrakesh', NBO: 'Nairobi', ADD: 'Addis Ababa', LOS: 'Lagos',
+      HRG: 'Hurghada', SSH: 'Sharm el-Sheikh',
+      GRU: 'São Paulo', GIG: 'Rio de Janeiro', EZE: 'Buenos Aires', SCL: 'Santiago', BOG: 'Bogotá', LIM: 'Lima',
+      SYD: 'Sydney', MEL: 'Melbourne', BNE: 'Brisbane', PER: 'Perth', AKL: 'Auckland',
     };
-
-    // === Globe SVG rendering ===
-    let _globeId = 0;
     function getFlightStatusInfo(f) { return FlightTime.status(f); }
 
     function fmtFlightTime(dateStr, point) {
       return FlightTime.time(dateStr, point);
     }
 
-    // ---- Bookings picked out of everything connected: same card shape as a flight ----
     // Everything under Upcoming in the app's one line style.
     var lineIcon = function (d) { return '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>'; };
     var UPCOMING_ICON = {
@@ -6909,6 +6834,8 @@
       goal: lineIcon('M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM12 12h.01'),
       done: lineIcon('M5 12.5l4.5 4.5L19 7.5'),
       checkout: lineIcon('M14 4H6v16h8M10 12h10M17 9l3 3-3 3'),
+      clash: lineIcon('M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z'),
+      x: lineIcon('M7 7l10 10M17 7L7 17'),
     };
     function fmtBookingTime(iso, tz) {
       if (!iso) return '';
@@ -6921,60 +6848,110 @@
       try { return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: tz || undefined }); }
       catch (e) { return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
     }
-    function renderBookingCard(b) {
-      var det = b.details || {};
-      var icon = UPCOMING_ICON[b.kind] || UPCOMING_ICON.other;
-      // A day without its time shows no time, never midnight; a time that is
-      // not midnight is shown, all day or not.
-      var at = fmtBookingTime(b.starts_at, b.timezone);
-      var when = det.time_unknown || (det.all_day && at === '00:00') ? '' : at;
-      var until = b.ends_at ? fmtBookingTime(b.ends_at, b.timezone) : '';
-      var sameDay = b.ends_at && fmtBookingDate(b.ends_at, b.timezone) === fmtBookingDate(b.starts_at, b.timezone);
-      var route = det.from && det.to ? escHtml(det.from) + ' &rarr; ' + escHtml(det.to) : (b.location ? escHtml(b.location) : '');
-      var tbc = function(v) { return v ? escHtml(String(v)) : '<span style="color:rgba(var(--fg-rgb),0.6);">TBC</span>'; };
-      var details = [];
-      // Only what is known: "Ref TBC" on a table that has no reference said nothing.
-      if (b.reference) details.push('<span class="flight-detail">Ref <span>' + escHtml(b.reference) + '</span></span>');
-      if (b.kind === 'hotel' && b.ends_at) details.push('<span class="flight-detail">Check-out <span>' + escHtml(fmtBookingDate(b.ends_at, b.timezone)) + '</span></span>');
-      else if (b.ends_at && !sameDay) details.push('<span class="flight-detail">Until <span>' + escHtml(fmtBookingDate(b.ends_at, b.timezone)) + '</span></span>');
-      else if (until) details.push('<span class="flight-detail">Until <span>' + escHtml(until) + '</span></span>');
-      if (det.seat) details.push('<span class="flight-detail">Seat <span>' + escHtml(det.seat) + '</span></span>');
-      if (det.room && String(det.room).trim().toLowerCase() !== String(b.title).trim().toLowerCase()) details.push('<span class="flight-detail">Room <span>' + escHtml(det.room) + '</span></span>');
-      if (det.guests) details.push('<span class="flight-detail">Guests <span>' + escHtml(String(det.guests)) + '</span></span>');
-      if (det.cancel_by) details.push('<span class="flight-detail">Free cancellation until <span>' + escHtml(fmtBookingDate(det.cancel_by, b.timezone)) + '</span></span>');
-      if (det.check_in_url) details.push('<span class="flight-detail"><a href="' + escHtml(det.check_in_url) + '" target="_blank" rel="noopener" style="color:var(--accent);">Check in</a></span>');
-      var cancelled = b.status === 'cancelled';
-      // Closedhand moved it: say from when, so the change is visible at a glance.
-      var movedFrom = det.moved_from ? fmtBookingTime(det.moved_from, b.timezone) : '';
-      var moved = movedFrom && movedFrom !== when ? ' <span class="booking-moved">moved from ' + escHtml(movedFrom) + '</span>' : '';
-      // The venue's name is often the provider's too; say it once.
-      var showProvider = b.provider && String(b.provider).trim().toLowerCase() !== String(b.title).trim().toLowerCase();
-      return '<div class="flight-card" style="' + (cancelled ? 'opacity:0.55;' : '') + '">' +
-        '<div class="flight-status-bar ' + (cancelled ? 'cancelled' : 'scheduled') + '"></div>' +
-        '<div class="upcoming-card-row" style="padding:0.625rem 0.875rem;display:flex;align-items:center;gap:0.875rem;flex-wrap:wrap;">' +
-          '<div style="min-width:6.875rem;"><span class="upcoming-card-icon" title="' + escHtml(b.kind) + '">' + icon + '</span><span class="flight-number">' + escHtml(b.title) + '</span>' +
-            (showProvider ? '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(b.provider) + '</div>' : '') + '</div>' +
-          '<div class="upcoming-card-main" style="flex:1;min-width:12.5rem;font-size:0.8125rem;color:var(--fg);">' + route + (when ? '<div style="font-size:0.6875rem;color:var(--muted);">' + (b.kind === 'hotel' ? 'Check in from ' : '') + escHtml(when) + (sameDay && until ? ' to ' + escHtml(until) : '') + moved + '</div>' : '') + '</div>' +
-          '<span class="flight-status-badge ' + (cancelled ? 'cancelled' : 'scheduled') + '">' + (cancelled ? 'Cancelled' : 'Booked') + '</span>' +
-          '<button class="conn-btn conn-btn-disconnect" title="Not a booking? Remove it" aria-label="Remove this booking" onclick="confirmBookingRemove(this, \'' + b.id + '\')" style="padding:2px 0.5rem;font-size:0.6875rem;">&times;</button>' +
-        '</div>' +
-        (details.length ? '<div class="flight-details" style="padding:0 0.875rem 0.625rem;">' + details.join('') + '</div>' : '') +
-        clashHtml(b.clash) + sourceDocsHtml(b.source_mail) + chatSourceHtml(det.from_chat) +
+    // A day as Upcoming says it, "Sat 7 Nov", with the year only when it is
+    // not this one.
+    function shortDay(iso, tz) {
+      var d = new Date(iso); if (isNaN(d)) return '';
+      var opts = { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz || undefined };
+      var year = function (x) { try { return x.toLocaleDateString('en-GB', { year: 'numeric', timeZone: tz || undefined }); } catch (e) { return String(x.getFullYear()); } };
+      if (year(d) !== year(new Date())) opts.year = 'numeric';
+      try { return d.toLocaleDateString('en-GB', opts).replace(',', ''); }
+      catch (e) { delete opts.timeZone; return d.toLocaleDateString('en-GB', opts).replace(',', ''); }
+    }
+    var sameText = function (a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); };
+    var holds = function (a, b) { return !!b && String(a || '').toLowerCase().indexOf(String(b).trim().toLowerCase()) !== -1; };
+    var fact = function (label, value) { return '<span>' + escHtml(label) + ' <b>' + escHtml(String(value)) + '</b></span>'; };
+
+    // One row of the timeline: its time on the left (and when it ends or
+    // lands under it), what it is, a status only when it is news, then what
+    // helps at the door, what clashes, its email and files, and where it was
+    // found. o.sub is markup; every other text is escaped here.
+    function upcomingEntry(o) {
+      var end = o.end ? '<span class="up-end">' + (o.end.word ? '<span class="up-end-word">' + escHtml(o.end.word) + ' </span>' : '') +
+        (o.end.arrow ? '<span class="up-end-arrow">→ </span>' : '') + escHtml(o.end.text) + '</span>' : '';
+      var name = o.onclick ? '<button type="button" class="up-open" onclick="' + o.onclick + '">' + escHtml(o.title) + '</button>' : escHtml(o.title);
+      var x = o.x ? '<button type="button" class="up-x" title="Not going ahead? Take it off" aria-label="Not going ahead? Take it off" onclick="' + o.x + '">' + UPCOMING_ICON.x + '</button>' : '<span></span>';
+      return '<div class="up-item' + (o.small ? ' small' : '') + (o.past ? ' past' : '') + '">' +
+        '<div class="up-time">' + escHtml(o.time || '') + end + '</div>' +
+        '<div class="up-body">' +
+          '<div class="up-title"><span class="up-icon">' + o.icon + '</span><span class="up-name">' + name + '</span>' + (o.badge || '') + '</div>' +
+          (o.sub ? '<div class="up-sub">' + o.sub + '</div>' : '') + (o.route || '') +
+          (o.facts && o.facts.length ? '<div class="up-facts">' + o.facts.join('') + '</div>' : '') +
+          (o.clash || '') + (o.docs || '') + (o.from || '') +
+        '</div>' + x +
       '</div>';
     }
-    // What this clashes with in the person's other plans (webapp/server.js
-    // clashLines), said on each card involved until it is settled in chat.
-    function clashHtml(line) {
-      return line ? '<p class="upcoming-clash">' + escHtml(line) + '</p>' : '';
+    // A reminder or goal check-in: one short row.
+    function upcomingRow(o) {
+      return upcomingEntry({ time: o.when, icon: o.icon, title: o.title, sub: escHtml(o.kind), small: true, past: o.past, onclick: o.onclick });
     }
-    // A booking found in a chat names the app and who, as one from mail
-    // opens its email.
+
+    // A booking picked out of everything connected. A stay's nights are
+    // counted where the hotel is; its name loses the "3 nights" the email
+    // gave it, since the row says how many.
+    function stayName(b) { return String(b.title || '').replace(/,?\s*\d+\s+nights?\s*$/i, '') || b.title; }
+    function bookingEntry(b) {
+      var det = b.details || {};
+      var tz = b.timezone || undefined;
+      var at = fmtBookingTime(b.starts_at, tz);
+      // A day without its time shows no time, never midnight.
+      var when = det.time_unknown || (det.all_day && at === '00:00') ? '' : at;
+      var until = b.ends_at ? fmtBookingTime(b.ends_at, tz) : '';
+      var sameDay = b.ends_at && localDay(b.ends_at, tz) === localDay(b.starts_at, tz);
+      var stay = stayOf(b);
+      var title = stay ? stayName(b) : b.title;
+      var sub = [];
+      if (stay) sub.push(stay.nights + (stay.nights === 1 ? ' night' : ' nights') + ', until ' + shortDay(b.ends_at, tz));
+      // The venue's name is often in the title already; say it once.
+      if (b.provider && !holds(title, b.provider)) sub.push(b.provider);
+      if (b.location && !(det.from && det.to) && !holds(title, b.location) && !sameText(b.location, b.provider)) sub.push(b.location);
+      var facts = [];
+      if (b.reference) facts.push(fact('Ref', b.reference));
+      if (!stay && b.ends_at && !sameDay) facts.push(fact('Until', shortDay(b.ends_at, tz)));
+      if (det.seat) facts.push(fact('Seat', det.seat));
+      if (det.room && !sameText(det.room, b.title)) facts.push(fact('Room', det.room));
+      if (Number(det.guests) > 1) facts.push(fact('Guests', det.guests));
+      if (det.cancel_by) facts.push(fact('Free cancellation until', shortDay(det.cancel_by, tz)));
+      if (det.check_in_url) facts.push('<span><a href="' + escHtml(det.check_in_url) + '" target="_blank" rel="noopener">Check in</a></span>');
+      // Closedhand moved it: from when, so the change shows at a glance.
+      var movedFrom = det.moved_from ? fmtBookingTime(det.moved_from, tz) : '';
+      if (movedFrom && movedFrom !== when) facts.push('<span class="booking-moved">moved from ' + escHtml(movedFrom) + '</span>');
+      return upcomingEntry({
+        time: when, icon: UPCOMING_ICON[b.kind] || UPCOMING_ICON.other, title: title,
+        end: stay ? (when ? { word: 'check in', text: 'from' } : null) : sameDay && until && when ? { word: 'until', arrow: true, text: until } : null,
+        sub: sub.map(escHtml).join(' · '), facts: facts, past: !!b.over,
+        clash: clashHtml(b.clash, b.clash_asks), docs: sourceDocsHtml(b.source_mail), from: chatSourceHtml(det.from_chat),
+        x: b.over ? null : "cancelPlan('bookings', '" + escAttribute(b.id) + "')",
+      });
+    }
+    // What this clashes with in the person's other plans (webapp/server.js
+    // clashLines), said on each row involved until it is settled in chat,
+    // with when Closedhand asked about it and where.
+    function clashHtml(line, asks) {
+      return line ? '<div class="up-clash">' + UPCOMING_ICON.clash + '<span>' + escHtml(line) + (asks && asks.length ? '<span class="up-asked">' + escHtml(askedLine(asks)) + '</span>' : '') + '</span></div>' : '';
+    }
+    // "Closedhand asked you in WhatsApp on Sat 7 Nov, and again this morning."
+    function askedLine(asks) {
+      var first = asks[0], last = asks[asks.length - 1];
+      var where = first.in && first.in.length ? ' in ' + first.in.join(' and ') : '';
+      return 'Closedhand asked you' + where + ' ' + whenAsked(first.at) + (asks.length > 1 ? ', and again ' + whenAsked(last.at) : '') + '.';
+    }
+    function whenAsked(iso, now) {
+      var d = new Date(iso); if (isNaN(d)) return '';
+      now = now || new Date();
+      var day = function (x) { return x.getFullYear() + '-' + x.getMonth() + '-' + x.getDate(); };
+      if (day(d) === day(now)) return d.getHours() < 12 ? 'this morning' : d.getHours() < 18 ? 'this afternoon' : 'this evening';
+      if (day(d) === day(new Date(now.getTime() - 86400000))) return 'yesterday';
+      return 'on ' + shortDay(iso);
+    }
+    // A booking found in a chat says which chat, in words: there is no way
+    // to open one chat from here, so it is not a button.
     var CHAT_LOGO = { WhatsApp: '/logos/whatsapp.svg', Slack: '/logos/slack.svg', Telegram: '/logos/telegram.svg', Notion: '/logos/notion.svg' };
     function chatSourceHtml(c) {
       if (!c || !c.app) return '';
       var logo = CHAT_LOGO[c.app];
-      return '<div class="source-docs"><span class="source-doc" title="' + escHtml('From your ' + c.app + ' chat' + (c.name ? ' with ' + c.name : '')) + '">' +
-        (logo ? '<img src="' + logo + '" alt="" width="13" height="13" style="width:0.8125rem;height:0.8125rem;">' : '') + '<span>' + escHtml(c.app + (c.name ? ' \u00b7 ' + c.name : '')) + '</span></span></div>';
+      return '<div class="up-from">' + (logo ? '<img src="' + logo + '" alt="" width="13" height="13">' : '') +
+        '<span>' + escHtml('From your ' + c.app + ' chat' + (c.name ? ' with ' + c.name : '')) + '</span></div>';
     }
     // The email a booking came from, marked with the mailbox it opens in, then
     // the files worth having with you (an e-ticket, a voucher) from every
@@ -6983,9 +6960,9 @@
     var ENVELOPE_ICON = '<svg viewBox="0 0 24 24" width="0.8125rem" height="0.8125rem" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>';
     var FILE_ICON = '<svg viewBox="0 0 24 24" width="0.8125rem" height="0.8125rem" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
     // On an iPhone or iPad a Gmail address opens Gmail's phone site at the
-    // inbox, never the Gmail app, so the email opens as Closedhand keeps it,
-    // with Open in Gmail there (webapp/server.js /mail). Android hands Gmail
-    // addresses to the Gmail app itself.
+    // inbox, never the Gmail app, and the Gmail app takes no link to one
+    // email, so the email opens as Closedhand keeps it (webapp/server.js
+    // /mail). Android hands Gmail addresses to the Gmail app itself.
     var IOS = /\biP(hone|ad|od)\b/.test(navigator.userAgent);
     function sourceDocsHtml(sm) {
       var docs = (sm && sm.documents) || [];
@@ -7002,31 +6979,79 @@
       btn.parentNode.querySelectorAll('.source-doc.more').forEach(function(a) { a.hidden = false; });
       btn.remove();
     }
+
+    // Cancelled plans: what the person or Closedhand took off, and what its
+    // provider cancelled, each saying how it is known, with Put back where
+    // it was taken off here or in chat.
+    function cancelledWhy(c, airline) {
+      if (!c) return airline ? airline + ' cancelled this flight.' : 'Cancelled.';
+      var on = c.at ? shortDay(c.at) : '';
+      if (c.by === 'you') return c.in ? "You told Closedhand it's off, in " + c.in + (on ? ' on ' + on : '') + '.' : 'You took it off' + (on ? ' on ' + on : '') + '.';
+      return c.why || 'Cancelled.';
+    }
+    function cancelledEntry(o) {
+      return '<div class="up-gone">' +
+        '<div class="up-time">' + escHtml(o.when) + '</div>' +
+        '<div class="up-body"><div class="up-title"><span class="up-icon">' + o.icon + '</span><span class="up-name">' + escHtml(o.title) + '</span></div>' +
+          '<div class="up-sub">' + escHtml(o.why) + '</div></div>' +
+        (o.restore ? '<button type="button" class="up-putback" onclick="' + o.restore + '">Put back</button>' : '<span></span>') +
+      '</div>';
+    }
+    var _cancelled = { bookings: [], flights: [] };
+    function setCancelled(kind, items) {
+      _cancelled[kind] = items;
+      var all = _cancelled.bookings.concat(_cancelled.flights).sort(function (a, b) { return a.at - b.at; });
+      var section = document.getElementById('cancelled-section');
+      if (!section) return;
+      section.hidden = !all.length;
+      document.getElementById('cancelled-count').textContent = '· ' + all.length;
+      document.getElementById('cancelled-body').innerHTML = all.map(function (i) { return i.html; }).join('');
+    }
+    // The x and Put back: nothing is deleted, so neither asks first.
+    async function cancelPlan(kind, id) {
+      var res = await fetch('/api/' + kind + '/' + encodeURIComponent(id) + '/cancel', { method: 'POST' });
+      if (!res.ok) return showToast('Could not change it', true);
+      kind === 'flights' ? loadFlights() : loadBookings();
+    }
+    async function restorePlan(kind, id) {
+      var res = await fetch('/api/' + kind + '/' + encodeURIComponent(id) + '/restore', { method: 'POST' });
+      if (!res.ok) return showToast('Could not change it', true);
+      kind === 'flights' ? loadFlights() : loadBookings();
+    }
+
     async function loadBookings() {
       try {
         var res = await fetch('/api/bookings');
         if (!res.ok) throw new Error('Failed');
         var rows = await res.json();
+        var cancelled = rows.filter(function(b) { return b.status === 'cancelled'; });
+        var live = rows.filter(function(b) { return b.status !== 'cancelled'; });
         // Bookings already over go under Past, as flights already flown do.
-        var over = rows.filter(function(b) { return b.over; });
-        document.getElementById('recent-bookings').innerHTML = over.map(renderBookingCard).join('');
+        var over = live.filter(function(b) { return b.over; });
+        document.getElementById('recent-bookings').innerHTML = over.map(bookingEntry).join('');
         _pastBookings = over.length;
         updatePast();
-        setUpcoming('bookings', [].concat.apply([], rows.filter(function(b) { return !b.over; }).map(function(b) {
-          var item = upcomingItem(b.starts_at, { tz: b.timezone || undefined }, renderBookingCard(b));
-          if (item.date === 'Date to be confirmed') item.date = fmtBookingDate(b.starts_at, b.timezone) || item.date;
-          // A stay brings its check-out, and holds what comes between.
+        setCancelled('bookings', cancelled.filter(function (b) { return !b.over; }).map(function (b) {
+          return { at: Date.parse(b.starts_at), html: cancelledEntry({ when: shortDay(b.starts_at, b.timezone), icon: UPCOMING_ICON[b.kind] || UPCOMING_ICON.other, title: b.kind === 'hotel' ? stayName(b) : b.title,
+            why: cancelledWhy((b.details || {}).cancelled), restore: "restorePlan('bookings', '" + escAttribute(b.id) + "')" }) };
+        }));
+        setUpcoming('bookings', [].concat.apply([], live.filter(function(b) { return !b.over; }).map(function(b) {
+          var item = upcomingItem(b.starts_at, { tz: b.timezone || undefined }, bookingEntry(b));
+          // A stay brings its check-out, and says which night it is on each
+          // day between.
           var stay = stayOf(b);
           if (!stay) return [item];
           item.stay = stay;
-          var out = upcomingItem(b.ends_at, { tz: b.timezone || undefined }, renderCheckoutCard(b));
+          // A stay already under way needs no check-in row: each day says
+          // where you are sleeping, and its check-out is still to come.
+          if (Date.parse(b.starts_at) < Date.now()) item.html = '';
+          var out = upcomingItem(b.ends_at, { tz: b.timezone || undefined }, checkoutEntry(b, stay));
           out.stayEnd = b.id;
           return [item, out];
         })));
       } catch (e) { console.error('bookings', e); updateUpcomingEmpty(); }
     }
-    // A hotel stay, as nights counted where the hotel is: what is booked
-    // during it shows inside it, each day saying which night it is.
+    // A hotel stay, as nights counted where the hotel is.
     function localDay(iso, tz) {
       try { return new Date(iso).toLocaleDateString('en-CA', { timeZone: tz || undefined }); }
       catch (e) { return new Date(iso).toLocaleDateString('en-CA'); }
@@ -7036,103 +7061,60 @@
       var start = Date.parse(b.starts_at), end = Date.parse(b.ends_at);
       if (b.kind !== 'hotel' || b.status === 'cancelled' || !(end > start)) return null;
       var tz = b.timezone || undefined, startDay = localDay(b.starts_at, tz), endDay = localDay(b.ends_at, tz);
-      return { id: b.id, tz: tz, end: end, startDay: startDay, endDay: endDay, nights: Math.max(1, daysBetween(startDay, endDay)) };
+      return { id: b.id, name: stayName(b), tz: tz, end: end, startDay: startDay, endDay: endDay, nights: Math.max(1, daysBetween(startDay, endDay)) };
     }
-    function nightNote(stay, at) {
+    // On a day between check-in and check-out: where you are sleeping, which
+    // night it is, and a dot for each night, filled up to this one.
+    function stayRibbon(stay, at) {
       var day = localDay(new Date(at).toISOString(), stay.tz);
-      if (day === stay.endDay) return 'check-out day';
-      var n = daysBetween(stay.startDay, day) + 1;
-      return n <= 1 ? '' : n >= stay.nights ? 'last night' : 'night ' + n + ' of ' + stay.nights;
+      if (day <= stay.startDay || day >= stay.endDay) return '';
+      var n = daysBetween(stay.startDay, day) + 1, dots = '';
+      for (var i = 1; i <= stay.nights; i++) dots += '<i' + (i <= n ? ' class="on"' : '') + '></i>';
+      return '<div class="up-stay">' + UPCOMING_ICON.hotel + '<span>Staying at <b>' + escHtml(stay.name) + '</b>, night ' + n + ' of ' + stay.nights + '</span>' +
+        (stay.nights <= 14 ? '<span class="up-nights" aria-hidden="true">' + dots + '</span>' : '') + '</div>';
     }
-    // Its other end: when to leave, joined to the check-in card above by the
-    // line down the side (renderUpcoming).
-    function renderCheckoutCard(b) {
+    // Its other end: one short row on the day you leave.
+    function checkoutEntry(b, stay) {
       var by = fmtBookingTime(b.ends_at, b.timezone);
-      return '<div class="flight-card">' +
-        '<div class="flight-status-bar scheduled"></div>' +
-        '<div style="padding:0.625rem 0.875rem;">' +
-          '<span class="upcoming-card-icon" title="Check out">' + UPCOMING_ICON.checkout + '</span><span class="flight-number">Check out</span>' +
-          '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(b.title) + (by ? ' \u00b7 by ' + escHtml(by) : '') + '</div>' +
-        '</div>' +
-      '</div>';
+      return upcomingEntry({ time: by, icon: UPCOMING_ICON.checkout, title: 'Check out of ' + stay.name, small: true,
+        sub: escHtml('End of a ' + stay.nights + '-night stay') });
     }
 
-    // Flights and bookings Closedhand found are removed the same way, from
-    // the same x, and both ask first.
-    async function confirmBookingRemove(btn, id) {
-      if (!(await askFirst(btn, { text: 'Remove this booking from Upcoming for good?', yes: 'Remove' }))) return;
-      var res = await fetch('/api/bookings/' + id, { method: 'DELETE' });
-      if (res.ok) loadBookings(); else showToast('Could not remove it', true);
-    }
-    async function confirmFlightRemove(btn, key) {
-      if (!(await askFirst(btn, { text: 'Remove this flight? Closedhand stops tracking it.', yes: 'Remove' }))) return;
-      var res = await fetch('/api/flights/' + encodeURIComponent(key), { method: 'DELETE' });
-      if (res.ok) loadFlights(); else showToast('Could not remove it', true);
-    }
-
-    function renderFlightCard(f) {
+    function flightEntry(f) {
       const status = getFlightStatusInfo(f);
       const live = f.liveStatus || {};
       const depCode = (f.departure?.airport || '?').substring(0, 3).toUpperCase();
       const arrCode = (f.arrival?.airport || '?').substring(0, 3).toUpperCase();
       const depTime = fmtFlightTime(live.departureTime || f.departure?.dateTime, f.departure);
       const arrTime = fmtFlightTime(live.arrivalTime || f.arrival?.dateTime, f.arrival);
-      // Said only when the badge alone would mislead. "Scheduled" already
-      // says the times are the booking's, not live.
+      // Said only when the badge alone would mislead. "Scheduled" says
+      // nothing every flight would not, so it is not shown.
       const timeNote = f.completionSource === 'user'
         ? 'Completed, confirmed by you. Times shown are from your booking.'
         : status.label === 'Status unconfirmed'
           ? 'Departure time has passed. Takeoff and arrival have not been confirmed.'
           : '';
-
-
-      // Within a day of departure the headings that WILL be known show as
-      // TBC until the live feed fills them. Further out, four TBCs on a
-      // card were clutter: only what is known is shown.
-      const depMs = Date.parse(live.departureTime || f.departure?.dateTime || '');
-      const soon = !isNaN(depMs) && depMs - Date.now() < 24 * 3600000;
-      const tbc = v => v ? escHtml(String(v)) : '<span style="color:rgba(var(--fg-rgb),0.6);">TBC</span>';
-      let details = [];
-      const field = (label, v) => { if (v || soon) details.push(`<span class="flight-detail">${label} <span>${tbc(v)}</span></span>`); };
-      field('Terminal', live.terminal || f.departure?.terminal);
-      field('Gate', live.gate);
-      field('Arr Gate', live.gateDestination);
-      field('Aircraft', f.aircraftType || live.aircraftType);
-      if (f.confirmationCode) details.push(`<span class="flight-detail">Booking ref <span>${escHtml(String(f.confirmationCode))}</span></span>`);
-      if (live.delay && live.delay > 0) details.push(`<span class="flight-detail delay-highlight">Delayed <span>${live.delay}min</span></span>`);
-
-      // The card itself does nothing on a click: the email and files are
-      // the chips below it, and there is nothing more to unfold.
+      // Only what is known: a row of TBCs said nothing.
+      const facts = [];
+      const known = (label, v) => { if (v) facts.push(fact(label, v)); };
+      known('Ref', f.confirmationCode);
+      known('Terminal', live.terminal || f.departure?.terminal);
+      known('Gate', live.gate);
+      known('Arrival gate', live.gateDestination);
+      known('Aircraft', f.aircraftType || live.aircraftType);
+      if (timeNote) facts.push('<span>' + escHtml(timeNote) + '</span>');
+      const cities = AIRPORT_CITY[depCode] && AIRPORT_CITY[arrCode] && AIRPORT_CITY[depCode] !== AIRPORT_CITY[arrCode];
       const duration = flightDuration(live.departureTime || f.departure?.dateTime, live.arrivalTime || f.arrival?.dateTime);
-      return `<div class="flight-card">
-        <div class="flight-status-bar ${status.cls}"></div>
-        <div class="upcoming-card-row" style="padding:0.625rem 0.875rem;display:flex;align-items:center;gap:0.875rem;flex-wrap:wrap;">
-          <div style="min-width:6.875rem;">
-            <span class="upcoming-card-icon" title="Tracked flight">${UPCOMING_ICON.flight}</span><span class="flight-number">${escHtml(f.flightNumber)}</span>
-            ${f.airline ? '<div style="font-size:0.6875rem;color:var(--muted);">' + escHtml(f.airline) + '</div>' : ''}
-          </div>
-          <div class="upcoming-card-main" style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:13.75rem;">
-            <div style="text-align:center;">
-              <div style="font-size:0.9375rem;font-weight:600;color:var(--fg);">${depCode}</div>
-              <div style="font-size:0.6875rem;color:var(--muted);">${depTime}</div>
-            </div>
-            <div style="flex:1;height:1px;background:rgba(var(--fg-rgb),0.16);position:relative;">
-              <span style="position:absolute;top:-0.5625rem;left:50%;transform:translateX(-50%);font-size:0.6875rem;color:rgba(var(--fg-rgb),0.6);">&#9992;</span>
-              ${duration ? `<span style="position:absolute;top:0.4375rem;left:50%;transform:translateX(-50%);font-size:0.6875rem;color:var(--muted);white-space:nowrap;" title="Flight time">${duration}</span>` : ''}
-            </div>
-            <div style="text-align:center;">
-              <div style="font-size:0.9375rem;font-weight:600;color:var(--fg);">${arrCode}</div>
-              <div style="font-size:0.6875rem;color:var(--muted);">${arrTime}</div>
-            </div>
-          </div>
-          <span class="flight-status-badge ${status.cls}">${escHtml(status.label)}</span>
-          ${f._key ? `<button class="conn-btn conn-btn-disconnect" title="Not your flight? Remove it" aria-label="Remove this flight" onclick="confirmFlightRemove(this, '${escHtml(f._key)}')" style="padding:2px 0.5rem;font-size:0.6875rem;">&times;</button>` : ''}
-        </div>
-        ${details.length ? `<div class="flight-details" style="padding:0 0.875rem 0.625rem;">${details.join('')}</div>` : ''}
-        ${clashHtml(f.clash)}
-        ${sourceDocsHtml(f.source_mail)}
-        ${timeNote ? `<p class="flight-details" style="display:block;padding:0 0.875rem 0.875rem;margin:0;">${escHtml(timeNote)}</p>` : ''}
-      </div>`;
+      const route = '<div class="up-route"><span class="up-code">' + escHtml(depCode) + '</span><span class="up-line"><span class="up-plane">' + UPCOMING_ICON.flight + '</span></span>' +
+        '<span class="up-code">' + escHtml(arrCode) + '</span>' + (duration ? '<span title="Flight time">' + duration + '</span>' : '') + '</div>';
+      return upcomingEntry({
+        time: depTime, end: { word: 'lands', arrow: true, text: arrTime }, icon: UPCOMING_ICON.flight,
+        title: cities ? AIRPORT_CITY[depCode] + ' to ' + AIRPORT_CITY[arrCode] : depCode + ' to ' + arrCode,
+        badge: status.label !== 'Scheduled' ? '<span class="flight-status-badge ' + status.cls + '">' + escHtml(status.label) + '</span>' : '',
+        sub: escHtml([f.airline, f.flightNumber].filter(Boolean).join(' ')), route: route, facts: facts, past: !!status.past,
+        clash: clashHtml(f.clash, f.clash_asks), docs: sourceDocsHtml(f.source_mail),
+        x: f._key && !status.past ? "cancelPlan('flights', '" + escAttribute(f._key) + "')" : null,
+      });
     }
 
     // How long a flight takes, from its two times and their own offsets.
@@ -7153,14 +7135,6 @@
       if (!/\s/.test(t)) t = t.replace(/[-_]+/g, ' ');
       return t.charAt(0).toUpperCase() + t.slice(1);
     }
-    function upcomingRow(o) {
-      var tag = o.onclick ? 'button' : 'div';
-      return '<' + tag + ' class="upcoming-row' + (o.past ? ' past' : '') + '"' + (o.onclick ? ' type="button" onclick="' + o.onclick + '"' : '') + '>' +
-        '<span class="upcoming-icon" aria-hidden="true">' + o.icon + '</span>' +
-        '<span class="upcoming-what"><span class="upcoming-title">' + esc(o.title) + '</span><span class="upcoming-kind">' + esc(o.kind) + '</span></span>' +
-        '<span class="upcoming-when">' + esc(o.when || '') + '</span>' +
-      '</' + tag + '>';
-    }
 
     var _pastReminders = 0, _pastFlights = 0, _pastBookings = 0;
     function updatePast() {
@@ -7168,13 +7142,14 @@
       if (!section) return;
       var n = _pastReminders + _pastFlights + _pastBookings;
       section.hidden = !n;
-      document.getElementById('past-count').textContent = '\u00b7 ' + n;
+      document.getElementById('past-count').textContent = '· ' + n;
     }
-    function togglePast() {
-      var btn = document.getElementById('past-toggle');
+    // Past and Cancelled plans fold away the same way.
+    function toggleFold(name) {
+      var btn = document.getElementById(name + '-toggle');
       var open = btn.getAttribute('aria-expanded') !== 'true';
       btn.setAttribute('aria-expanded', String(open));
-      document.getElementById('past-body').hidden = !open;
+      document.getElementById(name + '-body').hidden = !open;
     }
 
     async function loadReminders() {
@@ -7200,8 +7175,7 @@
           return upcomingItem(r.next_at, where, upcomingRow({ icon: UPCOMING_ICON.reminder, title: reminderTitle(r.name), kind: r.repeats ? 'Reminder, ' + r.repeats : 'Reminder', when: r.next_at ? FlightTime.time(r.next_at, where) : '' }));
         }));
         document.getElementById('reminders-past').innerHTML = past.map(function(r) {
-          var ran = r.archived_at ? new Date(r.archived_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-          return upcomingRow({ icon: UPCOMING_ICON.done, title: reminderTitle(r.name), kind: 'Reminder', when: ran ? 'Ran ' + ran : 'Ran', past: true });
+          return upcomingRow({ icon: UPCOMING_ICON.done, title: reminderTitle(r.name), kind: 'Reminder', when: r.archived_at ? shortDay(r.archived_at) : '', past: true });
         }).join('');
         _pastReminders = past.length;
         updatePast();
@@ -7221,23 +7195,26 @@
         const flights = await res.json();
         loadingEl.style.display = 'none';
 
-        if (!flights.length) {
-          document.getElementById('recent-flights').innerHTML = '';
-          _pastFlights = 0; updatePast();
-          setUpcoming('flights', []);
-          return;
-        }
+        // Taken off, or cancelled by the airline: under Cancelled plans.
+        const off = f => !!f.cancelled || getFlightStatusInfo(f).cls === 'cancelled';
+        setCancelled('flights', flights.filter(f => off(f) && Date.parse(f.departure?.dateTime) > Date.now()).map(f => {
+          const dep = (f.departure?.airport || '?').substring(0, 3).toUpperCase(), arr = (f.arrival?.airport || '?').substring(0, 3).toUpperCase();
+          return { at: Date.parse(f.departure.dateTime), html: cancelledEntry({ when: shortDay(f.departure.dateTime, f.departure?.tz), icon: UPCOMING_ICON.flight,
+            title: f.flightNumber + ' ' + (AIRPORT_CITY[dep] && AIRPORT_CITY[arr] ? AIRPORT_CITY[dep] + ' to ' + AIRPORT_CITY[arr] : dep + ' to ' + arr),
+            why: cancelledWhy(f.cancelled, f.airline || 'The airline'), restore: f.cancelled && f._key ? "restorePlan('flights', '" + escAttribute(f._key) + "')" : null }) };
+        }));
+        const kept = flights.filter(f => !off(f));
 
         // Flights already flown go under Past with the reminders that ran.
-        const recent = flights.filter(f => getFlightStatusInfo(f).past);
-        document.getElementById('recent-flights').innerHTML = recent.map(renderFlightCard).join('');
+        const recent = kept.filter(f => getFlightStatusInfo(f).past);
+        document.getElementById('recent-flights').innerHTML = recent.map(flightEntry).join('');
         _pastFlights = recent.length;
         updatePast();
 
         // Dated by the departure at the origin airport, as on the boarding
         // pass, so "tomorrow" means what the ticket says.
-        setUpcoming('flights', flights.filter(f => !getFlightStatusInfo(f).past)
-          .map(f => upcomingItem(f.departure?.dateTime, f.departure, renderFlightCard(f))));
+        setUpcoming('flights', kept.filter(f => !getFlightStatusInfo(f).past)
+          .map(f => upcomingItem(f.departure?.dateTime, f.departure, flightEntry(f))));
       } catch (e) {
         loadingEl.style.display = 'none';
         updateUpcomingEmpty();
@@ -7279,8 +7256,16 @@
       return { at: isNaN(at) ? Infinity : at, date: FlightTime.dateLabel(iso, point || {}), away: FlightTime.daysAway(iso, point || {}), html: html };
     }
     function setUpcoming(kind, items) { _upcoming[kind] = items; renderUpcoming(); }
-    // A hotel stay is drawn as a bracket: its check-in card, then what is on
-    // while you are there, set in beside a line, then its check-out card.
+    // A day's heading: "Today" and "Tomorrow" by name, then the date, with
+    // its year only when it is not this one.
+    function dayHeading(item) {
+      var m = /^(\w+),? (\d+ \w+) (\d{4})$/.exec(item.date);
+      var date = m ? m[1] + ' ' + m[2] + (m[3] === String(new Date().getFullYear()) ? '' : ' ' + m[3]) : item.date;
+      var name = item.away === 'today' ? 'Today' : item.away === 'tomorrow' ? 'Tomorrow' : '';
+      return '<div class="flights-date-header">' + (name ? esc(name) + '<span class="flights-away">' + esc(date) + '</span>' : esc(date)) + '</div>';
+    }
+    // A hotel stay's check-in and check-out are rows of their own; each day
+    // between says, under its heading, where you are sleeping.
     function renderUpcoming() {
       var el = document.getElementById('upcoming-list');
       if (!el) return;
@@ -7288,18 +7273,18 @@
       // follows it is after the stay.
       var all = [].concat(_upcoming.reminders, _upcoming.checkins, _upcoming.flights, _upcoming.bookings)
         .sort(function (a, b) { return a.at - b.at || (b.stayEnd ? 1 : 0) - (a.stayEnd ? 1 : 0); });
-      var html = '', last = null, stay = null;
+      var html = '', last = null, stays = [];
       all.forEach(function (item) {
+        if (!item.html) { if (item.stay) stays.push(item.stay); return; }
         if (item.date !== last) {
-          var note = stay ? nightNote(stay, item.at) : item.away;
-          html += '<div class="flights-date-header">' + esc(item.date) + (note ? '<span class="flights-away"> \u00b7 ' + esc(note) + '</span>' : '') + '</div>';
+          html += dayHeading(item);
+          stays.forEach(function (s) { html += stayRibbon(s, item.at); });
           last = item.date;
         }
-        if (stay && item.stayEnd === stay.id) { html += '</div>' + item.html + '</div>'; stay = null; return; }
-        if (!stay && item.stay) { html += '<div class="stay">' + item.html + '<div class="stay-inside">'; stay = item.stay; return; }
+        if (item.stayEnd) stays = stays.filter(function (s) { return s.id !== item.stayEnd; });
+        if (item.stay) stays.push(item.stay);
         html += item.html;
       });
-      if (stay) html += '</div></div>';
       // Redrawn only when something changed, so a refresh never flickers.
       if (html !== _upcomingHtml) { el.innerHTML = html; _upcomingHtml = html; }
       updateUpcomingEmpty();
