@@ -76,7 +76,15 @@ test("quiet hours, in the person's own time zone, hold every notice until they e
   assert.equal(quietNow({ ...tokyo, profile: { settings: { pulse_settings: { quietStart: 1, quietEnd: 6 } } } }, at("2026-10-24T18:00:00Z")), true, "03:00 inside 1 to 6");
 
   const db = fakeDb();
-  require.cache[require.resolve("../user-store")] = { id: "us", loaded: true, exports: { supabase: db } };
+  // What goes out is kept in the conversation (proactive.js keepSaid): a
+  // fresh copy saved under the person's lock, stood in here.
+  const ctx = require("../lib/context");
+  const fresh = { conversations: [], saves: 0, async save() { this.saves++; } };
+  const stand = { "../user-store": { supabase: db, UserStore: { load: async () => fresh } }, "../lib/user-mutex": { acquireUserMutex: async (u, fn) => fn() },
+    "../lib/storage": { swapToCloudStore: (store, uid) => { ctx.activeUserStore = store; ctx.activeUserId = uid; ctx.store = { conversations: { [uid]: store.conversations } }; }, syncAdapterBack() {}, cleanupUserContext() { ctx.activeUserStore = null; ctx.activeUserId = null; ctx.store = { conversations: {} }; } },
+    "../lib/conversation": { getConversation: (u) => ctx.store.conversations[u] } };
+  for (const [m, exports] of Object.entries(stand)) require.cache[require.resolve(m)] = { id: m, loaded: true, exports };
+  const settle = () => new Promise((r) => setTimeout(r, 20));
   delete require.cache[require.resolve("../lib/proactive")];
   const p = require("../lib/proactive");
   const sent = [];
@@ -94,6 +102,19 @@ test("quiet hours, in the person's own time zone, hold every notice until they e
 
   assert.equal(await p.deliverUnprompted("u1", settings(false), links, () => "Now"), true);
   assert.equal(sent.length, 2, "out of quiet hours it goes at once");
+  await settle();
+  assert.deepEqual(fresh.conversations.map((m) => [m.role, m.content, m.via]), [["assistant", "Bank needs you, via telegram", "telegram"], ["assistant", "Now", "telegram"]],
+    "each message is kept in the conversation once it goes, held ones when they go, so a reply to it is read against it");
+  // Run for the person whose chat is loaded: their copy has it too, so a save
+  // they make keeps it, and nothing is kept twice.
+  const own = [];
+  ctx.activeUserId = "u1"; ctx.store = { conversations: { u1: own } };
+  await p.keepSaid("u1", "Does the dinner on Tue still stand?", "telegram");
+  assert.deepEqual(own.map((m) => m.content), ["Does the dinner on Tue still stand?"]);
+  await p.keepSaid("u1", "Does the dinner on Tue still stand?", "telegram");
+  assert.equal(fresh.conversations.filter((m) => m.content === "Does the dinner on Tue still stand?").length, 1, "not kept twice");
+  for (const m of Object.keys(stand)) delete require.cache[require.resolve(m)];
+  ctx.activeUserId = null; ctx.store = null;
   const none = { profile: { settings: { pulse_settings: { deliveryPlatforms: [] } } } };
   assert.equal(await p.deliverUnprompted("u1", none, links, () => "x"), false, "nowhere to send it");
 

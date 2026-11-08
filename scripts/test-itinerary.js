@@ -312,3 +312,26 @@ test("proof comes first: a plan found to be off leaves the question, and nothing
     assert.equal(told.length, 2, "asked again only about the flight");
   } finally { restore(); }
 });
+
+// "No it's cancelled", about the one plan the question named, is no answer
+// about the other two: settling it left them standing unasked.
+test("an answer about some plans settles only those; the rest stay open and are asked about again", async () => {
+  const facts = ownTrip();
+  const { mod, removed, restore } = check(facts);
+  try {
+    await mod.review("u1", { bookings: [stay, dentist], judge: async (u, c, p, only) => ({ clashing: [...only], ask: true, message: "Cutting it short?", place: "Toronto", from: "Lisbon" }), tell: async () => ["WhatsApp"], now: NOW });
+    const r = await mod.settle("u1", { clash: "f:flight-XQ309-2026-12-11", drop: ["b-dent"] });
+    assert.deepEqual(r, { success: true, dropped: ["Check-up at Clinica Alfama"], kept: [], still_open: ["Casa do Rio, 4 nights", "XQ301"] });
+    assert.deepEqual(removed.map(([id]) => id), ["b-dent"]);
+    assert.deepEqual(mod.openClashes(facts)[0].items.map((it) => it.id).sort(), ["b-stay", "flight-XQ301-2026-12-14"], "still in Closedhand's picture");
+    const r2 = await mod.settle("u1", { clash: "f:flight-XQ309-2026-12-11", keep: ["b-stay", "flight-XQ301-2026-12-14"] });
+    assert.deepEqual(r2, { success: true, dropped: [], kept: ["Casa do Rio, 4 nights", "XQ301"] });
+    assert.deepEqual(mod.openClashes(facts), []);
+    assert.ok(mod.readRecord(facts).clashes["f:flight-XQ309-2026-12-11"].settled);
+    const defs = read("lib/tools/definitions.js");
+    assert.match(defs, /A reply to your question about them is an answer to it: read it against what you asked\./);
+    assert.match(defs, /keep: \{ type: "array", items: \{ type: "string" \}, description: "Ids of the bookings and flights they said still stand\." \}/);
+    assert.match(read("lib/time-context.js"), /A short reply right after you asked about one of these \("no, it\\'s cancelled"\) answers that question\./);
+    assert.match(read("lib/itinerary-check.js"), /naming each of these by its day, the soonest first, so one answer can cover all of them/);
+  } finally { restore(); }
+});
