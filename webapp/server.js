@@ -6952,8 +6952,10 @@ function linkedBody(text, e) {
 // says and its files. There a Gmail address opens in Safari on Gmail's phone
 // site, which starts at the inbox; Google lets the Gmail app take no links
 // from mail.google.com (only saved passwords), and the app's own
-// googlegmail: opens it but cannot be pointed at one email. So the card
-// opens this copy, and "Open in Gmail" here opens the app.
+// googlegmail: opens it only at the inbox, never at one email (tried with
+// both ways of naming one). So the card opens this copy, which says which
+// mailbox it is from in words, as a booking from a chat says its chat: a
+// button to the app went to the inbox, not the email.
 app.get("/mail", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.redirect("/login?next=" + encodeURIComponent(req.originalUrl || "/"));
@@ -6970,13 +6972,12 @@ app.get("/mail", async (req, res) => {
     // A calendar file only adds what Upcoming already shows, as on the card.
     const files = mailFiles(m).map((f, n) => CALENDAR_FILE.test(f.filename) || /calendar/i.test(f.mimeType || "") ? "" : `<a class="file" href="/api/mail/attachment?${e(mailQuery(source, id))}&amp;n=${n}" target="_blank" rel="noopener">${e(f.filename)}</a>`).join("");
     const web = openUrlFor({ source, external_id: id, data: m });
-    const gmail = /^https:\/\/mail\.google\.com\//.test(web);
-    const ios = /\biP(hone|ad|od)\b/.test(String(req.get("user-agent") || ""));
-    const own = web.startsWith("https://") ? `<a class="open" href="${e(gmail && ios ? "googlegmail://" : web)}">Open in ${gmail ? "Gmail" : "Outlook"}</a>` : "";
+    const box = /^https:\/\/mail\.google\.com\//.test(web) ? { name: "Gmail", logo: "/logos/gmail.svg" } : /^https:\/\/outlook\./.test(web) ? { name: "Outlook", logo: "/logos/outlook.svg" } : null;
+    const from = box ? `<p class="from"><img src="${box.logo}" alt="" width="14" height="14">From your ${box.name}</p>` : "";
     res.set({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'" });
     res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><title>${e(m.subject || "Email")}</title>
-<style>html{font-size:100%}@media screen and (hover:hover) and (pointer:fine){html{font-size:90%}}body{margin:0;background:#111;color:#EFE6D6;font:0.9375rem/1.55 -apple-system,system-ui,sans-serif}.body a{color:#E59B89;text-underline-offset:2px}main{max-width:47.5rem;margin:0 auto;padding:1.5rem 1rem 3rem}h1{font-size:1.25rem;line-height:1.3;margin:0 0 0.75rem}.meta{color:#B6AFA4;font-size:0.8125rem;margin:0 0 0.25rem}.files{display:flex;flex-wrap:wrap;gap:0.5rem;margin:1rem 0}.file{border:1px solid rgba(239,230,214,.16);border-radius:0.375rem;padding:0.25rem 0.625rem;color:#EFE6D6;text-decoration:none;font-size:0.8125rem}.body{white-space:pre-wrap;word-wrap:break-word;margin-top:1.25rem;border-top:1px solid rgba(239,230,214,.12);padding-top:1rem}.open{display:inline-block;margin:0.75rem 0 0;border:1px solid rgba(239,230,214,.24);border-radius:0.5rem;padding:0.375rem 0.875rem;color:#EFE6D6;text-decoration:none;font-size:0.875rem}</style></head>
-<body><main><h1>${e(m.subject || "(no subject)")}</h1><p class="meta">From ${e(m.from)}</p>${m.to ? `<p class="meta">To ${e(m.to)}</p>` : ""}<p class="meta">${when}</p>${own}${files ? `<div class="files">${files}</div>` : ""}<div class="body">${linkedBody(m.body || m.snippet || "", e)}</div></main></body></html>`);
+<style>html{font-size:100%}@media screen and (hover:hover) and (pointer:fine){html{font-size:90%}}body{margin:0;background:#111;color:#EFE6D6;font:0.9375rem/1.55 -apple-system,system-ui,sans-serif}.body a{color:#E59B89;text-underline-offset:2px}main{max-width:47.5rem;margin:0 auto;padding:1.5rem 1rem 3rem}h1{font-size:1.25rem;line-height:1.3;margin:0 0 0.75rem}.meta{color:#B6AFA4;font-size:0.8125rem;margin:0 0 0.25rem}.files{display:flex;flex-wrap:wrap;gap:0.5rem;margin:1rem 0}.file{border:1px solid rgba(239,230,214,.16);border-radius:0.375rem;padding:0.25rem 0.625rem;color:#EFE6D6;text-decoration:none;font-size:0.8125rem}.body{white-space:pre-wrap;word-wrap:break-word;margin-top:1.25rem;border-top:1px solid rgba(239,230,214,.12);padding-top:1rem}.from{display:flex;align-items:center;gap:0.375rem;margin:0.75rem 0 0;font-size:0.8125rem;color:#8C857B}.from img{width:0.875rem;height:0.875rem}</style></head>
+<body><main><h1>${e(m.subject || "(no subject)")}</h1><p class="meta">From ${e(m.from)}</p>${m.to ? `<p class="meta">To ${e(m.to)}</p>` : ""}<p class="meta">${when}</p>${from}${files ? `<div class="files">${files}</div>` : ""}<div class="body">${linkedBody(m.body || m.snippet || "", e)}</div></main></body></html>`);
   } catch (err) {
     console.error("[mail] view error:", err.message);
     res.status(500).send("Could not open that email. Try again.");

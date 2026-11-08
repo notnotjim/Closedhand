@@ -99,15 +99,17 @@ test('the file route is behind the login, checks its inputs, asks the bot and ne
 });
 
 // On an iPhone a Gmail address opened Gmail's phone site at the inbox, in
-// Safari: the Gmail app takes no links from mail.google.com.
-test("on an iPhone a Gmail email opens as Closedhand keeps it, with Open in Gmail opening the Gmail app", () => {
+// Safari: the Gmail app takes no links from mail.google.com. Its own
+// googlegmail: link opened the app at the inbox, never at the email, so the
+// copy says which mailbox it is from in words, as a chat booking does.
+test("on an iPhone a Gmail email opens as Closedhand keeps it, saying which mailbox it is from, with no button to the app", () => {
   const dash = read('webapp/views/dashboard.html');
   assert.match(dash, /var IOS = \/\\biP\(hone\|ad\|od\)\\b\/\.test\(navigator\.userAgent\);/);
   assert.match(dash, /var mail = sm && \(IOS && sm\.mailbox === 'gmail' && sm\.copy_url \? sm\.copy_url : sm\.open_url\);/, 'Outlook and every other phone keep the mailbox\'s own address');
   const view = server.slice(server.indexOf('app.get("/mail"'), server.indexOf('app.get("/api/bookings"'));
-  assert.match(view, /const ios = \/\\biP\(hone\|ad\|od\)\\b\/\.test\(String\(req\.get\("user-agent"\) \|\| ""\)\);/);
-  assert.match(view, /href="\$\{e\(gmail && ios \? "googlegmail:\/\/" : web\)\}">Open in \$\{gmail \? "Gmail" : "Outlook"\}<\/a>/, 'the app on an iPhone, the mailbox\'s own address elsewhere');
-  assert.match(view, /const own = web\.startsWith\("https:\/\/"\)/, 'only mail with a trusted address of its own gets the link');
+  assert.doesNotMatch(view, /googlegmail|Open in|class="open"/, 'a button to the app went to the inbox, not the email');
+  assert.match(view, /const from = box \? `<p class="from"><img src="\$\{box\.logo\}" alt="" width="14" height="14">From your \$\{box\.name\}<\/p>` : "";/);
+  assert.match(view, /<p class="meta">\$\{when\}<\/p>\$\{from\}/);
 });
 
 test('the dashboard opens the email from its own chip, lists the files and moves finished bookings to Past', () => {
