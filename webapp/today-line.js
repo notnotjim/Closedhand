@@ -11,15 +11,31 @@ function localParts(ms, tz) {
 }
 
 // "Reservation at Harbour Grill Old Town, table for 2" reads as "Harbour
-// Grill Old Town": what it is, in whole words, at most four.
+// Grill Old Town": what it is, in whole words, at most four. A long "what at
+// where" keeps the what ("Shampoo at Lantern Hair Studio" is "Shampoo"), and
+// no label ends on a joining word: "London Kings Cross to" read as if the
+// time after it were where the train went.
+const JOINING = /\s+(to|at|with|for|and|of|the|from|in|on|by)$/i;
 function shortLabel(text) {
   let t = String(text || "").replace(/\s+/g, " ").trim()
     .replace(/^(reservation|booking|table|appointment|stay|dinner|lunch)\s+(at|with|for)\s+/i, "")
     .replace(/\s*\([^)]*\)\s*$/, "")
     .replace(/\s+-\s+.*$/, "")
     .replace(/,.*$/, "");
-  if (t.length > 26) t = t.split(" ").slice(0, 4).join(" ");
+  if (t.length > 26) {
+    const what = t.split(/\s+at\s+/i)[0];
+    if (what !== t && what.split(" ").length <= 4) return what;
+    t = t.split(" ").slice(0, 4).join(" ");
+    while (JOINING.test(t)) t = t.replace(JOINING, "");
+  }
   return t;
+}
+// A train, bus or ferry is said by where it goes, as a flight is: "London
+// Kings Cross to Newcastle" is "Train to Newcastle".
+const JOURNEYS = { train: "Train", bus: "Bus", ferry: "Ferry" };
+function journeyLabel(type, title) {
+  const m = JOURNEYS[type] && /\s+to\s+(.+)$/i.exec(String(title || ""));
+  return m ? `${JOURNEYS[type]} to ${shortLabel(m[1])}` : null;
 }
 
 // Words that say what a thing is, a flight number written as one ("QX 416"
@@ -41,7 +57,7 @@ function sameThing(a, b) {
   return !!booking && a.kind !== b.kind && apart <= 12 * 3600000 && booking.size > 0 && [...booking].every((w) => other.has(w));
 }
 
-// items: [{ at: ms, raw: "title", kind: "event"|"booking"|"flight", label? }]
+// items: [{ at: ms, raw: "title", kind: "event"|"booking"|"flight", type?: a booking's kind, label? }]
 function build(items, { tz, now = Date.now(), rainAt = () => false } = {}) {
   const today = localParts(now, tz).day;
   const tomorrow = localParts(now + 86400000, tz).day;
@@ -56,11 +72,12 @@ function build(items, { tz, now = Date.now(), rainAt = () => false } = {}) {
   }
   return kept.sort((a, b) => a.at - b.at).slice(0, 4).map((it) => {
     const { day, time } = localParts(it.at, tz);
-    return { when: day === today ? "today" : "tomorrow", time, label: it.label || shortLabel(it.raw), rain: it.kind !== "flight" && !!rainAt(it.at) };
+    return { when: day === today ? "today" : "tomorrow", time, label: it.label || journeyLabel(it.type, it.raw) || shortLabel(it.raw), rain: it.kind !== "flight" && !!rainAt(it.at) };
   });
 }
 
-// "Dentist 09:00 · Harbour Grill 19:00, rain likely · Tomorrow: flight to SGN 11:55"
+// "Dentist 09:00 · Harbour Grill 19:00, rain likely · Tomorrow: flight to SGN 11:55",
+// what a screen reader says for the line the page lays out by day.
 function sentence(entries) {
   if (!entries.length) return "";
   const part = (e) => `${e.label} ${e.time}${e.rain ? ", rain likely" : ""}`;
@@ -72,4 +89,4 @@ function sentence(entries) {
   return out.join(" · ");
 }
 
-module.exports = { build, sentence, shortLabel, localParts };
+module.exports = { build, sentence, shortLabel, journeyLabel, localParts };

@@ -4202,12 +4202,12 @@ app.get("/api/today", async (req, res) => {
     const now = Date.now(), until = new Date(now + 2 * 86400000).toISOString(), from = new Date(now - 3600000).toISOString();
     const [events, bookings, flights] = await Promise.all([
       supabase.from("data_cache").select("summary:data->>summary, all_day:data->>all_day, received_at").eq("user_id", userId).eq("type", "event").gte("received_at", from).lte("received_at", until).limit(30),
-      supabase.from("bookings").select("title, starts_at, status").eq("user_id", userId).gte("starts_at", from).lte("starts_at", until),
+      supabase.from("bookings").select("kind, title, starts_at, status").eq("user_id", userId).gte("starts_at", from).lte("starts_at", until),
       supabase.from("facts").select("key, value").eq("user_id", userId).like("key", "flight-%"),
     ]);
     const items = [];
     for (const e of events.data || []) if (e.summary && String(e.all_day) !== "true") items.push({ at: Date.parse(e.received_at), raw: e.summary, kind: "event" });
-    for (const b of bookings.data || []) if (b.status !== "cancelled") items.push({ at: Date.parse(b.starts_at), raw: b.title, kind: "booking" });
+    for (const b of bookings.data || []) if (b.status !== "cancelled") items.push({ at: Date.parse(b.starts_at), raw: b.title, kind: "booking", type: b.kind });
     for (const f of flights.data || []) {
       try {
         let v = f.value; if (typeof v === "string") v = JSON.parse(v); if (v && typeof v.value === "string") v = JSON.parse(v.value);

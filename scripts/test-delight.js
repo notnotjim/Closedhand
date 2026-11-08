@@ -25,6 +25,14 @@ test('today and tomorrow, once each, in local time, with rain where likely', () 
   assert.equal(line.sentence([]), '');
   assert.equal(line.shortLabel('Lantern Bay Wood Fired Kitchen Old Town, table for 2'), 'Lantern Bay Wood Fired', 'whole words, at most four, nothing after a comma');
   assert.equal(line.shortLabel('Reservation at Harbour Grill Old Town'), 'Harbour Grill Old Town');
+  assert.equal(line.shortLabel('Shampoo at Lantern Hair Studio Riverside'), 'Shampoo', 'a long what-at-where keeps the what');
+  assert.equal(line.shortLabel('Check-up visit at Fixture Dental Riverside'), 'Check-up visit');
+  assert.equal(line.shortLabel('Harbour Point Ferry Terminal to Northgate'), 'Harbour Point Ferry Terminal');
+  assert.equal(line.shortLabel('Riverside Central Station to the Old Docks'), 'Riverside Central Station', 'never ending on a joining word');
+  assert.equal(line.journeyLabel('train', 'Riverside Central Station to Northgate'), 'Train to Northgate', 'a train is said by where it goes, as a flight is');
+  assert.equal(line.journeyLabel('restaurant', 'Harbour Grill to go'), null);
+  const now2 = Date.parse('2026-10-08T01:00:00Z');
+  assert.equal(line.build([{ at: Date.parse('2026-10-08T05:00:00Z'), raw: 'Riverside Central Station to Northgate', kind: 'booking', type: 'train' }], { tz: 'Asia/Bangkok', now: now2 })[0].label, 'Train to Northgate');
 });
 
 test('one thing written down twice is said once: a stay booked and in the calendar, a flight number with or without its space', () => {
@@ -42,8 +50,18 @@ test('one thing written down twice is said once: a stay booked and in the calend
 test('the line is served behind the login and shown under the weather, on a row of its own', () => {
   const server = read('webapp/server.js');
   assert.ok(server.indexOf('app.get("/api/today"') > server.indexOf('// --- The gate: everything registered below needs the session'));
-  assert.match(read('webapp/views/index.html'), /<p class="today-line" id="todayLine" hidden><\/p>/);
-  assert.doesNotMatch(read('webapp/views/index.html'), /\.today-line \{[^}]*max-width/, 'a cap on its width let it sit beside the weather');
+  const page = read('webapp/views/index.html');
+  assert.match(page, /<p class="today-line" id="todayLine" hidden><\/p>/);
+  assert.doesNotMatch(page, /\.today-line \{[^}]*max-width/, 'a cap on its width let it sit beside the weather');
+  assert.match(server.slice(server.indexOf('app.get("/api/today"')), /res\.json\(\{ entries, text: line\.sentence\(entries\) \}\);/);
+  // Laid out by day, a line each, each thing with its time first; the
+  // sentence is what a screen reader hears.
+  const draw = page.slice(page.indexOf("fetch('/api/today'"), page.indexOf("}).catch(function() {});", page.indexOf("fetch('/api/today'")));
+  assert.match(draw, /\[\['today', 'Today'\], \['tomorrow', 'Tomorrow'\]\]\.forEach/);
+  assert.match(draw, /'<span class="tl-item"><span class="tl-time">' \+ esc\(e\.time\) \+ '<\/span>' \+ esc\(e\.label\) \+ \(e\.rain \? rain : ''\) \+ '<\/span>'/);
+  assert.match(draw, /line\.setAttribute\('aria-label', \(d && d\.text\) \|\| ''\);/);
+  assert.match(draw, /data-tip="Rain likely"/, 'rain is a drop, said on hover');
+  assert.match(page, /\.today-line \{ flex-basis: 100%; display: grid; grid-template-columns: auto minmax\(0, auto\); justify-content: center;/);
 });
 
 test('an ignored planted instruction is always mentioned in the reply', () => {
