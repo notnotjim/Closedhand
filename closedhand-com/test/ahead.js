@@ -184,8 +184,8 @@ test('paying 3 months ahead in crypto starts a plan with a month of fair use and
   const w = world();
   const id = await person({ freeUsage: 2 });
   assert.equal(await w.ahead.checkout({ id }, { months: 3, agreed: true }), 'https://closedhand.com/pay/' + w.state.made[0].id);
-  assert.deepEqual(w.state.made[0].body, { amount: '90', currency: 'USD', metadata: { ownerId: id, months: 3 }, checkout: { redirectURL: 'https://closedhand.com/account?plus=ahead', redirectAutomatically: true } },
-    'an invoice in US dollars carrying the account and months, and nothing about the payer');
+  assert.deepEqual(w.state.made[0].body, { amount: '90', currency: 'USD', metadata: { ownerId: id, months: 3 }, checkout: { redirectURL: 'https://closedhand.com/account?plus=ahead', redirectAutomatically: true, paymentMethods: ['USDT-TRON', 'USDT-ETHEREUM', 'USDT-POLYGON', 'USDT-BSC'] } },
+    'an invoice in US dollars carrying the account and months, and nothing about the payer, paid in USDT only: Bitcoin is left out for now');
   const made = w.state.made[0].id;
   w.state.invoices.get(made).status = 'Settled';
   assert.equal(await w.ahead.settled(made), 'paid ahead 3 months');

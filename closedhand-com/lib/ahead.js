@@ -42,6 +42,10 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   // same length, which covers moving the coins on; carrying on costs a month.
   const cryptoUsd = { 3: Number(env.CRYPTO_3_MONTHS_USD || 90), 6: Number(env.CRYPTO_6_MONTHS_USD || 168), 9: Number(env.CRYPTO_9_MONTHS_USD || 243) };
   const extendUsd = Number(env.CRYPTO_EXTEND_USD || 30);
+  // What an invoice may be paid with: USDT on Tron, Ethereum, Polygon and BSC.
+  // Bitcoin is left out for now: its own node cost far more to run than the
+  // payments it would take.
+  const payWith = String(env.BTCPAY_PAYMENT_METHODS || 'USDT-TRON,USDT-ETHEREUM,USDT-POLYGON,USDT-BSC').split(',').map(s => s.trim()).filter(Boolean);
   const cryptoOn = () => btcpay.url.startsWith('https://') && !!btcpay.store && !!btcpay.key && !!btcpay.secret && !!includedAi?.enabled();
   // lib/addresses.js: what to do with a paid claim, and with one whose invoice lapsed.
   let pending = null;
@@ -199,7 +203,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
       amount: String(amount),
       currency: 'USD',
       metadata: { ownerId: owner.id, ...what },
-      checkout: { redirectURL: baseUrl + '/account?plus=' + (what.extend ? 'carrying' : 'ahead'), redirectAutomatically: true },
+      checkout: { redirectURL: baseUrl + '/account?plus=' + (what.extend ? 'carrying' : 'ahead'), redirectAutomatically: true, paymentMethods: payWith },
     });
     if (typeof made?.id !== 'string' || !/^[A-Za-z0-9]{8,64}$/.test(made.id)) throw new Error('BTCPay did not return an invoice');
     return baseUrl + '/pay/' + made.id;
@@ -210,7 +214,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   async function invoiceForClaim(claimId, months) {
     if (!cryptoOn()) throw Object.assign(new Error('Paying in crypto is not available just now.'), { status: 503 });
     if (!CRYPTO_MONTHS.includes(months)) throw Object.assign(new Error('Choose 3, 6 or 9 months.'), { status: 400 });
-    const made = await btcpayApi('/invoices', 'POST', { amount: String(cryptoUsd[months]), currency: 'USD', metadata: { pendingClaim: claimId, months } });
+    const made = await btcpayApi('/invoices', 'POST', { amount: String(cryptoUsd[months]), currency: 'USD', metadata: { pendingClaim: claimId, months }, checkout: { paymentMethods: payWith } });
     if (typeof made?.id !== 'string' || !/^[A-Za-z0-9]{8,64}$/.test(made.id)) throw new Error('BTCPay did not return an invoice');
     return { id: made.id, url: baseUrl + '/pay/' + made.id };
   }
