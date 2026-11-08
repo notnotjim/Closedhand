@@ -107,9 +107,10 @@ test("each card involved says what it clashes with, in the places Closedhand's l
   const old = { clashes: { "f:flight-XQ309-2026-12-11": { asked: "2026-12-01T09:00:00Z", items: { "b-stay": { state: "asked" } } } } };
   assert.deepEqual(itinerary.asks(found, old)["b-stay"], [{ at: "2026-12-01T09:00:00Z", in: [] }], "a question asked before asks were kept still says when");
   const fns = new Function("shortDay", dash.slice(dash.indexOf("    function askedLine("), dash.indexOf("    // A booking found in a chat says which chat")) + "; return { askedLine, whenAsked };")((iso) => new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", ""));
-  assert.equal(fns.askedLine([{ at: "2026-11-07T09:00:00Z", in: ["WhatsApp"] }]), "Closedhand asked you in WhatsApp on Sat 7 Nov.");
+  assert.equal(fns.askedLine([{ at: "2025-03-07T09:00:00Z", in: ["WhatsApp"] }]), "Closedhand asked you in WhatsApp on Fri 7 Mar.");
   const now = new Date(), morning = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0).toISOString();
-  assert.equal(fns.askedLine([{ at: "2026-11-07T09:00:00Z", in: ["WhatsApp"] }, { at: morning, in: ["WhatsApp"] }]), "Closedhand asked you in WhatsApp on Sat 7 Nov, and again this morning.");
+  assert.equal(fns.askedLine([{ at: "2025-03-07T09:00:00Z", in: ["WhatsApp"] }, { at: morning, in: ["WhatsApp"] }]), "Closedhand asked you in WhatsApp on Fri 7 Mar, and again this morning.");
+  assert.equal(fns.whenAsked(new Date(now.getTime() - 86400000).toISOString()), "yesterday");
 });
 
 // lib/itinerary-check.js with the store and its neighbours stood in.

@@ -136,7 +136,9 @@ test("words the LLM gives that are not in the message take nothing off, and a pl
 
 test("every look at clashes looks for proof first, and a source that says cancelled says so under Cancelled plans", () => {
   assert.match(read("lib/itinerary-check.js"), /try \{ await \(deps\.plansOff \|\| require\("\.\/plans-off"\)\.review\)\(userId, \{ now \}\); \}/);
-  const { cancelledBy } = require("../lib/bookings");
+  // Read from the source: CI's checks run without the packages lib/bookings.js loads.
+  const src = read("lib/bookings.js");
+  const cancelledBy = new Function(src.slice(src.indexOf("function cancelledBy("), src.indexOf("// A booking taken off the person's plans")) + "; return cancelledBy;")();
   const b = { provider: "Tasca Verde", timezone: "Europe/Lisbon" };
   assert.equal(cancelledBy(b, { from: '"Tasca Verde" <tables@example.com>', date: "2026-11-30T10:00:00Z" }), "Tasca Verde emailed on Mon 30 Nov that it's cancelled.");
   assert.equal(cancelledBy({ timezone: "Europe/Lisbon" }, { from: '"Example Tours" <x@example.com>', date: "2026-11-30T10:00:00Z" }), "Example Tours emailed on Mon 30 Nov that it's cancelled.");
