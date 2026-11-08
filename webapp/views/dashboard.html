@@ -1382,9 +1382,10 @@
     .up-from { display: flex; align-items: center; gap: 0.375rem; margin-top: 0.625rem; padding-left: 1.5625rem; font-size: 0.75rem; color: var(--dim); }
     .up-from img { width: 0.8125rem; height: 0.8125rem; }
     /* The x takes a plan off to Cancelled plans, where it can be put back:
-       nothing is lost, so it is quiet and asks nothing. */
-    .up-x { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 0.4375rem; background: none; color: var(--faint); cursor: pointer; }
-    .up-x:hover, .up-x:focus-visible { background: rgba(var(--fg-rgb),0.06); color: var(--fg); }
+       nothing is lost, so it is quiet and asks nothing. Named with its tag,
+       as the dashboard's buttons get padding of their own. */
+    button.up-x { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 0.4375rem; background: none; color: var(--faint); cursor: pointer; }
+    button.up-x:hover, button.up-x:focus-visible { background: rgba(var(--fg-rgb),0.06); color: var(--fg); }
     /* A hotel stay: its check-in is a row, each day between says which night
        it is, and its check-out is a short row on its day. */
     .up-stay { display: flex; align-items: center; gap: 0.625rem; margin-top: 0.75rem; padding: 0.5625rem 0.75rem; border-radius: 0.5625rem; background: var(--raised); font-size: 0.8125rem; color: var(--muted); }
@@ -1394,14 +1395,14 @@
     .up-nights i.on { background: var(--fg); }
     .up-item.small .up-title { font-weight: 500; color: var(--fg-quiet); }
     .up-item.past { opacity: 0.6; }
-    .up-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+    button.up-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
     .up-open:hover { text-decoration: underline; text-underline-offset: 2px; }
     .up-gone { grid-template-columns: 4.5rem minmax(0, 1fr) auto; align-items: start; padding: 0.875rem 0; }
     .up-gone .up-time { font-size: 0.8125rem; font-weight: 400; color: var(--dim); }
     .up-gone .up-title { font-size: 0.875rem; font-weight: 400; color: var(--muted); }
     .up-gone .up-icon { color: var(--faint); }
     .up-gone .up-sub { font-size: 0.78125rem; color: var(--dim); }
-    .up-putback { padding: 0; border: 0; background: none; font: inherit; font-size: 0.78125rem; line-height: 1.375rem; color: var(--accent-link); cursor: pointer; }
+    button.up-putback { padding: 0; border: 0; background: none; font: inherit; font-size: 0.78125rem; line-height: 1.375rem; color: var(--accent-link); cursor: pointer; }
     #cancelled-section, #past-section { margin-top: 2rem; }
     #cancelled-section + #past-section { margin-top: 1.25rem; }
     .flight-status-badge {
