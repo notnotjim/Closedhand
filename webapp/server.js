@@ -7035,18 +7035,33 @@ app.get("/api/bookings", async (req, res) => {
 // it back: nothing is deleted, so neither asks first. A booking's change is
 // stamped as Closedhand's own, so an email sent before it does not undo it,
 // and one put back is not taken off again for what was already said
-// (details.kept, lib/plans-off.js).
+// (details.kept, lib/plans-off.js). A reminder set for the plan's time goes
+// with it and comes back with it (the bot's lib/bookings.js endRemindersFor).
+async function planReminders(userId, startsAt, on, ids) {
+  if (on) {
+    if (ids?.length) await supabase.from("schedules").update({ enabled: true }).eq("user_id", userId).in("id", ids);
+    return [];
+  }
+  const at = Date.parse(startsAt);
+  if (!Number.isFinite(at)) return [];
+  const { data } = await supabase.from("schedules").select("id").eq("user_id", userId).eq("enabled", true).eq("event_at", new Date(at).toISOString());
+  const found = (data || []).map((r) => r.id);
+  if (found.length) await supabase.from("schedules").update({ enabled: false }).eq("user_id", userId).in("id", found);
+  return found;
+}
 app.post("/api/bookings/:id/:action(cancel|restore)", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
   try {
-    const { data: row, error: readError } = await supabase.from("bookings").select("details").eq("user_id", userId).eq("id", req.params.id).maybeSingle();
+    const { data: row, error: readError } = await supabase.from("bookings").select("details, starts_at").eq("user_id", userId).eq("id", req.params.id).maybeSingle();
     if (readError) throw readError;
     if (!row) return res.status(404).json({ error: "Not found" });
     const at = new Date().toISOString();
     const details = { ...(row.details || {}), changed_by_closedhand: at };
-    if (req.params.action === "cancel") details.cancelled = { by: "you", at };
-    else { delete details.cancelled; details.kept = at; }
+    if (req.params.action === "cancel") {
+      const reminders = await planReminders(userId, row.starts_at, false);
+      details.cancelled = { by: "you", at, ...(reminders.length ? { reminders } : {}) };
+    } else { await planReminders(userId, null, true, details.cancelled?.reminders); delete details.cancelled; details.kept = at; }
     const { error } = await supabase.from("bookings").update({ status: req.params.action === "cancel" ? "cancelled" : "confirmed", details, updated_at: at }).eq("user_id", userId).eq("id", req.params.id);
     if (error) throw error;
     res.json({ success: true });
@@ -7075,8 +7090,10 @@ app.post("/api/flights/:key/:action(cancel|restore)", async (req, res) => {
     const flight = wrapped ? JSON.parse(outer.value) : outer;
     const at = new Date().toISOString();
     let marked;
-    if (req.params.action === "cancel") marked = { ...flight, supersededBy: "removed", supersededAt: at, cancelled: { by: "you", at } };
-    else if (flight.supersededBy === "removed") { marked = { ...flight, kept: at }; delete marked.supersededBy; delete marked.supersededAt; delete marked.cancelled; }
+    if (req.params.action === "cancel") {
+      const reminders = await planReminders(userId, flight.departure?.dateTime, false);
+      marked = { ...flight, supersededBy: "removed", supersededAt: at, cancelled: { by: "you", at, ...(reminders.length ? { reminders } : {}) } };
+    } else if (flight.supersededBy === "removed") { await planReminders(userId, null, true, flight.cancelled?.reminders); marked = { ...flight, kept: at }; delete marked.supersededBy; delete marked.supersededAt; delete marked.cancelled; }
     else return res.status(400).json({ error: "Not taken off" });
     const value = JSON.stringify(wrapped ? { ...outer, value: JSON.stringify(marked) } : marked);
     const { error } = await supabase.from("facts").update({ value, updated_at: at }).eq("user_id", userId).eq("key", key);

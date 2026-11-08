@@ -22,7 +22,7 @@ function harness(facts) {
   ctx.store = { facts };
   const bPath = require.resolve("../lib/bookings"), sPath = require.resolve("../lib/storage");
   const cancelled = [];
-  require.cache[bPath] = { id: bPath, filename: bPath, loaded: true, exports: { cancelBooking: async (u, id, how) => { cancelled.push([id, how]); return true; }, listUpcoming: async () => [] } };
+  require.cache[bPath] = { id: bPath, filename: bPath, loaded: true, exports: { cancelBooking: async (u, id, how) => { cancelled.push([id, how]); return true; }, endRemindersFor: async () => ["r-1"], listUpcoming: async () => [] } };
   require.cache[sPath] = { id: sPath, filename: sPath, loaded: true, exports: { saveStore() {} } };
   const mPath = require.resolve("../lib/plans-off");
   delete require.cache[mPath];
@@ -100,19 +100,23 @@ test("a plan the evidence shows is off comes off with how it is known; nothing n
       "flight-XQ512-2026-12-06": [{ n: 1, at: NOW - DAY, from: "Email from Example Air", text: "Booking QZP4LM: your flight XQ512 has been cancelled and refunded." }],
     };
     const deps = { now: NOW, bookings: [dinner, visit], evidence: async (u, p) => said[p.id] || [],
-      judge: async (u, plans) => { judged++; return plans.map((p) => p.id === "b-dinner" ? { id: p.id, n: 1, quote: "Your reservation TV-88213 has been cancelled", why: "Tasca Verde emailed on Mon 30 Nov that the table is cancelled." }
-        : { id: p.id, n: 1, quote: "your flight XQ512 has been cancelled and refunded", why: "Example Air emailed on Mon 30 Nov that it's cancelled and refunded." }); } };
+      judge: async (u, groups) => { judged++; return groups.flatMap((g) => g.plans.map((p) => {
+        const said = (words) => g.evidence.find((e) => e.text.includes(words))?.n;
+        return p.id === "b-dinner" ? { id: p.id, n: said("TV-88213"), quote: "Your reservation TV-88213 has been cancelled", why: "Tasca Verde emailed on Mon 30 Nov that the table is cancelled." }
+          : { id: p.id, n: said("XQ512"), quote: "your flight XQ512 has been cancelled and refunded", why: "Example Air emailed on Mon 30 Nov that it's cancelled and refunded." };
+      })); } };
     const r = await mod.review("u1", deps);
-    assert.equal(judged, 1);
+    assert.equal(judged, 2, "read twice");
     assert.equal(r.checked, 2, "the visit's messages say nothing is off, so they are not put to the LLM");
     assert.deepEqual(cancelled, [["b-dinner", { by: "closedhand", why: "Tasca Verde emailed on Mon 30 Nov that the table is cancelled.", quote: "Your reservation TV-88213 has been cancelled" }]]);
     const flight = JSON.parse(facts["flight-XQ512-2026-12-06"].value);
     assert.equal(flight.supersededBy, "removed", "a flight is no longer tracked");
     assert.equal(flight.cancelled.by, "closedhand");
+    assert.deepEqual(flight.cancelled.reminders, ["r-1"], "its reminder went with it, kept so Put back brings it back");
     assert.match(flight.cancelled.why, /Example Air emailed/);
     // The same messages are not read again.
     await mod.review("u1", { ...deps, bookings: [visit] });
-    assert.equal(judged, 1);
+    assert.equal(judged, 2);
   } finally { restore(); }
 });
 
@@ -122,15 +126,15 @@ test("words the LLM gives that are not in the message take nothing off, and a pl
   try {
     let judged = 0;
     const said = [{ n: 1, at: NOW - DAY, from: "Email from Tasca Verde", text: "Your reservation TV-88213 has been cancelled." }];
-    const judge = async (u, plans) => { judged++; return [{ id: plans[0].id, n: 1, quote: "we have cancelled your booking for good", why: "x" }]; };
+    const judge = async (u, groups) => { judged++; return [{ id: groups[0].plans[0].id, n: 1, quote: "we have cancelled your booking for good", why: "x" }]; };
     await mod.review("u1", { now: NOW, bookings: [dinner], evidence: async () => said, judge });
-    assert.equal(judged, 1);
+    assert.equal(judged, 2);
     assert.deepEqual(cancelled, [], "made-up words take nothing off");
     const kept = { ...dinner, id: "b-kept", details: { kept: new Date(NOW - DAY / 2).toISOString() } };
     await mod.review("u1", { now: NOW, bookings: [kept], evidence: async () => said, judge });
-    assert.equal(judged, 1, "said before it was put back: not read again");
+    assert.equal(judged, 2, "said before it was put back: not read again");
     await mod.review("u1", { now: NOW, bookings: [kept], evidence: async () => [{ ...said[0], at: NOW - DAY / 4 }], judge });
-    assert.equal(judged, 2, "said after: read");
+    assert.equal(judged, 4, "said after: read");
   } finally { restore(); }
 });
 
@@ -146,4 +150,118 @@ test("every look at clashes looks for proof first, and a source that says cancel
   const bookings = read("lib/bookings.js");
   assert.match(bookings, /\.\.\.\(b\.status === "cancelled" \? \{ cancelled: \{ by: "source", at: new Date\(\)\.toISOString\(\), why: cancelledBy\(b, src\) \} \} : \{\}\)/);
   assert.match(bookings, /const OTHER_WORDS = "[^"]* cancel cancelled refund";/, "a chat that calls something off is read too");
+});
+
+// A clinic cancelled a procedure; its shampoo and follow-up, aftercare for
+// it, stayed on Upcoming and were asked about.
+test("what was part of a plan that is off comes off with it, on that plan's cancelling words, and only within its provider", async () => {
+  const facts = {};
+  const { mod, cancelled, restore } = harness(facts);
+  try {
+    const surgery = { ...visit, id: "b-proc", title: "Procedure at Clinica Sorriso", starts_at: "2026-12-02T10:00:00+00:00", status: "cancelled", details: { cancelled: { by: "closedhand", at: new Date(NOW - DAY).toISOString(), why: "Clinica Sorriso cancelled it." } } };
+    const rinse = { ...visit, id: "b-rinse", title: "Rinse at Clinica Sorriso", source_email_id: "m-rinse", starts_at: "2026-12-03T10:00:00+00:00" };
+    const check = { ...visit, id: "b-check", title: "Check-up at Clinica Sorriso", source_email_id: "m-check", starts_at: "2026-12-04T10:00:00+00:00" };
+    const said = [{ id: "w9", n: 1, at: NOW - 2 * DAY, from: "WhatsApp chat with Clinica Sorriso, they wrote", text: "As we have not heard back, we will cancel your procedure on Wednesday 2 December." }];
+    let seen = null;
+    const judge = async (u, groups) => { seen = groups; return []; };
+    const asked = [];
+    const partOf = async (u, parent, after) => {
+      asked.push([parent.title, after.map((p) => p.id)]);
+      if (parent.title === "Procedure at Clinica Sorriso") return [{ id: "b-rinse", why: "It was aftercare for your procedure on Wed 2 Dec, which Clinica Sorriso cancelled." }, { id: "b-dinner", why: "Not this provider's." }];
+      if (parent.title === "Rinse at Clinica Sorriso") return [{ id: "b-check", why: "Part of the same aftercare." }];
+      return [];
+    };
+    const early = { ...visit, id: "b-early", title: "Consultation at Clinica Sorriso", source_email_id: "m-early", starts_at: "2026-12-02T08:00:00+00:00" };
+    await mod.review("u1", { now: NOW, bookings: [surgery, rinse, check, dinner, early], evidence: async (u, p) => p.group === "name:clinica" ? said : [], judge, partOf });
+    assert.equal(seen.length, 1, "the clinic's plans together, with what it already had taken off");
+    assert.deepEqual(seen[0].plans.map((p) => p.id), ["b-early", "b-rinse", "b-check"]);
+    assert.deepEqual(seen[0].gone.map((x) => x.title), ["Procedure at Clinica Sorriso"]);
+    assert.deepEqual(asked, [["Procedure at Clinica Sorriso", ["b-rinse", "b-check"]], ["Procedure at Clinica Sorriso", ["b-rinse", "b-check"]], ["Rinse at Clinica Sorriso", ["b-check"]], ["Rinse at Clinica Sorriso", ["b-check"]]], "asked twice, only about the provider's plans after it, then about what hung on those");
+    assert.deepEqual(cancelled.map(([id]) => id), ["b-rinse", "b-check"], "aftercare goes with it, and what was part of that too, never one before it");
+    assert.match(cancelled[0][1].why, /aftercare for your procedure/);
+    assert.equal(cancelled[0][1].part_of, "Procedure at Clinica Sorriso");
+    assert.ok(!cancelled.some(([id]) => id === "b-dinner"), "another provider's plan is not part of it");
+  } finally { restore(); }
+});
+
+test("a refund the person asked for, or what they told Closedhand, counts; a new rule looks at every plan again", async () => {
+  const { check, toldClosedhand, readRecord, RECORD_KEY } = require("../lib/plans-off");
+  const refund = { tz: "Europe/Lisbon", evidence: [{ n: 1, at: NOW, from: "Email from Example Trips", text: "Booking QZP4LM: we have received your refund request for flight XQ512." }] };
+  assert.ok(check({ n: 1, quote: "we have received your refund request for flight XQ512", why: "You asked Example Trips for a refund on Mon 30 Nov." }, refund));
+  const convo = [
+    { role: "user", content: "I've cancelled the Tasca dinner, we're eating at home", ts: new Date(NOW - DAY).toISOString() },
+    { role: "assistant", content: "Tasca Verde noted.", ts: new Date(NOW - DAY).toISOString() },
+    { role: "user", content: "Tasca was great last year", ts: new Date(NOW - 90 * DAY).toISOString() },
+  ];
+  assert.deepEqual(toldClosedhand(convo, ["Tasca"], NOW).map((e) => [e.from, e.text]), [["You wrote to Closedhand", "I've cancelled the Tasca dinner, we're eating at home"]], "their own words, recent, naming it");
+  assert.deepEqual(readRecord({ [RECORD_KEY]: JSON.stringify({ checked: { "b-dinner": "2026-11-30T00:00:00Z" } }) }).checked, {}, "a record from before the rule changed is set aside");
+  assert.match(read("lib/plans-off.js"), /const RECORD_VERSION = 2;/);
+});
+
+test("the bookings reader reads the last days of chats first, and a different plan never goes into one taken off", () => {
+  const src = read("lib/bookings.js");
+  assert.match(src, /const recent = await recentChatHits\(userId\)\.catch\(\(\) => \[\]\);\n\s*const hits = recent\.concat\(/, "recent days before the ranked search");
+  const talk = new RegExp(src.match(/const BOOKING_TALK = new RegExp\(`(.*)`, "i"\);/)[1].replace("${OTHER_WORDS.split(\" \").join(\"|\")}", "booked").replace(/\\\\/g, "\\"), "i");
+  assert.ok(talk.test("After your in-person consultation tomorrow at 10 a.m. we will confirm"));
+  assert.ok(talk.test("Ok see you there at 10am"));
+  assert.ok(!talk.test("Lovely weather today"));
+  const { sameBooking } = require("../lib/booking-identity");
+  const off = { kind: "appointment", provider: "Clinica Sorriso", title: "Procedure at Clinica Sorriso", starts_at: "2026-12-02T10:00:00+00:00", status: "cancelled", details: { cancelled: { by: "closedhand" } } };
+  const consult = { kind: "appointment", provider: "Clinica Sorriso", title: "Consultation at Clinica Sorriso", starts_at: "2026-12-02T09:00:00+00:00", status: "confirmed", details: {} };
+  assert.equal(sameBooking(off, consult), false, "a consultation booked the morning a procedure was cancelled is its own plan");
+  assert.equal(sameBooking(off, { ...consult, title: "Procedure at Clinica Sorriso" }), true, "the same thing again is the same booking");
+  assert.equal(sameBooking({ ...off, details: { cancelled: { by: "source" } } }, consult), true, "unchanged where the provider cancelled it");
+  assert.equal(sameBooking({ ...off, status: "confirmed", details: {} }, { ...consult, status: "cancelled" }), true, "and a cancellation still finds its booking");
+});
+
+// A reminder for the 09:00 appointment kept firing after the appointment was
+// called off: the reminder is about that plan alone.
+test("a reminder set for a plan's own time goes when the plan comes off, and Put back brings it back", async () => {
+  const src = read("lib/bookings.js");
+  const rows = [{ id: "r-1", user_id: "u1", enabled: true, event_at: "2026-12-03T10:00:00.000Z" }, { id: "r-2", user_id: "u1", enabled: true, event_at: "2026-12-03T11:00:00.000Z" }];
+  const q = (filters = []) => ({ select: () => q(filters), eq: (k, v) => q([...filters, [k, v]]), in: (k, v) => q([...filters, [k, v, "in"]]),
+    update: (patch) => ({ eq: (k, v) => ({ in: async (k2, ids) => { rows.filter((r) => r[k] === v && ids.includes(r.id)).forEach((r) => Object.assign(r, patch)); return {}; } }) }),
+    then: (res) => res({ data: rows.filter((r) => filters.every(([k, v]) => r[k] === v)).map((r) => ({ id: r.id })) }) });
+  const endRemindersFor = new Function("supabase", src.slice(src.indexOf("async function endRemindersFor("), src.indexOf("// Old bookings drop off after a month")) + "; return endRemindersFor;")({ from: () => q() });
+  assert.deepEqual(await endRemindersFor("u1", "2026-12-03T10:00:00+00:00"), ["r-1"]);
+  assert.deepEqual(rows.map((r) => r.enabled), [false, true], "only the one set for that plan's time");
+  assert.match(src, /const reminders = await endRemindersFor\(userId, row\.starts_at\);/, "a booking taken off takes its reminder");
+  const server = read("webapp/server.js");
+  assert.match(server, /const reminders = await planReminders\(userId, row\.starts_at, false\);/, "so does the x");
+  assert.match(server, /else \{ await planReminders\(userId, null, true, details\.cancelled\?\.reminders\); delete details\.cancelled; details\.kept = at; \}/, "and Put back brings it back");
+  assert.match(read("lib/itinerary-check.js"), /const reminders = await require\("\.\/bookings"\)\.endRemindersFor\(userId, f\.departure\?\.dateTime\);/, "a flight's too");
+});
+
+test("what is put to the LLM is read twice, and either reading counts once it holds", async () => {
+  const facts = {};
+  const { mod, cancelled, restore } = harness(facts);
+  try {
+    let calls = 0;
+    const said = [{ id: "m1", n: 1, at: NOW - DAY, from: "Email from Tasca Verde", text: "Your reservation TV-88213 has been cancelled." }];
+    const judge = async (u, groups) => { calls++; const n = groups[0].evidence[0].n; return calls === 1 ? [] : [{ id: groups[0].plans[0].id, n, quote: "Your reservation TV-88213 has been cancelled", why: "Tasca Verde emailed that it's cancelled." }]; };
+    await mod.review("u1", { now: NOW, bookings: [dinner], evidence: async () => said, judge });
+    assert.equal(calls, 2);
+    assert.deepEqual(cancelled.map(([id]) => id), ["b-dinner"], "the reading that found it counts");
+  } finally { restore(); }
+});
+
+// The chat took a shampoo off the calendar, said it was gone, and Upcoming
+// kept the booking for it: one plan kept twice, changed in one place.
+test("a booking follows its calendar event off the calendar: within an hour of it and sharing a word of what it is", async () => {
+  const src = read("lib/bookings.js");
+  const later = new Date(Date.now() + 5 * DAY);
+  const iso = (ms) => new Date(ms).toISOString();
+  const rows = [
+    { id: "b-wash", title: "Rinse at Clinica Sorriso", provider: "Clinica Sorriso", starts_at: iso(later.getTime() + 30 * 60000), status: "confirmed" },
+    { id: "b-lunch", title: "Lunch at Tasca Verde", provider: "Tasca Verde", starts_at: iso(later.getTime() + 20 * 60000), status: "confirmed" },
+  ];
+  const q = (f = []) => ({ select: () => q(f), eq: () => q(f), neq: () => q(f), gte: (k, v) => q([...f, (r) => r[k] >= v]), lte: (k, v) => q([...f, (r) => r[k] <= v]), then: (res) => res({ data: rows.filter((r) => f.every((t) => t(r))) }) });
+  const cancelled = [];
+  const gone = new Function("supabase", "cancelBooking", src.slice(src.indexOf("const COMMON = new Set("), src.indexOf("// Old bookings drop off after a month")) + "; return calendarEventsGone;")({ from: () => q() }, async (u, id, how) => { cancelled.push([id, how]); return true; });
+  assert.deepEqual(await gone("u1", [{ summary: "Rinse - Clinica Sorriso", at: later.toISOString() }]), ["b-wash"], "the same plan, not lunch at the same hour");
+  assert.equal(cancelled[0][1].by, "calendar");
+  assert.match(cancelled[0][1].why, /^Taken off your calendar on \w{3} \d{1,2} \w{3}\.$/);
+  assert.deepEqual(await gone("u1", [{ summary: "Rinse - Clinica Sorriso", at: new Date(Date.now() - DAY).toISOString() }]), [], "nothing over");
+  assert.deepEqual(await gone("u1", [{ summary: "Appointment", at: later.toISOString() }]), [], "a word every plan shares is not enough");
+  assert.match(read("lib/services/data-sync.js"), /try \{ await require\("\.\.\/bookings"\)\.calendarEventsGone\(userId, goneRows\.map\(r => \(\{ summary: r\.data\?\.summary \|\| r\.data\?\.title \|\| "", at: r\.received_at \}\)\)\); \}/, "wherever an event is found deleted, on any calendar connection");
 });

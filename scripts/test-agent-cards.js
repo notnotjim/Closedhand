@@ -263,8 +263,8 @@ test("flights and bookings go to Cancelled plans the same way, from the same qui
   assert.doesNotMatch(server, /app\.delete\("\/api\/(bookings|flights)\//);
   assert.match(server, /app\.post\("\/api\/bookings\/:id\/:action\(cancel\|restore\)"/);
   assert.match(server, /app\.post\("\/api\/flights\/:key\/:action\(cancel\|restore\)"/);
-  assert.match(server, /if \(req\.params\.action === "cancel"\) marked = \{ \.\.\.flight, supersededBy: "removed", supersededAt: at, cancelled: \{ by: "you", at \} \};/, "kept and marked, so the scan that found it does not add it again");
-  assert.match(server, /else \{ delete details\.cancelled; details\.kept = at; \}/, "put back, and not taken off again for what was already said");
+  assert.match(server, /marked = \{ \.\.\.flight, supersededBy: "removed", supersededAt: at, cancelled: \{ by: "you", at, \.\.\.\(reminders\.length \? \{ reminders \} : \{\}\) \} \};/, "kept and marked, so the scan that found it does not add it again");
+  assert.match(server, /else \{ await planReminders\(userId, null, true, details\.cancelled\?\.reminders\); delete details\.cancelled; details\.kept = at; \}/, "put back with its reminders, and not taken off again for what was already said");
   assert.match(server, /if \(!\/\^flight-\[A-Za-z0-9-\]\+\$\/\.test\(key\)\) return res\.status\(400\)/, "only a flight's own key");
   // How each one is known, in the words the person approved.
   const why = new Function("shortDay", dashboard.slice(dashboard.indexOf("    function cancelledWhy("), dashboard.indexOf("    function cancelledEntry(")) + "; return cancelledWhy;")(() => "Sun 8 Nov");

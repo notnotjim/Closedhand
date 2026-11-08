@@ -119,7 +119,7 @@ function check(facts) {
   ctx.store = { facts };
   const bPath = require.resolve("../lib/bookings"), oPath = require.resolve("../lib/plans-off"), sPath = require.resolve("../lib/storage");
   const removed = [];
-  require.cache[bPath] = { id: bPath, filename: bPath, loaded: true, exports: { cancelBooking: async (userId, id, said) => { removed.push([id, said]); return true; }, listUpcoming: async () => [] } };
+  require.cache[bPath] = { id: bPath, filename: bPath, loaded: true, exports: { cancelBooking: async (userId, id, said) => { removed.push([id, said]); return true; }, endRemindersFor: async () => [], listUpcoming: async () => [] } };
   require.cache[oPath] = { id: oPath, filename: oPath, loaded: true, exports: { review: async () => ({ checked: 0, off: [] }) } };
   require.cache[sPath] = { id: sPath, filename: sPath, loaded: true, exports: { saveStore() {} } };
   const cPath = require.resolve("../lib/itinerary-check");
@@ -239,10 +239,14 @@ test("only what the person's LLM judges a real clash is shown or asked about", a
 
 // A flight found before this check existed was never judged: review ran only
 // after a scan that found a booking. Every scheduled bookings pass reviews.
-test("every scheduled bookings pass judges clashes, not only one that found a booking", () => {
+test("every look at the plans judges clashes, not only one that found a booking, and mail or messages coming in bring a look soon", () => {
   const src = read("lib/bookings.js");
-  const pass = src.slice(src.indexOf("const pass = async () => {"), src.indexOf("setTimeout(pass, FIRST_SCAN_DELAY_MS)"));
-  assert.match(pass, /await scanBookings\(u\.userId\);\n[\s\S]*?try \{ await require\("\.\/itinerary-check"\)\.review\(u\.userId\); \}/);
+  const look = src.slice(src.indexOf("async function checkPlans(userId) {"), src.indexOf("const SOON_MS"));
+  assert.match(look, /await scanBookings\(userId\);\n[\s\S]*?try \{ await require\("\.\/itinerary-check"\)\.review\(userId\); \}/);
+  assert.match(src, /try \{ _lastLook\.set\(u\.userId, Date\.now\(\)\); await checkPlans\(u\.userId\); \}/, "the six-hourly pass is the same look");
+  assert.match(read("lib/services/data-sync.js"), /if \(type === "email" \|\| type === "message"\) \{ try \{ require\("\.\.\/bookings"\)\.checkSoon\(userId\); \}/, "from any connection, where everything synced is saved");
+  assert.match(src, /const SOON_MS = 3 \* 60000, AT_MOST_EVERY_MS = 10 \* 60000;/);
+  assert.match(src, /if \(!_timer \|\| !userId \|\| _soon\.has\(userId\)\) return;/, "once for a burst, and only where the bot keeps plans");
 });
 
 // A trip of its own: settling a clash in an earlier test marked the shared
