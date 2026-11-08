@@ -387,7 +387,17 @@ class UserStore {
   // ============================================================
   // SAVE — Write only changed data back to Supabase
   // ============================================================
-  async save() {
+  // Saves of one store go in the order they were asked for, each reading the
+  // store as it is when its turn comes. Two fired together (a flight's pin
+  // recorded, then marked as sent) raced, the older landed last, and the
+  // next check sent the pin and boarding pass again.
+  save() {
+    const run = () => this._saveNow();
+    this._saving = (this._saving || Promise.resolve()).then(run, run);
+    return this._saving;
+  }
+
+  async _saveNow() {
     const promises = [];
 
     if (this._dirty.has("conversations")) {

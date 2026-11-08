@@ -342,3 +342,32 @@ test('each flight check moves the location before landed flights are cleared, an
   assert.doesNotMatch(scheduler, /update my location to/, 'nobody is asked to move it themselves');
   assert.match(fs.readFileSync(path.join(root, 'lib/location.js'), 'utf8'), /Set when their flight landed at \$\{location\.landedAt\}/);
 });
+
+// A flight's pin and boarding pass went out twice: two saves fired together,
+// the first (before the pin was marked as sent) landed last, and the next
+// check sent both again.
+test('saves of one store land in the order they were made, and a pin is marked sent before it goes', async () => {
+  const stored = {};
+  let call = 0;
+  const fakeDb = { from: () => ({ upsert: (rows) => { const delay = ++call === 1 ? 40 : 5; return new Promise((r) => setTimeout(() => { for (const row of rows) stored[row.key] = row.value; r({}); }, delay)); } }) };
+  const dbPath = require.resolve('../lib/db'), usPath = require.resolve('../user-store');
+  const before = { db: require.cache[dbPath], us: require.cache[usPath] };
+  require.cache[dbPath] = { id: dbPath, loaded: true, exports: { supabase: fakeDb } };
+  delete require.cache[usPath];
+  try {
+    const { UserStore } = require('../user-store');
+    const store = new UserStore('u1');
+    store.facts = { 'flight-XY1': JSON.stringify({ flightNumber: 'XY1', pinSent: false }) };
+    store.markDirty('facts');
+    const first = store.save();
+    store.facts['flight-XY1'] = JSON.stringify({ flightNumber: 'XY1', pinSent: true });
+    store.markDirty('facts');
+    await Promise.all([first, store.save()]);
+    assert.equal(JSON.parse(stored['flight-XY1']).pinSent, true, 'the later save is the one kept, however long the first took');
+  } finally {
+    if (before.db) require.cache[dbPath] = before.db; else delete require.cache[dbPath];
+    if (before.us) require.cache[usPath] = before.us; else delete require.cache[usPath];
+  }
+  const src = fs.readFileSync(path.join(root, 'lib/flights-scheduler.js'), 'utf8');
+  assert.match(src, /flight\.pinSent = true;\n\s*_setNoteValue\(key, JSON\.stringify\(flight\)\);\n\s*await sendFlightPin\(userId, key, flight, chatLinks, targets\);/, 'marked as sent before it goes');
+});
