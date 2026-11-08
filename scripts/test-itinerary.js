@@ -241,9 +241,10 @@ test("only what the person's LLM judges a real clash is shown or asked about", a
 // after a scan that found a booking. Every scheduled bookings pass reviews.
 test("every look at the plans judges clashes, not only one that found a booking, and mail or messages coming in bring a look soon", () => {
   const src = read("lib/bookings.js");
-  const look = src.slice(src.indexOf("async function checkPlans(userId) {"), src.indexOf("const SOON_MS"));
+  const look = src.slice(src.indexOf("async function lookAgain(userId) {"), src.indexOf("const SOON_MS"));
   assert.match(look, /await scanBookings\(userId\);\n[\s\S]*?try \{ await require\("\.\/itinerary-check"\)\.review\(userId\); \}/);
-  assert.match(src, /try \{ _lastLook\.set\(u\.userId, Date\.now\(\)\); await checkPlans\(u\.userId\); \}/, "the six-hourly pass is the same look");
+  assert.match(src, /try \{ _lastLook\.set\(u\.userId, Date\.now\(\)\); await lookAgain\(u\.userId\); \}/, "the six-hourly pass is the same look");
+  assert.match(look, /try \{ await require\("\.\/facts-follow"\)\.review\(userId\); \}/, "and Pinned Facts follow in the same look");
   assert.match(read("lib/services/data-sync.js"), /if \(type === "email" \|\| type === "message"\) \{ try \{ require\("\.\.\/bookings"\)\.checkSoon\(userId\); \}/, "from any connection, where everything synced is saved");
   assert.match(src, /const SOON_MS = 3 \* 60000, AT_MOST_EVERY_MS = 10 \* 60000;/);
   assert.match(src, /if \(!_timer \|\| !userId \|\| _soon\.has\(userId\)\) return;/, "once for a burst, and only where the bot keeps plans");
