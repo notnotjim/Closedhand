@@ -12,6 +12,16 @@
 // ============================================================
 
 const { supabase } = require("./lib/db");
+
+// What a conversation holds, as one short string: its length and a hash of
+// its whole text, so a save can tell a copy that changed from one that did
+// not (UserStore.save).
+function conversationSig(list) {
+  const text = JSON.stringify(Array.isArray(list) ? list : []);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return `${text.length}:${(h >>> 0).toString(36)}`;
+}
 const { encryptTokens, decryptTokens } = require("./crypto-tokens");
 
 class UserStore {
@@ -135,6 +145,7 @@ class UserStore {
       if (activeThread) {
         store.conversations = activeThread.messages || [];
       store._savedCount = store.conversations.length; store._savedTailKey = store.conversations.length + ":" + (store.conversations.length ? String(store.conversations[store.conversations.length - 1].content || "").slice(0, 120) : "");
+        store._savedSig = conversationSig(store.conversations);
         store.activeThreadId = activeThread.id;
       } else {
         // No active thread. Auto-resume the most recent thread if it's fresh and short.
@@ -160,6 +171,7 @@ class UserStore {
             .eq("id", recentThread.id);
           store.conversations = recentThread.messages || [];
           store._savedCount = store.conversations.length; store._savedTailKey = store.conversations.length + ":" + (store.conversations.length ? String(store.conversations[store.conversations.length - 1].content || "").slice(0, 120) : "");
+          store._savedSig = conversationSig(store.conversations);
           store.activeThreadId = recentThread.id;
         } else if (recentThread && (recentThread.messages || []).length > 2) {
           // Old/long thread not resumable. Vectorise it before starting fresh.
@@ -393,25 +405,33 @@ class UserStore {
         const from = Math.max(0, Math.min(convo.length, this._savedCount || 0));
         for (let i = from; i < convo.length; i++) if (convo[i] && typeof convo[i] === "object" && !convo[i].ts) convo[i].ts = nowIso;
       }
-      promises.push(
-        supabase.from("conversations").upsert(
-          {
-            user_id: this.userId,
-            messages: this.conversations,
-            updated_at: nowIso,
-          },
-          { onConflict: "user_id" }
-        )
-      );
-
-      // Also save to conversation_threads if we have a thread ID
-      if (this.activeThreadId) {
-        const patch = { messages: this.conversations };
-        if (changed) patch.updated_at = nowIso;
+      // A copy that is just as it was loaded or last saved is not written:
+      // a background pass holds the copy it loaded for minutes, and saving
+      // its facts wrote that copy over the conversation, losing what was
+      // said meanwhile. Only a copy whose contents are known is skipped.
+      const sig = conversationSig(convo);
+      if (sig !== this._savedSig) {
         promises.push(
-          supabase.from("conversation_threads").update(patch).eq("id", this.activeThreadId)
+          supabase.from("conversations").upsert(
+            {
+              user_id: this.userId,
+              messages: this.conversations,
+              updated_at: nowIso,
+            },
+            { onConflict: "user_id" }
+          )
         );
+
+        // Also save to conversation_threads if we have a thread ID
+        if (this.activeThreadId) {
+          const patch = { messages: this.conversations };
+          if (changed) patch.updated_at = nowIso;
+          promises.push(
+            supabase.from("conversation_threads").update(patch).eq("id", this.activeThreadId)
+          );
+        }
       }
+      this._savedSig = sig;
       this._savedTailKey = tailKey(convo);
       this._savedCount = convo.length;
     }

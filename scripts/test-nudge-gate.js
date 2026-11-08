@@ -105,12 +105,14 @@ test("quiet hours, in the person's own time zone, hold every notice until they e
   await settle();
   assert.deepEqual(fresh.conversations.map((m) => [m.role, m.content, m.via]), [["assistant", "Bank needs you, via telegram", "telegram"], ["assistant", "Now", "telegram"]],
     "each message is kept in the conversation once it goes, held ones when they go, so a reply to it is read against it");
-  // Run for the person whose chat is loaded: their copy has it too, so a save
-  // they make keeps it, and nothing is kept twice.
+  // Run for the person whose chat is loaded: their older copy is left alone,
+  // so a save they make later does not write it over this one, and nothing
+  // is kept twice.
   const own = [];
   ctx.activeUserId = "u1"; ctx.store = { conversations: { u1: own } };
   await p.keepSaid("u1", "Does the dinner on Tue still stand?", "telegram");
-  assert.deepEqual(own.map((m) => m.content), ["Does the dinner on Tue still stand?"]);
+  assert.deepEqual(own, []);
+  assert.equal(fresh.conversations.at(-1).content, "Does the dinner on Tue still stand?");
   await p.keepSaid("u1", "Does the dinner on Tue still stand?", "telegram");
   assert.equal(fresh.conversations.filter((m) => m.content === "Does the dinner on Tue still stand?").length, 1, "not kept twice");
   for (const m of Object.keys(stand)) delete require.cache[require.resolve(m)];
@@ -219,4 +221,35 @@ test("a sign-in to do again is told once it can be, and again after the next fai
   assert.match(read("user-store.js"), /require\("\.\/lib\/connection-alert"\)\.tellOwnerOnce\(this\.userId, this, service\)/);
   assert.deepEqual(require("../webapp/connection-health").cleared({ email: "a", reconnect_required: true, reconnect_reason: "x", reconnect_told: true }), { email: "a" });
   assert.match(read("index.js"), /require\("\.\/lib\/connection-alert"\)\.start\(\);/);
+});
+
+// A background pass holds the copy of the conversation it loaded for
+// minutes; saving its facts wrote that copy over the conversation, losing
+// what was said meanwhile, the message kept above included.
+test("a save writes the conversation only when its copy changed", async () => {
+  const writes = [];
+  const fakeDb = { from: (table) => ({ upsert: async () => { writes.push(table); return {}; }, update: () => ({ eq: async () => { writes.push(table); return {}; } }) }) };
+  const dbPath = require.resolve("../lib/db"), usPath = require.resolve("../user-store");
+  const before = { db: require.cache[dbPath], us: require.cache[usPath] };
+  require.cache[dbPath] = { id: dbPath, loaded: true, exports: { supabase: fakeDb } };
+  delete require.cache[usPath];
+  try {
+    const { UserStore } = require("../user-store");
+    const store = new UserStore("u1");
+    store.activeThreadId = "t1";
+    store.conversations = [{ role: "user", content: "Is the dinner still on?" }];
+    store.markDirty("conversations"); await store.save();
+    assert.deepEqual(writes, ["conversations", "conversation_threads"], "a copy not known to be as saved is written");
+    writes.length = 0;
+    store.markDirty("conversations"); await store.save();
+    assert.deepEqual(writes, [], "unchanged since it was saved: not written over what others said since");
+    store.conversations.push({ role: "assistant", content: "Yes, Tue at 8." });
+    store.markDirty("conversations"); await store.save();
+    assert.deepEqual(writes, ["conversations", "conversation_threads"], "changed: written");
+    const src = read("user-store.js");
+    assert.equal((src.match(/store\._savedSig = conversationSig\(store\.conversations\);/g) || []).length, 2, "a loaded thread is known as it was loaded");
+  } finally {
+    if (before.db) require.cache[dbPath] = before.db; else delete require.cache[dbPath];
+    if (before.us) require.cache[usPath] = before.us; else delete require.cache[usPath];
+  }
 });
