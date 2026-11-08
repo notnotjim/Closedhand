@@ -399,8 +399,13 @@ class UserStore {
 
   async _saveNow() {
     const promises = [];
+    // What needs writing is taken, and cleared, as this save starts: cleared
+    // when it finished, what a save queued behind it had marked was wiped,
+    // and that save wrote nothing.
+    const dirty = new Set(this._dirty);
+    this._dirty.clear();
 
-    if (this._dirty.has("conversations")) {
+    if (dirty.has("conversations")) {
       // Messages carry the time they arrived, stamped here once on the ones
       // added since the last save (older history without a stamp is left
       // alone rather than given a false one). The thread's updated_at moves
@@ -446,7 +451,7 @@ class UserStore {
       this._savedCount = convo.length;
     }
 
-    if (this._dirty.has("facts")) {
+    if (dirty.has("facts")) {
       // Upsert all notes (avoids race conditions with concurrent saves)
       // Notes may be plain strings or metadata objects {value, created, lastAccessed, accessCount}.
       // Serialize objects to JSON string for storage; plain strings stay as-is.
@@ -469,7 +474,7 @@ class UserStore {
       }
     }
 
-    if (this._dirty.has("pulse")) {
+    if (dirty.has("pulse")) {
       promises.push(
         supabase.from("pulse_config").upsert(
           {
@@ -489,14 +494,14 @@ class UserStore {
     // Only when the location actually changed in this turn, and only that
     // key: writing the whole settings copy loaded at the start of the turn
     // undid whatever the dashboard had changed meanwhile.
-    if (this._dirty.has("location") && JSON.stringify(this.location || null) !== JSON.stringify(this.profile?.settings?.location || null)) {
+    if (dirty.has("location") && JSON.stringify(this.location || null) !== JSON.stringify(this.profile?.settings?.location || null)) {
       promises.push(
         require("./lib/profile-settings").updateSettings(this.userId, { location: this.location }, { store: this })
           .then(() => null, (error) => ({ error }))
       );
     }
 
-    if (this._dirty.has("attachments")) {
+    if (dirty.has("attachments")) {
       // For attachments, we upsert individually since they're added one at a time
       // This is handled by saveAttachment() below, so nothing to batch here
     }
@@ -509,8 +514,6 @@ class UserStore {
         }
       }
     }
-
-    this._dirty.clear();
   }
 
   // ============================================================

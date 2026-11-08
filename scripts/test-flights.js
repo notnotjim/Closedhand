@@ -364,6 +364,17 @@ test('saves of one store land in the order they were made, and a pin is marked s
     store.markDirty('facts');
     await Promise.all([first, store.save()]);
     assert.equal(JSON.parse(stored['flight-XY1']).pinSent, true, 'the later save is the one kept, however long the first took');
+    // A change marked while a save is already writing is written by the next
+    // one: cleared when the first finished, it was lost.
+    call = 0;
+    store.facts['flight-XY1'] = JSON.stringify({ flightNumber: 'XY1', pinSent: false });
+    store.markDirty('facts');
+    const writing = store.save();
+    await new Promise((r) => setTimeout(r, 10));
+    store.facts['flight-XY1'] = JSON.stringify({ flightNumber: 'XY1', pinSent: true, pinMessageIds: { a: 1 } });
+    store.markDirty('facts');
+    await Promise.all([writing, store.save()]);
+    assert.deepEqual(JSON.parse(stored['flight-XY1']), { flightNumber: 'XY1', pinSent: true, pinMessageIds: { a: 1 } }, 'a change made mid-save is written by the save after it');
   } finally {
     if (before.db) require.cache[dbPath] = before.db; else delete require.cache[dbPath];
     if (before.us) require.cache[usPath] = before.us; else delete require.cache[usPath];
