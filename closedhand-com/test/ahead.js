@@ -240,7 +240,7 @@ test('carrying on in crypto adds a month of fair use to this month of a plan, on
   await w.ahead.settled(w.state.made[0].id);
   assert.equal((await keyOf(id)).limit, 32);
   assert.equal(await w.ahead.checkout({ id }, { extend: true, agreed: true }), 'https://closedhand.com/pay/' + w.state.made[1].id);
-  assert.deepEqual(w.state.made[1].body, { amount: '30', currency: 'USD', metadata: { ownerId: id, extend: true }, checkout: { redirectURL: 'https://closedhand.com/account?plus=carrying', redirectAutomatically: true } });
+  assert.deepEqual(w.state.made[1].body, { amount: '30', currency: 'USD', metadata: { ownerId: id, extend: true }, checkout: { redirectURL: 'https://closedhand.com/account?plus=carrying', redirectAutomatically: true, paymentMethods: ['USDT-TRON', 'USDT-ETHEREUM', 'USDT-POLYGON', 'USDT-BSC'] } });
   w.state.invoices.get(w.state.made[1].id).status = 'Settled';
   assert.equal(await w.ahead.settled(w.state.made[1].id), 'carried on to the end of the month');
   assert.equal(await w.ahead.settled(w.state.made[1].id), 'already counted');
