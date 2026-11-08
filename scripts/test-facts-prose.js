@@ -58,6 +58,7 @@ test("what the person wrote to anyone becomes a Pinned Fact only on their own wo
     assert.equal(shown.name, "Robin");
     assert.match(shown.prose, /\[family-partner\]/, "the facts it may rewrite, by key");
     assert.deepEqual(pinned.map((f) => f.key), ["family-partner"], "on the person's own words only, once a note however many readings found it; a key of Closedhand's own is never written");
+    assert.deepEqual(mod.readRecord({ "_facts-follow": JSON.stringify({ looked: "2026-11-30T00:00:00Z", since: "2026-11-30T00:00:00Z" }) }), { v: 2 }, "a look by older rules is read again");
     assert.equal(pinned[0].from, "your WhatsApp to Clinica Sorriso, Tue 1 Dec");
     assert.equal(pinned[0].value, "Robin's wife is Ana Fixture. She is expecting their first child.", "added to what the note said, nothing lost");
     assert.equal(r.read, 2);
