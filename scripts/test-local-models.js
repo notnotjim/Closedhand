@@ -376,3 +376,14 @@ test("the colours are measured from the picture, transparency counted as white, 
   assert.equal(await checkColours('A bakery front.', Buffer.from('not a picture')), 'A bakery front.', 'no colour said, nothing measured');
   assert.equal(await checkColours('A red door.', Buffer.from('not a picture')), 'A red door.', 'a picture that cannot be measured keeps what was said');
 });
+
+// A ticket's handwritten price, read from a photo for a chat model that
+// cannot see, was gone from the conversation by the next turn: the history
+// kept only the reading's first line.
+test('for a chat model that cannot see, what was read from a picture stays in the conversation', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../lib/engine.js'), 'utf8');
+  assert.match(src, /const kept = pictureText \? pictureText\.slice\(0, 1500\) : desc;/);
+  assert.match(src, /\? `\[User uploaded file: \$\{attachmentId\}\. \$\{kept\}\]`/);
+  assert.match(src, /const sub = pictureText \|\| "The picture could not be read just now\. Tell the user and do not infer what it contains\.";/, 'the same reading on the first turn');
+  assert.ok(src.indexOf('let pictureText = null;') < src.indexOf('const uploadLabel = attachmentId'), 'read before it is kept');
+});
