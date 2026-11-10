@@ -55,7 +55,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     if (!notices) return;
     const first = await db.query('UPDATE near_session SET failed_at = now() WHERE id = 1 AND failed_at IS NULL RETURNING id');
     if (first.rowCount) {
-      await notices.queue('Closedhand: NEAR AI no longer accepts closedhand.com\'s sign-in, so new Managed Models keys and changes to fair use are on hold. Keys already given keep working. Sign in at cloud.near.ai again and set its new sign-in as NEAR_REFRESH_TOKEN on Railway.');
+      await notices.queue('Closedhand: NEAR AI turned down closedhand.com\'s sign-in. Until you sign in at cloud.near.ai again and hand that sign-in to closedhand.com, nobody new can start the uncensored LLM and nobody\'s fair use can be renewed or extended. Everyone who already has the uncensored LLM, you included, carries on with this month\'s fair use.');
     }
   }
   // Told once, in its last two days, if renewing does not move the end on;
@@ -69,7 +69,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     const first = await db.query('UPDATE near_session SET warned_for = $1 WHERE id = 1 AND warned_for IS NULL RETURNING id', [new Date(at)]);
     if (first.rowCount) {
       const day = new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
-      await notices.queue(`Closedhand: closedhand.com's sign-in at NEAR AI ends on ${day}. Sign in at cloud.near.ai again and set its new sign-in as NEAR_REFRESH_TOKEN on Railway before then, or new Managed Models keys stop.`);
+      await notices.queue(`Closedhand: closedhand.com's sign-in at NEAR AI ends on ${day}. Before then, sign in at cloud.near.ai again and hand that sign-in to closedhand.com, or from that day nobody new can start the uncensored LLM and nobody's fair use can be renewed or extended.`);
     }
   }
 

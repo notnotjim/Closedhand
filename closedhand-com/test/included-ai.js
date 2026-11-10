@@ -141,7 +141,8 @@ test('when NEAR stops taking the sign-in the maintainer is told once, and keys w
   await ai.settle();
   await ai.sweep();
   assert.equal(notices.told.length, 1, 'once, not every hour');
-  assert.match(notices.told[0], /^Closedhand: NEAR AI no longer accepts closedhand\.com's sign-in.*Keys already given keep working\. Sign in at cloud\.near\.ai again and set its new sign-in as NEAR_REFRESH_TOKEN on Railway\.$/);
+  assert.match(notices.told[0], /^Closedhand: NEAR AI turned down closedhand\.com's sign-in\. Until you sign in at cloud\.near\.ai again and hand that sign-in to closedhand\.com, nobody new can start the uncensored LLM .*you included, carries on with this month's fair use\.$/);
+  assert.ok(!/Managed Models|[A-Z]+_[A-Z_]+|Railway/.test(notices.told[0]), 'what it means and what to do, in the names people know: no retired product name, setting or host');
   assert.ok(!/rt_|sk-|\d{3}/.test(notices.told[0]), 'plain words: no token, no status code');
   near.state.refuse = false;
   near.state.refresh = 'rt_' + 'c3'.repeat(24);

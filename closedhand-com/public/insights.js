@@ -75,20 +75,20 @@
     provider = m.provider || provider;
     const c = m.credit, low = !!c && (c.left <= 0 || (c.days != null && c.days < 14));
     const lasts = !c ? `${provider} didn't answer.`
-      : c.left <= 0 ? 'Used up, so Managed Models have stopped for everyone.'
+      : c.left <= 0 ? 'Used up, so the uncensored LLM has stopped for everyone.'
       : c.days == null ? 'Nothing used in the last 30 days.'
       : c.days > 365 ? "Over a year at the last 30 days' pace."
       : `About ${n(c.days)} ${c.days === 1 ? 'day' : 'days'} at the last 30 days' pace.`;
     const y = m.you || {}, yourPlus = (y.plus && y.plus.active) || 0;
     const t = tile({ label: `${provider} credit left`, value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '',
-      sub: `${lasts} ${m.spentThisMonth == null ? '' : `${usd(m.spentThisMonth)} of Managed Models this month, `}` +
+      sub: `${lasts} ${m.spentThisMonth == null ? '' : `${usd(m.spentThisMonth)} of the uncensored LLM this month, `}` +
         `${n(m.running)} free ${m.running === 1 ? 'period' : 'periods'} running (${usd(m.allowance)} allowed), ${n(m.plus.active || 0)} ${(m.plus.active || 0) === 1 ? 'subscription' : 'subscriptions'}${m.ahead ? `, ${n(m.ahead)} paid ahead in crypto` : ''}.` });
     // The maintainer's share of it, and their own use with keys
     // closedhand.com did not make, which is not Managed Models at all.
     const mine = el('p', 'tile-sub');
     const how = y.maintainer ? 'as the maintainer' : y.running ? 'free days' : yourPlus ? 'subscribed' : '';
-    if (m.spentYou || how) mine.append(yours(`${m.spentYou ? usd(m.spentYou) + ' of Managed Models' : ''}${m.spentYou && how ? ', ' : ''}${how}`), ' ');
-    if (m.ownUse) mine.append(`Your own ${provider} use, not Managed Models: ${usd(m.ownUse)} this month.`);
+    if (m.spentYou || how) mine.append(yours(`${m.spentYou ? usd(m.spentYou) + ' of the uncensored LLM' : ''}${m.spentYou && how ? ', ' : ''}${how}`), ' ');
+    if (m.ownUse) mine.append(`Your own ${provider} use, not the uncensored LLM: ${usd(m.ownUse)} this month.`);
     if (mine.childNodes.length) t.append(mine);
     return t;
   }
@@ -249,7 +249,7 @@
     row('Free 14 days', firstMonth(p));
     row('Subscription', plusLine(p));
     if (p.first_month_usd != null || p.plus_status) {
-      const used = row('Managed Models use', `Reading from ${provider}…`);
+      const used = row('Uncensored LLM use', `Reading from ${provider}…`);
       fetch('/api/insights/person/' + encodeURIComponent(p.id), { cache: 'no-store' })
         .then(r => (r.ok ? r.json() : Promise.reject()))
         .then(d => { used.textContent = d.usage ? `${usd(d.usage.used)} of ${usd(d.usage.limit)} (${pct(d.usage.used, d.usage.limit)}%)` : `No key at ${provider}`; })
@@ -292,7 +292,7 @@
       if (p.claimed) chips.append(el('span', 'chip', 'claimed ' + day(p.claimed)));
       if (p.renames) chips.append(el('span', 'chip', `renamed ${p.renames}x`));
       if (p.assistant_email) chips.append(el('span', 'chip', `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month`));
-      if (p.maintainer) chips.append(el('span', 'chip', 'Managed Models as the maintainer'));
+      if (p.maintainer) chips.append(el('span', 'chip', 'Uncensored LLM as the maintainer'));
       else if (p.ahead_until) chips.append(el('span', 'chip up', 'paid ahead in crypto to ' + day(p.ahead_until)));
       else if (p.plus_status) chips.append(el('span', 'chip' + (p.plus_status === 'active' ? ' up' : ''), 'Subscription ' + p.plus_status));
       else if (p.first_month_usd != null && !p.first_month_stopped && new Date(p.first_month_until) > Date.now()) chips.append(el('span', 'chip', 'free days to ' + day(p.first_month_until)));

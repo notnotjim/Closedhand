@@ -47,10 +47,10 @@ test('free days past the expected number are told at 75%, 90%, 100%, then every 
   await started(5);
   assert.deepEqual(await watch.check(), [], 'under 75%');
   await started(1);
-  assert.deepEqual(await watch.check(), ["Closedhand: 6 people have started their free days of Managed Models this month, against the 8 expected. Raise INCLUDED_AI_MONTHLY_PEOPLE on Railway if more people are coming."]);
+  assert.deepEqual(await watch.check(), ["Closedhand: 6 people have started their 14 free days of the uncensored LLM this month, against the 8 expected. If more people are coming, raise the number expected each month."]);
   assert.deepEqual(await watch.check(), [], 'told once');
   await started(4);
-  assert.deepEqual(await watch.check(), ["Closedhand: 10 people have started their free days of Managed Models this month, against the 8 expected. Raise INCLUDED_AI_MONTHLY_PEOPLE on Railway if more people are coming."], 'one notice for 90%, 100% and 125% passed at once');
+  assert.deepEqual(await watch.check(), ["Closedhand: 10 people have started their 14 free days of the uncensored LLM this month, against the 8 expected. If more people are coming, raise the number expected each month."], 'one notice for 90%, 100% and 125% passed at once');
   assert.equal((await db.query("SELECT count(*) AS n FROM operator_alerts WHERE kind = 'first-months'")).rows[0].n, '4');
   await started(1, new Date(Date.UTC(2020, 0, 15)));
   assert.deepEqual(await watch.check(), [], 'another month counts apart');
@@ -63,7 +63,7 @@ test('a burst of free days in a day is told once that day', async () => {
   await started(2);
   assert.deepEqual(await watch.check(), []);
   await started(1);
-  assert.deepEqual(await watch.check(), ['Closedhand: 3 people started their free days of Managed Models in the last 24 hours, more than usual. Worth a look for account farming.']);
+  assert.deepEqual(await watch.check(), ['Closedhand: 3 people started their 14 free days of the uncensored LLM in the last 24 hours, more than usual. Worth a look for account farming.']);
   await started(5);
   assert.deepEqual(await watch.check(), [], 'once a day');
 });
@@ -191,7 +191,7 @@ test('personal URLs nearing the limit are told at 75%, 90% and 100%, and again o
   await urls(2);
   assert.deepEqual(await watch(4).check(), [], 'half taken: nothing to say');
   await urls(1);
-  assert.deepEqual(await watch(4).check(), ['Closedhand: 3 of 4 personal URLs are taken. Past 4 nobody new can claim one; raise ADDRESS_LIMIT on Railway if more people are coming.']);
+  assert.deepEqual(await watch(4).check(), ['Closedhand: 3 of 4 personal URLs are taken. Past 4 nobody new can claim one, so raise the limit if more people are coming.']);
   assert.deepEqual(await watch(4).check(), [], 'told once');
   await urls(1);
   assert.equal((await watch(4).check()).length, 1, 'full');
@@ -295,7 +295,7 @@ test('possible misuse: fast use, unused first months, full connections and loose
   await db.query('DELETE FROM included_ai_keys; DELETE FROM retired_ai_keys; DELETE FROM addresses; DELETE FROM starter_grants; DELETE FROM plus_subscriptions');
 });
 
-// The credit Managed Models draw on, with the provider stood in: told at 14
+// The credit the uncensored LLM draws on, with the provider stood in: told at 14
 // and 7 days left, and when less than one free period's ceiling is left; each
 // once, and again only after a top-up.
 test('the provider\'s credit running low is told at 14 and 7 days, and under one free period, once until topped up', async () => {
@@ -307,13 +307,13 @@ test('the provider\'s credit running low is told at 14 and 7 days, and under one
   const watch = capacity.create({ db, env: { INCLUDED_AI_DAILY_PEOPLE: '1000' }, notices: queued, includedAi });
   assert.deepEqual(await watch.check(), [], 'forty days: nothing to say');
   Object.assign(credit, { left: 120, days: 12 });
-  assert.deepEqual(await watch.check(), ["Closedhand: the NEAR AI credit Managed Models draw on lasts about 12 more days at the last 30 days' pace ($120.00 left). When it runs out, every free period and every subscription stops at once. Add credit, or raise the organisation's spend limit, at cloud.near.ai."]);
+  assert.deepEqual(await watch.check(), ["Closedhand: the NEAR AI credit the uncensored LLM draws on lasts about 12 more days at the last 30 days' pace ($120.00 left). When it runs out, every free period and every subscription stops at once. Add credit, or raise the organisation's spend limit, at cloud.near.ai."]);
   assert.deepEqual(await watch.check(), [], 'told once');
   Object.assign(credit, { left: 60, days: 6 });
   assert.match((await watch.check())[0], /lasts about 6 more days/, 'and again at a week');
   assert.deepEqual(await watch.check(), []);
   Object.assign(credit, { left: 9.5, days: 1 });
-  assert.deepEqual(await watch.check(), ["Closedhand: the NEAR AI credit Managed Models draw on is down to $9.50, less than one person's free days can use. When it runs out, every free period and every subscription stops at once. Add credit, or raise the organisation's spend limit, at cloud.near.ai."]);
+  assert.deepEqual(await watch.check(), ["Closedhand: the NEAR AI credit the uncensored LLM draws on is down to $9.50, less than one person's free days can use. When it runs out, every free period and every subscription stops at once. Add credit, or raise the organisation's spend limit, at cloud.near.ai."]);
   // Topped up: each is told again when it comes back.
   Object.assign(credit, { left: 500, days: 60 });
   assert.deepEqual(await watch.check(), []);

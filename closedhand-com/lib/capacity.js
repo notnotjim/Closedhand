@@ -13,7 +13,7 @@
 //   ANONYMOUS_DAILY_ACCOUNTS: once a UTC day, as a burst worth a look.
 // - Personal URLs taken, against ADDRESS_LIMIT: at 75%, 90% and 100%, told
 //   again once the limit is raised. Past it nobody new can claim one.
-// - The credit Managed Models draw on at their provider (NEAR's spend limit
+// - The credit the uncensored LLM draws on at their provider (NEAR's spend limit
 //   included): when it lasts 14 days and then 7 at the last 30 days' pace,
 //   and when it is less than one free period's ceiling (INCLUDED_AI_TRIAL_USD).
 //   Each is told again only after the credit has been topped up.
@@ -53,10 +53,10 @@ function create({ db, env = process.env, notices, includedAi = null }) {
       [now])).rows[0];
     const started = Number(counts.month), lastDay = Number(counts.day);
     if (monthlyPeople > 0 && await claim('first-months', month, reached(started / monthlyPeople * 100, [75, 90, 100], 25))) {
-      told.push(`Closedhand: ${started} people have started their free days of Managed Models this month, against the ${monthlyPeople} expected. Raise INCLUDED_AI_MONTHLY_PEOPLE on Railway if more people are coming.`);
+      told.push(`Closedhand: ${started} people have started their 14 free days of the uncensored LLM this month, against the ${monthlyPeople} expected. If more people are coming, raise the number expected each month.`);
     }
     if (dailyPeople > 0 && lastDay >= dailyPeople && await claim('burst', day, [100])) {
-      told.push(`Closedhand: ${lastDay} people started their free days of Managed Models in the last 24 hours, more than usual. Worth a look for account farming.`);
+      told.push(`Closedhand: ${lastDay} people started their 14 free days of the uncensored LLM in the last 24 hours, more than usual. Worth a look for account farming.`);
     }
     const anonymous = Number((await db.query("SELECT count(*)::int AS n FROM owners WHERE provider = 'anonymous' AND created_at >= $1::timestamptz - interval '1 day'", [now])).rows[0].n);
     if (dailyAnonymous > 0 && anonymous >= dailyAnonymous && await claim('anonymous-burst', day, [100])) {
@@ -71,9 +71,9 @@ function create({ db, env = process.env, notices, includedAi = null }) {
       if (days > 14 && credit.left >= trialUsd) await db.query("DELETE FROM operator_alerts WHERE kind = 'provider-credit'");
       const left = '$' + Math.max(0, credit.left).toFixed(2);
       if (credit.left < trialUsd && await claim('provider-credit', 'until-topped-up', [1])) {
-        told.push(`Closedhand: the ${includedAi.label} credit Managed Models draw on is down to ${left}, less than one person's free days can use. When it runs out, every free period and every subscription stops at once. ${includedAi.topUp}.`);
+        told.push(`Closedhand: the ${includedAi.label} credit the uncensored LLM draws on is down to ${left}, less than one person's free days can use. When it runs out, every free period and every subscription stops at once. ${includedAi.topUp}.`);
       } else if (days <= 14 && await claim('provider-credit', 'until-topped-up', days <= 7 ? [14, 7] : [14])) {
-        told.push(`Closedhand: the ${includedAi.label} credit Managed Models draw on lasts about ${days} more ${days === 1 ? 'day' : 'days'} at the last 30 days' pace (${left} left). When it runs out, every free period and every subscription stops at once. ${includedAi.topUp}.`);
+        told.push(`Closedhand: the ${includedAi.label} credit the uncensored LLM draws on lasts about ${days} more ${days === 1 ? 'day' : 'days'} at the last 30 days' pace (${left} left). When it runs out, every free period and every subscription stops at once. ${includedAi.topUp}.`);
       }
     }
     // Counted as the limit counts them (lib/addresses.js): working ones and
@@ -81,7 +81,7 @@ function create({ db, env = process.env, notices, includedAi = null }) {
     const taken = Number((await db.query(
       "SELECT count(*)::int AS n FROM addresses WHERE state <> 'revoked' AND (activated_at IS NOT NULL OR created_at > now() - interval '24 hours')")).rows[0].n);
     if (urlLimit > 0 && await claim('personal-urls', 'limit-' + urlLimit, reached(taken / urlLimit * 100, [75, 90, 100]))) {
-      told.push(`Closedhand: ${taken} of ${urlLimit} personal URLs are taken. Past ${urlLimit} nobody new can claim one; raise ADDRESS_LIMIT on Railway if more people are coming.`);
+      told.push(`Closedhand: ${taken} of ${urlLimit} personal URLs are taken. Past ${urlLimit} nobody new can claim one, so raise the limit if more people are coming.`);
     }
     for (const text of told) await notices.queue(text);
     return told;

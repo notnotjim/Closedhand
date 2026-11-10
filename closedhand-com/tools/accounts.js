@@ -25,7 +25,7 @@ async function recent(db, includedAi, days = 7) {
   const lines = [`Accounts made in the last ${days} day(s): ${rows.length}`];
   for (const r of rows) {
     const used = r.granted_usd != null ? await includedAi.usage(r.id).catch(() => null) : null;
-    const first = r.maintainer ? 'Managed Models as the maintainer, monthly fair use' : r.granted_usd == null ? 'no free days'
+    const first = r.maintainer ? 'Uncensored LLM as the maintainer, monthly fair use' : r.granted_usd == null ? 'no free days'
       : `free days ${usd(r.granted_usd)} from ${day(r.granted_at)} to ${day(r.ends_at)}${r.stopped_at ? `, stopped ${day(r.stopped_at)}` : ''}`
         + (used ? `, used ${usd(used.used)} of ${usd(used.limit)}` : '');
     const plus = r.plus_status ? `subscription ${r.plus_status} until ${day(r.current_period_end)}` : 'no subscription';
