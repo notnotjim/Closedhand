@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       # Every .js file must at least parse. A syntax error here has twice
       # shipped a dashboard whose entire inline script was dead.

@@ -253,13 +253,15 @@ test('File Search offers the same kinds of file it indexes', () => {
 
 // A stand-in OCR engine whose page reads end only when the test says, and
 // time that moves only when the test moves it.
-function standInOcr(t) {
+function standInOcr(t, { firstNeverStarts = false } = {}) {
   const engines = [];
+  let starts = 0;
   const id = require.resolve('tesseract.js');
   const had = require.cache[id];
   require.cache[id] = { id, filename: id, loaded: true, exports: {
     OEM: { LSTM_ONLY: 1 },
     createWorker: async () => {
+      if (starts++ === 0 && firstNeverStarts) return new Promise(() => {});
       const e = { pages: [], stopped: false };
       e.recognize = () => new Promise((resolve) => e.pages.push(() => resolve({ data: { text: 'Rent is due on the first' } })));
       e.terminate = async () => { e.stopped = true; };
@@ -277,7 +279,8 @@ function standInOcr(t) {
   t.after(() => { if (had) require.cache[id] = had; else delete require.cache[id]; if (ocr === undefined) delete process.env.CLOSEDHAND_OCR; else process.env.CLOSEDHAND_OCR = ocr; });
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const reading = async () => { while (!engines.some((e) => e.pages.length)) await new Promise((r) => setImmediate(r)); };
-  return { engines, reader: fresh, reading };
+  const starting = async () => { while (!starts) await new Promise((r) => setImmediate(r)); };
+  return { engines, reader: fresh, reading, starting };
 }
 
 test('a page that takes minutes to read keeps its OCR engine, and the reads after it go on', async (t) => {
@@ -302,5 +305,17 @@ test('a page that never finishes is given up, and the next read still happens', 
   assert.equal(engines[0].stopped, true);
   while (engines.length < 2 || !engines[1].pages.length) await new Promise((r) => setImmediate(r));
   engines[1].pages.shift()();
+  assert.equal(await next, 'Rent is due on the first', 'read by a new engine');
+});
+
+test('an engine that never starts is given up too, and the next read starts a new one', async (t) => {
+  const { engines, reader: fresh, reading, starting } = standInOcr(t, { firstNeverStarts: true });
+  const stuck = fresh.ocrImage(Buffer.from('a picture'));
+  await starting();
+  const next = fresh.ocrImage(Buffer.from('the next picture'));
+  t.mock.timers.tick(10 * 60000);
+  assert.equal(await stuck, null);
+  await reading();
+  engines[0].pages.shift()();
   assert.equal(await next, 'Rent is due on the first', 'read by a new engine');
 });

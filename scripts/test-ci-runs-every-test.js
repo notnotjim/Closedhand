@@ -14,6 +14,21 @@ test("checks.yml runs every scripts/test-*.js, each once", () => {
   assert.deepEqual([...new Set(listed.filter((f, i) => listed.indexOf(f) !== i))], [], "listed twice");
 });
 
+// One CI job ran Node 20 while every build shipped Node 22, so a package that
+// no longer parsed on 20 failed checks for something no build would meet.
+test("CI tests on the Node that every build ships", () => {
+  const root = path.join(__dirname, "..");
+  const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
+  const shipped = new Set([
+    ...["Dockerfile", "webapp/Dockerfile"].map((f) => read(f).match(/^FROM node:(\d+)/m)[1]),
+    read("desktop/build.sh").match(/NODE_VERSION:-v(\d+)\./)[1],
+  ]);
+  assert.equal(shipped.size, 1, "the builds ship one Node");
+  for (const f of fs.readdirSync(path.join(root, ".github/workflows"))) {
+    for (const [, v] of read(".github/workflows/" + f).matchAll(/node-version: "(\d+)"/g)) assert.ok(shipped.has(v), `${f} tests Node ${v}`);
+  }
+});
+
 test("image builds run one at a time, so :latest always ends on the newest commit", () => {
   const root = path.join(__dirname, "..");
   for (const f of ["build-selfhost-images.yml", "build-sandbox.yml"]) {
