@@ -28,5 +28,8 @@
     "tesseract.js": "7.0.0",
     "ws": "^8.19.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "overrides": {
+    "wasm-feature-detect": "1.9.0"
   }
 }
