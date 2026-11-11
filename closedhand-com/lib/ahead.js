@@ -42,11 +42,12 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
   // same length, which covers moving the coins on; carrying on costs a month.
   const cryptoUsd = { 3: Number(env.CRYPTO_3_MONTHS_USD || 90), 6: Number(env.CRYPTO_6_MONTHS_USD || 168), 9: Number(env.CRYPTO_9_MONTHS_USD || 243) };
   const extendUsd = Number(env.CRYPTO_EXTEND_USD || 30);
-  // What an invoice may be paid with: USDT on Tron, Ethereum and Polygon.
-  // Bitcoin is left out for now: its own node cost far more to run than the
-  // payments it would take. BSC makes more than a block a second, which
-  // BTCPay must read whole while an invoice is open, too many for a free server.
-  const payWith = String(env.BTCPAY_PAYMENT_METHODS || 'USDT-TRON,USDT-ETHEREUM,USDT-POLYGON').split(',').map(s => s.trim()).filter(Boolean);
+  // What an invoice may be paid with: USDT on Ethereum and Polygon, whose free
+  // public servers keep up while BTCPay reads every block of an open invoice.
+  // Tron's throttles that reading unless signed up for a key, and BSC makes
+  // more than a block a second. Bitcoin is left out for now: its own node cost
+  // far more to run than the payments it would take.
+  const payWith = String(env.BTCPAY_PAYMENT_METHODS || 'USDT-ETHEREUM,USDT-POLYGON').split(',').map(s => s.trim()).filter(Boolean);
   const cryptoOn = () => btcpay.url.startsWith('https://') && !!btcpay.store && !!btcpay.key && !!btcpay.secret && !!includedAi?.enabled();
   // lib/addresses.js: what to do with a paid claim, and with one whose invoice lapsed.
   let pending = null;

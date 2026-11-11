@@ -184,7 +184,7 @@ test('paying 3 months ahead in crypto starts a plan with a month of fair use and
   const w = world();
   const id = await person({ freeUsage: 2 });
   assert.equal(await w.ahead.checkout({ id }, { months: 3, agreed: true }), 'https://closedhand.com/pay/' + w.state.made[0].id);
-  assert.deepEqual(w.state.made[0].body, { amount: '90', currency: 'USD', metadata: { ownerId: id, months: 3 }, checkout: { redirectURL: 'https://closedhand.com/account?plus=ahead', redirectAutomatically: true, paymentMethods: ['USDT-TRON', 'USDT-ETHEREUM', 'USDT-POLYGON'] } },
+  assert.deepEqual(w.state.made[0].body, { amount: '90', currency: 'USD', metadata: { ownerId: id, months: 3 }, checkout: { redirectURL: 'https://closedhand.com/account?plus=ahead', redirectAutomatically: true, paymentMethods: ['USDT-ETHEREUM', 'USDT-POLYGON'] } },
     'an invoice in US dollars carrying the account and months, and nothing about the payer, paid in USDT only: Bitcoin is left out for now');
   const made = w.state.made[0].id;
   w.state.invoices.get(made).status = 'Settled';
@@ -240,7 +240,7 @@ test('carrying on in crypto adds a month of fair use to this month of a plan, on
   await w.ahead.settled(w.state.made[0].id);
   assert.equal((await keyOf(id)).limit, 32);
   assert.equal(await w.ahead.checkout({ id }, { extend: true, agreed: true }), 'https://closedhand.com/pay/' + w.state.made[1].id);
-  assert.deepEqual(w.state.made[1].body, { amount: '30', currency: 'USD', metadata: { ownerId: id, extend: true }, checkout: { redirectURL: 'https://closedhand.com/account?plus=carrying', redirectAutomatically: true, paymentMethods: ['USDT-TRON', 'USDT-ETHEREUM', 'USDT-POLYGON'] } });
+  assert.deepEqual(w.state.made[1].body, { amount: '30', currency: 'USD', metadata: { ownerId: id, extend: true }, checkout: { redirectURL: 'https://closedhand.com/account?plus=carrying', redirectAutomatically: true, paymentMethods: ['USDT-ETHEREUM', 'USDT-POLYGON'] } });
   w.state.invoices.get(w.state.made[1].id).status = 'Settled';
   assert.equal(await w.ahead.settled(w.state.made[1].id), 'carried on to the end of the month');
   assert.equal(await w.ahead.settled(w.state.made[1].id), 'already counted');

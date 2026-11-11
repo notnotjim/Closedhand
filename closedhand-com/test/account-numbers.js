@@ -128,7 +128,7 @@ test('using Closedhand anonymously is paid for first: the claim waits with no ac
   const made = invoices.at(-1);
   assert.deepEqual(Object.keys(made.body.metadata).sort(), ['months', 'pendingClaim'], 'the invoice names the waiting claim and the months, nothing about the person');
   assert.deepEqual([made.body.amount, made.body.currency, made.body.metadata.months], ['90', 'USD', 3]);
-  assert.deepEqual(made.body.checkout.paymentMethods, ['USDT-TRON', 'USDT-ETHEREUM', 'USDT-POLYGON'], 'paid in USDT only, as every invoice: Bitcoin is left out for now');
+  assert.deepEqual(made.body.checkout.paymentMethods, ['USDT-ETHEREUM', 'USDT-POLYGON'], 'paid in USDT only, as every invoice: Bitcoin is left out for now');
   assert.equal((await db.query("SELECT count(*)::int AS n FROM owners WHERE provider = 'anonymous'")).rows[0].n, 0, 'no account before the payment');
   assert.deepEqual((await poll(copy)).json, { state: 'waiting' });
 
