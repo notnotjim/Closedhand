@@ -82,8 +82,9 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   return {
     provider: 'near',
     label: 'NEAR AI',
-    // Text only: NEAR's encryption carries words, so pictures and videos are
-    // described by the vision language model on the person's computer.
+    // No image model: pictures and videos are described by the vision language
+    // model on the person's computer. NEAR's encryption carries pictures too
+    // (near-private.js), so one of its private models can be named here.
     defaults: { models: 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated', name: 'DeepSeek V4.1 Flash Abliterated', vision: '' },
     configured: () => session.configured(),
     // The sign-in, renewed as closedhand.com starts and each hour, so one NEAR

@@ -202,11 +202,21 @@ test("a reply whose signature is wrong or never comes is not used; one the prove
   assert.equal((await res.json()).choices[0].message.content, "Echo: hi");
 });
 
-test("a picture can't be sent privately, and is refused before anything leaves", async () => {
+test("a picture is sent privately with its words, as parts NEAR's proxy restores, and text that looks like parts stays text", async () => {
   await ready; reset();
-  await assert.rejects(near.complete(conn(), { model: MODEL_ID, messages: [{ role: "user", content: [{ type: "text", text: "what is this" }, { type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] }] }),
-    (e) => e.code === "near_text_only");
-  assert.equal(fake.posts.length, 0);
+  const picture = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
+  const out = await near.complete(conn(), { model: MODEL_ID, messages: [{ role: "user", content: [{ type: "text", text: "what does the receipt say" }, { type: "image_url", image_url: { url: picture } }] }] });
+  const sent = fake.posts[0].raw.toString();
+  assert.doesNotMatch(sent, /receipt|iVBORw0KGgo|image_url/, "the picture and its words travel sealed");
+  const opened = JSON.parse(near.open(JSON.parse(sent).messages[0].content, xSecret(MODEL.seed)));
+  assert.deepEqual(opened, [{ type: "text", text: "what does the receipt say" }, { type: "image_url", image_url: { url: picture } }]);
+  assert.match((await out.json()).choices[0].message.content, /^Echo: \[/);
+  const key = Buffer.from(MODEL.pub);
+  const asText = (content) => near.open(near.encryptRequest({ messages: [{ role: "user", content }] }, key).messages[0].content, xSecret(MODEL.seed));
+  assert.equal(asText([{ type: "text", text: "Plover" }, { type: "text", text: "Street" }]), "Plover\n\nStreet");
+  assert.equal(asText("plain words"), "plain words");
+  assert.deepEqual(JSON.parse(asText("[1, 2, 3]")), [{ type: "text", text: "[1, 2, 3]" }], "a message that is a JSON list is read as words");
+  assert.equal(near.encryptRequest({ messages: [{ role: "assistant", content: null, tool_calls: [] }] }, key).messages[0].content, null);
 });
 
 test("the proof's own checks: report data, configuration and event log", async () => {
@@ -237,7 +247,7 @@ test("the sealed hardware runs Managed Models and is no provider people pick: fo
   assert.match(read("lib/model-wire.js"), /near\.isNear\(conn\) \? await near\.complete\(conn, body, \{ signal \}\)/);
 });
 
-test("only the NEAR AI models whose privacy can be proven are listed, as text-only, asked once a day", async () => {
+test("only the NEAR AI models whose privacy can be proven are listed, as they say they read, asked once a day", async () => {
   const realFetch = globalThis.fetch;
   const asked = [];
   globalThis.fetch = async (url) => {
@@ -259,8 +269,7 @@ test("only the NEAR AI models whose privacy can be proven are listed, as text-on
     ];
     const got = await near.provenModels(conn, list);
     assert.deepEqual(got.map((m) => m.id), ["vendor/enclave-chat"]);
-    assert.deepEqual(got[0].metadata.input_modalities, ["text"], "what is sent privately is text, so pictures go to the image model beside it");
-    assert.deepEqual(got[0].metadata.architecture.inputModalities, ["text"]);
+    assert.deepEqual(got[0].metadata.input_modalities, ["text", "image"], "pictures are sent privately too");
     assert.deepEqual(asked.sort(), ["other/external-model", "vendor/enclave-chat", "vendor/no-enclave"], "only text models that are ready are asked");
     await near.provenModels(conn, list);
     assert.equal(asked.length, 3, "kept for the day");
