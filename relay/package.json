@@ -1,0 +1,8 @@
+{
+  "name": "closedhand-relay",
+  "private": true,
+  "description": "Passes each personal URL's connection, still encrypted, to the computer running that person's Closedhand.",
+  "main": "main.js",
+  "scripts": { "start": "node main.js" },
+  "engines": { "node": ">=22" }
+}
