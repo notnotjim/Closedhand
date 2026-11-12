@@ -185,35 +185,6 @@ test("Closedhand's pick is followed: a changed model is switched to and named", 
   global.fetch = realFetch;
 });
 
-test("pictures no LLM reads are checked for again once a day, never over the person's own LLM provider", async () => {
-  let reads = false, asked = 0;
-  const store = settingsStore({});
-  const ai = load("webapp/included-ai-setup.js", {
-    "./db": { supabase: store.supabase }, "./admin": { getAdminUserId: () => "admin" }, "./settings-patch": store.patch, "./model-policy": policy,
-    "./model-config": { prepare: async (input) => { asked++; const config = prepared(input); if (reads) config.roles.vision = { connection: "primary", model: input.model }; return config; },
-      withConfig: (settings, config) => ({ ...settings, model_config: policy.sealConfig(config), llm_provider: "custom" }) },
-    "./phone-registration": { includedAiState: async () => ({ models: MODELS }) },
-  });
-  await ai.receive({ key: KEY, models: MODELS });
-  await until(() => store.box.settings.model_config);
-  assert.equal(asked, 1);
-  await ai.refresh();
-  assert.equal(asked, 1, "not again the same day");
-  store.box.settings.model_config.checked_at = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
-  reads = true;
-  await ai.refresh();
-  assert.equal(asked, 2, "a day on, asked again");
-  assert.equal(policy.getRole(store.box.settings, "vision").model, NEAR_MODEL, "and pictures go to the LLM that now reads them");
-  store.box.settings.model_config.checked_at = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
-  await ai.refresh();
-  assert.equal(asked, 2, "pictures read: nothing to check for");
-  delete store.box.settings.model_config.checked_at;
-  store.box.settings.model_config.roles.vision = null;
-  store.box.settings.model_config.included = false;
-  await ai.refresh();
-  assert.equal(asked, 2, "the person's own LLM provider is theirs to check in Settings");
-});
-
 test("only a key, a provider Closedhand knows and a model name are taken", async () => {
   const store = settingsStore({});
   const ai = setup(store, async (input) => prepared(input));

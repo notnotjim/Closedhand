@@ -60,7 +60,8 @@ async function checkWithOllama({ given, most, role = 'chat' }) {
     request: async (conn, params) => {
       const last = params.messages.at(-1).content;
       if (params.tools) return params.messages.length > 1 ? { content: [{ type: 'text', text: 'done' }] } : { content: [{ type: 'tool_use', id: 't', name: 'capability_check', input: { value: 4 } }] };
-      if (Array.isArray(last) && last.some((b) => b.type === 'image')) return { content: [{ type: 'text', text: 'Red' }] };
+      // The DeepSeek primary model reads no pictures, so they go to the image model.
+      if (Array.isArray(last) && last.some((b) => b.type === 'image')) return { content: [{ type: 'text', text: params.model === 'chat-model' ? 'I cannot see images.' : 'Red' }] };
       return { content: [{ type: 'text', text: 'ready' }] };
     } };
   global.fetch = async (url) => ({ json: async () => (url.endsWith('/api/ps')

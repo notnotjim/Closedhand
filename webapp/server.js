@@ -9992,6 +9992,8 @@ const server = app.listen(PORT, process.env.LISTEN_HOST || undefined, async () =
   }
   // Closedhand Managed Models follow the models Closedhand picks (included-ai-setup.js).
   require("./included-ai-setup").start();
+  // A primary model that couldn't read pictures is asked again daily (model-config.js).
+  require("./model-config").startRecheck({ supabase, id: getAdminUserId });
   // Jobs run on this computer get their runner back (run-here.js).
   require("./run-here").resume().catch((e) => console.error("[run-here] resume:", e.message));
   // Secrets, provider keys and MCP credentials saved before they were stored

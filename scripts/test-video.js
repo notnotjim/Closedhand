@@ -69,7 +69,8 @@ test('a model whose provider does not say is given the clip too, so an omni mode
         const has = (t) => Array.isArray(parts) && parts.some((b) => b.type === t);
         if (params.tools) return params.messages.length > 1 ? { content: [{ type: 'text', text: 'done' }] } : { content: [{ type: 'tool_use', id: 't', name: 'capability_check', input: { value: 4 } }] };
         if (has('video')) { clips.push(params.model); if (!watches) throw Object.assign(new Error('HTTP 400'), { status: 400 }); return { content: [{ type: 'text', text: 'Red at the start, blue at the end.' }] }; }
-        if (has('image')) return { content: [{ type: 'text', text: 'Red' }] };
+        // DeepSeek reads no pictures, so a separate image and video model is used.
+        if (has('image')) return { content: [{ type: 'text', text: params.model === 'deepseek-flash' ? 'I cannot see images.' : 'Red' }] };
         return { content: [{ type: 'text', text: 'ready' }] };
       } };
     delete require.cache[require.resolve('../webapp/model-config')];

@@ -26,7 +26,7 @@ async function mount(respond = () => ({ config: null, runtime: 'docker' })) {
   root.querySelectorAll = () => [...elements.values()];
   root.addEventListener = (event, fn) => { listeners[event] = fn; };
   const field = name => element('[data-field="' + name + '"]');
-  field('visionMode').value = 'same';
+  field('visionMode').value = 'off';
   field('backgroundMode').value = 'same';
   const context = { window: {}, document: { createElement: () => {
     const node = element('created-' + elements.size);
@@ -276,22 +276,22 @@ test('while a new image model is chosen, the unchanged primary keeps its checked
   assert.equal(ui.region('check-title').textContent, 'Choose an image and video model to check these models', 'the title names what is missing');
 });
 
-test('pictures and videos have two choices: the vision language model on this computer, and the primary model if it sees or else another model', async () => {
+test('a primary model that sees reads pictures itself, so there is nothing to choose; one that does not offers another model or the one on this computer', async () => {
   const option = (ui, v) => ui.root.querySelector('[data-field="visionMode"] option[value="' + v + '"]');
+  assert.match(source, /<select data-field="visionMode"><option value="off">Use the vision language model on this computer<\/option><option value="separate">Choose another image and video model<\/option><\/select>/, 'no "Use the primary model": it is used whenever it can be');
   const seeing = await mount((call) => call.path === '' ? savedSetup() : call.path === '/models' ? catalog : { config: null });
   await seeing.timers();
-  assert.equal(option(seeing, 'same').hidden, false);
-  assert.equal(option(seeing, 'separate').hidden, true, 'no other model beside a primary model that sees');
+  assert.equal(seeing.region('vision-role').hidden, true, 'no image model to choose beside a primary model that sees');
   seeing.choose('visionMode', 'separate');
-  assert.equal(seeing.field('visionMode').value, 'same');
-  seeing.choose('visionMode', 'off');
-  assert.equal(seeing.field('visionMode').value, 'off', 'pictures can stay on this computer even so');
+  seeing.region('vision-role').hidden = false;
+  await seeing.timers();
+  assert.equal(seeing.region('vision-role').hidden, true);
   assert.equal(seeing.region('vision').hidden, true);
 
   const blind = await mount((call) => call.path === '' ? textOnlySetup() : call.path === '/models' ? catalog : { config: null });
   await blind.timers();
+  assert.equal(blind.region('vision-role').hidden, false);
   assert.equal(blind.field('visionMode').value, 'off', 'the vision language model on this computer, unless another is chosen');
-  assert.equal(option(blind, 'same').hidden, true, '"Use the primary model" is not offered');
   assert.equal(option(blind, 'separate').hidden, false);
 });
 
@@ -301,10 +301,11 @@ test('a primary model not known to see is checked as it is, and one found not to
   const ui = await mount((call) => call.path === '/models' ? unknown : call.path === '/check' ? found : { config: null });
   ui.choose('provider', 'openai'); ui.type('apiKey', 'fixture'); await ui.action('load').onclick(); await tick();
   ui.pick('model', 'own-model');
-  assert.equal(ui.field('visionMode').value, 'same', 'not known yet: the check finds out');
+  assert.equal(ui.field('visionMode').value, 'off', 'not known yet: the check tries the primary model first');
   await ui.timers();
-  assert.equal(ui.calls.filter((c) => c.path === '/check').at(-1).body.visionMode, 'same');
+  assert.equal(ui.calls.filter((c) => c.path === '/check').at(-1).body.visionMode, 'off');
   assert.equal(ui.field('visionMode').value, 'off');
+  assert.equal(ui.region('vision-role').hidden, false, 'found not to see: another model can be chosen');
   assert.equal(ui.action('save').hidden, false, 'what was checked is what is saved: nothing to check again');
 });
 

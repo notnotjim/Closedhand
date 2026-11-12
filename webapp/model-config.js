@@ -120,45 +120,41 @@ async function prepare(input, settings) {
     background: { connection: supportConnection, model: backgroundModel, capabilities: background },
     vision: null,
   };
+  // Pictures and videos go to the primary model whenever it reads them,
+  // checked with a real image: reading them itself, with the question beside
+  // it, beats any other model. Only when it can't do they go to the image and
+  // video model the person chose ("separate"), checked too, else to the
+  // vision language model on this computer (lib/local-models.js), which is
+  // only ever the fallback.
   const mode = input.visionMode || "same";
   if (!["same", "separate", "off"].includes(mode)) throw new Error("Choose how Closedhand should read images.");
-  if (mode !== "off") {
-    let conn = connections.primary, visionModel = model, visionCap = chat, connectionId = "primary", visionCatalog = catalog;
+  const useForImages = async (connectionId, conn, visionModel, cap) => {
+    roles.vision = { connection: connectionId, model: visionModel, capabilities: { ...cap, vision: true } };
+    // An image model needs no room for instructions, so a small window only
+    // means fewer frames from a video; the panel says so.
+    const visionWindow = await ollamaWindow(conn, visionModel);
+    if (visionWindow) roles.vision.capabilities.contextWindow = visionWindow.given;
+    if (connectionId === "primary" && visionModel === model) roles.chat.capabilities.vision = true;
+  };
+  if (await readsImages(connections.primary, model, chat).catch(() => false)) await useForImages("primary", connections.primary, model, chat);
+  else {
+    roles.chat.capabilities = { ...roles.chat.capabilities, vision: false };
     if (mode === "separate") {
+      let conn = connections.primary, connectionId = "primary", visionCatalog = catalog;
       if (input.vision?.provider) {
         connections.vision = resolveConnection(input.vision, saved, "vision");
         conn = connections.vision; connectionId = "vision";
       }
-      visionModel = String(input.visionModel || "").trim();
+      const visionModel = String(input.visionModel || "").trim();
       if (!visionModel) throw new Error("Choose an image and video model.");
       if (connectionId !== "primary") visionCatalog = await wire.listModels(conn).catch(() => []);
-      visionCap = policy.capabilities(conn, visionModel, visionCatalog.find(m => m.id === visionModel)?.metadata);
-    }
-    // An advertised capability is checked against the actual endpoint before saving.
-    const readsImages = () => visionCap.vision === false ? Promise.resolve(false)
-      : wire.request({ ...conn, capabilities: visionCap }, { model: visionModel, effort: "fast", max_tokens: 1024,
-        messages: [{ role: "user", content: [{ type: "text", text: "What is the main colour in this image? Answer in one word." },
-          { type: "image", source: { type: "base64", media_type: "image/png", data: RED_IMAGE } }] }],
-      }, { signal: AbortSignal.timeout(45000) }).then(reply => !!reply.content?.some(b => b.type === "text" && /\bred\b/i.test(b.text)));
-    // A primary model that can't read pictures isn't a failed check: they are
-    // described by the vision language model on this computer
-    // (lib/local-models.js), and the check says so. An image model chosen for
-    // the job that can't read them is.
-    let reads = true;
-    if (mode === "same") reads = await readsImages().catch(() => false);
-    else {
+      const visionCap = policy.capabilities(conn, visionModel, visionCatalog.find(m => m.id === visionModel)?.metadata);
+      // An image model chosen for the job that can't read them fails the check.
       if (visionCap.vision === false) throw Object.assign(new Error("This model does not accept images. Choose an image and video model from this provider or another provider, or use the vision language model on this computer."), { visionNeeded: true });
-      const ok = await readsImages().catch(error => { throw Object.assign(unlisted(error, visionCatalog, visionModel), { visionNeeded: true }); });
+      const ok = await readsImages(conn, visionModel, visionCap).catch(error => { throw Object.assign(unlisted(error, visionCatalog, visionModel), { visionNeeded: true }); });
       if (!ok) throw Object.assign(new Error("The image check did not pass. Retry, choose another image and video model, or use the vision language model on this computer."), { visionNeeded: true });
+      await useForImages(connectionId, conn, visionModel, visionCap);
     }
-    if (reads) {
-      roles.vision = { connection: connectionId, model: visionModel, capabilities: { ...visionCap, vision: true } };
-      // An image model needs no room for instructions, so a small window only
-      // means fewer frames from a video; the panel says so.
-      const visionWindow = await ollamaWindow(conn, visionModel);
-      if (visionWindow) roles.vision.capabilities.contextWindow = visionWindow.given;
-      if (connectionId === "primary" && visionModel === model) roles.chat.capabilities.vision = true;
-    } else roles.chat.capabilities = { ...roles.chat.capabilities, vision: false };
   }
   // Video is checked with a made-up clip that turns from red to blue, for each
   // model that claims it and each image model whose provider doesn't say:
@@ -174,7 +170,16 @@ async function prepare(input, settings) {
     if (!watched.has(key)) watched.set(key, await watchesVideo({ ...connections[role.connection], capabilities: { ...cap, video: true } }, role.model));
     role.capabilities = { ...role.capabilities, video: watched.get(key), videoLinks: watched.get(key) && role.capabilities.videoLinks === true };
   }
-  return { version: 1, connections, roles };
+  return { version: 1, connections, roles, checked_at: new Date().toISOString() };
+}
+// An advertised capability is checked against the actual endpoint: one
+// picture that is plainly red.
+function readsImages(conn, model, cap) {
+  if (cap.vision === false) return Promise.resolve(false);
+  return wire.request({ ...conn, capabilities: cap }, { model, effort: "fast", max_tokens: 1024,
+    messages: [{ role: "user", content: [{ type: "text", text: "What is the main colour in this image? Answer in one word." },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: RED_IMAGE } }] }],
+  }, { signal: AbortSignal.timeout(45000) }).then(reply => !!reply.content?.some(b => b.type === "text" && /\bred\b/i.test(b.text)));
 }
 async function watchesVideo(conn, model) {
   try {
@@ -195,6 +200,50 @@ function withConfig(settings, config) {
   if (conn.backend === "custom") Object.assign(next, { custom_base_url: conn.baseUrl, custom_model: config.roles.chat.model, custom_api_key: policy.sealKey(conn.apiKey) });
   else { next[conn.backend + "_api_key"] = policy.sealKey(conn.apiKey); next.byok_models = { fast: config.roles.chat.model, default: config.roles.chat.model, strong: config.roles.chat.model }; }
   return next;
+}
+// Once a day, while the primary model was found unable to read pictures, it
+// is asked again with the one test picture: a check made while the provider
+// was busy, or before pictures could reach it, is not kept for good, and once
+// it reads them it reads them itself, ahead of any other model. A model run
+// on this computer (run-here.js) is left as it is.
+const RECHECK_MS = 24 * 3600 * 1000;
+async function recheckPictures({ supabase, id }) {
+  const load = async () => (await supabase.from("profiles").select("settings").eq("id", id).single()).data?.settings || {};
+  const settings = await load();
+  const config = settings.model_config, chat = config?.roles?.chat;
+  if (!chat || chat.here || chat.capabilities?.vision === true) return false;
+  if (Date.now() - Date.parse(config.checked_at || "") < RECHECK_MS) return false;
+  const pick = policy.getRole(settings, "chat");
+  const reads = await readsImages(pick, chat.model, { ...chat.capabilities, vision: undefined }).catch(() => false);
+  let capabilities = null;
+  if (reads) {
+    capabilities = { ...chat.capabilities, vision: true };
+    if (capabilities.video !== false) capabilities.video = await watchesVideo({ ...pick, capabilities: { ...capabilities, video: true } }, chat.model);
+    capabilities.videoLinks = capabilities.video === true && chat.capabilities.videoLinks === true;
+  }
+  // Written under run-here's lock on the model settings, and only over the
+  // settings that were checked, so a save made meanwhile is never undone.
+  let saved = false;
+  await require("./run-here").editConfig(async () => {
+    const now = await load();
+    if (JSON.stringify(now.model_config) !== JSON.stringify(config)) return;
+    const next = structuredClone(config);
+    next.checked_at = new Date().toISOString();
+    if (capabilities) {
+      const same = (role) => role && role.connection === chat.connection && role.model === chat.model;
+      next.roles.chat = { ...chat, capabilities };
+      if (same(next.roles.background)) next.roles.background = { ...next.roles.background, capabilities };
+      next.roles.vision = { connection: chat.connection, model: chat.model, capabilities };
+    }
+    await require("./settings-patch").patchSettings(supabase, id, { set: { model_config: next } });
+    saved = !!capabilities;
+  });
+  return saved;
+}
+function startRecheck({ supabase, id }) {
+  const run = () => recheckPictures({ supabase, id: id() }).catch(e => console.error("[models] pictures could not be checked again:", e.message));
+  setTimeout(run, 5 * 60 * 1000).unref?.();
+  setInterval(run, 60 * 60 * 1000).unref?.();
 }
 function install(app, deps) {
   const { supabase, authorize } = deps;
@@ -289,6 +338,6 @@ async function sealStoredKeys(supabase, id) {
   return Object.keys(set).length;
 }
 
-module.exports = { install, prepare, withConfig, ollamaWindow, windowProblem, sealStoredKeys, checkModel, RED_IMAGE };
+module.exports = { install, prepare, withConfig, ollamaWindow, windowProblem, sealStoredKeys, checkModel, recheckPictures, startRecheck, RED_IMAGE };
 // Four seconds at 128 pixels square: two red, then two blue (H.264, made with PyAV).
 const CHECK_VIDEO = "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";

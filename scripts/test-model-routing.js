@@ -110,7 +110,7 @@ function mockProvider(options = {}) {
     const toolResult = body.messages?.some(m => m.role === "tool");
     const message = body.tools?.length && !toolResult
       ? { role: "assistant", content: null, reasoning_content: "opaque provider reasoning", tool_calls: [{ id: "call_1", type: "function", function: { name: "capability_check", arguments: '{"value":4}' } }] }
-      : { role: "assistant", content: isImage ? "red" : "ready" };
+      : { role: "assistant", content: isImage ? (options.blind ? "I cannot see images." : "red") : "ready" };
     return Response.json({ choices: [{ finish_reason: message.tool_calls ? "tool_calls" : "stop", message }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
   };
   return calls;
@@ -253,6 +253,44 @@ test("one model can serve all roles after a real image check, even when catalog 
   const prepared = await config.prepare({ primary: { provider: "custom", baseUrl: "https://chosen.example/v1", apiKey: "key" }, model: "chat", visionMode: "same" }, {});
   assert.equal(prepared.roles.chat.capabilities.vision, true);
   assert.equal(prepared.roles.vision.model, "chat");
+});
+test("the primary model reads pictures itself whenever it can, ahead of a chosen image model or the one on this computer", async () => {
+  mockProvider({ models: [{ id: "chat" }, { id: "image", architecture: { input_modalities: ["text", "image"] } }] });
+  for (const choice of [{ visionMode: "separate", visionModel: "image" }, { visionMode: "off" }, {}]) {
+    const prepared = await config.prepare({ primary: { provider: "custom", baseUrl: "https://chosen.example/v1", apiKey: "key" }, model: "chat", ...choice }, {});
+    assert.equal(prepared.roles.vision.model, "chat", JSON.stringify(choice));
+    assert.equal(prepared.roles.chat.capabilities.vision, true);
+  }
+});
+test("a primary model found unable to read pictures is asked again once a day, and reads them itself once it can", async () => {
+  const provider = { blind: true };
+  const calls = mockProvider(provider);
+  let settings = config.withConfig({ marker: "kept" }, await config.prepare({ primary: { provider: "custom", baseUrl: "https://chosen.example/v1", apiKey: "key" }, model: "chat" }, {}));
+  assert.equal(settings.model_config.roles.vision, null);
+  const db = { from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { settings: structuredClone(settings) } }) }) }) }),
+    rpc: async (name, { p_set }) => { settings = { ...settings, ...structuredClone(p_set) }; return { data: settings }; } };
+  const pictures = () => calls.filter((c) => c.body?.messages?.some((m) => Array.isArray(m.content) && m.content.some((b) => b.type === "image_url"))).length;
+  const asked = pictures();
+  assert.equal(await config.recheckPictures({ supabase: db, id: "u1" }), false);
+  assert.equal(pictures(), asked, "not again the day it was checked");
+  const dayOld = () => { settings.model_config.checked_at = new Date(Date.now() - 25 * 3600 * 1000).toISOString(); };
+  dayOld();
+  assert.equal(await config.recheckPictures({ supabase: db, id: "u1" }), false);
+  assert.equal(pictures(), asked + 1, "a day on, asked again");
+  assert.equal(settings.model_config.roles.vision, null, "still can't: the vision language model on this computer");
+  assert.ok(Date.now() - Date.parse(settings.model_config.checked_at) < 60000, "and not again for a day");
+  dayOld();
+  provider.blind = false;
+  assert.equal(await config.recheckPictures({ supabase: db, id: "u1" }), true);
+  assert.equal(policy.getRole(settings, "vision").model, "chat", "now it reads them itself");
+  assert.equal(policy.getRole(settings, "chat").capabilities.vision, true);
+  assert.equal(policy.getRole(settings, "chat").apiKey, "key", "its key still sealed and opening");
+  assert.equal(settings.marker, "kept", "nothing else changes");
+  const after = pictures();
+  dayOld();
+  assert.equal(await config.recheckPictures({ supabase: db, id: "u1" }), false);
+  assert.equal(pictures(), after, "reading them: nothing to ask");
+  assert.match(require("node:fs").readFileSync(require("node:path").join(__dirname, "../webapp/server.js"), "utf8"), /require\("\.\/model-config"\)\.startRecheck\(\{ supabase, id: getAdminUserId \}\);/, "started with the webapp");
 });
 test("separate image provider gets only its own key; old keys cannot survive the switch", async () => {
   const calls = mockProvider();

@@ -42,8 +42,8 @@
       '<label data-region="background-key">API key<input data-field="backgroundKey" type="password" autocomplete="off" spellcheck="false"></label></div>' +
       '<button type="button" data-action="load-background" hidden>Retry loading support models</button>' +
       '<label>Model<select data-picker="backgroundModel"></select></label><label data-manual="backgroundModel" hidden>Model ID<input data-field="backgroundModel" spellcheck="false" placeholder="Enter the provider\'s exact model ID"></label></div>' +
-      '</section><section class="model-role model-fields"><header><h3>Image and video model</h3><p class="model-hint">Understands photos, screenshots and videos you send in chat.</p></header>' +
-      '<label>Model choice<select data-field="visionMode"><option value="same">Use the primary model</option><option value="separate">Choose another image and video model</option><option value="off">Use the vision language model on this computer</option></select></label>' +
+      '</section><section class="model-role model-fields" data-region="vision-role"><header><h3>Image and video model</h3><p class="model-hint">Understands photos, screenshots and videos you send in chat.</p></header>' +
+      '<label>Model choice<select data-field="visionMode"><option value="off">Use the vision language model on this computer</option><option value="separate">Choose another image and video model</option></select></label>' +
       '<div data-region="vision" class="model-fields" hidden><label>Provider<select data-field="visionProvider"><option value="">Use the same provider</option>' + options.replace('<option value="">Choose a provider</option>', '') + '</select></label>' +
       '<div data-region="vision-connection" class="model-fields" hidden><label data-region="vision-address" hidden>Service URL<input type="url" data-field="visionBaseUrl" spellcheck="false"></label>' +
       '<label data-region="vision-key">API key<input data-field="visionKey" type="password" autocomplete="off" spellcheck="false"></label></div>' +
@@ -402,6 +402,11 @@
       return value("visionProvider") ? vision.connection === "vision" && savedKey("vision", value("visionProvider"), value("visionBaseUrl"), value("visionKey"))
         : vision.connection === "primary" && !!savedChat();
     }
+    // Whether the saved setup sends pictures to a model other than the primary one.
+    function savedSeparate() {
+      var vision = saved?.roles?.vision;
+      return !!vision && !(vision.connection === "primary" && vision.model === saved.roles.chat.model);
+    }
     // What the check still waits for, named, rather than always "connection details".
     function stillNeeded() {
       if (value("provider") && ready("primary") && chosen("model")) {
@@ -436,17 +441,15 @@
       var cap = chat ? chat.capabilities || {} : savedChat() || catalogCaps("model") || {};
       return cap.vision === true ? true : cap.vision === false ? false : null;
     }
-    // Two choices for pictures and videos, always the vision language model on
-    // this computer and one more: the primary model when it sees them itself,
-    // or another model when it doesn't. While that isn't known (no primary
-    // model chosen yet, or one its provider doesn't describe), all three stay
-    // open and the check settles it.
+    // Pictures and videos go to the primary model whenever it reads them
+    // itself, so then there is nothing to choose. When it can't, or while that
+    // isn't known yet (the check settles it), they go to another image and
+    // video model if one is chosen, else to the vision language model on this
+    // computer.
     function imageChoice() {
       var sees = primarySees(), mode = field("visionMode");
-      root.querySelector('[data-field="visionMode"] option[value="same"]').hidden = sees === false;
-      root.querySelector('[data-field="visionMode"] option[value="separate"]').hidden = sees === true;
-      if (sees === true && mode.value === "separate") mode.value = "same";
-      if (sees === false && mode.value === "same") mode.value = "off";
+      region("vision-role").hidden = sees === true;
+      if (sees === true) mode.value = "off";
       region("vision").hidden = mode.value !== "separate";
     }
     function catalogCaps(key) {
@@ -484,7 +487,7 @@
       // A separately chosen image model is named, so its failure isn't read as the primary model's.
       var visionId = chosen("visionModel"), visionProv = value("visionProvider") || chatProvider;
       if (kind === "failed" && check.visionNeeded) row("Images", (mode === "separate" && visionId && !looksLikeKey(visionId) ? modelName({ id: visionId }, visionProv) + " via " + (providers[visionProv] || visionProv) + ": " : "") + check.error, "fail");
-      else if (mode === "off" || ((kind === "passed" || kind === "saved") && !vision)) row("Images", "Described by the vision language model on this computer", "ok");
+      else if ((kind === "passed" || kind === "saved") && !vision) row("Images", "Described by the vision language model on this computer", "ok");
       else if (kind === "passed" || kind === "saved") {
         var same = vision.connection === "primary" && vision.model === chat.model;
         row("Images", same ? "Accepts images" : "Read by " + modelName({ id: vision.model }, cfg.connections[vision.connection].provider) + " via " + providerLabel(cfg.connections[vision.connection]), "ok");
@@ -497,7 +500,7 @@
       else row("Images", cap.vision === true ? "Accepts images" : cap.vision === false ? "Text only, so the vision language model on this computer describes them" : "Not checked yet", cap.vision === true || cap.vision === false ? "ok" : "wait");
       // How videos are handled follows from what the checked models can do.
       var videoSetup = cfg && (kind === "passed" || kind === "saved") ? cfg
-        : kind !== "checking" && !(kind === "failed") && savedChat() && (mode !== "separate" || savedVision()) && mode !== "off" ? saved : null;
+        : kind !== "checking" && !(kind === "failed") && savedChat() && (mode === "separate" ? savedVision() : !savedSeparate()) ? saved : null;
       if (videoSetup) { var how = videoHandling(videoSetup); row("Videos", how[0], how[1]); }
       else row("Videos", kind === "checking" ? "Checking" : "Not checked yet", "wait");
       row("Thinking effort", cap.reasoning ? "Closedhand sets it per task" : "Fixed by the model", cap.reasoning ? "ok" : "");
@@ -571,7 +574,7 @@
         connectionEdited("primary"); connectionEdited("vision"); connectionEdited("background"); region("selection").hidden = true;
         models = []; field("apiKey").value = ""; field("apiKey").placeholder = "Paste the API key from this provider"; field("model").value = ""; field("backgroundModel").value = "";
         field("baseUrl").value = value("provider") === "ollama" ? (runtime === "desktop" ? "http://localhost:11434/v1" : runtime === "docker" ? "http://host.docker.internal:11434/v1" : "") : "";
-        imageModels = []; field("visionModel").value = ""; field("visionProvider").value = ""; field("visionKey").value = ""; field("visionBaseUrl").value = ""; field("visionMode").value = "same"; refreshPickers();
+        imageModels = []; field("visionModel").value = ""; field("visionProvider").value = ""; field("visionKey").value = ""; field("visionBaseUrl").value = ""; field("visionMode").value = "off"; refreshPickers();
         supportModels = []; field("backgroundModel").value = ""; field("backgroundProvider").value = ""; field("backgroundKey").value = ""; field("backgroundBaseUrl").value = ""; field("backgroundMode").value = "same"; refreshPickers();
         visibility(); show("");
         connectionValues.primary = JSON.stringify(input().primary); scheduleLoad("primary");
@@ -657,7 +660,7 @@
         }
       }
       var vision = saved.roles.vision;
-      field("visionMode").value = !vision ? "off" : vision.connection === "primary" && vision.model === saved.roles.chat.model ? "same" : "separate";
+      field("visionMode").value = vision && !(vision.connection === "primary" && vision.model === saved.roles.chat.model) ? "separate" : "off";
       if (vision) {
         field("visionModel").value = vision.model;
         if (vision.connection === "vision") {
