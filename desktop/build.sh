@@ -173,9 +173,16 @@ if [ -n "${IDENTITY:-}" ]; then
 else
   say "Signing ad hoc (this Mac only)"
 fi
+# Apple's timestamp server sometimes stops answering, and codesign then waits
+# for good: each signature is given ten minutes (perl's alarm outlives the
+# exec), three times over.
 sign_code() {
   if [ -n "${IDENTITY:-}" ]; then
-    codesign --force --timestamp --options runtime --sign "$IDENTITY" "$@"
+    for try in 1 2 3; do
+      perl -e 'alarm shift; exec @ARGV' 600 codesign --force --timestamp --options runtime --sign "$IDENTITY" "$@" && return 0
+      say "codesign did not finish, try $try of 3"
+    done
+    return 1
   else
     codesign --force --sign - "$@"
   fi
