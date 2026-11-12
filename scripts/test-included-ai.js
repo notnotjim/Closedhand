@@ -521,7 +521,7 @@ test("use on Managed Models is recorded by that name alone, whichever LLMs carri
 // Privacy page.
 test("the uncensored LLM is shown by its name, with what it means for the person", () => {
   const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
-  const line = "Uncensored and running in a TEE, so nobody but you can read anything that goes in or comes out. When a better uncensored LLM is available, Closedhand switches to it for you.";
+  const line = "Uncensored and running in a TEE, so nobody but you can read what goes in or comes out.";
   const setup = read("webapp/views/setup.html"), dash = read("webapp/views/dashboard.html");
   assert.ok(setup.includes('<strong id="model-included-name">DeepSeek V4.1 Flash Abliterated</strong>') && setup.includes(`<p class="note">${line}</p>`), "setup");
   assert.ok(dash.includes('<h3 id="llm-managed-name"><span data-llm-name>DeepSeek V4.1 Flash Abliterated</span></h3>'), "Settings names it");

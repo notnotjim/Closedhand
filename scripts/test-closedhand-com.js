@@ -154,6 +154,8 @@ test('bug receipts and sign-in return paths stay narrow', () => {
   const auto = '/phone-access/pair#t=abc.def&state=' + 'a'.repeat(32) + '&back=http%3A%2F%2Flocalhost%3A3000%2Fsetup&via=google&hint=sam%40example.com&tried=1';
   assert.equal(navigation.signInReturn(auto), auto);
   assert.equal(navigation.signInReturn('/carry-on'), '/carry-on', 'the carry-on link signs in, then goes on');
+  assert.equal(navigation.signInReturn('/insights'), '/insights', "a page's Sign in comes back to that page");
+  assert.equal(navigation.signInReturn('/'), '/');
   assert.equal(navigation.signInReturn('https://evil.example/open'), '/open');
   assert.equal(navigation.signInReturn('//evil.example/open'), '/open');
   assert.equal(navigation.signInReturn('/assistant-email/confirm#ticket.sig'), '/assistant-email/confirm#ticket.sig', "the assistant email confirmation comes back with its ticket");
@@ -164,9 +166,9 @@ test("the confirmation page never presents the owner's own address as the assist
   const script = fs.readFileSync(path.join(__dirname, '../closedhand-com/public/assistant-email-confirm.js'), 'utf8');
   assert.match(view, /<p class="address" id="address" hidden><\/p>\s*<p class="address-note" id="address-note" hidden>/, 'the assistant address appears only once it exists');
   assert.match(view, /<p class="fine" id="who-label">When Closedhand emails you first, it writes to<\/p>\s*<div class="who">/, 'the signed-in account is labelled for what it is');
-  assert.match(view, /from any Google or Microsoft account connected to your Closedhand\.<\/p>/, 'the owner may write from any connected account, not only the one signed in');
+  assert.match(view, /<p class="fine">You can email Closedhand from any Google or Microsoft account connected to your Closedhand\.<\/p>/, 'the owner may write from any connected account, not only the one signed in');
   assert.doesNotMatch(view + script, /account you’ll email it from|private replies go/);
-  assert.match(script, /'Your Closedhand assistant, ' \+ name \+ ', is getting its own email address\./);
+  assert.match(script, /\$\('lede'\)\.textContent = 'Email, forward or CC ' \+ name \+ ' into any conversation\.';/);
   assert.match(view, />Create Closedhand’s email address<\/button>/);
   assert.match(script, /\$\('approve'\)\.textContent = 'Create ' \+ whose \+ ' email address';/);
   assert.match(script, /if \(!account\.signedIn \|\| !\(account\.emailVerified \|\| account\.anonymous\)\) \{/, 'an older or unverified sign-in is asked to sign in again before confirming; an account number has no email to verify');

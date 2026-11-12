@@ -44,10 +44,12 @@
     link.parentNode.append(menu);
     document.addEventListener('click', function (e) { if (menu.open && !menu.contains(e.target)) menu.open = false; });
   }
+  // Signing in comes back to this page (account.js then).
   function signIn() {
     if (document.getElementById('navSignIn')) return;
     var a = document.createElement('a');
-    a.href = '/account'; a.id = 'navSignIn'; a.className = 'nav-in'; a.textContent = 'Sign in';
+    var here = location.pathname;
+    a.href = '/account' + (here && here !== '/account' ? '?then=' + encodeURIComponent(here) : ''); a.id = 'navSignIn'; a.className = 'nav-in'; a.textContent = 'Sign in';
     link.after(a);
   }
   // Their Closedhand is known: the header opens its dashboard.

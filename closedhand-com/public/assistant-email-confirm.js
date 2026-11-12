@@ -18,7 +18,7 @@
   if (name) {
     const whose = name + '’s';
     $('heading').textContent = 'Set up ' + whose + ' email address';
-    $('lede').textContent = 'Your Closedhand assistant, ' + name + ', is getting its own email address. You can email it, forward things to it and copy it in from any Google or Microsoft account connected to your Closedhand.';
+    $('lede').textContent = 'Email, forward or CC ' + name + ' into any conversation.';
     $('who-label').textContent = 'When ' + name + ' emails you first, it writes to';
     $('approve').textContent = 'Create ' + whose + ' email address';
     $('address-note').textContent = whose + ' email address';

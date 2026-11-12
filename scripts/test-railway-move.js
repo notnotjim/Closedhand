@@ -108,10 +108,13 @@ test("back from Railway: a project from the template in the region nearest the p
 
 test("Settings is one button, and closedhand.com passes the sign-in straight on", () => {
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /<button type="button" class="cta" id="move-go" onclick="startRailwayMove\(\)">Move to Railway<\/button>/);
+  // The card's button says first what moving does; Continue goes on to Railway's sign-in.
+  assert.match(dash, /<button type="button" class="cta" id="move-go" onclick="confirmRailwayMove\(true\)">Move to Railway<\/button>/);
+  assert.match(dash, /<div class="move-confirm" id="railway-confirm" hidden>\n\s*<p class="account-action-desc">Everything moves to a server on Railway, and this computer stops running Closedhand\. You sign in to Railway next\.<\/p>\n\s*<button type="button" class="cta" id="railway-continue" onclick="startRailwayMove\(\)">Continue to Railway<\/button>/);
   // A section of its own, before Your data, shown as Models are: a card for
   // each computer, the one it runs on In use, then the ways to move it with
-  // what each costs and that the computer it leaves stops running Closedhand.
+  // what each costs; that the computer it leaves stops running Closedhand is
+  // said once a way is chosen.
   assert.match(dash, /<div class="settings-group" id="always-on" hidden>\n\s*<div class="settings-group-header">\n\s*<h2>Always on<\/h2>\n\s*<p class="section-desc">Choose the computer Closedhand runs on<\/p>/);
   assert.match(dash, /<section class="choice-card in-use" id="always-on-here" aria-labelledby="always-on-here-name">\n\s*<header class="choice-head"><h3 id="always-on-here-name"><\/h3><span class="plan-status on">In use<\/span><\/header>/, "where it runs now, said as Models say it");
   for (const id of ["always-on-computer", "always-on-move"])
@@ -121,9 +124,11 @@ test("Settings is one button, and closedhand.com passes the sign-in straight on"
   assert.match(dash, /'Closedhand runs day and night on your server' \+ \(railwayHome && railwayHome\.city \? ' in ' \+ railwayHome\.city : ''\) \+ '\. Railway bills you for it, about \$10 to \$20 a month\.'/);
   assert.match(dash, /<a class="quiet-link" id="always-on-railway-open" target="_blank" rel="noopener" hidden>Open Railway<\/a>/, "their own project on Railway, for the bill and deleting it");
   assert.match(dash, /var place = data\.alwaysOnPlace \? ' in ' \+ data\.alwaysOnPlace : '', railwayHome = data\.railwayHome;/);
-  assert.match(dash, /document\.getElementById\("always-on-railway"\)\.textContent = 'Railway rents you a server' \+ \(place \|\| ' near you'\) \+ ' on its Hobby plan, for about \$10 to \$20 a month\. Everything moves there and your computer stops running Closedhand\.';/, "named where it would run");
+  assert.match(dash, /document\.getElementById\("always-on-railway"\)\.textContent = 'Railway rents you a server' \+ \(place \|\| ' near you'\) \+ ' on its Hobby plan, for about \$10 to \$20 a month\.';/, "named where it would run, and only what it is");
+  assert.match(dash, /document\.getElementById\("always-on-computer-desc"\)\.textContent = 'Any computer that stays on, like a Mac mini at home, runs Closedhand day and night\.';/, "only what it is");
+  assert.match(dash, /document\.getElementById\("move-code-what"\)\.textContent = hostText\('Everything moves to the other computer, and this one stops running Closedhand\.', 'Everything moves to the other computer, and the server on Railway stops running Closedhand\.'\);/, "what moving does, with the code");
   assert.ok(dash.indexOf('id="always-on"') < dash.indexOf('id="account-section"'), "before Account");
-  assert.match(dash, /document\.getElementById\("always-on"\)\.hidden = !data\.canGoAlwaysOn && !data\.canMoveToComputer && document\.documentElement\.dataset\.host !== 'railway';[\s\S]{0,1600}document\.getElementById\("always-on-move"\)\.hidden = !data\.canGoAlwaysOn;/, "on Railway it says it is there");
+  assert.match(dash, /document\.getElementById\("always-on"\)\.hidden = !data\.canGoAlwaysOn && !data\.canMoveToComputer && document\.documentElement\.dataset\.host !== 'railway';[\s\S]{0,2200}document\.getElementById\("always-on-move"\)\.hidden = !data\.canGoAlwaysOn;/, "on Railway it says it is there");
   assert.ok(dash.indexOf('id="always-on-computer"') < dash.indexOf('id="always-on-move"'), "a computer of their own first, Railway second");
   assert.doesNotMatch(dash, /always-on-handle|toggleAlwaysOn/, "no quiet line to open");
   assert.match(read("webapp/railway-move.js"), /Press Move to Railway again\./, "errors name the button as it is");

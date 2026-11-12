@@ -70,8 +70,9 @@ The rules every screen of the app and site follows, so none invents its own. Jud
 first as someone new to it would (what is this, what do I do, what matters most), then by
 these rules; where a rule makes a screen worse, change the rule here, never quietly around it.
 - Headings: a section has one heading style (sentence case, semibold) and at most one muted
-  line under it saying what the section is for. No small-capital labels ("APPS", "ROUTINES")
-  and no centred section headings.
+  line under it saying what the section is for: one short sentence, never a paragraph. More goes
+  in the section's body or the step it belongs to (`scripts/test-subheadings.js` checks). No
+  small-capital labels ("APPS", "ROUTINES") and no centred section headings.
 - Buttons come in three tiers. The main action (the brush-underlined `.cta`) appears once per
   screen at most, for the thing the person most likely came to do. Secondary actions are
   outlined neutral buttons, but one: the "+ …" button that adds to a list of records
@@ -224,8 +225,8 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   private. Settings and setup show the person's own provider's model as set, by the name people
   know it by. The uncensored LLM Closedhand provides is shown by the name closedhand.com gives it
   ("DeepSeek V4.1 Flash Abliterated"), always with "Abliterated" or "uncensored", and "Uncensored and
-  running in a TEE, so nobody but you can read anything that goes in or comes out. When a better
-  uncensored LLM is available, Closedhand switches to it for you." The company running the TEE is
+  running in a TEE, so nobody but you can read what goes in or comes out." That Closedhand switches to
+  a better uncensored LLM when one is available is said on the Pricing page. The company running the TEE is
   never named in anything people read (the Privacy page calls it the company running that hardware),
   and is not one of the LLM providers people can pick.
 - The uncensored LLM Closedhand provides goes by its model's name, never a product name of its own

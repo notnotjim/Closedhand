@@ -21,11 +21,14 @@
     } catch (_) { show(null); say('Could not look up your account. Please try again.', true); return; }
     say(welcome);
     if (!data.signedIn) {
-      // From the one-tap link in Closedhand's chat to subscribe: signing in
-      // goes on to it.
+      // From the one-tap link in Closedhand's chat to subscribe (then=subscribe),
+      // or a page's Sign in (account-nav.js, then=/insights): signing in goes
+      // on there. The sign-in itself takes only closedhand.com's own pages
+      // (entry-navigation.js signInReturn).
       const then = new URLSearchParams(location.search).get('then');
-      if (then === 'subscribe') {
-        for (const a of document.querySelectorAll('#signed-out a[href^="/auth/"]')) a.href = a.getAttribute('href').replace('return_to=%2Faccount', 'return_to=%2F' + then);
+      const path = then ? (then.startsWith('/') ? then : '/' + then) : '';
+      if (/^\/[a-z0-9/-]{0,60}$/.test(path) && path !== '/account') {
+        for (const a of document.querySelectorAll('#signed-out a[href^="/auth/"]')) a.href = a.getAttribute('href').replace('return_to=%2Faccount', 'return_to=' + encodeURIComponent(path));
       }
       // Signed in with a provider that has no Closedhand account (none=…).
       const none = new URLSearchParams(location.search).get('none');

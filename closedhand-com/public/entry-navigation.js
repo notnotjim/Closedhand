@@ -9,7 +9,10 @@
       return url.origin === origin && allowed.includes(url.pathname) ? url.pathname + url.search + url.hash : fallback;
     } catch (_) { return fallback; }
   }
-  function signInReturn(value) { return localPath(value, ['/open', '/phone-access/pair', '/account', '/carry-on', '/subscribe', '/assistant-email/confirm'], '/open'); }
+  // Where a sign-in may go back to: the pages that sign in on the way, and
+  // every page whose header offers Sign in (account-nav.js).
+  function signInReturn(value) { return localPath(value, ['/open', '/phone-access/pair', '/account', '/carry-on', '/subscribe', '/assistant-email/confirm',
+    '/', '/ethos', '/architecture', '/pcl', '/pricing', '/privacy', '/terms', '/insights'], '/open'); }
   function signInError(value) {
     const url = new URL(signInReturn(value), origin);
     url.searchParams.set('sign_in_error', '1');

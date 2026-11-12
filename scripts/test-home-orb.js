@@ -77,6 +77,7 @@ test("every page's header says Sign in, or Open dashboard and Sign out, and Sign
     const all = () => [...made, ...appended];
     vm.runInNewContext(script, {
       document: { querySelector: () => link, getElementById: (id) => all().find((n) => n.id === id) || null, createElement: node, addEventListener() {} },
+      location: { pathname: '/insights' },
       localStorage: { getItem: (k) => store.get(k) ?? null, removeItem: (k) => store.delete(k) },
       fetch: async () => ({ ok: true, json: async () => account || { signedIn: false } }),
     });
@@ -106,7 +107,9 @@ test("every page's header says Sign in, or Open dashboard and Sign out, and Sign
   assert.equal(kept.link.textContent, 'Open dashboard', 'an address this browser keeps opens too');
   assert.equal(kept.menu, undefined, 'nobody signed in: no Sign out');
   assert.equal(kept.signIn.textContent, 'Sign in');
-  assert.equal(kept.signIn.href, '/account');
+  assert.equal(kept.signIn.href, '/account?then=%2Finsights', 'and signing in comes back to this page');
+  const account = read('closedhand-com/public/account.js');
+  assert.match(account, /a\.href = a\.getAttribute\('href'\)\.replace\('return_to=%2Faccount', 'return_to=' \+ encodeURIComponent\(path\)\)/, 'the account page passes it on to the sign-in');
   const keptSignedIn = await header({ kept: 'https://amber-fox-42.closedhand.ai', account: { signedIn: true, email: 'mira@example.com', url: 'https://amber-fox-42.closedhand.ai' } });
   keptSignedIn.out.listeners.submit();
   assert.equal(keptSignedIn.store.has('closedhand-personal-url'), false, 'Sign out forgets it');

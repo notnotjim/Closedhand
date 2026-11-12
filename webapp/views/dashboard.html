@@ -1139,8 +1139,8 @@
     }
     .account-action[hidden] { display: none; }
     /* A move code: what to type on the other computer, easy to read across. */
-    .move-code { margin-top: 0.75rem; }
-    .move-code[hidden] { display: none; }
+    .move-code, .move-confirm { margin-top: 0.75rem; }
+    .move-code[hidden], .move-confirm[hidden] { display: none; }
     .move-code-facts { padding: 0.5rem 0 0.25rem; }
     .move-code-value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1rem; letter-spacing: 0.06em; color: var(--fg); user-select: all; }
     .ui-icon { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
@@ -2361,8 +2361,8 @@
                have reached it stays, with the answer. + New agent starts one,
                or a routine, one agent or a team. -->
           <div class="agents-head list-head"><div class="mc-section-label">Tasks</div><button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button></div>
-          <p class="section-desc" id="auto-active-desc" hidden>What Closedhand is working on now. Each answers in the chat it came from, or the one you picked.</p>
-          <p class="section-desc" id="auto-active-empty">Nothing right now. Ask in chat for anything that takes a while, like comparing hotels, and Closedhand works on it here while you carry on.</p>
+          <p class="section-desc" id="auto-active-desc" hidden>What Closedhand is working on now.</p>
+          <p class="section-desc" id="auto-active-empty">Nothing right now. Anything long you ask for in chat shows here while Closedhand works on it.</p>
           <div id="auto-active-list"></div>
           <p id="auto-active-error" class="section-desc" role="status" hidden>Could not refresh your tasks. Please try again shortly.</p>
           <!-- Routines: every one, one agent or a team, one card each, which
@@ -2597,7 +2597,7 @@
           <div class="settings-group" id="wallet-block" style="display:none;">
             <button type="button" class="settings-group-header furl-handle" id="wallet-handle" aria-expanded="false" aria-controls="wallet-body" onclick="toggleWallet()">
               <h2>Wallet <svg class="furl-chev" width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></h2>
-              <p class="section-desc">Cards and addresses Closedhand may use at checkout. You will always be asked to confirm first, unless your rules say otherwise.</p>
+              <p class="section-desc">Cards and addresses Closedhand may use at checkout, always asking you first unless your rules say otherwise.</p>
             </button>
             <div id="wallet-body" style="padding:0.75rem 1rem;" hidden>
               <p class="section-desc" data-railway="Card numbers are encrypted in your Railway account, and the LLM never sees them.">Card numbers are encrypted on your computer, and the LLM never sees them.</p>
@@ -2751,7 +2751,7 @@
                 </section>
                 <section class="choice-card" id="llm-managed" aria-labelledby="llm-managed-name" hidden>
                   <header class="choice-head"><h3 id="llm-managed-name"><span data-llm-name>DeepSeek V4.1 Flash Abliterated</span></h3><span class="plan-status" id="llm-managed-status"></span></header>
-                  <p class="account-action-desc">Uncensored and running in a TEE, so nobody but you can read anything that goes in or comes out. When a better uncensored LLM is available, Closedhand switches to it for you. <a class="text-link" href="https://closedhand.com/pricing" target="_blank" rel="noopener">About the subscription</a></p>
+                  <p class="account-action-desc">Uncensored and running in a TEE, so nobody but you can read what goes in or comes out. <a class="text-link" href="https://closedhand.com/pricing" target="_blank" rel="noopener">About the subscription</a></p>
                   <!-- What the person's plan means for them, in one sentence; the
                        plan itself, Resume included, is in My Account. -->
                   <p class="account-action-desc" id="included-ai-plan"></p>
@@ -3006,6 +3006,7 @@
                   <header class="choice-head"><h3 id="always-on-computer-name">A computer you leave on</h3><span class="plan-status over">Not in use</span></header>
                   <p class="account-action-desc" id="always-on-computer-desc"></p>
                   <div class="move-code" id="move-code" hidden>
+                    <p class="account-action-desc" id="move-code-what"></p>
                     <p class="account-action-desc">On the other computer, install Closedhand from closedhand.com, choose Bring Closedhand from another computer in its setup, and type:</p>
                     <dl class="account-facts move-code-facts"><dt>Personal URL</dt><dd id="move-code-url"></dd><dt>Move code</dt><dd class="move-code-value" id="move-code-value"></dd></dl>
                     <p class="account-action-desc" id="move-code-until"></p>
@@ -3017,8 +3018,13 @@
                 <section class="choice-card" id="always-on-move" aria-labelledby="always-on-move-name" hidden>
                   <header class="choice-head"><h3 id="always-on-move-name">A server on Railway</h3><span class="plan-status over">Not in use</span></header>
                   <p class="account-action-desc" id="always-on-railway"></p>
+                  <div class="move-confirm" id="railway-confirm" hidden>
+                    <p class="account-action-desc">Everything moves to a server on Railway, and this computer stops running Closedhand. You sign in to Railway next.</p>
+                    <button type="button" class="cta" id="railway-continue" onclick="startRailwayMove()">Continue to Railway</button>
+                    <button type="button" class="quiet-link" onclick="confirmRailwayMove(false)">Cancel</button>
+                  </div>
                   <p class="always-on-status" id="move-status" role="status" hidden></p>
-                  <button type="button" class="cta" id="move-go" onclick="startRailwayMove()">Move to Railway</button>
+                  <button type="button" class="cta" id="move-go" onclick="confirmRailwayMove(true)">Move to Railway</button>
                 </section>
               </div>
             </div>
@@ -3227,9 +3233,11 @@
       var railwayOpen = document.getElementById("always-on-railway-open");
       railwayOpen.hidden = !(railwayHome && railwayHome.project);
       if (railwayHome && railwayHome.project) railwayOpen.href = railwayHome.project;
-      document.getElementById("always-on-railway").textContent = 'Railway rents you a server' + (place || ' near you') + ' on its Hobby plan, for about $10 to $20 a month. Everything moves there and your computer stops running Closedhand.';
-      document.getElementById("always-on-computer-desc").textContent = 'Any computer that stays on, like a Mac mini at home, runs Closedhand day and night for the cost of its power. '
-        + hostText('Everything moves to it and your computer stops running Closedhand.', 'Everything moves to it, then you delete the project on Railway so it stops charging you.');
+      // Each card says what the place is; what a move does is said once its
+      // button is pressed, before anything moves.
+      document.getElementById("always-on-railway").textContent = 'Railway rents you a server' + (place || ' near you') + ' on its Hobby plan, for about $10 to $20 a month.';
+      document.getElementById("always-on-computer-desc").textContent = 'Any computer that stays on, like a Mac mini at home, runs Closedhand day and night.';
+      document.getElementById("move-code-what").textContent = hostText('Everything moves to the other computer, and this one stops running Closedhand.', 'Everything moves to the other computer, and the server on Railway stops running Closedhand.');
       document.getElementById("always-on-computer").hidden = !data.canMoveToComputer;
       document.getElementById("always-on-move").hidden = !data.canGoAlwaysOn;
       if (data.canGoAlwaysOn || data.canMoveToComputer) followMove();
@@ -5759,8 +5767,13 @@
       }
     }
     // Off to Railway's sign-in; it comes back to Settings, which follows the rest.
+    // What moving to Railway does, said before it starts; Continue goes to Railway's sign-in.
+    function confirmRailwayMove(open) {
+      document.getElementById('railway-confirm').hidden = !open;
+      document.getElementById('move-go').hidden = open;
+    }
     async function startRailwayMove() {
-      var go = document.getElementById('move-go');
+      var go = document.getElementById('railway-continue');
       go.disabled = true;
       try {
         var r = await fetch('/api/move/railway', { method: 'POST' });
@@ -10494,7 +10507,7 @@
         <svg width="1.875rem" height="1.875rem" viewBox="0 0 24 24" fill="none" stroke="var(--fg)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         <h3 id="apple-modal-title" style="margin:0;">Connect a Mac</h3>
       </div>
-      <p class="mac-intro">Choose which Mac files and apps Closedhand may use. Content needed for a request is processed by your selected LLM provider.</p>
+      <p class="mac-intro">Choose which Mac files and apps Closedhand may use.</p>
 
       <div id="apple-step-desktop" style="display:none;">
         <p style="font-size:0.875rem;color:var(--muted);line-height:1.6;">Mac access is built into Closedhand for Mac and connects by itself. Choose what to allow from the fist in your Mac’s menu bar. Use “Set up Mac access” there for macOS permissions.</p>
