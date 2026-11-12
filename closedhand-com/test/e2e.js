@@ -43,9 +43,17 @@ const request = async (url, opts) => {
   if (url === 'https://api.github.com/repos/notnotjim/Closedhand') return new Response(JSON.stringify({ stargazers_count: 7, forks_count: 2 }));
   if (url.startsWith('https://api.github.com/repos/notnotjim/Closedhand/releases')) {
     return new Response(JSON.stringify([
-      { tag_name: 'v2.1.0', draft: false, assets: [{ name: 'Closedhand-2.1.0-arm64.dmg', download_count: 5 }, { name: 'checksums.txt', download_count: 40 }] },
-      { tag_name: 'v2.0.9', draft: false, assets: [{ name: 'Closedhand-2.0.9-arm64.dmg', download_count: 3 }] },
+      { tag_name: 'workspace-1a2b', draft: false, prerelease: true, published_at: '2026-03-03T09:00:00Z', assets: [{ name: 'kernel', download_count: 9 }] },
+      { tag_name: 'v2.1.0', draft: false, published_at: '2026-03-02T09:00:00Z', assets: [{ name: 'Closedhand-2.1.0-arm64.dmg', download_count: 5 }, { name: 'checksums.txt', download_count: 40 }] },
+      { tag_name: 'v2.0.9', draft: false, published_at: '2026-02-20T09:00:00Z', assets: [{ name: 'Closedhand-2.0.9-arm64.dmg', download_count: 3 }] },
     ]));
+  }
+  if (url.startsWith('https://api.github.com/repos/notnotjim/Closedhand/actions/runs')) {
+    return new Response(JSON.stringify({ workflow_runs: [
+      { name: 'Checks', status: 'in_progress', conclusion: null, head_sha: 'f00dfeed99', created_at: '2026-03-03T10:05:00Z' },
+      { name: 'Checks', status: 'completed', conclusion: 'success', head_sha: 'abc1234def', updated_at: '2026-03-03T10:00:00Z', html_url: 'https://github.com/notnotjim/Closedhand/actions/runs/1' },
+      { name: 'Build desktop app', status: 'completed', conclusion: 'cancelled', head_sha: '9876543fed', updated_at: '2026-03-02T22:00:00Z', html_url: 'https://github.com/notnotjim/Closedhand/actions/runs/2' },
+    ] }));
   }
   if (url.includes('/.well-known/closedhand-installation')) {
     const nonce = new URL(url).searchParams.get('nonce');
@@ -813,7 +821,13 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   assert.equal(data.weeks.length, 8);
   assert.equal(data.weeks.at(-1).installs >= 2, true, 'this week counts today\'s fetches');
   assert.equal(data.weeks.at(-1).accounts >= 1, true, 'this week counts the accounts made today');
-  assert.deepEqual(data.github, { stars: 7, forks: 2, macTotal: 8, macLatest: { version: 'v2.1.0', downloads: 5 } }, 'only .dmg files count as Mac downloads');
+  assert.deepEqual(data.github, { stars: 7, forks: 2, macTotal: 8, macLatest: { version: 'v2.1.0', at: '2026-03-02T09:00:00Z', downloads: 5 },
+    runs: {
+      checks: { conclusion: 'success', at: '2026-03-03T10:00:00Z', sha: 'abc1234', url: 'https://github.com/notnotjim/Closedhand/actions/runs/1', running: true },
+      mac: { conclusion: 'cancelled', at: '2026-03-02T22:00:00Z', sha: '9876543', url: 'https://github.com/notnotjim/Closedhand/actions/runs/2', running: false },
+      images: null,
+    } }, 'only .dmg files of releases count as Mac downloads, and each workflow\'s last finished run on main');
+  assert.ok(data.needs.some(x => /last Mac build did not finish/.test(x.what)), 'a stopped Mac build needs you');
   assert.equal(data.urls.dnsCeiling, 190);
   for (const key of ['working', 'day', 'week', 'month', 'setting_up', 'errors', 'used', 'limit']) assert.equal(typeof data.urls[key], 'number', key);
 });
