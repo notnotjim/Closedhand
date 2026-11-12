@@ -172,6 +172,49 @@ test("nothing is saved when the review is not clean or the writer says none, and
   assert.deepEqual(await learning.consider({ userId: "u1", request: "x", steps: struggled(), reply: "", recent: [], from: "web" }), { learned: "Comment on Instagram posts" }, "no quota: a good skill is kept however many came before it");
 });
 
+// A skill is an ability that helps whatever the subject: one named after its
+// task's subject (an agent, an airline, its baggage) gets one rewrite as the
+// general ability, or is not kept.
+const agentSkill = {
+  ...goodSkill, why: "Attaching the files took several tries.",
+  name: "Draft agent email with documents attached",
+  description: "Write an email to the agent with the signed documents attached, ready to send.",
+  triggers: ["email the agent", "agent email documents"],
+  when: "When the person asks to email the agent with documents attached.",
+  steps: ["Find the documents in the person's files by name.", "Attach each one to a new draft.", "Write a short covering note above them."],
+  avoid: ["Attaching from a link fails; attach each file from the person's files instead."],
+  check: "The draft shows each document as an attachment.",
+};
+const generalSkill = {
+  ...agentSkill, decision: "new", name: "Draft an email with documents attached",
+  description: "Write an email with the person's documents attached, ready for them to send.",
+  triggers: ["email with attachments", "attach documents to an email"],
+  when: "When the person asks for an email with documents or files attached.",
+};
+const agentRequest = "draft an email to the agent with the signed documents attached";
+
+test("a skill named after its task's subject is rewritten once as the general ability, or not kept", async () => {
+  assert.deepEqual(learning.subjectWords({ name: agentSkill.name, triggers: agentSkill.triggers }, agentRequest), ["agent"]);
+  assert.deepEqual(learning.subjectWords({ name: "Check airline baggage fee options", triggers: ["baggage fee", "airline baggage"] }, "check the baggage fee on my airline for the flight back"), ["airline", "baggage", "fee"]);
+  assert.deepEqual(learning.subjectWords({ name: goodSkill.name, triggers: goodSkill.triggers }, "comment 'Lovely' on my latest Instagram post"), [], "how something is done, and on which service, is no subject");
+  freshSkills();
+  llm.answers.push(agentSkill, generalSkill, { risk_level: "safe", findings: [], summary: "ok" });
+  assert.deepEqual(await learning.consider({ userId: "u1", request: agentRequest, steps: struggled(), reply: "Done, it's in your drafts.", recent: [], from: "web" }), { learned: "Draft an email with documents attached" });
+  const asked = llm.prompts[1].messages[0].content;
+  assert.match(asked, /about that task's subject \(agent\)/, "told which words tie it to its task");
+  assert.match(asked, /answer none/);
+  assert.equal(db.rows[0].name, "Draft an email with documents attached");
+  freshSkills();
+  llm.answers.push(agentSkill, { decision: "none", why: "It only worked for that agent's portal." });
+  assert.equal(await learning.consider({ userId: "u1", request: agentRequest, steps: struggled(), reply: "", recent: [], from: "web" }), null);
+  assert.equal(db.rows.length, 0, "nothing general to keep: no skill");
+  freshSkills();
+  llm.answers.push(agentSkill, { ...agentSkill, decision: "new", name: "Draft agent emails" });
+  assert.equal(await learning.consider({ userId: "u1", request: agentRequest, steps: struggled(), reply: "", recent: [], from: "web" }), null);
+  assert.equal(db.rows.length, 0, "still about the agent: not kept");
+  assert.equal(llm.prompts.length, 2, "one rewrite, never a loop");
+});
+
 test("only skills Closedhand learned are ever changed or removed", async () => {
   freshSkills();
   db.rows.push({ id: "p", user_id: "u1", name: "Brand voice", category: "community", content: "---\nname: Brand voice\n---\n\nmine" });

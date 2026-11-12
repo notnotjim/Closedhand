@@ -338,18 +338,22 @@
     .int-card .int-name.wraps { white-space: normal; min-width: 0; min-height: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
 
     /* Integration card unfurl (expanded detail panel) */
+    /* Opens to its whole content, however long: the row grows from nothing
+       to the content's own height, so nothing is ever cut off. */
     .int-unfurl {
-      max-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 0fr);
       overflow: hidden;
-      transition: max-height 0.3s ease;
+      transition: grid-template-rows 0.3s ease;
       background: var(--raised);
       border-radius: 0.625rem;
       /* No border while closed: its background would show through as a
          strip under the card. */
       border: 0 solid transparent;
     }
+    .int-unfurl > * { min-height: 0; overflow: hidden; }
     .int-unfurl.open {
-      max-height: 37.5rem;
+      grid-template-rows: minmax(0, 1fr);
       border-width: 1px;
       border-color: rgba(var(--fg-rgb),0.1);
     }
@@ -865,15 +869,17 @@
 
     /* Expanded detail panel */
     .conn-drawer {
-      max-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 0fr);
       overflow: hidden;
-      transition: max-height 0.25s ease;
+      transition: grid-template-rows 0.25s ease;
       background: var(--raised);
       border-bottom: 1px solid var(--raised);
     }
 
+    .conn-drawer > * { min-height: 0; overflow: hidden; }
     .conn-drawer.open {
-      max-height: 37.5rem;
+      grid-template-rows: minmax(0, 1fr);
     }
 
     .conn-drawer-inner {
