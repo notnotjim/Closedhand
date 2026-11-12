@@ -4,7 +4,8 @@
 // the models the way a key the person pastes in is (model-config.js), so it
 // works exactly like their own: through NEAR AI, the provider closedhand.com
 // names today, that is private inference (near-private.js), and pictures go to
-// the vision language model on this computer. A person who has set up an LLM
+// the LLM when it reads them, else to the vision language model on this
+// computer. A person who has set up an LLM
 // provider of their own keeps it; the included key waits beside it.
 const KEY = /^sk-[A-Za-z0-9_-]{20,200}$/;
 const MODEL = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9._:-]+$/i;
@@ -94,6 +95,7 @@ async function use({ unlessOwn = false, fresh = false } = {}) {
     catch (error) { if (!error.visionNeeded || vision.visionMode === "off") throw error; }
   }
   config.included = true;
+  config.checked_at = new Date().toISOString();
   // Saved against the settings as they are now, unless the person set up an
   // LLM provider of their own while this was being checked. Their own setup,
   // with its key, is kept beside it, so switching back (useOwn) is one step
@@ -209,8 +211,15 @@ async function refresh() {
   const changed = JSON.stringify(next) !== JSON.stringify(had);
   if (changed) await patch({ included_ai: next });
   if (switchTo) await use();
+  // Pictures that no LLM reads are checked for again once a day: a check that
+  // failed while the provider was busy, or before pictures could reach the
+  // model, is not kept for good.
+  else if (before.model_config?.included && !before.model_config.roles?.vision && !(Date.now() - Date.parse(before.model_config.checked_at || "") < RECHECK_MS)) {
+    await use({ unlessOwn: true }).catch((e) => console.error("[included ai] pictures could not be checked again:", e.message));
+  }
   return changed || notices.changed;
 }
+const RECHECK_MS = 24 * 3600 * 1000;
 
 function start() {
   const run = () => refresh().catch(e => console.error("[included ai] could not check with closedhand.com:", e.message));

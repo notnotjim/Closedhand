@@ -82,9 +82,10 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   return {
     provider: 'near',
     label: 'NEAR AI',
-    // No image model: pictures and videos are described by the vision language
-    // model on the person's computer. NEAR's encryption carries pictures too
-    // (near-private.js), so one of its private models can be named here.
+    // No image model: the chat LLM reads pictures itself, as each computer
+    // checks (webapp/model-config.js), and NEAR's other private models that
+    // read them did no better on handwriting (tried 2026-11-13). One can be
+    // named here; NEAR's encryption carries pictures (near-private.js).
     defaults: { models: 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated', name: 'DeepSeek V4.1 Flash Abliterated', vision: '' },
     configured: () => session.configured(),
     // The sign-in, renewed as closedhand.com starts and each hour, so one NEAR
