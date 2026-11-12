@@ -75,38 +75,39 @@ test("the key becomes the models, sealed, reading images with the same model, su
   assert.equal(store.box.settings.preferred_name, "Mira", "nothing else changes");
 });
 
-test("pictures and videos go to the model given for them, checked; failing that the chat model, then none", async () => {
-  const store = settingsStore({});
-  const tried = [];
-  const ai = setup(store, async (input) => {
-    tried.push([input.visionMode, input.visionModel || null]);
-    if (input.visionMode !== "same") throw Object.assign(new Error("The image check did not pass."), { visionNeeded: true });
-    return prepared(input);
-  });
-  assert.equal(await ai.receive({ key: KEY, models: { ...MODELS, vision: "vendor/watch-and-hear" } }), true);
-  await until(() => store.box.settings.model_config);
-  assert.deepEqual(tried, [["separate", "vendor/watch-and-hear"], ["same", null]], "the one for pictures first, on the same key");
-  assert.equal(store.box.settings.included_ai.models.vision, "vendor/watch-and-hear");
-  assert.equal(store.box.settings.included_ai.error, undefined);
+test("pictures and videos go to the chat LLM when it reads them, else to the model given for them, checked, else none", async () => {
+  const run = async ({ reads, separatePasses }) => {
+    const store = settingsStore({});
+    const tried = [];
+    const ai = setup(store, async (input) => {
+      tried.push([input.visionMode, input.visionModel || null]);
+      const config = prepared(input);
+      if (input.visionMode === "same" && reads) config.roles.vision = { connection: "primary", model: input.model };
+      if (input.visionMode === "separate") {
+        if (!separatePasses) throw Object.assign(new Error("The image check did not pass."), { visionNeeded: true });
+        config.roles.vision = { connection: "primary", model: input.visionModel };
+      }
+      return config;
+    });
+    assert.equal(await ai.receive({ key: KEY, models: { ...MODELS, vision: "vendor/watch-and-hear" } }), true);
+    await until(() => store.box.settings.model_config);
+    return { tried, store };
+  };
+  const native = await run({ reads: true, separatePasses: true });
+  assert.deepEqual(native.tried, [["same", null]], "reading them itself beats any other model");
+  assert.equal(policy.getRole(native.store.box.settings, "vision").model, NEAR_MODEL);
+  const given = await run({ reads: false, separatePasses: true });
+  assert.deepEqual(given.tried, [["same", null], ["separate", "vendor/watch-and-hear"]], "then the one given for them, on the same key");
+  assert.equal(policy.getRole(given.store.box.settings, "vision").model, "vendor/watch-and-hear");
+  assert.equal(given.store.box.settings.included_ai.models.vision, "vendor/watch-and-hear");
+  const none = await run({ reads: false, separatePasses: false });
+  assert.equal(policy.getRole(none.store.box.settings, "vision"), null, "then the vision language model on this computer");
+  assert.equal(none.store.box.settings.model_config.included, true, "used without images, never not at all");
+  assert.equal(none.store.box.settings.included_ai.error, undefined);
   const bad = settingsStore({});
   await setup(bad, async (input) => prepared(input)).receive({ key: KEY, models: { ...MODELS, vision: "../etc" } });
   await until(() => bad.box.settings.model_config);
   assert.equal(bad.box.settings.included_ai.models.vision, undefined, "a malformed one is never kept");
-});
-
-test("when the image check fails it is used without images, never not at all", async () => {
-  const store = settingsStore({});
-  const tried = [];
-  const ai = setup(store, async (input) => {
-    tried.push(input.visionMode);
-    if (input.visionMode !== "off") throw Object.assign(new Error("The image check did not pass."), { visionNeeded: true });
-    return prepared(input);
-  });
-  assert.equal(await ai.receive({ key: KEY, models: MODELS }), true);
-  await until(() => store.box.settings.model_config);
-  assert.deepEqual(tried, ["same", "off"]);
-  assert.equal(store.box.settings.model_config.included, true);
-  assert.equal(store.box.settings.included_ai.error, undefined);
 });
 
 test("a person's own AI account stays; the included key waits beside it", async () => {

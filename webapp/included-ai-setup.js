@@ -84,15 +84,14 @@ async function use({ unlessOwn = false, fresh = false } = {}) {
       }
     }
   };
-  // Pictures and videos by the model Closedhand picks for them, checked with
-  // a real image and clip; else by the chat LLM when it reads images; else by
-  // the vision language model on this computer, so an image check never stops
-  // the models being used.
-  const tries = [...(models.vision ? [{ visionMode: "separate", visionModel: models.vision }] : []), { visionMode: "same" }, { visionMode: "off" }];
-  let config;
-  for (const vision of tries) {
-    try { config = await prepare(vision); break; }
-    catch (error) { if (!error.visionNeeded || vision.visionMode === "off") throw error; }
+  // Pictures and videos by the chat LLM when it reads them, checked with a
+  // real image and clip, as reading them itself beats any other model; else
+  // by the model Closedhand picks for them; else by the vision language model
+  // on this computer, so an image check never stops the models being used.
+  let config = await prepare({ visionMode: "same" });
+  if (!config.roles.vision && models.vision) {
+    config = await prepare({ visionMode: "separate", visionModel: models.vision })
+      .catch((error) => { if (!error.visionNeeded) throw error; return config; });
   }
   config.included = true;
   config.checked_at = new Date().toISOString();
