@@ -42,7 +42,6 @@ test('the website names its colours, so every page follows the device into light
   const files = [
     ...fs.readdirSync(path.join(site, 'views')).filter(f => f.endsWith('.html')).map(f => path.join('views', f)),
     ...['interface.css', 'site.css', 'ethos.css', 'insights.css', 'recall-demo.css'].map(f => path.join('public', f)),
-    ...['offline.html', 'moved.html', 'nothing.html'].map(f => path.join('workers', 'edge', f)),
   ];
   const palette = /#(?:efe6d6|100e0d|1a1817|181615|b6afa4|8c857b|6f695f|f7f0e3|d8624b|d0563f|e8a493|8dbd79)\b|rgba\(\s*(?:239\s*,\s*230\s*,\s*214|16\s*,\s*14\s*,\s*13|26\s*,\s*24\s*,\s*23|216\s*,\s*98\s*,\s*75|208\s*,\s*86\s*,\s*63)\s*,/i;
   for (const file of files) {
@@ -63,14 +62,7 @@ test('the website names its colours, so every page follows the device into light
     assert.match(html, /<meta name="viewport"[^>]*>\n  <script src="\/theme\.js"><\/script>/, `${view} sets the theme before it is drawn`);
     if (view !== 'insights.html') assert.match(html, /<button type="button" class="theme-toggle" aria-label="Light, dark or match this device"[^>]*><span class="sun">[\s\S]*?<span class="moon">[\s\S]*?<span class="device">/, `${view} offers the sun, the moon and the two in one`);
   }
-  // The edge pages have no header to pick in: they follow the device.
-  for (const file of ['workers/edge/offline.html', 'workers/edge/moved.html', 'workers/edge/nothing.html']) {
-    const text = fs.readFileSync(path.join(site, file), 'utf8');
-    assert.match(text, /@media \(prefers-color-scheme: light\) \{\n  :root \{\n    color-scheme: light;\n    --fg: #1A1817;/, `${file} has the light colours`);
-  }
-  for (const file of ['views/ethos.html', 'workers/edge/offline.html']) {
-    assert.match(fs.readFileSync(path.join(site, file), 'utf8'), /<meta name="theme-color" content="#EFE6D6" media="\(prefers-color-scheme: light\)">/);
-  }
+  assert.match(fs.readFileSync(path.join(site, 'views/ethos.html'), 'utf8'), /<meta name="theme-color" content="#EFE6D6" media="\(prefers-color-scheme: light\)">/);
   // The recall demo's own browns have a cream version too.
   const demo = fs.readFileSync(path.join(site, 'public', 'recall-demo.css'), 'utf8');
   assert.doesNotMatch(demo.replace(/--[\w-]+:\s*[^;]+;/g, ''), /#[0-9a-f]{6}\b|rgba\(\s*\d/i, 'the demo uses its colour names');
@@ -126,7 +118,7 @@ test('no page says the Closedhand account is the Google or Microsoft account or 
 });
 
 test('personal URL tickets carry one request, signed, for thirty minutes', () => {
-  const secret = 'k'.repeat(40), request = { secret_hash: 'a'.repeat(64), hostname: 'alex.closedhand.ai', port: 3000 };
+  const secret = 'k'.repeat(40), request = { secret_hash: 'a'.repeat(64), hostname: 'alex.closedhand.ai' };
   const ticket = addresses.ticketFor(request, secret);
   assert.equal(addresses.readTicket(ticket, secret).hostname, 'alex.closedhand.ai');
   assert.equal(addresses.readTicket(ticket, 'other'.repeat(8)), null);
@@ -141,6 +133,24 @@ test('personal URL tickets carry one request, signed, for thirty minutes', () =>
   // Tickets from before confirmation codes are not accepted.
   const old = Buffer.from(JSON.stringify({ ...request, id: crypto.randomUUID(), version: 2, expires: Date.now() + 60000 })).toString('base64url');
   assert.equal(addresses.readTicket(old + '.' + crypto.createHmac('sha256', secret).update('phone-pair:' + old).digest('hex'), secret), null);
+});
+
+// A pass is what a computer shows the relay to take its personal URL there.
+test('a pass from closedhand.com is one the relay takes, for that name and that computer\'s key, for a day', () => {
+  const { readPass } = require('../relay/relay');
+  const signer = crypto.generateKeyPairSync('ed25519'), other = crypto.generateKeyPairSync('ed25519');
+  const key = crypto.generateKeyPairSync('ed25519').publicKey.export({ format: 'der', type: 'spki' }).subarray(12).toString('base64url');
+  assert.ok(addresses.computerKey(key), 'a computer\'s key, 32 bytes in base64url');
+  for (const bad of [undefined, '', 'x'.repeat(43), key.slice(0, 42), key + 'A', key.replace(/.$/, '='), Buffer.alloc(31).toString('base64url'), 42]) {
+    assert.equal(addresses.computerKey(bad), false, String(bad));
+  }
+  const now = Date.now();
+  const pass = addresses.passFor('alex.closedhand.ai', key, signer.privateKey, now);
+  assert.deepEqual(readPass(pass, signer.publicKey, now), { h: 'alex.closedhand.ai', k: key, e: now + 24 * 3600000 });
+  assert.equal(readPass(pass, other.publicKey, now), null, 'signed by closedhand.com, nobody else');
+  assert.equal(readPass(pass, signer.publicKey, now + 24 * 3600000), null, 'over after a day');
+  const changed = Buffer.from(JSON.stringify({ h: 'sam.closedhand.ai', k: key, e: now + 24 * 3600000 })).toString('base64url');
+  assert.equal(readPass(changed + '.' + pass.split('.')[1], signer.publicKey, now), null, 'for that name only');
 });
 
 test('bug receipts and sign-in return paths stay narrow', () => {

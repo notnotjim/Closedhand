@@ -182,17 +182,16 @@ test('the dashboard starts, checks and ends sessions through this module', () =>
 
 // The five-tries lockout covers every way of trying the password, and the
 // address it counts against can't be made up by whoever is asking.
-test("Cloudflare's address header is believed only from the tunnel on this computer", () => {
+test("the address a browser came from is the relay's word for it, never something a request says", () => {
   const server = fs.readFileSync(path.join(__dirname, '..', 'webapp/server.js'), 'utf8');
-  const src = server.slice(server.indexOf('const isLoopback = '), server.indexOf('function lockedOut('));
+  const src = server.slice(server.indexOf('function clientIp('), server.indexOf('function lockedOut('));
   const clientIp = new Function(src + '; return clientIp;')();
-  const req = (peer, cf) => ({ socket: { remoteAddress: peer }, headers: cf ? { 'cf-connecting-ip': cf } : {} });
-  assert.equal(clientIp(req('::1', '203.0.113.9')), '203.0.113.9', 'through the tunnel');
-  assert.equal(clientIp(req('127.0.0.1', '203.0.113.9')), '203.0.113.9');
-  assert.equal(clientIp(req('::ffff:127.0.0.1', '203.0.113.9')), '203.0.113.9');
-  assert.equal(clientIp(req('172.18.0.1', '203.0.113.9')), '172.18.0.1', 'reached directly: the header is ignored');
-  assert.equal(clientIp(req('192.168.1.20', '1.2.3.4')), '192.168.1.20');
-  assert.equal(clientIp(req('::1')), '::1');
+  const req = (peer, from, said) => ({ socket: { remoteAddress: peer, ...(from ? { relayFrom: from } : {}) }, headers: said ? { 'cf-connecting-ip': said, 'x-forwarded-for': said } : {} });
+  assert.equal(clientIp(req('127.0.0.1', '203.0.113.9')), '203.0.113.9', 'through the relay');
+  assert.equal(clientIp(req('::1', null, '203.0.113.9')), '::1', 'a header naming an address is ignored');
+  assert.equal(clientIp(req('172.18.0.1', null, '1.2.3.4')), '172.18.0.1');
+  assert.equal(clientIp(req('192.168.1.20')), '192.168.1.20');
+  assert.doesNotMatch(server, /cf-connecting-ip/, 'Cloudflare is not in the way any more');
 });
 
 test('the sign-in form, the wallet check and Basic auth share one count of wrong passwords', () => {
@@ -213,7 +212,7 @@ test('through the personal URL, 100 wrong passwords an hour from all addresses t
   const src = server.slice(server.indexOf('const _loginFails = new Map();'), server.indexOf('app.post("/api/login"'));
   const make = (enabled) => new Function('setupCode', src + '; return { lockedOut, noteWrongPassword, clientIp };')({ enabled });
   const box = make(false);
-  const tunnel = (ip) => ({ socket: { remoteAddress: '::1' }, headers: { 'cf-connecting-ip': ip } });
+  const tunnel = (ip) => ({ socket: { remoteAddress: '127.0.0.1', relayFrom: ip }, headers: {} });
   const local = { socket: { remoteAddress: '172.18.0.1' }, headers: {} };
   for (let i = 0; i < 100; i++) {
     const req = tunnel('198.51.100.' + (i % 250) + '.' + i);

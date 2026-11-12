@@ -22,7 +22,7 @@ function config(values, env = {}) {
     './crypto-tokens': { encryptString: (v) => v, decryptString: (v) => v } }, { process: { env } });
 }
 function links(conf) { return load('lib/dashboard-links.js', { './config': conf }); }
-const phone = 'https://test-phone.trycloudflare.com';
+const phone = 'https://quiet-isle-07.closedhand.ai';
 test('first chat link awaits phone config, including a cold cache', async () => {
   const conf = config({ PHONE_ACCESS: '1', PHONE_ACCESS_URL: phone });
   assert.equal(await links(conf).dashboardUrl('whatsapp'), phone + '/dashboard#agents');
@@ -35,7 +35,7 @@ test('web stays relative and disabled phone access never emits localhost or stal
   assert.equal(await client.dashboardUrl('whatsapp'), null);
   assert.match(await client.agentLinkNotice('whatsapp', 'Full result'), /claim your personal URL/);
 });
-test('configured permanent HTTPS address wins over the temporary tunnel', async () => {
+test('a configured HTTPS web address wins over the personal URL', async () => {
   const conf = config({ PHONE_ACCESS: '1', PHONE_ACCESS_URL: phone }, { WEBAPP_URL: 'https://my.example.com/' });
   assert.equal(await links(conf).dashboardUrl('telegram'), 'https://my.example.com/dashboard#agents');
 });
@@ -45,60 +45,82 @@ test('unsafe or computer-only addresses are never sent to chat', async () => {
   }
 });
 const flush = () => new Promise(resolve => setImmediate(resolve));
-function tunnel(initial = {}, permanent = null, registration = {}) {
-  const values = { ...initial }, children = [], intervals = [], retries = [];
-  let health = async () => ({ ok: true, json: async () => ({ status: 'ok', service: 'closedhand-webapp' }) });
+// The personal URL on this computer (webapp/phone-access.js), with the relay,
+// the certificate and closedhand.com stood in for.
+const named = 'https://amber-fox-42.closedhand.ai';
+const PERMANENT = { url: named, pass: 'body.signature', relay: { address: 'relay.closedhand.ai:443', controlHost: 'relay.closedhand.ai', pin: 'p'.repeat(43) }, verify: false };
+const healthy = async () => ({ ok: true, json: async () => ({ status: 'ok', service: 'closedhand-webapp' }) });
+function personalUrl(initial = {}, permanent = PERMANENT, registration = {}) {
+  const values = { ...initial }, clients = [], intervals = [], retries = [], confirmed = [], keys = [];
+  let health = healthy, certReady = async () => {};
   const api = load('webapp/phone-access.js', {
+    crypto: require('node:crypto'),
     './config': { getConf: async key => values[key], getConfStrict: async key => values[key], setConf: async patch => Object.assign(values, patch) },
-    './phone-registration': { connection: async () => permanent, status: () => registration, begin: async () => 'https://closedhand.com/phone-access/pair#fixture' },
-    child_process: { spawn(bin, args, options) { const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => { child.killed = true; }; child.args = args; child.options = options; children.push(child); return child; } },
-  }, { setTimeout: fn => { retries.push(fn); return retries.length; }, clearTimeout() {}, console: { log() {}, error() {} },
+    './crypto-tokens': { encryptString: v => 'enc:v1:' + v, decryptString: v => v?.replace(/^enc:v1:/, '') },
+    './phone-registration': { connection: async ({ key }) => { keys.push(key); return permanent && { ...permanent }; }, confirm: async p => { confirmed.push(p.url); }, status: () => registration, begin: async () => 'https://closedhand.com/phone-access/pair#fixture' },
+    './relay-client': {
+      create(options) {
+        const c = new EventEmitter();
+        Object.assign(c, { options, start() { c.started = true; return c; }, stop() { c.stopped = true; }, challenge() {}, challengeGone() {} });
+        clients.push(c);
+        return c;
+      },
+      terminate: () => () => {},
+    },
+    './relay-cert': { create: () => ({ ensure: async () => certReady(), context: () => ({}) }) },
+  }, { setTimeout: fn => { retries.push(fn); return { unref() {} }; }, clearTimeout() {}, console: { log() {}, error() {} },
     AbortSignal, fetch: (...args) => health(...args),
     setInterval: fn => { const timer = { fn, unref() {} }; intervals.push(timer); return timer; },
-    clearInterval: timer => { timer.cleared = true; } });
-  return { api, values, children, intervals, retries, setHealth: fn => { health = fn; } };
+    clearInterval: timer => { if (timer) timer.cleared = true; } });
+  return { api, values, clients, intervals, retries, confirmed, keys, setHealth: fn => { health = fn; }, setCert: fn => { certReady = fn; }, check: () => intervals.at(-1).fn };
 }
-test('phone access requires a password on enable and on restart', async () => {
-  const t = tunnel({ PHONE_ACCESS: '1', PHONE_ACCESS_URL: phone });
+test('the personal URL needs a dashboard password, on enable and on restart', async () => {
+  const t = personalUrl({ PHONE_ACCESS: '1', PHONE_ACCESS_URL: named });
   await assert.rejects(t.api.enable(), /password/);
   await t.api.boot();
-  assert.equal(t.children.length, 0);
+  assert.equal(t.clients.length, 0);
   assert.equal(t.values.PHONE_ACCESS_URL, null);
 });
-test('quitting stops the tunnel but retains the setting needed to resume', async () => {
-  const t = tunnel({ DASHBOARD_PASSWORD_HASH: 'fixture' });
+test('quitting stops the relay connection but keeps the setting needed to resume', async () => {
+  const t = personalUrl({ DASHBOARD_PASSWORD_HASH: 'fixture' });
   await t.api.enable();
+  assert.equal(t.clients[0].started, true);
   t.api.shutdown();
-  assert.equal(t.children[0].killed, true);
+  assert.equal(t.clients[0].stopped, true);
   assert.equal(t.values.PHONE_ACCESS, '1');
   assert.equal(t.api.status().enabled, false);
-  const resumed = tunnel(t.values);
+  const resumed = personalUrl(t.values);
   await resumed.api.boot();
-  assert.equal(resumed.children.length, 1);
+  assert.equal(resumed.clients.length, 1);
+  assert.equal(resumed.keys[0], t.keys[0], 'the same key for the relay after a restart, kept sealed');
+  assert.match(t.values.PHONE_RELAY_KEY, /^enc:v1:/);
+  assert.match(t.keys[0], /^[A-Za-z0-9_-]{43}$/, 'only the public half goes to closedhand.com');
 });
-test('phone URL is published only after connection, clears on failure and ignores old children', async () => {
-  const t = tunnel({ DASHBOARD_PASSWORD_HASH: 'fixture' });
+test('the address is published only once the relay is up, the certificate is ready and closedhand.com has checked it', async () => {
+  const t = personalUrl({ DASHBOARD_PASSWORD_HASH: 'fixture' }, { ...PERMANENT, verify: true });
+  let finish;
+  t.setCert(() => new Promise(resolve => { finish = resolve; }));
   await t.api.enable();
-  const first = t.children[0];
-  first.stderr.emit('data', 'https://test-phone.trycloud');
-  first.stderr.emit('data', 'flare.com\n');
-  await flush();
-  assert.equal(t.values.PHONE_ACCESS_URL, null);
-  first.stderr.emit('data', 'Registered tunnel connection');
-  await flush();
-  assert.equal(t.api.status().url, phone);
-  await t.api.disable();
-  await t.api.enable();
-  const second = t.children[1];
-  second.stderr.emit('data', 'https://new-phone.trycloudflare.com\nRegistered tunnel connection');
-  await flush();
-  first.emit('exit', 0);
-  await flush();
-  assert.equal(t.api.status().url, 'https://new-phone.trycloudflare.com');
-  second.emit('error', Object.assign(new Error('missing binary'), { code: 'ENOENT' }));
-  await flush();
-  assert.equal(t.api.status().state, 'unavailable');
-  assert.equal(t.values.PHONE_ACCESS_URL, null);
+  assert.equal(t.api.status().url, null, 'not before the relay is up');
+  t.clients[0].emit('up', 'amber-fox-42.closedhand.ai'); await flush();
+  assert.equal(t.api.status().url, null, 'nor before the certificate');
+  assert.deepEqual(t.confirmed, []);
+  finish(); await flush(); await flush();
+  assert.deepEqual(t.confirmed, [named], 'closedhand.com checked it first');
+  assert.equal(t.api.status().url, named);
+  assert.equal(t.values.PHONE_ACCESS_URL, named);
+  // An old connection's news never lands on a new one.
+  await t.api.disable(); await t.api.enable();
+  t.clients[0].emit('up'); await flush();
+  assert.equal(t.api.status().url, null);
+  // A certificate that can't be had yet: waits, longer each time, never publishes.
+  const slow = personalUrl({ DASHBOARD_PASSWORD_HASH: 'fixture' });
+  slow.setCert(async () => { throw new Error("Let's Encrypt is unreachable"); });
+  await slow.api.enable();
+  slow.clients[0].emit('up'); await flush(); await flush();
+  assert.equal(slow.api.status().url, null);
+  assert.match(slow.api.status().error, /Waiting to verify/);
+  assert.equal(slow.values.PHONE_ACCESS_URL, null);
 });
 test('successful login preserves the Agents tab and rejects external redirects', async () => {
   const html = fs.readFileSync(path.join(root, 'webapp/views/login.html'), 'utf8');
@@ -115,119 +137,95 @@ test('successful login preserves the Agents tab and rejects external redirects',
   }
 });
 
-test('a live process with a dead public address clears the URL and reconnects after repeated failures', async () => {
-  const t = tunnel({ DASHBOARD_PASSWORD_HASH: 'fixture' });
+test('an address that stops answering from outside is dropped and the connection made again', async () => {
+  const t = personalUrl({ DASHBOARD_PASSWORD_HASH: 'fixture' });
   await t.api.enable();
-  const first = t.children[0];
-  first.stderr.emit('data', phone + '\nRegistered tunnel connection');
-  await flush();
-  const check = t.intervals[0].fn;
+  t.clients[0].emit('up'); await flush(); await flush();
+  assert.equal(t.api.status().url, named);
+  const check = t.check();
   t.setHealth(async () => { throw new Error('DNS address gone'); });
   await check(); await check();
-  assert.equal(first.killed, undefined, 'a brief outage does not rotate the address');
-  t.setHealth(async () => ({ ok: true, json: async () => ({ status: 'ok', service: 'closedhand-webapp' }) }));
+  assert.equal(t.clients[0].stopped, undefined, 'a brief outage does not drop it');
+  t.setHealth(healthy);
   await check();
   t.setHealth(async () => ({ ok: false }));
   await check(); await check();
-  assert.equal(first.killed, undefined, 'success resets the failure count');
+  assert.equal(t.clients[0].stopped, undefined, 'success resets the count');
   await check(); await flush();
-  assert.equal(first.killed, true);
+  assert.equal(t.clients[0].stopped, true);
   assert.equal(t.values.PHONE_ACCESS_URL, null);
-  assert.equal(t.api.status().state, 'error');
-  assert.equal(t.intervals[0].cleared, true);
-  t.retries.at(-1)(); await flush();
-  assert.equal(t.children.length, 2);
-  t.children[1].stderr.emit('data', 'https://reconnected.trycloudflare.com\nRegistered tunnel connection');
-  await flush();
-  assert.equal(t.api.status().url, 'https://reconnected.trycloudflare.com');
+  t.retries.at(-1)(); await flush(); await flush();
+  assert.equal(t.clients.length, 2);
+  t.clients[1].emit('up'); await flush(); await flush();
+  assert.equal(t.api.status().url, named);
 });
 
 test('a health check finishing after disable cannot restart or clear a replacement connection', async () => {
-  const t = tunnel({ DASHBOARD_PASSWORD_HASH: 'fixture' });
+  const t = personalUrl({ DASHBOARD_PASSWORD_HASH: 'fixture' });
   await t.api.enable();
-  t.children[0].stderr.emit('data', phone + '\nRegistered tunnel connection');
-  await flush();
+  t.clients[0].emit('up'); await flush(); await flush();
+  const check = t.check();
   t.setHealth(async () => { throw new Error('offline'); });
-  await t.intervals[0].fn(); await t.intervals[0].fn();
+  await check(); await check();
   let reject;
   t.setHealth(() => new Promise((_, fail) => { reject = fail; }));
-  const pending = t.intervals[0].fn();
+  const pending = check();
+  const before = t.retries.length;
   await t.api.disable(); await t.api.enable();
-  t.children[1].stderr.emit('data', 'https://replacement.trycloudflare.com\nRegistered tunnel connection');
-  await flush();
+  t.clients[1].emit('up'); await flush(); await flush();
   reject(new Error('old check')); await pending;
-  assert.equal(t.api.status().url, 'https://replacement.trycloudflare.com');
-  assert.equal(t.children[1].killed, undefined);
-  assert.equal(t.retries.length, 0);
+  assert.equal(t.api.status().url, named);
+  assert.equal(t.clients[1].stopped, undefined);
+  assert.equal(t.retries.length, before, 'nothing restarted');
 });
 
-
-test('named connection retains the exact address across a disconnect and an installation restart', async () => {
-  const permanent = { url: 'https://ch-11111111111141118111111111111111.closedhand.com', token: 'fixture-named-token' };
-  const t = tunnel({ DASHBOARD_PASSWORD_HASH: 'fixture' }, permanent);
-  await t.api.enable('managed');
-  assert.equal(t.api.status().url, null);
-  assert.equal(t.children[0].args.includes(permanent.token), false);
-  assert.equal(t.children[0].options.env.TUNNEL_TOKEN, permanent.token);
-  assert.deepEqual(Object.keys(t.children[0].options.env).filter((k) => !['PATH', 'HOME', 'TMPDIR', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'https_proxy', 'http_proxy', 'no_proxy', 'TUNNEL_TOKEN'].includes(k)), [], 'cloudflared never sees the keys in the dashboard\'s environment');
-  t.children[0].stderr.emit('data', 'Registered tunnel connection'); await flush();
-  assert.equal(t.api.status().url, permanent.url);
-  t.children[0].emit('exit', 1); await flush();
-  t.retries.at(-1)(); await flush();
-  t.children[1].stderr.emit('data', 'Registered tunnel connection'); await flush();
-  assert.equal(t.api.status().url, permanent.url);
-  const restarted = tunnel(t.values, permanent); await restarted.api.boot();
-  restarted.children[0].stderr.emit('data', 'Registered tunnel connection'); await flush();
-  assert.equal(restarted.api.status().url, permanent.url);
+test('the personal URL keeps its exact address across a dropped connection and a restart', async () => {
+  const t = personalUrl({ DASHBOARD_PASSWORD_HASH: 'fixture' });
+  await t.api.enable();
+  t.clients[0].emit('up'); await flush(); await flush();
+  assert.equal(t.api.status().url, named);
+  assert.equal(t.clients[0].options.relay.pin, PERMANENT.relay.pin, 'the relay closedhand.com named, and only it');
+  t.clients[0].emit('down', new Error('closed')); await flush();
+  assert.equal(t.api.status().state, 'starting');
+  t.clients[0].emit('up'); await flush(); await flush();
+  assert.equal(t.api.status().url, named);
+  const restarted = personalUrl(t.values); await restarted.api.boot();
+  restarted.clients[0].emit('up'); await flush(); await flush();
+  assert.equal(restarted.api.status().url, named);
   await restarted.api.disable();
   assert.equal(restarted.api.status().url, null);
-  assert.equal(restarted.children[0].killed, true);
+  assert.equal(restarted.clients[0].stopped, true);
 });
-test('pending registration does not start a tunnel or publish a link', async () => {
-  const t = tunnel({ DASHBOARD_PASSWORD_HASH: 'fixture' });
-  await t.api.enable('managed');
-  assert.equal(t.children.length, 0);
+test('pending registration does not connect to the relay or publish a link', async () => {
+  const t = personalUrl({ DASHBOARD_PASSWORD_HASH: 'fixture' }, null);
+  await t.api.enable();
+  assert.equal(t.clients.length, 0);
   assert.equal(t.api.status().state, 'pairing');
   assert.equal(t.api.status().permanent, true);
   assert.equal(t.api.status().url, null);
   await t.api.disable();
   t.retries.at(-1)(); await flush();
-  assert.equal(t.children.length, 0);
+  assert.equal(t.clients.length, 0);
   assert.equal(t.api.status().pairingUrl, null);
 });
 
-test('confirmed ownership replaces pairing while provisioning, without advertising an unverified URL', async () => {
+test('confirmed ownership replaces pairing while waiting, without advertising an unverified URL', async () => {
   const registration = { ownershipConfirmed: false, registrationState: 'unconfirmed' };
-  const t = tunnel({ DASHBOARD_PASSWORD_HASH: 'fixture' }, null, registration);
-  await t.api.enable('managed');
+  const t = personalUrl({ DASHBOARD_PASSWORD_HASH: 'fixture' }, null, registration);
+  await t.api.enable();
   assert.ok(t.api.status().pairingUrl);
   registration.ownershipConfirmed = true; registration.registrationState = 'pending';
   t.retries.at(-1)(); await flush();
   assert.equal(t.api.status().state, 'provisioning');
   assert.equal(t.api.status().ownershipConfirmed, true);
   assert.equal(t.api.status().pairingUrl, null);
-  assert.equal(t.api.status().url, null); assert.equal(t.children.length, 0);
-});
-
-test('upgrading a temporary phone connection keeps it reachable during approval', async () => {
-  const t = tunnel({ DASHBOARD_PASSWORD_HASH: 'fixture' });
-  await t.api.enable();
-  t.children[0].stderr.emit('data', phone + '\nRegistered tunnel connection'); await flush();
-  await t.api.enable('managed');
-  assert.equal(t.children[0].killed, undefined);
-  assert.equal(t.api.status().url, phone);
-  assert.equal(t.api.status().permanent, false);
-  assert.equal(t.api.status().state, 'pairing');
-  assert.ok(t.api.status().pairingUrl);
-  await t.api.disable();
-  t.retries.at(-1)(); await flush();
-  assert.equal(t.api.status().enabled, false);
+  assert.equal(t.api.status().url, null); assert.equal(t.clients.length, 0);
 });
 
 test("phone access starts only from settings it could read, and tries again if it could not", () => {
   const access = fs.readFileSync(path.join(__dirname, "..", "webapp/phone-access.js"), "utf8");
   const boot = access.slice(access.indexOf("async function boot()"), access.indexOf("module.exports"));
-  assert.match(boot, /mode = \(await getConfStrict\("PHONE_ACCESS_MODE"\)\) === "managed"/, "a failed read is not taken as the temporary address");
   assert.match(boot, /wanted = String\(await getConfStrict\("PHONE_ACCESS"\)\) === "1";/);
   assert.match(boot, /setTimeout\(\(\) => \{ void boot\(\); \}, 10000\);/);
+  assert.doesNotMatch(access, /cloudflared|trycloudflare|spawn\(/, 'nothing of Cloudflare runs here any more');
 });

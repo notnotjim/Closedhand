@@ -423,7 +423,6 @@ test("the dashboard has a Projects tab, Context Brain has no Ongoing, and each p
   const engine = read("lib/engine.js");
   assert.match(engine, /const judged = picked\.then\(\(id\) => \(id \? projects\.judgeTouched\(userId, userMessage, conversation\.slice\(-9, -1\)\) : null\)\)\.catch\(\(\) => null\);\n\s*contextInjection = \(await timing\.time\("recall", withinRecallBudget\(Promise\.all\(\[recalled, picked\]\)\)\)\)\?\.\[0\] \|\| "";\n\s*if \(await picked\) await timing\.time\("project check", judged\);/, "judged beside recall, never inside its budget");
   for (const route of ['app.get("/api/projects/find"', 'app.get("/api/projects"', 'app.post("/api/projects"', 'app.patch("/api/projects/:id"', 'app.post("/api/projects/:id/merge"', 'app.delete("/api/projects/:id"', 'app.post("/api/projects/:id/files"', 'app.get("/page/project/:id"']) assert.ok(web.includes(route), route);
-  assert.ok(JSON.parse(read("closedhand-com/workers/edge/direct-routes.json")).includes("/page/*"), "the page reaches the computer through the tunnel");
   const { projectHtml } = require("../webapp/projects");
   const now = Date.parse("2026-11-01T12:00:00Z");
   const p = move({ name: "House <move>", expected_end: "2026-11-10T00:00:00Z", last_touched: "2026-11-01T10:00:00Z", context: [...move().context, { kind: "file", id: "att_1", title: "floor plan.pdf" }] });

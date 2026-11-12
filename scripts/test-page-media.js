@@ -66,7 +66,6 @@ test("pieces are served safely, refused when unsuited, and go with their page", 
   assert.match(read("webapp/run-pdf.js"), /doc\.image\(parts\[piece\[2\]\], \{ fit: \[W, 340\], align: "center" \}\);/);
   assert.match(server, /const keys = media\.namedParts\(page\.content\)\.map\(\(name\) => media\.partKey\(userId, page\.id, name\)\);/, "deleting a page deletes its pieces");
   assert.match(read("lib/page-expiry.js"), /media\.namedParts\(p\.content\)\.map\(\(name\) => media\.partKey\(p\.user_id, p\.id, name\)\)/, "and so does expiry");
-  assert.match(read("closedhand-com/workers/edge/direct-routes.json"), /"\/page\/\*"/, "straight to the computer, never through the relay");
 });
 
 test("save_report puts the sandbox computer's files on the page", () => {

@@ -16,7 +16,7 @@ const calm = {
   crypto: { networks: ["Ethereum", "Polygon"], behind: [] },
   cards: { payments: 0, usd: 0 },
   github: { runs: { checks: { conclusion: "success" }, mac: { conclusion: "success" } } },
-  urls: { used: 3, limit: 100, dns: 20, dnsCeiling: 190, errors: 0, you: { used: 1, errors: 0 } },
+  urls: { used: 3, limit: 100, you: { used: 1 } },
 };
 const said = (over) => needsOf({ ...calm, ...over }).map((n) => n.what).join(" | ");
 
@@ -40,8 +40,6 @@ test("each thing that is wrong is said, with what to do", () => {
   assert.match(said({ github: { runs: { checks: { conclusion: "failure" }, mac: { conclusion: "success" } } } }), /checks failed on the latest push/);
   assert.match(said({ github: { runs: { checks: { conclusion: "success" }, mac: { conclusion: "cancelled" } } } }), /last Mac build did not finish/);
   assert.match(said({ urls: { ...calm.urls, used: 79 } }), /80% of personal URLs are taken/, "the maintainer's own count too");
-  assert.match(said({ urls: { ...calm.urls, dns: 160 } }), /DNS records are at 160 of 190/);
-  assert.match(said({ urls: { ...calm.urls, errors: 1 } }), /1 personal URL is stuck/);
   for (const need of needsOf({ ...calm, bugs: { open: 1 }, messages: 2, crypto: { error: true } })) assert.ok(need.do, need.what);
 });
 

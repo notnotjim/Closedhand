@@ -6214,7 +6214,7 @@
       var desc = document.getElementById('phone-desc'), btn = document.getElementById('phone-btn');
       var live = document.getElementById('phone-live'), setup = document.getElementById('phone-setup');
       var base = p.url || p.savedUrl;
-      var permanent = p.url ? !!p.permanent : !!p.savedUrl;
+      var permanent = !!(p.url || p.savedUrl);
       var numbers = accountNumbers();
       if (p.accountNumberToSave) numbers.waiting();
       if (p.anonymousWaiting) numbers.resume(p.anonymousWaiting);
@@ -6257,9 +6257,7 @@
         // The code is optional, and opens the same dashboard address as Copy.
         document.getElementById('phone-qr').src = '/api/phone/qr.svg?destination=dashboard';
       }
-      document.getElementById('phone-link-help').textContent = permanent
-        ? 'Bookmark this link, pin it in a chat app or save it to your home screen. You can use it on any device.'
-        : 'This is a temporary link and changes when the connection restarts. Claim your personal URL before saving it.';
+      document.getElementById('phone-link-help').textContent = 'Bookmark this link, pin it in a chat app or save it to your home screen. You can use it on any device.';
       if (p.state === 'unavailable') {
         desc.textContent = 'Update Closedhand to use it on other devices.';
         setup.hidden = true;
@@ -6372,7 +6370,7 @@
       if (on && !(await askFirst(btn, { text: 'Pause this personal URL? To resume it, open Settings on the computer running Closedhand.', yes: 'Pause link' }))) return;
       btn.disabled = true;
       try {
-        var r = await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !on, mode: _phone?.mode || 'quick' }) });
+        var r = await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !on }) });
         var result = await r.json();
         if (!r.ok) throw new Error(result.error || 'Could not change your personal URL. Try again.');
         renderPhone({ ...result, savedUrl: _phone?.savedUrl || (_phone?.permanent ? _phone.url : null) });

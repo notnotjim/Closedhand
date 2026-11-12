@@ -2,8 +2,8 @@
 //
 // Every "/name.js" or "/name.css" reference in a served page is rewritten to
 // "/name.js?v=<hash of the file's bytes>". A changed file therefore gets a new
-// address, so no stored copy, in a browser or at Cloudflare in front of a
-// tunnel, can keep handing out the old one. A request that carries the current
+// address, so no stored copy, in a browser or anywhere between, can keep
+// handing out the old one. A request that carries the current
 // hash may be kept for a year; one without a hash must be checked every time.
 const fs = require("fs");
 const path = require("path");
@@ -33,7 +33,7 @@ function stamp(html) {
 }
 // A page's module imports ("from './x.js'") carry the hash too, read against
 // the page's own folder: the screen viewer (novnc/vnc_lite.html) loads its
-// code that way, and Cloudflare had browsers keep the old code four hours.
+// code that way, and a cache had browsers keep the old code four hours.
 function stampImports(html, folder) {
   return html.replace(/(\bfrom\s+)(['"])(\.\/[^'"?#]+\.js)\2/g, (match, prefix, quote, rel) => {
     const v = version(folder + rel.slice(2));

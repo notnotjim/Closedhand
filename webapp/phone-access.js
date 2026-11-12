@@ -1,216 +1,201 @@
-// Phone access. The dashboard remains on this computer; cloudflared
-// forwards HTTPS traffic to it. A quick tunnel gets a new address on restart.
-const { spawn } = require("child_process");
+// The personal URL. Closedhand keeps a connection open to the relay
+// (relay-client.js) with a pass from closedhand.com for this computer's own
+// key, holds its own certificate for the address (relay-cert.js), and
+// answers the browsers that open it with the dashboard. Their encryption ends
+// here, so nobody between, the relay included, can read what passes.
+const crypto = require("crypto");
 const { getConf, getConfStrict, setConf } = require("./config");
-const BIN = process.env.CLOUDFLARED_BIN || "cloudflared";
-// What cloudflared may see of the environment: where to run and how to reach
-// out, nothing else (the dashboard's environment holds its keys).
-const TUNNEL_ENV_KEEP = ["PATH", "HOME", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy"];
-const PORT = process.env.PORT || 3000;
-const URL_RE = /https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com/i;
-let proc = null, url = null, wanted = false, state = "off", lastError = null;
-let retryTimer = null, upgradeTimer = null, generation = 0, upgradeGeneration = 0, mode = "quick", pairingUrl = null;
-// Set when a lasting connection stops working, so the next start asks
-// closedhand.com whether the address still exists (see phone-registration).
-let recheck = false;
+const { encryptString, decryptString } = require("./crypto-tokens");
+const relayClient = require("./relay-client");
+const relayCert = require("./relay-cert");
+
+let server = null, client = null, cert = null, url = null, wanted = false, state = "off", lastError = null;
+let retryTimer = null, renewTimer = null, healthTimer = null, generation = 0, pairingUrl = null;
 // Keep an old publication from landing after a disable or restart clears it.
 let writes = Promise.resolve();
 function save(patch) {
   writes = writes.catch(() => {}).then(() => setConf(patch));
   return writes;
 }
+function sealed(value) {
+  const result = encryptString(value);
+  if (!result?.startsWith("enc:v1:")) throw new Error("Your personal URL needs encrypted storage. Check Closedhand’s settings.");
+  return result;
+}
 async function requirePassword() {
   if (!process.env.ADMIN_PASSWORD && !(await getConf("DASHBOARD_PASSWORD_HASH"))) {
     throw new Error("Choose a dashboard password on the setup page before claiming your personal URL.");
   }
 }
+// This computer's own key for the relay, made once and kept sealed: a pass
+// from closedhand.com is good only with it.
+async function identity() {
+  let pem = decryptString(await getConf("PHONE_RELAY_KEY"));
+  if (!pem) {
+    pem = crypto.generateKeyPairSync("ed25519").privateKey.export({ format: "pem", type: "pkcs8" });
+    await setConf({ PHONE_RELAY_KEY: sealed(pem) });
+  }
+  const privateKey = crypto.createPrivateKey(pem), publicKey = crypto.createPublicKey(privateKey);
+  return { privateKey, publicKey, raw: publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url") };
+}
+// The certificate and its key, kept sealed.
+const certStore = {
+  read: async () => { try { return JSON.parse(decryptString(await getConf("PHONE_TLS")) || "null"); } catch (_) { return null; } },
+  write: async (value) => { await setConf({ PHONE_TLS: sealed(JSON.stringify(value)) }); },
+};
+// The web server browsers' connections are handed to once opened (server.js).
+function useServer(s) { server = s; }
+
+function stopClient() {
+  clearInterval(renewTimer); clearInterval(healthTimer); renewTimer = healthTimer = null;
+  const c = client; client = null;
+  if (c) c.stop();
+}
+function later(fn, ms) { clearTimeout(retryTimer); retryTimer = setTimeout(() => { if (wanted) void fn(); }, ms); retryTimer.unref?.(); }
+
 async function start() {
-  if (proc || state === "starting") return;
+  if (client || state === "starting") return;
   const run = ++generation;
   state = "starting"; url = null; lastError = null;
   try {
     await save({ PHONE_ACCESS_URL: null });
     await requirePassword();
-    let permanent = null;
-    if (mode === "managed") {
-      const again = recheck;
-      recheck = false;
-      permanent = await require("./phone-registration").connection({ recheck: again });
-      if (run !== generation || !wanted) return;
-      if (!permanent) {
-        const registration = require("./phone-registration");
-        const confirmed = registration.status().ownershipConfirmed;
-        state = confirmed ? "provisioning" : "pairing";
-        const nextPairingUrl = confirmed ? null : pairingUrl || await registration.begin();
-        if (run !== generation || !wanted) return;
-        pairingUrl = nextPairingUrl;
-        retryTimer = setTimeout(() => { if (wanted) void start(); }, 5000);
-        return;
-      }
-      pairingUrl = null;
-    }
+    const registration = require("./phone-registration");
+    const me = await identity();
+    const permanent = await registration.connection({ key: me.raw });
     if (run !== generation || !wanted) return;
-    const args = permanent ? ["tunnel", "--no-autoupdate", "run"] : ["tunnel", "--url", `http://localhost:${PORT}`, "--no-autoupdate"];
-    // cloudflared gets only what it runs on and its tunnel token, never the
-    // rest of the dashboard's environment, which holds its keys.
-    const tunnelEnv = Object.fromEntries(TUNNEL_ENV_KEEP.filter((k) => process.env[k]).map((k) => [k, process.env[k]]));
-    const options = { stdio: ["ignore", "pipe", "pipe"], env: permanent ? { ...tunnelEnv, TUNNEL_TOKEN: permanent.token } : tunnelEnv };
-    const child = spawn(BIN, args, options);
-    proc = child;
-    let assigned = permanent?.url || null, registered = false, publishing = false;
-    // A quick tunnel can lose its public address while cloudflared stays alive,
-    // for example across a long network interruption. Process liveness alone
-    // must not leave a dead address advertised as phone access.
-    let checking = false, failures = 0;
-    const healthTimer = setInterval(async () => {
-      if (proc !== child || !wanted) { clearInterval(healthTimer); return; }
-      if (!url || checking) return;
-      checking = true;
-      try {
-        const response = await fetch(url + "/health", { signal: AbortSignal.timeout(10000) });
-        const health = response.ok ? await response.json() : null;
-        if (health?.status !== "ok" || health?.service !== "closedhand-webapp") throw new Error("Your personal URL is unreachable");
-        failures = 0;
-      } catch (_) {
-        if (proc !== child || !wanted) return;
-        if (++failures >= 3) {
-          clearInterval(healthTimer);
-          failed(new Error("Your personal URL stopped responding. Reconnecting."));
-          child.kill();
-        }
-      } finally { checking = false; }
-    }, 60000);
-    healthTimer.unref();
-    const publish = async () => {
-      if (proc !== child || !wanted || !assigned || !registered || publishing) return;
-      publishing = true;
-      try {
-        if (permanent?.verify) await require('./phone-registration').confirm(permanent);
-        await save({ PHONE_ACCESS_URL: assigned });
-        if (proc !== child || !wanted) return;
-        url = assigned; state = "on"; lastError = null;
-        console.log(`[Phone] dashboard reachable at ${url}`);
-      } catch (e) {
-        if (proc !== child) return;
-        publishing = false;
-        state = "starting"; lastError = "Waiting to verify this computer’s address.";
-        setTimeout(() => { if (proc === child && wanted) void publish(); }, 5000);
-      }
-    };
-    for (const stream of [child.stdout, child.stderr]) {
-      let buffer = "";
-      stream.on("data", chunk => {
-        if (proc !== child) return;
-        buffer = (buffer + String(chunk)).slice(-8192);
-        const match = buffer.match(URL_RE);
-        if (match && !permanent) assigned = match[0];
-        if (buffer.includes("Registered tunnel connection")) registered = true;
-        void publish();
-      });
+    if (!permanent) {
+      const confirmed = registration.status().ownershipConfirmed;
+      state = confirmed ? "provisioning" : "pairing";
+      const nextPairingUrl = confirmed ? null : pairingUrl || await registration.begin();
+      if (run !== generation || !wanted) return;
+      pairingUrl = nextPairingUrl;
+      later(start, 5000);
+      return;
     }
-    const failed = (error) => {
-      clearInterval(healthTimer);
-      if (proc !== child) return;
-      proc = null; url = null;
-      if (permanent) recheck = true;
-      state = error.code === "ENOENT" ? "unavailable" : "error";
-      lastError = error.code === "ENOENT" ? "Update Closedhand to use a personal URL." : error.message;
-      save({ PHONE_ACCESS_URL: null }).catch(e => console.error("[Phone] Could not clear address:", e.message));
-      if (wanted && state !== "unavailable") {
-        clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => { if (wanted) void start(); }, 5000);
-      }
-    };
-    child.on("error", failed);
-    child.on("exit", code => failed(new Error(`Your personal URL’s connection stopped (${code}).`)));
+    pairingUrl = null;
+    const host = new URL(permanent.url).hostname;
+    let first = permanent.pass;
+    const c = relayClient.create({
+      relay: permanent.relay,
+      // The pass just made first; then a fresh one each time one is needed.
+      getPass: async () => {
+        if (first) { const pass = first; first = null; return pass; }
+        const next = await registration.connection({ key: me.raw });
+        if (!next) throw new Error("This personal URL is no longer this computer’s.");
+        return next.pass;
+      },
+      privateKey: me.privateKey, publicKey: me.publicKey,
+    });
+    client = c;
+    cert = relayCert.create({ store: certStore, relay: c });
+    c.on("stream", (socket, from) => {
+      if (!server) { socket.destroy(); return; }
+      relayClient.terminate({ server, secureContext: () => cert.context() })(socket, from);
+    });
+    c.on("up", () => { if (client === c) void ready(c, permanent, host, run); });
+    c.on("down", () => { if (client === c && state === "on") { state = "starting"; lastError = "Reconnecting your personal URL."; } });
+    c.start();
   } catch (e) {
     if (run !== generation) return;
     state = "error"; lastError = e.message;
     console.error("[Phone]", lastError);
-    // A failure before the tunnel even started used to be final: one
-    // database hiccup ("the database system is in recovery mode", a few
-    // seconds long) left phone access dead for hours, until a restart.
-    // While it is wanted, keep trying.
-    if (wanted && proc === null) {
-      clearTimeout(retryTimer);
-      retryTimer = setTimeout(() => { if (wanted && !proc) void start(); }, 15000);
-    }
+    // While it is wanted, keep trying: a database or network hiccup at the
+    // wrong moment must not leave the personal URL off until a restart.
+    if (wanted && !client) later(start, 15000);
   }
 }
-async function enable(nextMode = "quick") {
+
+// Connected to the relay: make sure of the certificate (the first one takes
+// a few seconds from Let's Encrypt), have closedhand.com check this computer
+// answers at the address, then publish it.
+let certWait = 0;
+async function ready(c, permanent, host, run) {
+  try {
+    await cert.ensure(host);
+    if (client !== c || run !== generation) return;
+    if (permanent.verify) { await require("./phone-registration").confirm(permanent); permanent.verify = false; }
+    await save({ PHONE_ACCESS_URL: permanent.url });
+    if (client !== c) return;
+    url = permanent.url; state = "on"; lastError = null; certWait = 0;
+    console.log(`[Phone] dashboard reachable at ${url}`);
+    // The certificate renews itself when due, checked twice a day.
+    clearInterval(renewTimer);
+    renewTimer = setInterval(() => { cert.ensure(host).catch((e) => console.error("[Phone] certificate renewal:", e.message)); }, 12 * 3600 * 1000);
+    renewTimer.unref?.();
+    watch(c);
+  } catch (e) {
+    if (client !== c) return;
+    state = "starting"; lastError = "Waiting to verify this computer’s address.";
+    console.error("[Phone]", e.message);
+    // Let's Encrypt allows only a few failed checks an hour: wait longer each time.
+    const wait = [60000, 5 * 60000, 15 * 60000, 30 * 60000][Math.min(certWait++, 3)];
+    setTimeout(() => { if (client === c && wanted) void ready(c, permanent, host, run); }, wait).unref?.();
+  }
+}
+// Checked from outside each minute, the way a phone reaches it: three misses
+// in a row and the connection is made again.
+function watch(c) {
+  clearInterval(healthTimer);
+  let checking = false, failures = 0;
+  healthTimer = setInterval(async () => {
+    if (client !== c || !url || checking) return;
+    checking = true;
+    try {
+      const response = await fetch(url + "/health", { signal: AbortSignal.timeout(10000) });
+      const health = response.ok ? await response.json() : null;
+      if (health?.status !== "ok" || health?.service !== "closedhand-webapp") throw new Error("Your personal URL is unreachable");
+      failures = 0;
+    } catch (_) {
+      if (client !== c) return;
+      if (++failures >= 3) {
+        lastError = "Your personal URL stopped responding. Reconnecting.";
+        stopClient(); url = null; state = "off";
+        save({ PHONE_ACCESS_URL: null }).catch(() => {});
+        later(start, 5000);
+      }
+    } finally { checking = false; }
+  }, 60000);
+  healthTimer.unref?.();
+}
+
+async function enable() {
   await requirePassword();
-  if (!["quick", "managed"].includes(nextMode)) throw new Error("Unknown personal URL option.");
-  let requestedPairing = null;
-  // Asking again gets a fresh confirmation (they last thirty minutes), unless
-  // this copy already has its address or its owner already confirmed it.
-  if (nextMode === 'managed') {
-    const registration = require('./phone-registration');
-    if (!(await registration.connection()) && !registration.status().ownershipConfirmed) requestedPairing = await registration.begin();
-  }
-  if (nextMode === "managed" && mode === "quick" && wanted) {
-    // A person may be using the temporary address right now. Keep it alive
-    // while they approve the lasting one on the provider's separate page.
-    const registration = require("./phone-registration");
-    if (!await registration.connection()) {
-      pairingUrl = requestedPairing || await registration.begin(); state = "pairing"; lastError = null;
-      const run = ++upgradeGeneration;
-      clearTimeout(upgradeTimer);
-      const check = async () => {
-        try {
-          const ready = await registration.connection();
-          if (!wanted || run !== upgradeGeneration) return;
-          if (ready) { await disable(); await enable("managed"); }
-          else upgradeTimer = setTimeout(check, 5000);
-        } catch (_) { if (run === upgradeGeneration) lastError = "Could not finish setup. Try again from your computer."; }
-      };
-      upgradeTimer = setTimeout(check, 5000);
-      return;
-    }
-  }
-  if (nextMode !== mode && wanted) await disable();
-  mode = nextMode;
-  pairingUrl = requestedPairing;
-  await save({ PHONE_ACCESS: "1", PHONE_ACCESS_MODE: mode });
+  await save({ PHONE_ACCESS: "1", PHONE_ACCESS_MODE: "managed" });
   wanted = true;
   await start();
 }
 async function disable() {
-  wanted = false; ++generation; ++upgradeGeneration;
-  clearTimeout(retryTimer); clearTimeout(upgradeTimer);
-  const child = proc;
-  proc = null; url = null; state = "off"; lastError = null; pairingUrl = null;
-  if (child) child.kill();
+  wanted = false; ++generation;
+  clearTimeout(retryTimer);
+  stopClient();
+  url = null; state = "off"; lastError = null; pairingUrl = null;
   await save({ PHONE_ACCESS: null, PHONE_ACCESS_URL: null });
 }
 // After a rename: drop the connection at the old name and connect again, so
-// this copy proves it answers at the new one.
+// this computer takes the new one with a pass and a certificate for it.
 async function reconnect() {
-  if (!wanted || mode !== "managed") return;
+  if (!wanted) return;
   ++generation;
   clearTimeout(retryTimer);
-  const child = proc;
-  proc = null; url = null; state = "off"; lastError = null; pairingUrl = null;
-  if (child) child.kill();
+  stopClient();
+  url = null; state = "off"; lastError = null; pairingUrl = null;
   await start();
 }
 function status() {
-  return { enabled: wanted, state, url, error: lastError, mode, permanent: mode === "managed", pairingUrl,
-    ...(wanted && mode === 'managed' ? require('./phone-registration').status() : {}) };
+  return { enabled: wanted, state, url, error: lastError, mode: "managed", permanent: true, pairingUrl,
+    ...(wanted ? require("./phone-registration").status() : {}) };
 }
+// Quitting the app stops the connection without turning off the saved
+// preference, so the same address resumes on the next launch.
 function shutdown() {
-  // Quitting the app must stop its child connection without turning off the
-  // saved preference, so the same address resumes on the next launch.
-  wanted = false; ++generation; ++upgradeGeneration;
-  clearTimeout(retryTimer); clearTimeout(upgradeTimer);
-  const child = proc; proc = null;
-  if (child) child.kill();
+  wanted = false; ++generation;
+  clearTimeout(retryTimer);
+  stopClient();
 }
 async function boot() {
   try {
-    // A setting that could not be read is not "off" or "temporary": one read
-    // that failed just after a restart once started a temporary address in
-    // place of the personal URL. Read strictly, and try again shortly.
-    mode = (await getConfStrict("PHONE_ACCESS_MODE")) === "managed" ? "managed" : "quick";
+    // A setting that could not be read is not "off": read strictly, and try again shortly.
     wanted = String(await getConfStrict("PHONE_ACCESS")) === "1";
     if (wanted) await start();
     else await save({ PHONE_ACCESS_URL: null });
@@ -219,4 +204,4 @@ async function boot() {
     setTimeout(() => { void boot(); }, 10000);
   }
 }
-module.exports = { enable, disable, reconnect, status, boot, shutdown };
+module.exports = { enable, disable, reconnect, status, boot, shutdown, useServer };

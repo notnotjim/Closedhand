@@ -18,16 +18,10 @@ RUN npm ci --omit=dev \
       find node_modules/tesseract.js-core -maxdepth 1 -type f \( -name "tesseract-core*-lstm*" -o -name "tesseract-core*.wasm.js" \) -delete 2>/dev/null; true; }
 
 
-# cloudflared, for "reach your dashboard from your phone" (phone-access.js).
-# One static binary for this image's architecture; nothing runs until the
-# toggle in Settings is turned on.
-# It needs the system CA bundle to reach Cloudflare (Node carries its own
-# roots; slim images ship none for other programs). heif-convert turns iPhone
-# photos (HEIC) into JPEGs for the file reader.
-ARG TARGETARCH
-ADD https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${TARGETARCH:-amd64} /usr/local/bin/cloudflared
-RUN chmod 755 /usr/local/bin/cloudflared \
- && apt-get update && apt-get install -y --no-install-recommends ca-certificates libheif-examples \
+# The system CA bundle, for programs other than Node (Node carries its own
+# roots; slim images ship none). heif-convert turns iPhone photos (HEIC) into
+# JPEGs for the file reader.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libheif-examples \
  && rm -rf /var/lib/apt/lists/*
 
 # The dashboard starts a command-style MCP server once, to see what it offers,

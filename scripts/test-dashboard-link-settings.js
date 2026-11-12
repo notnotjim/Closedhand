@@ -51,7 +51,7 @@ test("a paused or reconnecting permanent address stays copyable, without claimin
     assert.equal(state.polls, status.enabled ? 1 : 0);
   }
 });
-test("first setup, pairing and temporary connections have distinct next steps", () => {
+test("first setup and pairing have distinct next steps", () => {
   const { state, el } = page();
   state.renderPhone({ enabled: false, state: "off" });
   assert.equal(el("phone-live").hidden, true);
@@ -61,10 +61,6 @@ test("first setup, pairing and temporary connections have distinct next steps", 
   assert.equal(el("phone-live").hidden, true);
   assert.equal(el("phone-setup-link").hidden, false);
   assert.equal(el("phone-setup-link").href, "https://closedhand.com/phone-access/pair#fixture");
-  state.renderPhone({ enabled: true, state: "on", url: "https://test.trycloudflare.com" });
-  assert.equal(el("phone-setup").hidden, false);
-  assert.equal(el("phone-save").hidden, true);
-  assert.match(el("phone-link-help").textContent, /temporary/);
 });
 test("an embedded-browser clipboard denial falls back to selection and cleans up", async () => {
   const p = page();
@@ -84,14 +80,14 @@ test("copy failure gives manual instructions instead of false success", async ()
   assert.match(p.el("phone-copy-status").textContent, /Touch and hold/);
   assert.equal(p.cleanup().removed, true);
 });
-test("pausing and resuming preserve the address and managed mode; cancelled pause does nothing", async () => {
+test("pausing and resuming preserve the address; cancelled pause does nothing", async () => {
   const { state, el } = page();
   state.renderPhone(ready);
   let calls = 0;
   state.fetch = async (_, options) => {
     calls++;
     const body = JSON.parse(options.body);
-    assert.equal(body.mode, "managed");
+    assert.equal(body.mode, undefined, "there is one kind of personal URL");
     return { ok: true, json: async () => ({ ...body, state: body.enabled ? "starting" : "off", permanent: true }) };
   };
   state.askFirst = async () => false;
@@ -170,8 +166,6 @@ test("Settings offers a picked personal URL, and renames a lasting one with a ti
   assert.deepEqual(sent[0], ["/api/phone/rename", { name: "  Lucy Smith! " }]);
   assert.match(el("phone-desc").textContent, /now at lucy-smith\.closedhand\.ai/);
   assert.equal(el("phone-rename").hidden, true);
-  state.renderPhone({ enabled: true, state: "on", url: "https://test.trycloudflare.com" });
-  assert.equal(el("phone-change-line").hidden, true, "a temporary address cannot be renamed");
   // A refusal stays readable.
   state.fetch = async () => ({ ok: false, json: async () => ({ error: "That name is taken. Try another." }) });
   el("phone-rename").hidden = false;
@@ -206,7 +200,6 @@ test("the dashboard offers a personal URL to a Closedhand without one, and nothi
   vm.runInContext(code, state);
   for (const [phone, shown, why] of [
     [{ enabled: false, state: "off" }, true, "skipped in setup"],
-    [{ enabled: true, state: "on", url: "https://x.trycloudflare.com", permanent: false }, true, "only a temporary link"],
     [{ enabled: false, state: "off", savedUrl: address }, false, "has one, paused"],
     [ready, false, "has one"],
     [{ enabled: true, permanent: true, state: "pairing", pairingUrl: "https://closedhand.com/phone-access/pair#t" }, false, "on its way"],

@@ -149,3 +149,39 @@ test("a name whose computer isn't connected is closed, not answered", async () =
   await ready;
   await assert.rejects(browse('quiet-isle-07.closedhand.test'));
 });
+
+test("a pass is renewed on the open connection before it ends, and the relay lets a computer go when its pass does", async () => {
+  await ready;
+  let fresh = 0;
+  const renewing = startComputer({ getPass: async () => pass({ e: Date.now() + (fresh++ ? 3600000 : 400) }) });
+  await once(renewing.start(), 'up');
+  await new Promise(r => setTimeout(r, 700));
+  assert.ok(relay.connected().includes(NAME), 'still connected past its first pass');
+  assert.ok(fresh >= 2, 'with a fresh one from closedhand.com');
+  renewing.stop();
+  await new Promise(r => setTimeout(r, 50));
+  let first = true;
+  const stale = startComputer({ getPass: async () => { if (first) { first = false; return pass({ h: 'stale-owl-11.closedhand.test', e: Date.now() + 400 }); } throw new Error('closedhand.com unreachable'); } });
+  await once(stale.start(), 'up');
+  const [err] = await once(stale, 'down');
+  assert.match(err.message, /closed/, 'let go when its pass ended');
+  stale.stop();
+});
+
+test("a computer a personal URL moved away from can't take it back with its older pass, and a name that belongs to nobody is let go", async () => {
+  await ready;
+  const moved = crypto.generateKeyPairSync('ed25519');
+  // The new computer has the newer pass; the old one still holds an older one.
+  const fresh = startComputer({ key: moved, getPass: async () => pass({ key: moved.publicKey, e: Date.now() + 7200000 }) });
+  await once(fresh.start(), 'up');
+  const old = startComputer({ getPass: async () => pass({ e: Date.now() + 3600000 }) });
+  const [err] = await once(old.start(), 'down');
+  assert.match(err.message, /newer pass/, 'refused');
+  old.stop();
+  assert.deepEqual(relay.connected(), [NAME], 'the new computer keeps it');
+  relay.drop([NAME]);
+  await new Promise(r => setTimeout(r, 50));
+  assert.deepEqual(relay.connected(), [], 'let go when closedhand.com says it belongs to nobody');
+  fresh.stop();
+  assert.match(fs.readFileSync(path.join(__dirname, '../relay/main.js'), 'utf8'), /relay\.drop\(answer\.drop\)/, "closedhand.com's answer to each report is acted on");
+});

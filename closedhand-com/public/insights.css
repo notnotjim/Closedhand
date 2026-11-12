@@ -64,10 +64,6 @@
 .grid { display: grid; grid-template-columns: repeat(25, minmax(0, 1fr)); gap: .25rem; }
 .grid span { aspect-ratio: 1; border-radius: .1875rem; }
 .ins-card .grid + .key { margin: 1rem 0 0; }
-.meter { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid rgba(var(--fg-rgb),0.08); }
-.meter-head { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: .5rem; font-size: .8125rem; color: var(--muted); }
-.meter-head span:last-child { font-variant-numeric: tabular-nums; }
-.meter-head span:last-child:not(.warn) { color: var(--fg); }
 
 /* Possible misuse: what an LLM made of the signs, then the signs. */
 .misuse { border-color: rgba(var(--accent-soft-rgb),0.35); }

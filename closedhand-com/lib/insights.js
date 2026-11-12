@@ -11,9 +11,6 @@ const { needsOf } = require('./needs');
 
 const REPO = 'notnotjim/Closedhand';
 const INSTALL_SCRIPT = `https://raw.githubusercontent.com/${REPO}/main/install.sh`;
-// The route-building Worker stops making personal URLs at this many DNS
-// records (see alerts.js).
-const DNS_CEILING = 190;
 const GITHUB_TTL = 15 * 60000;
 // The workflows on main whose last run the page shows.
 const WORKFLOWS = { checks: 'Checks', mac: 'Build desktop app', images: 'Build self-host images' };
@@ -179,18 +176,16 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
         count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS week,
         count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS month
       FROM owners WHERE {who}`, 'id');
-    // Online means the computer running it connected in that time, from the
-    // Worker's hourly report of Cloudflare's tunnel records.
+    // Online means the computer running it was connected to the relay in
+    // that time, from the relay's report each minute.
     const urls = await both(`SELECT
-        count(*) FILTER (WHERE activated_at IS NOT NULL AND state <> 'revoked')::int AS working,
-        count(*) FILTER (WHERE activated_at IS NOT NULL AND state <> 'revoked' AND last_seen_at > now() - interval '1 day')::int AS day,
-        count(*) FILTER (WHERE activated_at IS NOT NULL AND state <> 'revoked' AND last_seen_at > now() - interval '7 days')::int AS week,
-        count(*) FILTER (WHERE activated_at IS NOT NULL AND state <> 'revoked' AND last_seen_at > now() - interval '30 days')::int AS month,
-        count(*) FILTER (WHERE activated_at IS NULL AND state IN ('pending', 'provisioning', 'connecting'))::int AS setting_up,
-        count(*) FILTER (WHERE state = 'error')::int AS errors,
-        count(*) FILTER (WHERE state <> 'revoked' AND (activated_at IS NOT NULL OR created_at > now() - interval '24 hours'))::int AS used
+        count(*) FILTER (WHERE activated_at IS NOT NULL)::int AS working,
+        count(*) FILTER (WHERE activated_at IS NOT NULL AND last_seen_at > now() - interval '1 day')::int AS day,
+        count(*) FILTER (WHERE activated_at IS NOT NULL AND last_seen_at > now() - interval '7 days')::int AS week,
+        count(*) FILTER (WHERE activated_at IS NOT NULL AND last_seen_at > now() - interval '30 days')::int AS month,
+        count(*) FILTER (WHERE activated_at IS NULL)::int AS setting_up,
+        count(*) FILTER (WHERE activated_at IS NOT NULL OR created_at > now() - interval '24 hours')::int AS used
       FROM addresses WHERE {who}`);
-    const dns = await one("SELECT value FROM service_alerts WHERE name = 'dns-records'");
     const weeks = (await db.query(`SELECT to_char(w, 'YYYY-MM-DD') AS week,
         (SELECT count(*)::int FROM owners WHERE created_at >= w AND created_at < w + interval '7 days' AND NOT (id = ANY($1::uuid[]))) AS accounts,
         (SELECT count(*)::int FROM owners WHERE created_at >= w AND created_at < w + interval '7 days' AND id = ANY($1::uuid[])) AS you_accounts,
@@ -254,7 +249,7 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       WHERE paid_at >= date_trunc('month', now() at time zone 'UTC') AND NOT (owner_id = ANY($1::uuid[]))`, [mine]);
     const [near, h, github] = await Promise.all([fromNear(mine), healthOf(mine), githubCounts()]);
     const managed = { ...firstMonths, plus, ahead, you: { ...firstMonths.you, plus: plusYou }, ...near };
-    const urlsOut = { ...urls, limit, dns: dns.value ?? null, dnsCeiling: DNS_CEILING };
+    const urlsOut = { ...urls, limit };
     return {
       at: new Date().toISOString(),
       people,

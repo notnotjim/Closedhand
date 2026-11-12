@@ -101,6 +101,10 @@ function createRelay({ domain, controlHost, controlKey, controlCert, passKey, lo
   const suffix = '.' + domain;
   const passPublic = typeof passKey === 'string' ? crypto.createPublicKey(passKey) : passKey;
   const computers = new Map(); // hostname -> { socket, challenges: Map(token -> answer) }
+  // The newest pass seen for each name: closedhand.com gives the computer
+  // that has a personal URL now a newer pass than any before, so a computer
+  // it moved away from can't take it back with the one it still holds.
+  const newest = new Map(); // hostname -> expiry of the newest pass
   const waiting = new Map(); // stream id -> { host, socket, hello, from, timer }
 
   // A personal URL: one name under the domain, never the relay's own.
@@ -115,6 +119,7 @@ function createRelay({ domain, controlHost, controlKey, controlCert, passKey, lo
       if (state === 'start' && msg.hello) {
         claims = readPass(msg.hello.pass, passPublic, now());
         if (!claims || !personal(claims.h) || msg.hello.key !== claims.k) { send(socket, { error: 'pass refused' }); socket.end(); return; }
+        if (claims.e < (newest.get(claims.h) || 0)) { send(socket, { error: 'a newer pass holds this name' }); socket.end(); return; }
         try { key = rawKey(claims.k); } catch (_) { socket.destroy(); return; }
         nonce = crypto.randomBytes(32).toString('hex');
         state = 'proving';
@@ -128,9 +133,15 @@ function createRelay({ domain, controlHost, controlKey, controlCert, passKey, lo
         state = 'open';
         const before = computers.get(claims.h);
         if (before) before.socket.destroy();
-        const entry = { socket, challenges: new Map(), since: now() };
+        const entry = { socket, challenges: new Map(), since: now(), timer: null };
+        // A pass ends when it says: the computer renews it on this connection
+        // before then (renew, below), or the relay lets it go.
+        const until = expires => { clearTimeout(entry.timer); entry.timer = setTimeout(() => socket.destroy(), Math.min(Math.max(0, expires - now()), 2 ** 31 - 1)); };
+        entry.until = until;
+        until(claims.e);
+        newest.set(claims.h, Math.max(newest.get(claims.h) || 0, claims.e));
         computers.set(claims.h, entry);
-        socket.on('close', () => { if (computers.get(claims.h) === entry) computers.delete(claims.h); });
+        socket.on('close', () => { clearTimeout(entry.timer); if (computers.get(claims.h) === entry) computers.delete(claims.h); });
         log('connected', claims.h);
         send(socket, { ok: true, host: claims.h });
         return;
@@ -138,6 +149,12 @@ function createRelay({ domain, controlHost, controlKey, controlCert, passKey, lo
       if (state === 'open') {
         const entry = computers.get(claims.h);
         if (!entry || entry.socket !== socket) return;
+        if (typeof msg.renew === 'string') {
+          const next = readPass(msg.renew, passPublic, now());
+          if (next && next.h === claims.h && next.k === claims.k) { claims = next; entry.until(next.e); newest.set(claims.h, Math.max(newest.get(claims.h) || 0, next.e)); send(socket, { renewed: next.e }); }
+          else send(socket, { error: 'renewal refused' });
+          return;
+        }
         if (msg.challenge && typeof msg.challenge.token === 'string' && typeof msg.challenge.answer === 'string'
           && /^[A-Za-z0-9_-]{8,128}$/.test(msg.challenge.token) && msg.challenge.answer.length <= 512) {
           if (entry.challenges.size < 20) entry.challenges.set(msg.challenge.token, msg.challenge.answer);
@@ -218,6 +235,8 @@ function createRelay({ domain, controlHost, controlKey, controlCert, passKey, lo
     front, plain, control,
     // The personal URLs whose computers are connected now.
     connected: () => [...computers.keys()],
+    // Names closedhand.com says belong to nobody now: their computers are let go.
+    drop(names) { for (const n of names || []) { const c = computers.get(n); if (c) { c.socket.destroy(); console.log(`[relay] dropped ${n}`); } } },
     close() { clearInterval(pinger); front.close(); plain.close(); for (const c of computers.values()) c.socket.destroy(); for (const w of waiting.values()) w.socket.destroy(); },
   };
 }

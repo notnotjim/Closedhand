@@ -11,6 +11,8 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 
 const RETRY_MS = [1000, 5000, 15000, 30000, 60000];
+// When a pass from closedhand.com runs out, read from the pass itself.
+const passExpiry = pass => { try { return Number(JSON.parse(Buffer.from(String(pass).split('.')[0], 'base64url').toString('utf8')).e) || 0; } catch (_) { return 0; } };
 
 // The SHA-256 of a certificate as the relay presents it, to pin it.
 const pinOf = cert => crypto.createHash('sha256').update(cert.raw).digest('base64url');
@@ -50,7 +52,19 @@ const send = (socket, msg) => { if (socket && !socket.destroyed) socket.write(JS
 // connection, and the address it came from.
 function create({ relay, getPass, privateKey, publicKey }) {
   const events = new EventEmitter();
-  let control = null, stopped = false, attempt = 0, retryTimer = null;
+  let control = null, stopped = false, attempt = 0, retryTimer = null, renewTimer = null;
+  // A fresh pass on the open connection when half the current one's time is
+  // gone, so the personal URL never drops for it.
+  function renewLater(pass) {
+    clearTimeout(renewTimer);
+    const left = passExpiry(pass) - Date.now();
+    if (left <= 0) return;
+    renewTimer = setTimeout(async () => {
+      try { const next = await getPass(); send(control, { renew: next }); renewLater(next); }
+      catch (_) { renewTimer = setTimeout(() => renewLater(pass), 60000); renewTimer.unref?.(); }
+    }, Math.max(50, Math.min(left / 2, 2 ** 31 - 1)));
+    renewTimer.unref?.();
+  }
   const pub = publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64url');
 
   async function open() {
@@ -67,7 +81,7 @@ function create({ relay, getPass, privateKey, publicKey }) {
         socket.on('error', () => {});
         readLines(socket, msg => {
           if (msg.nonce) send(socket, { proof: crypto.sign(null, Buffer.from('closedhand-relay:' + msg.nonce), privateKey).toString('base64url') });
-          else if (msg.ok) { up = true; attempt = 0; events.emit('up', msg.host); resolve(); }
+          else if (msg.ok) { up = true; attempt = 0; renewLater(pass); events.emit('up', msg.host); resolve(); }
           else if (msg.error) reject(new Error('the relay refused: ' + msg.error));
           else if (msg.ping) send(socket, { pong: msg.ping });
           else if (typeof msg.open === 'string') stream(msg.open, String(msg.from || ''));
@@ -98,7 +112,7 @@ function create({ relay, getPass, privateKey, publicKey }) {
 
   return Object.assign(events, {
     start() { stopped = false; open(); return events; },
-    stop() { stopped = true; clearTimeout(retryTimer); retryTimer = null; if (control) control.destroy(); control = null; },
+    stop() { stopped = true; clearTimeout(retryTimer); clearTimeout(renewTimer); retryTimer = null; if (control) control.destroy(); control = null; },
     // Let's Encrypt's check for this computer's certificate, answered by the relay.
     challenge(token, answer) { send(control, { challenge: { token, answer } }); },
     challengeGone(token) { send(control, { challengeGone: token }); },

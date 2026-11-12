@@ -7,7 +7,7 @@
 // and meet in the projects table. A project's page is read-only and has no
 // script: where it stands, what is open and decided, who said what, and its
 // context. It lives under /page/, which reaches the computer through the
-// tunnel like every other page.
+// personal URL like every other page.
 
 const rules = require("./project-rules");
 const page = require("./report-page");

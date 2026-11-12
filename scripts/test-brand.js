@@ -28,18 +28,6 @@ test("the files in place are the active mark, exactly", () => {
   assert.equal(art(read("install.sh").toString()), art(read(`brand/marks/${active}/install-art.txt`).toString()), "the installer draws the active mark");
 });
 
-// The relay's pages carry the fist inside them, so `use` puts the active one there too.
-test("pages that carry the fist inside them carry the active mark's", () => {
-  const pages = [...script.slice(script.indexOf("INLINE = ["), script.indexOf("]", script.indexOf("INLINE = ["))).matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(pages.length >= 3, "the page list was read");
-  const fist = read(`brand/marks/${active}/closedhand-com/public/fist.png`);
-  for (const page of pages) {
-    const pictures = [...read(page).toString().matchAll(/data:image\/png;base64,([A-Za-z0-9+/=]+)/g)];
-    assert.ok(pictures.length, `${page} has the fist`);
-    for (const m of pictures) assert.ok(Buffer.from(m[1], "base64").equals(fist), `${page} carries the ${active} fist`);
-  }
-});
-
 test("the brand folder stays out of the bot image", () => {
   assert.match(read(".dockerignore").toString(), /^brand$/m);
 });

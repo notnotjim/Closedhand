@@ -73,8 +73,7 @@
       if (!leaving) { leaving = true; say('Opening your Closedhand…'); timer = setTimeout(() => location.replace(data.url + '/'), 1200); }
       return;
     }
-    say(data.state === 'error' ? 'Connecting is taking longer than usual. It will keep retrying on its own.'
-      : Date.now() - confirmedAt > 90000 ? 'Still connecting. Check Closedhand is running; you can close this page and carry on there.' : '');
+    say(Date.now() - confirmedAt > 90000 ? 'Still connecting. Check Closedhand is running; you can close this page and carry on there.' : '');
     timer = setTimeout(check, 3000);
   }
 
@@ -108,12 +107,11 @@
       const address = await request('/api/phone-enrollment/details', { ticket });
       const name = new URL(address.url).hostname;
       $('address').textContent = name;
-      if (account.signedIn && ['pending', 'provisioning', 'connecting', 'active', 'error'].includes(address.state)) {
+      if (account.signedIn && ['pending', 'active'].includes(address.state)) {
         if (auto.back) { leaving = true; location.replace(auto.back); return; }
         progress(address); return;
       }
       if (account.signedIn && address.state === 'awaiting-code' && /^[A-Z0-9]{6}$/.test(address.code || '')) { awaitCode(address); return; }
-      if (address.state === 'revoked') throw new Error('This personal URL was removed. Claim a new one in Closedhand’s Settings.');
       if (validUrl(account.url) && new URL(account.url).hostname !== name) {
         show(null);
         $('address-note').textContent = 'Already owns ' + new URL(account.url).hostname;

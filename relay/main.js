@@ -34,7 +34,8 @@ if (env.RELAY_REPORT_URL && env.RELAY_REPORT_SECRET) {
       headers: { Authorization: 'Bearer ' + env.RELAY_REPORT_SECRET, 'Content-Type': 'application/json' },
       body: JSON.stringify({ connected: relay.connected() }),
       signal: AbortSignal.timeout(15000),
-    }).catch(e => console.error('[relay] report failed:', e.message));
+    }).then(r => (r.ok ? r.json() : null)).then(answer => { if (Array.isArray(answer?.drop)) relay.drop(answer.drop); })
+      .catch(e => console.error('[relay] report failed:', e.message));
   }, 60000).unref();
 }
 

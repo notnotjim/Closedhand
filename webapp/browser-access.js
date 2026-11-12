@@ -2,8 +2,7 @@
 // cannot set a __Host- cookie for this hostname, even with a parent Domain value.
 function publicHttps(req) {
   const host = String(req.headers.host || '').toLowerCase();
-  return req.secure || req.headers['x-forwarded-proto'] === 'https' ||
-    host.endsWith('.closedhand.ai') || host.endsWith('.trycloudflare.com');
+  return req.secure || req.headers['x-forwarded-proto'] === 'https' || host.endsWith('.closedhand.ai');
 }
 function sessionName(req) { return publicHttps(req) ? '__Host-ch_admin' : 'ch_admin'; }
 function sessionAttributes(req) {

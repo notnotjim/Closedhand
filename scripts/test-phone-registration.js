@@ -10,51 +10,56 @@ function registration(values, request) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../webapp/phone-registration.js'), 'utf8'), context);
   return context.module.exports;
 }
-test('installation identity survives restart and tunnel credentials are not stored in plaintext', async () => {
+// What closedhand.com answers for a personal URL now: a pass for this
+// computer's key, and the relay to show it to.
+const KEY = 'A'.repeat(43);
+const PASS = Buffer.from(JSON.stringify({ h: 'alex.closedhand.ai', k: KEY, e: Date.now() + 86400000 })).toString('base64url') + '.' + 'c2lnbmF0dXJl';
+const RELAY = { address: 'relay.closedhand.ai:443', controlHost: 'relay.closedhand.ai', pin: 'p'.repeat(43) };
+const answer = (state, url = 'https://alex.closedhand.ai', extra = {}) => ({ state, url, pass: PASS, relay: RELAY, ...extra });
+test('installation identity survives restart, and the last pass is kept sealed for when closedhand.com is down', async () => {
   const values = {}, calls = [];
   const url = 'https://alex.closedhand.ai';
-  const request = async (path, options) => { calls.push(options.headers.Authorization); return { ok: true, json: async () => path.endsWith('/register') ? { ticket: 'signed-fixture' } : { state: 'active', url, token: 'fixture-per-install-token-1234567890' } }; };
+  const request = async (path, options) => { calls.push({ path, auth: options.headers.Authorization, body: options.body }); return { ok: true, json: async () => path.endsWith('/register') ? { ticket: 'signed-fixture' } : answer('active') }; };
   const first = registration(values, request);
   await Promise.all([first.begin('fixture'), first.begin('fixture')]);
-  assert.equal(calls[0], calls[1]);
+  assert.equal(calls[0].auth, calls[1].auth);
   assert.match(values.PHONE_INSTALL_SECRET, /^enc:v1:/);
-  await first.connection();
-  assert.match(values.PHONE_TUNNEL_TOKEN, /^enc:v1:/);
+  const got = await first.connection({ key: KEY });
+  assert.ok(calls.at(-1).path.endsWith('/api/phone-enrollment/connection'));
+  assert.deepEqual(JSON.parse(calls.at(-1).body), { key: KEY }, 'only the public half of this computer\'s key is sent');
+  assert.deepEqual([got.url, got.pass, got.relay.address], [url, PASS, RELAY.address]);
+  assert.match(values.PHONE_RELAY, /^enc:v1:/);
   const restarted = registration(values, async () => { throw new Error('Provider unavailable'); });
-  assert.equal((await restarted.connection()).url, url, 'existing installation can restart while the provisioning service is down');
+  const kept = await restarted.connection({ key: KEY });
+  assert.deepEqual([kept.url, kept.pass, kept.verify], [url, PASS, false], 'a computer restarts while closedhand.com is down, on its last pass');
+  await assert.rejects(registration(values, async () => { throw new Error('Provider unavailable'); }).connection({ key: 'B'.repeat(43) }), /unavailable/, 'only for the key it was made for');
   for (const invalid of ['https://evil.example', 'https://alex.closedhand.ai.evil.example', 'https://www.closedhand.ai', 'https://alex.closedhand.com', url + '?secret=leak', url + '/other', 'http://localhost:3000']) assert.equal(first.validAddress(invalid), false);
 });
-test('an old address is refreshed without changing the installation identity', async () => {
-  const values = { PHONE_PERMANENT_URL: 'https://ch-11111111111141118111111111111111.closedhand.com', PHONE_TUNNEL_TOKEN: 'enc:v1:old-token-fixture', PHONE_INSTALL_ID: '11111111-1111-4111-8111-111111111111', PHONE_INSTALL_SECRET: 'enc:v1:' + 'a'.repeat(64) };
-  let calls = 0;
-  const client = registration(values, async () => { calls++; return { ok: true, json: async () => ({ state: 'active', url: 'https://alex.closedhand.ai', token: 'fixture-per-install-token-1234567890' }) }; });
-  assert.equal((await client.connection()).url, 'https://alex.closedhand.ai');
-  assert.equal(calls, 1);
-  assert.equal(values.PHONE_INSTALL_ID, '11111111-1111-4111-8111-111111111111');
-});
-test('unexpected registration responses never persist tokens or an attacker address', async () => {
-  const values = {};
-  const client = registration(values, async () => ({ ok: true, json: async () => ({ state: 'active', url: 'https://other.example', token: 'a'.repeat(40) }) }));
-  await assert.rejects(client.connection(), /verified/);
-  assert.equal(values.PHONE_TUNNEL_TOKEN, undefined);
+test('unexpected registration responses never persist a pass, a relay or an attacker address', async () => {
+  for (const odd of [answer('active', 'https://other.example'), answer('active', undefined, { relay: { ...RELAY, pin: 'short' } }), answer('active', undefined, { relay: { ...RELAY, address: 'evil.example' } }), answer('active', undefined, { pass: 'not a pass' })]) {
+    const values = {};
+    const client = registration(values, async () => ({ ok: true, json: async () => odd }));
+    await assert.rejects(client.connection({ key: KEY }), /verified/);
+    assert.equal(values.PHONE_RELAY, undefined);
+    assert.equal(values.PHONE_PERMANENT_URL, undefined);
+  }
 });
 test('new address stays unpublished until the exact installation confirms it', async () => {
   const values={}, calls=[];
   const client=registration(values,async(url,options)=>{
     calls.push({url,options});
-    return {ok:true,json:async()=>url.endsWith('/register') ? {ticket:'fixture'} : url.endsWith('/connected') ? {state:'active'} : {state:'connecting',url:'https://fixture.closedhand.ai',token:'private-fixture-token-1234567890'}};
+    return {ok:true,json:async()=>url.endsWith('/register') ? {ticket:'fixture'} : url.endsWith('/connected') ? {state:'active'} : answer('connecting','https://fixture.closedhand.ai')};
   });
   await client.begin();
   assert.ok(calls[0].url.includes('/phone-enrollment/register'));
   assert.deepEqual(JSON.parse(calls[0].options.body),{port:3000,confirm:'code'},'no name: closedhand.com picks it');
-  const connecting=await client.connection();assert.equal(connecting.verify,true);
-  assert.equal(values.PHONE_PERMANENT_URL,undefined);assert.equal(values.PHONE_TUNNEL_TOKEN,undefined);
+  const connecting=await client.connection({ key: KEY });assert.equal(connecting.verify,true);
+  assert.equal(values.PHONE_PERMANENT_URL,undefined);
   const nonce='b'.repeat(64),secret=values.PHONE_INSTALL_SECRET.replace('enc:v1:','');
   assert.equal(await client.challenge(nonce),crypto.createHmac('sha256',secret).update('closedhand-address:'+nonce).digest('hex'));
   await assert.rejects(client.challenge('invalid'));
   await client.confirm(connecting);
   assert.equal(values.PHONE_PERMANENT_URL,'https://fixture.closedhand.ai');
-  assert.match(values.PHONE_TUNNEL_TOKEN,/^enc:v1:/);
 });
 
 test('ownership confirmation is distinct from provisioning and a verified URL', async () => {
@@ -82,7 +87,7 @@ test('a personal URL is asked for without a name, through the one enrollment rou
 
 test('renaming tidies the name as closedhand.com does, then drops the old connection to reconnect', async () => {
   const website = require('../closedhand-com/lib/names');
-  const values = { PHONE_PERMANENT_URL: 'https://amber-fox-42.closedhand.ai', PHONE_TUNNEL_TOKEN: 'enc:v1:token', PHONE_ADDRESS_NAME: 'amber-fox-42' }, calls = [];
+  const values = { PHONE_PERMANENT_URL: 'https://amber-fox-42.closedhand.ai', PHONE_RELAY: 'enc:v1:{}', PHONE_ADDRESS_NAME: 'amber-fox-42' }, calls = [];
   const client = registration(values, async (url, options) => { calls.push({ url, body: JSON.parse(options.body) }); return { ok: true, json: async () => ({ state: 'pending', url: 'https://lucy-smith.closedhand.ai', redirectUntil: '2026-10-29T00:00:00.000Z' }) }; });
   for (const typed of ['Lucy Smith', '  José! ', 'my.home_server', '--a--b', 'x'.repeat(40), '42-lucy', '日本', 'Zoë-Ångström']) {
     assert.equal(client.cleanName(typed), website.cleanName(typed), JSON.stringify(typed));
@@ -94,7 +99,7 @@ test('renaming tidies the name as closedhand.com does, then drops the old connec
   assert.deepEqual(calls[0].body, { name: 'lucy-smith' });
   assert.equal(done.url, 'https://lucy-smith.closedhand.ai');
   assert.equal(values.PHONE_PERMANENT_URL, null, 'the old address is no longer used');
-  assert.equal(values.PHONE_TUNNEL_TOKEN, null);
+  assert.equal(values.PHONE_RELAY, null, 'nor its pass');
   assert.equal(values.PHONE_ADDRESS_NAME, 'lucy-smith');
   assert.equal(client.status().ownershipConfirmed, true);
   const refused = registration({}, async () => ({ ok: false, json: async () => ({ error: 'That name is taken. Try another.' }) }));
@@ -138,45 +143,26 @@ test('closedhand.com counts as available only when reached and giving out person
     assert.equal(await fresh.serviceAvailable(), false, why);
   }
 });
-test('a saved address that stops working is checked again, and forgotten only when closedhand.com no longer knows it', async () => {
-  const saved = { PHONE_PERMANENT_URL: 'https://amber-fox-42.closedhand.ai', PHONE_TUNNEL_TOKEN: 'enc:v1:fixture-per-install-token-1234567890', PHONE_ADDRESS_NAME: 'amber-fox-42', PHONE_ENROLLMENT: '2',
+test('an address closedhand.com no longer knows for this computer is forgotten here too', async () => {
+  const saved = { PHONE_PERMANENT_URL: 'https://amber-fox-42.closedhand.ai', PHONE_RELAY: 'enc:v1:{}', PHONE_ADDRESS_NAME: 'amber-fox-42', PHONE_ENROLLMENT: '2',
     PHONE_INSTALL_ID: '11111111-1111-4111-8111-111111111111', PHONE_INSTALL_SECRET: 'enc:v1:' + 'a'.repeat(64) };
-  let calls = 0, asked = null;
-  const ask = answer => async (url) => { calls++; asked = url; if (answer instanceof Error) throw answer; return { ok: true, json: async () => answer }; };
-  // Working: the saved one is used without asking.
+  const ask = reply => async () => ({ ok: true, json: async () => reply });
+  // Still known there: carries on, with a fresh pass.
   let values = { ...saved };
-  assert.equal((await registration(values, ask({ state: 'unconfirmed' })).connection()).url, saved.PHONE_PERMANENT_URL);
-  assert.equal(calls, 0);
-  // Stopped working, and closedhand.com can't be reached: kept.
-  values = { ...saved };
-  assert.equal((await registration(values, ask(new Error('offline'))).connection({ recheck: true })).url, saved.PHONE_PERMANENT_URL);
-  assert.equal(values.PHONE_PERMANENT_URL, saved.PHONE_PERMANENT_URL);
-  // Still known there: carries on.
-  values = { ...saved };
-  const still = await registration(values, ask({ state: 'active', url: saved.PHONE_PERMANENT_URL, token: 'fixture-per-install-token-1234567890' })).connection({ recheck: true });
-  assert.equal(still.url, saved.PHONE_PERMANENT_URL);
-  // closedhand.com keeps no copy of the key once connected: the saved one carries on.
-  values = { ...saved };
-  const kept = await registration(values, ask({ state: 'active', url: saved.PHONE_PERMANENT_URL })).connection({ recheck: true });
-  assert.deepEqual([kept.url, kept.token], [saved.PHONE_PERMANENT_URL, 'fixture-per-install-token-1234567890']);
-  assert.doesNotMatch(asked, /lost=1/, 'a computer holding its key does not ask for it');
-  assert.equal(values.PHONE_TUNNEL_TOKEN, saved.PHONE_TUNNEL_TOKEN);
-  // Lost here: closedhand.com is asked to fetch the key again, and the computer waits for it.
-  values = { ...saved, PHONE_TUNNEL_TOKEN: null };
-  assert.equal(await registration(values, ask({ state: 'pending' })).connection(), null);
-  assert.match(asked, /\/connection\?lost=1$/);
+  const still = await registration(values, ask(answer('active', saved.PHONE_PERMANENT_URL))).connection({ key: KEY });
+  assert.deepEqual([still.url, still.pass], [saved.PHONE_PERMANENT_URL, PASS]);
   // Gone there (account deleted, unused, or moved to another computer): forgotten here too.
   values = { ...saved };
   const client = registration(values, ask({ state: 'unconfirmed' }));
-  assert.equal(await client.connection({ recheck: true }), null);
-  assert.deepEqual([values.PHONE_PERMANENT_URL, values.PHONE_TUNNEL_TOKEN, values.PHONE_ADDRESS_NAME, values.PHONE_ENROLLMENT], [null, null, null, null]);
+  assert.equal(await client.connection({ key: KEY }), null);
+  assert.deepEqual([values.PHONE_PERMANENT_URL, values.PHONE_RELAY, values.PHONE_ADDRESS_NAME, values.PHONE_ENROLLMENT], [null, null, null, null]);
   assert.equal(values.PHONE_INSTALL_ID, saved.PHONE_INSTALL_ID, 'the computer keeps its identity');
   assert.equal(client.status().ownershipConfirmed, false);
 });
 // Objects made inside the sandbox, compared as plain data.
 const plain = value => JSON.parse(JSON.stringify(value));
 test('the Closedhand account: shown only as closedhand.com states it, and deleted there before anything here is forgotten', async () => {
-  const saved = { PHONE_PERMANENT_URL: 'https://amber-fox-42.closedhand.ai', PHONE_TUNNEL_TOKEN: 'enc:v1:fixture-per-install-token-1234567890', PHONE_ADDRESS_NAME: 'amber-fox-42',
+  const saved = { PHONE_PERMANENT_URL: 'https://amber-fox-42.closedhand.ai', PHONE_RELAY: 'enc:v1:{}', PHONE_ADDRESS_NAME: 'amber-fox-42',
     PHONE_INSTALL_ID: '11111111-1111-4111-8111-111111111111', PHONE_INSTALL_SECRET: 'enc:v1:' + 'a'.repeat(64) };
   const calls = [];
   const reply = answer => async (url, options) => { calls.push([options.method, url]); return { ok: !answer.error, json: async () => answer }; };
@@ -224,7 +210,7 @@ test('the Closedhand account: shown only as closedhand.com states it, and delete
   calls.length = 0;
   assert.deepEqual(plain(await registration(values, reply({ deleted: true })).deleteAccount()), { deleted: true });
   assert.deepEqual(calls, [['POST', 'https://closedhand.com/api/phone-enrollment/account/delete']]);
-  assert.equal(values.PHONE_PERMANENT_URL, null); assert.equal(values.PHONE_TUNNEL_TOKEN, null);
+  assert.equal(values.PHONE_PERMANENT_URL, null); assert.equal(values.PHONE_RELAY, null);
 });
 
 test('claiming with the Google or Microsoft sign-in sends it once, by this copy, and steps aside when closedhand.com wants the confirmation page', async () => {

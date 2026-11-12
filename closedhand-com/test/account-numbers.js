@@ -26,7 +26,7 @@ const WRONG = "That account number didn't work. Check the number and try again."
 const googleKeys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const env = {
   BASE_URL: BASE, SESSION_SECRET: crypto.randomBytes(32).toString('hex'), TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY,
-  PHONE_ENROLLMENT_ENABLED: '1', PHONE_PROVISIONER_SECRET: 'p'.repeat(40), ADDRESS_RATE_PER_MINUTE: '1000',
+  PHONE_ENROLLMENT_ENABLED: '1', ADDRESS_RATE_PER_MINUTE: '1000',
   GOOGLE_CLIENT_ID: 'google-client', GOOGLE_CLIENT_SECRET: 'g-secret', GOOGLE_ASSOCIATED_CLIENT_IDS: GOOGLE_APP,
   NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, OPERATOR_EMAILS: 'keeper@example.com',
   POLAR_ACCESS_TOKEN: 'polar-token', POLAR_WEBHOOK_SECRET: 'whsec_' + crypto.randomBytes(32).toString('base64'),
@@ -190,7 +190,7 @@ test('an invoice that lapses lets the claim go, a payment after that makes nothi
   assert.ok(new Date((await db.query('SELECT ends_at FROM ahead_plans WHERE owner_id = $1', [owner])).rows[0].ends_at) > new Date(Date.now() + 170 * 86400000), 'six months');
 
   // Every personal URL taken: nothing waits and nothing is charged.
-  const taken = (await db.query("SELECT count(*)::int AS n FROM addresses WHERE state <> 'revoked'")).rows[0].n;
+  const taken = (await db.query('SELECT count(*)::int AS n FROM addresses')).rows[0].n;
   const full = await listen({ ...env, ADDRESS_LIMIT: String(taken) });
   try {
     const before = invoices.length, late = computer();
@@ -310,7 +310,7 @@ test('deleting an account made with an account number forgets it; the number the
   const other = computer();
   (await claim(other)).json;
   assert.equal((await call('POST', '/api/phone-enrollment/account/delete', {}, other.auth)).json.deleted, true);
-  assert.equal((await db.query("SELECT 1 FROM addresses WHERE secret_hash = $1 AND state <> 'revoked'", [other.hash])).rowCount, 0);
+  assert.equal((await db.query('SELECT 1 FROM addresses WHERE secret_hash = $1', [other.hash])).rowCount, 0);
 }));
 
 test('the maintainer hears once a day when many accounts are made with an account number', quiet(async () => {

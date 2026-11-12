@@ -9,7 +9,7 @@
 //   2. Marks itself as moving (move-marker.js): its bot restarts and sits
 //      still, so nothing changes or gets answered twice from here on.
 //   3. Sends every row and file, read in one snapshot, in parts.
-//   4. Once the other side has taken it all, stops its personal URL tunnel,
+//   4. Once the other side has taken it all, lets its personal URL go,
 //      marks itself moved and tells the other side to start. From then on
 //      this computer shows only a page saying where Closedhand went.
 // Anything that fails before step 4 undoes step 2, and Closedhand carries on
@@ -225,7 +225,7 @@ function outboundStatus() {
     ...(code ? { code, expires } : {}), ...(home ? { home: true } : {}), ...(railway ? { railway: true } : {}) };
 }
 
-// deps: pool, storageDir, marker, restartBot(), botMoveState(), stopTunnel(),
+// deps: pool, storageDir, marker, restartBot(), botMoveState(), stopPersonalUrl(),
 // personalUrl(), exitSoon(), fetch. Returns at once; status() follows it.
 function startMove({ address, code }, deps) {
   if (outbound && !["done", "failed"].includes(outbound.step)) throw new Error("A move is already under way.");
@@ -303,7 +303,7 @@ async function run(to, code, deps) {
     // 4. Hand over: the personal URL goes with it.
     outbound.step = "handing-over";
     outbound.url = (await deps.personalUrl().catch(() => null)) || to;
-    deps.stopTunnel();
+    deps.stopPersonalUrl();
     deps.marker.write({ state: "moved", to, url: outbound.url, at: new Date().toISOString() });
     deps.restartBot().catch(() => {});
     paused = false;
@@ -727,7 +727,7 @@ function giveFinish(deps) {
   clearTimeout(now.quiet);
   outbound.step = "handing-over";
   setTimeout(() => {
-    deps.stopTunnel();
+    deps.stopPersonalUrl();
     deps.marker.write({ state: "moved", to: outbound.url || "another computer", url: outbound.url, at: new Date().toISOString() });
     // The bot keeps its own copy of the marker where its folder is its own.
     deps.restartBot().catch(() => {});

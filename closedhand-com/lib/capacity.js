@@ -79,7 +79,7 @@ function create({ db, env = process.env, notices, includedAi = null }) {
     // Counted as the limit counts them (lib/addresses.js): working ones and
     // fresh reservations.
     const taken = Number((await db.query(
-      "SELECT count(*)::int AS n FROM addresses WHERE state <> 'revoked' AND (activated_at IS NOT NULL OR created_at > now() - interval '24 hours')")).rows[0].n);
+      "SELECT count(*)::int AS n FROM addresses WHERE activated_at IS NOT NULL OR created_at > now() - interval '24 hours'")).rows[0].n);
     if (urlLimit > 0 && await claim('personal-urls', 'limit-' + urlLimit, reached(taken / urlLimit * 100, [75, 90, 100]))) {
       told.push(`Closedhand: ${taken} of ${urlLimit} personal URLs are taken. Past ${urlLimit} nobody new can claim one, so raise the limit if more people are coming.`);
     }

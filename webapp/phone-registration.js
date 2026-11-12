@@ -64,9 +64,9 @@ function cleanName(value) {
     .replace(/[\s._]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-')
     .replace(/^[^a-z]+/, '').slice(0, 32).replace(/-+$/, '');
 }
-// Rename the personal URL. The old name sends visitors on to the new one for
-// thirty days. This copy then reconnects at the new name and proves it
-// answers there, as it did the first time.
+// Rename the personal URL. The old name stops opening anything and stays
+// reserved to its owner for six months. This copy then reconnects at the new
+// name and proves it answers there, as it did the first time.
 async function rename(name) {
   const clean = cleanName(name);
   if (!validAddress('https://' + clean + '.closedhand.ai')) {
@@ -74,7 +74,7 @@ async function rename(name) {
   }
   const data = await call('rename', 'POST', { name: clean });
   if (!validAddress(data.url)) throw new Error('The new personal URL could not be verified.');
-  await setConf({ PHONE_PERMANENT_URL: null, PHONE_TUNNEL_TOKEN: null, PHONE_ADDRESS_NAME: new URL(data.url).hostname.split('.')[0] });
+  await setConf({ PHONE_PERMANENT_URL: null, PHONE_RELAY: null, PHONE_ADDRESS_NAME: new URL(data.url).hostname.split('.')[0] });
   registrationState = ['pending', 'provisioning', 'connecting', 'active', 'error'].includes(data.state) ? data.state : 'pending';
   return data;
 }
@@ -124,41 +124,43 @@ function validAddress(value) {
       !reserved.has(name) && !/^..--/.test(name) && !u.port && !u.username && !u.password && u.pathname === '/' && !u.search && !u.hash;
   } catch (_) { return false; }
 }
-// The personal URL's connection. A saved one is used as it is, unless it
-// has stopped working (recheck): then closedhand.com is asked again, and an
-// address it no longer knows for this computer (its account was deleted,
-// it went unused, or it moved to another computer) is forgotten here too.
-// If closedhand.com can't be reached, the saved one is kept.
-async function connection({ recheck = false } = {}) {
-  const savedUrl = await getConf('PHONE_PERMANENT_URL');
-  const savedToken = decryptString(await getConf('PHONE_TUNNEL_TOKEN'));
-  const saved = validAddress(savedUrl) && savedToken ? { url: savedUrl, token: savedToken } : null;
-  if (saved && !recheck) {
-    registrationState = 'active';
-    return saved;
-  }
+// The personal URL, and what this computer needs to take it at the relay
+// (relay-client.js): a pass from closedhand.com for this computer's own key,
+// lasting a day, and which relay to use, named with its certificate so no
+// other server can pose as it. An address closedhand.com no longer knows for
+// this computer (its account was deleted, it went unused, or it moved to
+// another computer) is forgotten here too.
+async function connection({ key } = {}) {
   let data;
-  // closedhand.com keeps no copy of the key once this computer has it, so
-  // without a saved one it is asked to fetch the key again (lost=1).
-  try { data = await call(saved ? 'connection' : 'connection?lost=1'); }
+  try { data = await call('connection', 'POST', { key }); }
   catch (error) {
-    if (!saved) throw error;
-    registrationState = 'active';
-    return saved;
+    // closedhand.com can't be reached: the last pass, while it lasts.
+    const kept = await getConf('PHONE_RELAY').then(v => JSON.parse(decryptString(v) || 'null')).catch(() => null);
+    if (kept && kept.key === key && passExpiry(kept.pass) > Date.now() + 60000) { registrationState = 'active'; return { ...kept.connection, verify: false }; }
+    throw error;
   }
   registrationState = ['unconfirmed', 'pending', 'provisioning', 'connecting', 'active', 'error'].includes(data.state) ? data.state : null;
-  if (data.state === 'unconfirmed' && saved) await forget();
-  if (!['active','connecting'].includes(data.state)) return null;
-  if (data.state === 'active' && data.token === undefined && saved && data.url === saved.url) return saved;
-  if (!validAddress(data.url) || typeof data.token !== 'string' || data.token.length < 30) throw new Error('Your personal URL could not be verified.');
-  // A connecting credential may start the tunnel, but is not a verified link yet.
-  if (data.state === 'active') await setConf({ PHONE_PERMANENT_URL: data.url, PHONE_TUNNEL_TOKEN: encrypted(data.token) });
-  return { url: data.url, token: data.token, verify: data.state === 'connecting' };
+  if (data.state === 'unconfirmed' && await getConf('PHONE_PERMANENT_URL')) await forget();
+  if (!['active', 'connecting'].includes(data.state)) return null;
+  const relay = data.relay || {};
+  if (!validAddress(data.url) || typeof data.pass !== 'string' || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(data.pass)
+    || typeof relay.address !== 'string' || !/^[a-z0-9.-]+:\d{1,5}$/.test(relay.address)
+    || typeof relay.controlHost !== 'string' || !/^[a-z0-9.-]+$/.test(relay.controlHost)
+    || typeof relay.pin !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(relay.pin)) throw new Error('Your personal URL could not be verified.');
+  const result = { url: data.url, pass: data.pass, relay: { address: relay.address, controlHost: relay.controlHost, pin: relay.pin } };
+  if (data.state === 'active') await setConf({ PHONE_PERMANENT_URL: data.url, PHONE_RELAY: encrypted(JSON.stringify({ key, connection: result, pass: data.pass })) });
+  return { ...result, verify: data.state === 'connecting' };
 }
+// Once this computer answers at its personal URL, closedhand.com checks it
+// there (the address becomes active) and the address is kept here.
 async function confirm(permanent) {
   if (!permanent.verify) return;
-  await call('connected','POST',{});
-  await setConf({ PHONE_PERMANENT_URL: permanent.url, PHONE_TUNNEL_TOKEN: encrypted(permanent.token) });
+  await call('connected', 'POST', {});
+  await setConf({ PHONE_PERMANENT_URL: permanent.url });
+}
+// When a pass runs out, as it says.
+function passExpiry(pass) {
+  try { return Number(JSON.parse(Buffer.from(String(pass).split('.')[0], 'base64url').toString('utf8')).e) || 0; } catch (_) { return 0; }
 }
 // state: set when closedhand.com handed the code back by itself (not typed).
 // Whether the person agreed to the Terms and Privacy policy on the setup
@@ -398,7 +400,7 @@ async function deleteAccount() {
 }
 async function forget() {
   registrationState = null;
-  await setConf({ PHONE_PERMANENT_URL: null, PHONE_TUNNEL_TOKEN: null, PHONE_ADDRESS_NAME: null, PHONE_ENROLLMENT: null });
+  await setConf({ PHONE_PERMANENT_URL: null, PHONE_RELAY: null, PHONE_ADDRESS_NAME: null, PHONE_ENROLLMENT: null });
 }
 function status() {
   return { registrationState, ownershipConfirmed: ['pending', 'provisioning', 'connecting', 'active', 'error'].includes(registrationState) };

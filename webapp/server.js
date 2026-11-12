@@ -771,15 +771,11 @@ app.get("/login", (req, res) => {
 // confirmation and Basic auth on the API.
 const _loginFails = new Map(); // ip -> { n, until }
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
-const isLoopback = (a) => a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1";
-// cloudflared runs beside the dashboard and connects from this computer, so
-// Cloudflare's header naming who is asking is believed only then. Anyone
-// reaching the dashboard directly could write that header themselves and get
-// a fresh five tries with every made-up address.
+// Through the personal URL, the relay says which address a browser came from
+// (relay-client.js); nothing a request carries can claim one, so nobody gets
+// a fresh five tries by making addresses up.
 function clientIp(req) {
-  const peer = (req.socket && req.socket.remoteAddress) || "?";
-  const cf = req.headers["cf-connecting-ip"];
-  return cf && isLoopback(peer) ? String(cf) : peer;
+  return (req.socket && req.socket.relayFrom) || (req.socket && req.socket.remoteAddress) || "?";
 }
 // Through the personal URL there is also a ceiling for all addresses together,
 // 100 wrong passwords an hour, so guessing from many addresses at once gets
@@ -788,7 +784,7 @@ function clientIp(req) {
 const TUNNEL_FAILS_PER_HOUR = 100;
 const _tunnelFails = []; // when each wrong password through the personal URL came
 function viaTunnel(req) {
-  return !!req.headers["cf-connecting-ip"] && isLoopback((req.socket && req.socket.remoteAddress) || "");
+  return !!(req.socket && req.socket.relayFrom);
 }
 // A Closedhand on a host (SETUP_CODE) has no localhost anyone can reach, so
 // its own web address there signs in the way the personal URL does.
@@ -1277,7 +1273,7 @@ app.get("/api/keep", async (req, res) => {
   if (!(await requireSetupAccess(req, res))) return;
   const phone = phoneAccess.status();
   const base = await require("./config").dashboardBase();
-  const permanent = !!base && !new URL(base).hostname.endsWith(".trycloudflare.com");
+  const permanent = !!base;
   const { data: links } = await supabase.from("chat_links").select("platform,platform_user_id").eq("user_id", getAdminUserId());
   res.set("Cache-Control", "no-store").json({ ...phone, permanent, url: base || phone.url, local: true, canSend: phone.permanent && (links || []).some(x => ["whatsapp_linked", "telegram"].includes(x.platform) && x.platform_user_id) });
 });
@@ -1316,7 +1312,7 @@ app.get("/api/phone", async (req, res) => {
 app.post("/api/phone", async (req, res) => {
   if (!(await requireSetupAccess(req, res))) return;
   try {
-    if ((req.body || {}).enabled) await phoneAccess.enable(req.body.mode || "quick"); else await phoneAccess.disable();
+    if ((req.body || {}).enabled) await phoneAccess.enable(); else await phoneAccess.disable();
     res.json(phoneAccess.status());
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1391,15 +1387,15 @@ app.post("/api/phone/account-number/saved", async (req, res) => {
   await require("./phone-registration").accountNumberSaved();
   res.json({ saved: true });
 });
-// Rename the personal URL (Settings, or Change in setup). The old name sends
-// visitors on to the new one for thirty days; this copy reconnects at the new
-// name, which takes about a minute.
+// Rename the personal URL (Settings, or Change in setup). The old name stops
+// opening anything; this copy reconnects at the new name, which takes about a
+// minute.
 app.post("/api/phone/rename", async (req, res) => {
   if (!(await requireSetupAccess(req, res))) return;
   try {
     const renamed = await require("./phone-registration").rename((req.body || {}).name);
     await phoneAccess.reconnect();
-    res.json({ ...phoneAccess.status(), renamedTo: renamed.url, redirectUntil: renamed.redirectUntil || null });
+    res.json({ ...phoneAccess.status(), renamedTo: renamed.url });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -2005,7 +2001,7 @@ const outboundDeps = () => ({
   marker: moveMarker,
   restartBot,
   botMoveState,
-  stopTunnel: () => phoneAccess.shutdown(),
+  stopPersonalUrl: () => phoneAccess.shutdown(),
   personalUrl: async () => (await getRuntimeConf("PHONE_PERMANENT_URL")) || null,
   exitSoon,
   stashBotFiles,
@@ -10368,6 +10364,9 @@ setInterval(async () => {
 // Compression disabled, explicit binary frame handling for VNC protocol.
 const vncWss = new (require("ws").WebSocketServer)({ noServer: true, perMessageDeflate: false });
 
+// Browsers' connections through the personal URL arrive here once opened
+// with this computer's own certificate (phone-access.js), as https.
+phoneAccess.useServer(server);
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url, "http://localhost");
 

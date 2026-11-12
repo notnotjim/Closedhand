@@ -544,7 +544,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
       const now = await state(owner.id);
       if (now.active) return res.status(409).json({ error: 'You already have the Closedhand subscription.' });
       if (now.ahead_until) return res.status(409).json({ error: 'Your account is paid ahead in crypto, so there is no subscription by card to start.' });
-      const address = (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount;
+      const address = (await db.query('SELECT 1 FROM addresses WHERE owner_id = $1', [owner.id])).rowCount;
       if (!address) return res.status(409).json({ error: 'Claim your personal URL from Closedhand on your computer first.' });
       const every = Number(req.body?.months || 1);
       const why = await cannotSubscribe(owner, every, req.body?.agreed);
@@ -582,7 +582,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
         const now = await state(owner.id);
         if (now.active) return res.redirect(302, await portal(owner));
         if (now.ahead_until || !now.free_month || await isAnonymous(db, owner.id)) return res.redirect(302, '/account');
-        const address = (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount;
+        const address = (await db.query('SELECT 1 FROM addresses WHERE owner_id = $1', [owner.id])).rowCount;
         if (!address) return res.redirect(302, '/account');
         res.redirect(302, await checkout(owner));
       } catch (e) {
@@ -600,7 +600,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
       try {
         const ownerId = sessions.owner(req);
         const owner = ownerId && (await db.query('SELECT id FROM owners WHERE id = $1', [ownerId])).rows[0];
-        const closedhand = !!owner && (await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount > 0;
+        const closedhand = !!owner && (await db.query('SELECT 1 FROM addresses WHERE owner_id = $1', [owner.id])).rowCount > 0;
         const mine = closedhand && await require('./maintainer').isMaintainer(db, env, owner.id);
         const cardless = closedhand && await isAnonymous(db, owner.id);
         const now = closedhand && !mine ? await state(owner.id) : null;

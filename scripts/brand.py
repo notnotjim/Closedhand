@@ -76,15 +76,6 @@ FILES = [
 INSTALL = os.path.join(ROOT, "install.sh")
 ART = re.compile(r"^(HAND_FIST_(?:32|64))='[^']*'$", re.M)
 
-# Pages that carry fist.png inside them, as the only picture they hold: the
-# relay's pages, shown while the computer is away, so they can load nothing
-# from it. The relay is deployed again for a change here to show.
-INLINE = [
-    "closedhand-com/workers/edge/offline.html",
-    "closedhand-com/workers/edge/moved.html",
-    "closedhand-com/workers/edge/nothing.html",
-]
-PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/=]+")
 
 # Cream on dark, ink on light, white for the menu bar, and the mid-tone the
 # .ico favicon uses so it reads on light and dark tab bars alike.
@@ -97,17 +88,12 @@ def use(name):
         sys.exit(f"No mark called {name}. There are: {', '.join(sorted(os.listdir(MARKS)))}")
     for rel in FILES:
         shutil.copyfile(os.path.join(src, rel), os.path.join(ROOT, rel))
-    fist = "data:image/png;base64," + base64.b64encode(open(os.path.join(src, "closedhand-com/public/fist.png"), "rb").read()).decode()
-    for rel in INLINE:
-        page = os.path.join(ROOT, rel)
-        html = open(page).read()
-        open(page, "w").write(PNG_URI.sub(lambda m: fist, html))
     art = dict(line.split("=", 1) for line in open(os.path.join(src, "install-art.txt")).read().splitlines() if "=" in line)
     script = open(INSTALL).read()
     script = ART.sub(lambda m: f"{m.group(1)}={art[m.group(1)]}", script)
     open(INSTALL, "w").write(script)
     open(ACTIVE, "w").write(name + "\n")
-    print(f"The {name} fist is in place ({len(FILES)} files, {len(INLINE)} pages and the installer art).")
+    print(f"The {name} fist is in place ({len(FILES)} files and the installer art).")
 
 
 def save(name):

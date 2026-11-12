@@ -44,9 +44,6 @@ function needsOf({ now = Date.now(), managed = {}, near = null, bugs = {}, messa
   // Room for more people.
   const taken = (urls.used || 0) + ((urls.you && urls.you.used) || 0);
   if (urls.limit > 0 && taken / urls.limit >= 0.8) say(`${Math.round(taken / urls.limit * 100)}% of personal URLs are taken.`, 'Raise ADDRESS_LIMIT on Railway.');
-  if (urls.dns != null && urls.dnsCeiling && urls.dns / urls.dnsCeiling >= 0.8) say(`DNS records are at ${urls.dns} of ${urls.dnsCeiling}.`, 'Make room before new personal URLs stop.');
-  const stuck = (urls.errors || 0) + ((urls.you && urls.you.errors) || 0);
-  if (stuck) say(`${count(stuck, 'personal URL is', 'personal URLs are')} stuck with an error.`, 'Find them in Everyone below.');
   return out;
 }
 

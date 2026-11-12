@@ -118,7 +118,7 @@ async function sealStoredConf() {
 
 // Outbound chat links need an HTTPS address reachable off this computer.
 // Await the first config read; the synchronous cache can be empty at startup.
-// Prefer an operator's permanent address over a temporary phone tunnel.
+// Prefer an operator's own address over the personal URL.
 async function dashboardBase() {
   const candidates = [await getConf("WEBAPP_URL"), await getConf("BASE_URL")];
   if (String(await getConf("PHONE_ACCESS")) === "1") candidates.push(await getConf("PHONE_ACCESS_URL"));

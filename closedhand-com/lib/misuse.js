@@ -35,7 +35,7 @@ function create({ db, env = process.env, includedAi, request = fetch }) {
               k.base_usd::float AS base, k.base_for,
               a.hostname, a.activated_at, a.last_seen_at, p.status AS plus
          FROM included_ai_keys k
-         LEFT JOIN addresses a ON a.owner_id = k.owner_id AND a.state <> 'revoked'
+         LEFT JOIN addresses a ON a.owner_id = k.owner_id
          LEFT JOIN plus_subscriptions p ON p.owner_id = k.owner_id`)).rows;
     const retired = (await db.query('SELECT key_id, tries FROM retired_ai_keys')).rows;
     const name = r => (r.hostname ? r.hostname.replace(/\.closedhand\.ai$/, '') : 'account ' + r.owner_id.slice(0, 8));

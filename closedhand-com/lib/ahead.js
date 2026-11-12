@@ -159,7 +159,7 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     if ((await db.query('SELECT 1 FROM plus_subscriptions WHERE owner_id = $1 AND status = ANY($2::text[])', [owner.id, LIVE])).rowCount) {
       return 'You have the Closedhand subscription by card. Paying ahead in crypto is instead of a subscription by card.';
     }
-    if (!(await db.query("SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [owner.id])).rowCount) return 'Claim your personal URL from Closedhand on your computer first.';
+    if (!(await db.query('SELECT 1 FROM addresses WHERE owner_id = $1', [owner.id])).rowCount) return 'Claim your personal URL from Closedhand on your computer first.';
     return null;
   }
 

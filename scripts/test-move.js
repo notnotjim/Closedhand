@@ -171,7 +171,7 @@ test("a pasted address becomes an https origin, and nothing else is accepted", (
 test("a move that fails after Closedhand paused here gives everything back to this computer", async () => {
   const { move } = on(KEY_FROM);
   const marks = [], calls = [];
-  let restarts = 0, tunnelStopped = false, exited = false, botState = null;
+  let restarts = 0, urlStopped = false, exited = false, botState = null;
   const marker = {
     available: () => true,
     write: (s) => { marks.push(s.state); botState = null; },
@@ -191,7 +191,7 @@ test("a move that fails after Closedhand paused here gives everything back to th
     pool: from, storageDir, marker, fetch: fakeFetch,
     restartBot: async () => { restarts += 1; botState = marks[marks.length - 1] === "moving" ? "moving" : null; },
     botMoveState: async () => botState,
-    stopTunnel: () => { tunnelStopped = true; },
+    stopPersonalUrl: () => { urlStopped = true; },
     personalUrl: async () => "https://quiet-test.example",
     exitSoon: () => { exited = true; },
   });
@@ -201,7 +201,7 @@ test("a move that fails after Closedhand paused here gives everything back to th
   assert.equal(st.error, "The new Closedhand ran out of room.", "the other side's reason is shown");
   assert.deepEqual(marks, ["moving", "cleared"], "paused, then given back");
   assert.equal(restarts, 2, "the bot restarts to pause and again to carry on");
-  assert.equal(tunnelStopped, false, "the personal URL stays here");
+  assert.equal(urlStopped, false, "the personal URL stays here");
   assert.equal(exited, false);
   assert.deepEqual(calls.slice(0, 2), ["/api/move/hello", "/api/move/part"]);
   assert.throws(() => move.startMove({ address: "http://new.example", code: "x" }, { marker }), /https/);
@@ -239,13 +239,13 @@ test("a computer of the person's own fetches everything through the personal URL
   const src = on(KEY_FROM); src.tokens.encryptString("each computer reads its own key now");
   const dst = on(KEY_TO); dst.tokens.encryptString("each computer reads its own key now");
   const marks = [], seen = [];
-  let botState = null, tunnelStopped = false, sourceExited = false, destExited = false, restarts = 0;
+  let botState = null, urlStopped = false, sourceExited = false, destExited = false, restarts = 0;
   const outDeps = {
     pool: from, storageDir,
     marker: { available: () => true, write: (s) => { marks.push(s.state); }, clear: () => { marks.push("cleared"); } },
     restartBot: async () => { restarts += 1; botState = marks[marks.length - 1] === "moving" ? "moving" : null; },
     botMoveState: async () => botState,
-    stopTunnel: () => { tunnelStopped = true; },
+    stopPersonalUrl: () => { urlStopped = true; },
     personalUrl: async () => "https://quiet-test.example",
     exitSoon: () => { sourceExited = true; },
   };
@@ -268,7 +268,7 @@ test("a computer of the person's own fetches everything through the personal URL
   assert.equal(destExited, true, "the new computer starts again with everything");
   await until(() => sourceExited, 4000);
   assert.deepEqual(marks, ["moving", "moved"], "paused, then marked moved");
-  assert.equal(tunnelStopped, true, "the personal URL lets go here");
+  assert.equal(urlStopped, true, "the personal URL lets go here");
   assert.equal(restarts, 2, "to sit still, then so the bot keeps its own copy of moved where its folder is its own");
   assert.equal(src.move.outboundStatus().step, "done");
 
@@ -292,7 +292,7 @@ test("a computer of the person's own fetches everything through the personal URL
 
 test("a move code's calls can't be replayed, and five wrong tries end the code", async () => {
   const { move } = on(KEY_FROM);
-  const deps = { pool: from, storageDir, marker: { available: () => true, write() {}, clear() {} }, restartBot: async () => {}, botMoveState: async () => null, stopTunnel() {}, personalUrl: async () => "https://quiet-test.example", exitSoon() {} };
+  const deps = { pool: from, storageDir, marker: { available: () => true, write() {}, clear() {} }, restartBot: async () => {}, botMoveState: async () => null, stopPersonalUrl() {}, personalUrl: async () => "https://quiet-test.example", exitSoon() {} };
   const { code } = await move.offerCode(deps);
   const { helloProof, replyProof, keysFor } = move._internals;
   const theirs = crypto.randomBytes(16);
@@ -318,13 +318,13 @@ test("a part changed on the way is refused, and the old computer carries on as b
   const src = on(KEY_FROM); src.tokens.encryptString("each computer reads its own key now");
   const dst = on(KEY_TO); dst.tokens.encryptString("each computer reads its own key now");
   const marks = [], seen = [];
-  let botState = null, tunnelStopped = false, restarts = 0;
+  let botState = null, urlStopped = false, restarts = 0;
   const outDeps = {
     pool: from, storageDir,
     marker: { available: () => true, write: (s) => { marks.push(s.state); }, clear: () => { marks.push("cleared"); } },
     restartBot: async () => { restarts += 1; botState = marks[marks.length - 1] === "moving" ? "moving" : null; },
     botMoveState: async () => botState,
-    stopTunnel: () => { tunnelStopped = true; }, personalUrl: async () => "https://quiet-test.example", exitSoon() {},
+    stopPersonalUrl: () => { urlStopped = true; }, personalUrl: async () => "https://quiet-test.example", exitSoon() {},
   };
   const honest = personalUrlTo(src.move, outDeps, seen);
   const meddling = async (url, opts) => {
@@ -340,7 +340,7 @@ test("a part changed on the way is refused, and the old computer carries on as b
   await until(() => marks.includes("cleared"), 4000);
   assert.deepEqual(marks, ["moving", "cleared"], "paused, then given back");
   assert.equal(restarts, 2, "the bot sits still, then carries on");
-  assert.equal(tunnelStopped, false, "the personal URL stays here");
+  assert.equal(urlStopped, false, "the personal URL stays here");
   assert.equal(src.move.outboundStatus().step, "failed");
 });
 

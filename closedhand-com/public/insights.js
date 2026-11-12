@@ -227,7 +227,7 @@
   // The squares are what closedhand.com can give out, so they count yours too.
   function drawGrid(only) {
     const y = only.you || {}, u = { ...only };
-    for (const k of ['working', 'day', 'week', 'month', 'setting_up', 'errors', 'used']) u[k] = (only[k] || 0) + (y[k] || 0);
+    for (const k of ['working', 'day', 'week', 'month', 'setting_up', 'used']) u[k] = (only[k] || 0) + (y[k] || 0);
     const limit = u.limit > 0 ? u.limit : 100, per = Math.max(1, Math.ceil(limit / 100)), cells = Math.ceil(limit / per);
     const at0 = v => Math.max(0, v || 0);
     const groups = [
@@ -261,12 +261,7 @@
     const room = el('li');
     room.append(el('i', 'tone-free'), `${n(free)} free`);
     key.push(room);
-    if (u.errors) key.push(el('li', 'warn', `${n(u.errors)} stuck with an error`));
     $('grid-key').replaceChildren(...key);
-    const dns = $('dns'), head = el('div', 'meter-head'), full = u.dns != null && u.dns / u.dnsCeiling > 0.8;
-    head.append(el('span', '', 'DNS records'), el('span', full ? 'warn' : '', u.dns == null ? 'n/a' : `${n(u.dns)} of ${n(u.dnsCeiling)}`));
-    dns.replaceChildren(head, meter(u.dns || 0, u.dnsCeiling, full ? 'tone-warn' : 'tone-b'),
-      el('p', 'step-note', 'New personal URLs stop at the ceiling, so this needs room.'));
   }
 
   // Everything held about one person, opened from their email. This

@@ -13,16 +13,19 @@ const { createApp } = require('../server');
 const { nearAi, SIGN_IN, BROWSER } = require('./near-ai');
 const near = nearAi();
 const MODEL = 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated';
+// closedhand.com's key for passes, which the relay checks with its public half.
+const passKeys = crypto.generateKeyPairSync('ed25519');
 
 const env = {
   BASE_URL: 'https://closedhand.com', SESSION_SECRET: crypto.randomBytes(32).toString('hex'),
-  TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, PHONE_ENROLLMENT_ENABLED: '1', PHONE_PROVISIONER_SECRET: 'p'.repeat(40),
+  TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, PHONE_ENROLLMENT_ENABLED: '1',
+  RELAY_ADDRESS: 'relay.closedhand.ai:443', RELAY_CONTROL_HOST: 'relay.closedhand.ai', RELAY_PIN: crypto.createHash('sha256').update('the relay certificate').digest('base64url'),
+  RELAY_PASS_PRIVATE_KEY: passKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }), RELAY_REPORT_SECRET: 'r'.repeat(40),
   GOOGLE_CLIENT_ID: 'google-client', GOOGLE_CLIENT_SECRET: 'g-secret', MICROSOFT_CLIENT_ID: 'ms-client', MICROSOFT_CLIENT_SECRET: 'm-secret',
-  MAIL_SES_REGION: 'ap-southeast-2', MAIL_FROM: 'Closedhand <download@assist.closedhand.ai>', MAIL_AWS_ACCESS_KEY_ID: 'AKIDEXAMPLE', MAIL_AWS_SECRET_ACCESS_KEY: 'x', ALERT_EMAIL: 'operator@example.com', OPERATOR_EMAILS: 'Operator@Example.com', ADDRESS_RATE_PER_MINUTE: '1000',
+  MAIL_SES_REGION: 'ap-southeast-2', MAIL_FROM: 'Closedhand <download@assist.closedhand.ai>', MAIL_AWS_ACCESS_KEY_ID: 'AKIDEXAMPLE', MAIL_AWS_SECRET_ACCESS_KEY: 'x', OPERATOR_EMAILS: 'Operator@Example.com', ADDRESS_RATE_PER_MINUTE: '1000',
 };
-const mails = [];
 const idToken = claims => 'x.' + Buffer.from(JSON.stringify(claims)).toString('base64url') + '.y';
-let db, server, base, nextClaims = null, challengeSecret = null;
+let db, server, base, sweep, nextClaims = null, challengeSecret = null;
 // Stand-in Google and Microsoft signing keys, for sign-ins a copy passes on
 // (claim-google, claim-microsoft).
 const providerKeys = { google: crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }), microsoft: crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }) };
@@ -39,7 +42,7 @@ const request = async (url, opts) => {
     const nonce = new URLSearchParams(opts.body).get('code');
     return new Response(JSON.stringify({ id_token: idToken({ ...nextClaims, nonce }) }));
   }
-  if (url.startsWith('https://email.ap-southeast-2.amazonaws.com/')) { mails.push(JSON.parse(opts.body)); return new Response('{}'); }
+  if (url.startsWith('https://email.ap-southeast-2.amazonaws.com/')) return new Response('{}');
   if (url === 'https://api.github.com/repos/notnotjim/Closedhand') return new Response(JSON.stringify({ stargazers_count: 7, forks_count: 2 }));
   if (url.startsWith('https://api.github.com/repos/notnotjim/Closedhand/releases')) {
     return new Response(JSON.stringify([
@@ -66,8 +69,10 @@ before(async () => {
   db = connect();
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
   await migrate(db);
-  const { app } = createApp({ db, env, request });
-  await new Promise(r => { server = app.listen(0, r); });
+  const made = createApp({ db, env, request });
+  // The hourly tidying up of personal URLs (lib/addresses.js), run when a test needs it.
+  sweep = made.addresses.sweep;
+  await new Promise(r => { server = made.app.listen(0, r); });
   base = 'http://127.0.0.1:' + server.address().port;
 });
 after(async () => { server?.close(); await db?.end(); });
@@ -172,29 +177,32 @@ test('an owner carried over from the old service is claimed only by the same ver
   assert.ok(unverified.cookie && ms.cookie && verified.cookie);
 });
 
-// A copy of Closedhand, as the service sees it: a secret and the port it runs on.
+// A copy of Closedhand, as the service sees it: a secret, the port it says
+// it runs on, and its own Ed25519 key, which it gives for its passes.
+const keyOfOwn = () => crypto.generateKeyPairSync('ed25519').publicKey.export({ format: 'der', type: 'spki' }).subarray(12).toString('base64url');
 const newCopy = (port = 3000) => {
   const secret = crypto.randomBytes(32).toString('hex');
-  return { secret, port, hash: crypto.createHash('sha256').update(secret).digest('hex'), auth: { Authorization: `Bearer ${crypto.randomUUID()}.${secret}` } };
+  return { secret, port, key: keyOfOwn(), hash: crypto.createHash('sha256').update(secret).digest('hex'), auth: { Authorization: `Bearer ${crypto.randomUUID()}.${secret}` } };
 };
 const signedIn = cookie => ({ cookie, Origin: 'https://closedhand.com' });
-const worker = { Authorization: 'Bearer ' + env.PHONE_PROVISIONER_SECRET };
-const tunnelToken = t => Buffer.from(JSON.stringify({ a: 'f'.repeat(32), t, s: crypto.randomBytes(32).toString('base64') })).toString('base64');
 async function ask(copy, name) {
   const r = await json('POST', '/api/phone-enrollment/register', { name, port: copy.port, confirm: 'code' }, copy.auth);
   assert.equal(r.status, 200, name);
   return (await r.json()).ticket;
 }
-// The Worker builds (or rebuilds) the route and hands over a connection.
-async function build(tunnelId = crypto.randomUUID(), dnsId = crypto.randomBytes(16).toString('hex')) {
-  const { job } = await (await json('POST', '/api/phone-enrollment/jobs/lease', {}, worker)).json();
-  assert.ok(job && !job.revoked, 'a build job');
-  const token = tunnelToken(tunnelId);
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/jobs/checkpoint', { id: job.id, attempt: job.attempt, tunnelId, dnsId, token }, worker)).json(), { ok: true });
-  return { job, token };
+// The copy asks how to take its personal URL at the relay.
+const connection = (copy, key = copy.key) => json('POST', '/api/phone-enrollment/connection', { key }, copy.auth);
+// A pass, read as the relay reads it (relay/relay.js): signed with
+// closedhand.com's key, naming the personal URL, the computer's key and when it ends.
+function passOf(pass) {
+  const [body, sig] = String(pass).split('.');
+  assert.ok(crypto.verify(null, Buffer.from(body), passKeys.publicKey, Buffer.from(sig, 'base64url')), 'signed with closedhand.com\'s key');
+  return JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
 }
+// The relay's report of the personal URLs whose computer is connected now, as it sends it each minute.
+const relayReport = connected => json('POST', '/jobs/relay-seen', { connected }, { Authorization: 'Bearer ' + env.RELAY_REPORT_SECRET });
 
-test('personal URL: request, confirm, type the code, build, connect, and every refusal on the way', async () => {
+test('personal URL: request, confirm, type the code, take a pass to the relay, connect, and every refusal on the way', async () => {
   const copy = newCopy();
   challengeSecret = copy.secret;
   const outdated = await json('POST', '/api/phone-enrollment/register', { name: 'alex', port: 3000 }, copy.auth);
@@ -240,55 +248,46 @@ test('personal URL: request, confirm, type the code, build, connect, and every r
   const taken = await json('POST', '/api/phone-enrollment/approve', { ticket: otherTicket }, signedIn(rival.cookie));
   assert.equal(taken.status, 409);
   assert.match((await taken.json()).error, /already taken/);
-  // The Worker builds the route.
-  assert.equal((await json('POST', '/api/phone-enrollment/jobs/lease', {}, { Authorization: 'Bearer wrong' })).status, 401);
-  const { job } = await (await json('POST', '/api/phone-enrollment/jobs/lease', {}, worker)).json();
-  assert.equal(job.hostname, 'alex.closedhand.ai'); assert.equal(job.port, 3000);
-  const tunnelId = crypto.randomUUID(), dnsId = crypto.randomBytes(16).toString('hex'), token = tunnelToken(tunnelId);
-  const wrongTunnel = await json('POST', '/api/phone-enrollment/jobs/checkpoint', { id: job.id, attempt: job.attempt, tunnelId, dnsId, token: tunnelToken(crypto.randomUUID()) }, worker);
-  assert.equal(wrongTunnel.status, 400, 'a token for some other tunnel is refused');
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/jobs/checkpoint', { id: job.id, attempt: job.attempt, tunnelId, dnsId, token }, worker)).json(), { ok: true });
-  const row = (await db.query('SELECT tunnel_token, state FROM addresses WHERE id = $1', [job.id])).rows[0];
-  assert.equal(row.state, 'connecting'); assert.ok(row.tunnel_token.startsWith('enc:v1:')); assert.ok(!row.tunnel_token.includes(token));
-  // The copy collects its connection, connects, and proves it answers there.
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: copy.auth })).json(), { state: 'connecting', url: 'https://alex.closedhand.ai', token });
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: newCopy().auth })).json(), { state: 'unconfirmed' }, 'the wrong secret learns nothing');
+  // Nothing is built: the copy asks for a pass for its own key, and the relay to show it to.
+  assert.equal((await connection(copy, 'not-a-key')).status, 400, 'only a computer\'s own Ed25519 key');
+  assert.equal((await connection(copy, crypto.randomBytes(31).toString('base64url'))).status, 400, 'of 32 bytes exactly');
+  assert.equal((await json('POST', '/api/phone-enrollment/connection', {}, copy.auth)).status, 400, 'always with a key');
+  assert.deepEqual(await (await connection(newCopy())).json(), { state: 'unconfirmed' }, 'the wrong secret learns nothing');
+  const { pass, ...told } = await (await connection(copy)).json();
+  assert.deepEqual(told, { state: 'connecting', url: 'https://alex.closedhand.ai', relay: { address: 'relay.closedhand.ai:443', controlHost: 'relay.closedhand.ai', pin: env.RELAY_PIN } });
+  const claims = passOf(pass);
+  assert.deepEqual([claims.h, claims.k], ['alex.closedhand.ai', copy.key], 'for this personal URL and this computer\'s key');
+  assert.ok(Math.abs(claims.e - Date.now() - 24 * 3600000) < 60000, 'for a day');
+  const otherKey = keyOfOwn();
+  assert.equal(passOf((await (await connection(copy, otherKey)).json()).pass).k, otherKey, 'a pass names the key it was asked for, so only that key\'s holder can use it');
+  // Only routing records are kept: no pass, no key and nothing about a route.
+  const columns = (await db.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'addresses' AND table_schema = current_schema() ORDER BY 1")).rows.map(r => r.column_name);
+  assert.deepEqual(columns, ['activated_at', 'created_at', 'hostname', 'id', 'last_seen_at', 'owner_id', 'secret_hash', 'state', 'updated_at']);
+  // The copy connects to the relay and proves it answers there.
   challengeSecret = crypto.randomBytes(32).toString('hex');
   assert.equal((await json('POST', '/api/phone-enrollment/connected', {}, copy.auth)).status, 409, 'a wrong answer to the challenge does not activate');
+  assert.equal((await account(owner.cookie)).url, null, 'not opened until it answers');
   challengeSecret = copy.secret;
   assert.deepEqual(await (await json('POST', '/api/phone-enrollment/connected', {}, copy.auth)).json(), { state: 'active' });
-  const keptKey = async () => (await db.query('SELECT tunnel_token FROM addresses WHERE id = $1', [job.id])).rows[0].tunnel_token;
-  assert.equal(await keptKey(), null, 'once the computer is connected, its saved key is the only copy');
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: copy.auth })).json(), { state: 'active', url: 'https://alex.closedhand.ai' }, 'asked again, closedhand.com confirms the address without a key');
-  // A computer that lost its saved key has the route built again, which fetches the key once more.
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection?lost=1', { headers: copy.auth })).json(), { state: 'pending' });
-  const fetchedAgain = await build(tunnelId, dnsId);
-  assert.equal(fetchedAgain.job.id, job.id); assert.equal(fetchedAgain.job.tunnelId, tunnelId);
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection?lost=1', { headers: copy.auth })).json(), { state: 'connecting', url: 'https://alex.closedhand.ai', token: fetchedAgain.token });
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/connected', {}, copy.auth)).json(), { state: 'active' });
-  assert.equal(await keptKey(), null);
+  // Asked again, as it does before its pass runs out, an active address gets a fresh one.
+  const renewed = await (await connection(copy)).json();
+  assert.equal(renewed.state, 'active'); assert.equal(passOf(renewed.pass).h, 'alex.closedhand.ai');
   assert.equal((await account(owner.cookie)).url, 'https://alex.closedhand.ai');
   assert.equal((await account(rival.cookie)).url, null);
   assert.equal((await (await json('POST', '/api/phone-enrollment/details', { ticket }, { cookie: rival.cookie })).json()).state, 'unconfirmed', 'progress only for its owner');
 
-  // Reinstalling: the owner moves alex to a new copy on another port.
+  // Reinstalling: the owner moves alex to a new copy.
   const fresh = newCopy(3100);
   const moveTicket = await ask(fresh, 'alex');
   assert.equal((await (await json('POST', '/api/phone-enrollment/details', { ticket: moveTicket }, { cookie: owner.cookie })).json()).move, true, 'the page says it is a move');
   const moving = await (await json('POST', '/api/phone-enrollment/approve', { ticket: moveTicket }, signedIn(owner.cookie))).json();
   assert.equal(moving.move, true);
   assert.equal((await account(owner.cookie)).url, 'https://alex.closedhand.ai', 'confirming alone moves nothing');
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/claim', { code: moving.code }, fresh.auth)).json(), { state: 'provisioning', url: 'https://alex.closedhand.ai' });
+  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/claim', { code: moving.code }, fresh.auth)).json(), { state: 'pending', url: 'https://alex.closedhand.ai' });
   assert.equal((await signUps()).length, 1, 'a move is no new account');
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: copy.auth })).json(), { state: 'unconfirmed' }, 'the old copy lost it');
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: fresh.auth })).json(), { state: 'provisioning' });
-  // The Worker cuts the old computer off, then builds the route again, keeping its name.
-  const cut = (await (await json('POST', '/api/phone-enrollment/jobs/lease', {}, worker)).json()).job;
-  assert.equal(cut.id, job.id); assert.equal(cut.revoked, true); assert.equal(cut.tunnelId, tunnelId);
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/jobs/checkpoint', { id: cut.id, attempt: cut.attempt, revoked: true }, worker)).json(), { ok: true });
-  const rebuilt = await build(tunnelId, dnsId);
-  assert.equal(rebuilt.job.id, job.id); assert.equal(rebuilt.job.port, 3100); assert.equal(rebuilt.job.revoked, false);
-  assert.equal((await (await fetch(base + '/api/phone-enrollment/connection', { headers: fresh.auth })).json()).token, rebuilt.token);
+  assert.deepEqual(await (await connection(copy)).json(), { state: 'unconfirmed' }, 'the old copy lost it, and gets no more passes');
+  const movedTo = await (await connection(fresh)).json();
+  assert.equal(movedTo.state, 'connecting'); assert.deepEqual([passOf(movedTo.pass).h, passOf(movedTo.pass).k], ['alex.closedhand.ai', fresh.key]);
   challengeSecret = fresh.secret;
   assert.deepEqual(await (await json('POST', '/api/phone-enrollment/connected', {}, fresh.auth)).json(), { state: 'active' });
   assert.equal((await account(owner.cookie)).url, 'https://alex.closedhand.ai');
@@ -320,7 +319,7 @@ test('a confirmation link sent by somebody else cannot point your address at the
   const second = await signIn('google', google('g-second', 'second@example.com'));
   const bCode = (await (await json('POST', '/api/phone-enrollment/approve', { ticket: await ask(b, 'second') }, signedIn(second.cookie))).json()).code;
   assert.equal((await (await json('POST', '/api/phone-enrollment/claim', { code: bCode }, b.auth)).json()).state, 'pending', 'the same stated ID does not block another copy');
-  assert.equal((await (await fetch(base + '/api/phone-enrollment/connection', { headers: b.auth })).json()).state, 'pending');
+  assert.equal((await (await connection(b)).json()).state, 'connecting');
 });
 
 test('with EDGE_SECRET set, only requests through Cloudflare reach the site', async () => {
@@ -332,8 +331,8 @@ test('with EDGE_SECRET set, only requests through Cloudflare reach the site', as
     assert.equal((await fetch(at + '/', { headers: { 'X-ClosedHand-Edge': 'wrong' } })).status, 403);
     assert.equal((await fetch(at + '/', { headers: { 'X-ClosedHand-Edge': 'e'.repeat(48) } })).status, 200, 'through Cloudflare');
     assert.equal((await fetch(at + '/health')).status, 200, 'Railway health check');
-    const lease = await fetch(at + '/api/phone-enrollment/jobs/lease', { method: 'POST', headers: { 'Content-Type': 'application/json', ...worker }, body: '{}' });
-    assert.equal(lease.status, 200, 'the route-building Worker');
+    const report = await fetch(at + '/jobs/relay-seen', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.RELAY_REPORT_SECRET }, body: '{"connected":[]}' });
+    assert.equal(report.status, 200, 'the relay\'s report');
   } finally { s.close(); }
 });
 
@@ -354,7 +353,7 @@ test('the attacks from the security review fail cleanly', async () => {
   const crash = await fetch(base + '/auth/google/callback?code=x&state=y', { redirect: 'manual', headers: { cookie: 'ch_signin=a.' + '%C3%A9'.repeat(43) } });
   assert.equal(crash.status, 302);
   assert.equal((await fetch(base + '/health')).status, 200, 'still running');
-  const oddAuth = await json('POST', '/api/phone-enrollment/jobs/lease', {}, { Authorization: 'Bearer ' + 'é'.repeat(20) });
+  const oddAuth = await json('POST', '/jobs/relay-seen', { connected: [] }, { Authorization: 'Bearer ' + 'é'.repeat(20) });
   assert.equal(oddAuth.status, 401);
   // Lookalike and service-style names are refused.
   const id = crypto.randomUUID(), sec = crypto.randomBytes(32).toString('hex');
@@ -367,12 +366,16 @@ test('the attacks from the security review fail cleanly', async () => {
   const bad = await fetch(base + '/api/bug-intake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not json' });
   const text = await bad.text();
   assert.equal(bad.status, 400); assert.doesNotMatch(text, /\n\s+at |node_modules|\/Users\//);
-  // The Worker still gets jobs when new addresses are switched off.
+  // With new personal URLs switched off, none are claimed, but the ones
+  // already working still get their passes and the relay's report still counts.
   const off = createApp({ db, env: { ...env, PHONE_ENROLLMENT_ENABLED: '0' }, request }).app;
   const offServer = await new Promise(r => { const s = off.listen(0, () => r(s)); });
   const offBase = 'http://127.0.0.1:' + offServer.address().port;
-  const lease = await fetch(offBase + '/api/phone-enrollment/jobs/lease', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.PHONE_PROVISIONER_SECRET }, body: '{}' });
-  assert.equal(lease.status, 200);
+  const post = (path, body, auth) => fetch(offBase + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: auth }, body: JSON.stringify(body) });
+  assert.equal((await post('/api/phone-enrollment/register', { port: 3000, confirm: 'code' }, `Bearer ${id}.${sec}`)).status, 503, 'no new ones');
+  const passes = await post('/api/phone-enrollment/connection', { key: keyOfOwn() }, `Bearer ${id}.${sec}`);
+  assert.equal(passes.status, 200); assert.deepEqual(await passes.json(), { state: 'unconfirmed' });
+  assert.equal((await post('/jobs/relay-seen', { connected: [] }, 'Bearer ' + env.RELAY_REPORT_SECRET)).status, 200);
   offServer.close();
 });
 
@@ -381,9 +384,10 @@ test('a reservation that never works is released after a day, a used one never i
   const other = (await db.query("INSERT INTO owners (provider, subject, email) VALUES ('google', 'g-used', 'u@example.com') RETURNING id")).rows[0].id;
   const staleId = crypto.randomUUID(), usedId = crypto.randomUUID();
   await db.query("INSERT INTO addresses (id, owner_id, secret_hash, hostname, created_at) VALUES ($1, $2, $3, 'stale.closedhand.ai', now() - interval '2 days')", [staleId, owner, 'a'.repeat(64)]);
-  await db.query("INSERT INTO addresses (id, owner_id, secret_hash, hostname, state, activated_at, created_at) VALUES ($1, $2, $3, 'used.closedhand.ai', 'revoked', now() - interval '2 days', now() - interval '2 days')", [usedId, other, 'b'.repeat(64)]);
-  await json('POST', '/api/phone-enrollment/jobs/lease', {}, { Authorization: 'Bearer ' + env.PHONE_PROVISIONER_SECRET });
-  assert.equal((await db.query('SELECT 1 FROM addresses WHERE id = $1', [staleId])).rowCount, 0, 'never-routed stale reservation is gone');
+  await db.query("INSERT INTO addresses (id, owner_id, secret_hash, hostname, state, activated_at, created_at) VALUES ($1, $2, $3, 'used.closedhand.ai', 'active', now() - interval '2 days', now() - interval '2 days')", [usedId, other, 'b'.repeat(64)]);
+  await sweep();
+  assert.equal((await db.query('SELECT 1 FROM addresses WHERE id = $1', [staleId])).rowCount, 0, 'a reservation never connected is gone');
+  assert.equal((await db.query("SELECT 1 FROM held_names WHERE hostname = 'stale.closedhand.ai'")).rowCount, 0, 'and its name, never used, is free');
   assert.equal((await db.query('SELECT 1 FROM addresses WHERE id = $1', [usedId])).rowCount, 1, 'an address that worked stays owned');
 });
 
@@ -394,25 +398,39 @@ async function askPicked(copy) {
   assert.equal(r.status, 200);
   return (await r.json()).ticket;
 }
-// Confirm, type the code, build the route and connect: a working address.
+// Confirm, type the code, take the pass to the relay and prove it answers
+// there: a working address.
 async function working(copy, owner, ticket) {
   const approved = await (await json('POST', '/api/phone-enrollment/approve', { ticket }, signedIn(owner.cookie))).json();
   const claimed = await (await json('POST', '/api/phone-enrollment/claim', { code: approved.code }, copy.auth)).json();
-  await buildAll();
+  const told = await (await connection(copy)).json();
+  assert.deepEqual([told.state, 'https://' + passOf(told.pass).h], ['connecting', claimed.url]);
   challengeSecret = copy.secret;
   assert.deepEqual(await (await json('POST', '/api/phone-enrollment/connected', {}, copy.auth)).json(), { state: 'active' });
   return claimed.url;
 }
-// The Worker works through every waiting job, as its schedule does.
-async function buildAll() {
-  for (;;) {
-    const { job } = await (await json('POST', '/api/phone-enrollment/jobs/lease', {}, worker)).json();
-    if (!job) return;
-    if (job.revoked) { await json('POST', '/api/phone-enrollment/jobs/checkpoint', { id: job.id, attempt: job.attempt, revoked: true }, worker); continue; }
-    const tunnelId = job.tunnelId || crypto.randomUUID();
-    await json('POST', '/api/phone-enrollment/jobs/checkpoint', { id: job.id, attempt: job.attempt, tunnelId, dnsId: job.dnsId || crypto.randomBytes(16).toString('hex'), token: tunnelToken(tunnelId) }, worker);
+
+test('without every relay setting, a computer is told personal URLs are not available, and given no pass', async () => {
+  const copy = newCopy();
+  await working(copy, await signIn('google', google('g-unset', 'unset@example.com')), await ask(copy, 'unset-relay'));
+  const rsa = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' });
+  for (const [name, value] of [['RELAY_ADDRESS', ''], ['RELAY_CONTROL_HOST', ''], ['RELAY_PIN', ''], ['RELAY_PIN', 'short'], ['RELAY_PASS_PRIVATE_KEY', ''], ['RELAY_PASS_PRIVATE_KEY', rsa]]) {
+    const { app } = createApp({ db, env: { ...env, [name]: value }, request });
+    const srv = await new Promise(r => { const x = app.listen(0, () => r(x)); });
+    try {
+      const r = await fetch('http://127.0.0.1:' + srv.address().port + '/api/phone-enrollment/connection', { method: 'POST', headers: { 'Content-Type': 'application/json', ...copy.auth }, body: JSON.stringify({ key: copy.key }) });
+      assert.equal(r.status, 503, name);
+      assert.deepEqual(await r.json(), { error: 'Personal URLs are not available right now. You can still use Closedhand on the computer running it.' }, name);
+    } finally { srv.close(); }
   }
-}
+  // A pass key written on one line, as Railway can keep it, is read the same.
+  const { app } = createApp({ db, env: { ...env, RELAY_PASS_PRIVATE_KEY: env.RELAY_PASS_PRIVATE_KEY.replace(/\n/g, '\\n') }, request });
+  const srv = await new Promise(r => { const x = app.listen(0, () => r(x)); });
+  try {
+    const r = await fetch('http://127.0.0.1:' + srv.address().port + '/api/phone-enrollment/connection', { method: 'POST', headers: { 'Content-Type': 'application/json', ...copy.auth }, body: JSON.stringify({ key: copy.key }) });
+    assert.equal(passOf((await r.json()).pass).h, 'unset-relay.closedhand.ai');
+  } finally { srv.close(); }
+});
 
 test('a picked name: never from the account, free when confirmed, and an owner keeps the address they have', async () => {
   const copy = newCopy();
@@ -430,7 +448,6 @@ test('a picked name: never from the account, free when confirmed, and an owner k
   assert.equal((await (await json('POST', '/api/phone-enrollment/details', { ticket }, { cookie: owner.cookie })).json()).url, approved.url, 'the page shows the name it will get');
   const claimed = await (await json('POST', '/api/phone-enrollment/claim', { code: approved.code }, copy.auth)).json();
   assert.deepEqual(claimed, { state: 'pending', url: approved.url });
-  await buildAll();
   challengeSecret = copy.secret;
   await json('POST', '/api/phone-enrollment/connected', {}, copy.auth);
   // A reinstall asking without a name is offered the owner's own address, as a move.
@@ -446,7 +463,7 @@ test('a picked name: never from the account, free when confirmed, and an owner k
   assert.equal((await json('POST', '/api/phone-enrollment/claim', { code: lure.code }, newCopy().auth)).status, 409);
 });
 
-test('renaming: tidied names, the old name redirects for thirty days then stays reserved, three a month', async () => {
+test('renaming: tidied names, the old name stays reserved for six months, three a month', async () => {
   const copy = newCopy();
   const owner = await signIn('google', google('g-renamer', 'r@example.com'));
   const first = await working(copy, owner, await ask(copy, 'renamer'));
@@ -456,24 +473,11 @@ test('renaming: tidied names, the old name redirects for thirty days then stays 
   assert.equal((await renameTo('lucy', newCopy())).status, 409, 'a copy without an address');
   for (const bad of ['ab', 'admin', '---', '99']) assert.equal((await renameTo(bad)).status, 400, bad);
   const done = await (await renameTo('  Lucy Smith! ')).json();
-  assert.equal(done.url, 'https://lucy-smith.closedhand.ai', 'typed names are tidied');
-  assert.equal(done.state, 'pending');
-  assert.ok(Math.abs(Date.parse(done.redirectUntil) - Date.now() - 30 * 86400000) < 60000, 'thirty days of redirect');
-  const row = (await db.query("SELECT state, dns_id, tunnel_token FROM addresses WHERE hostname = 'lucy-smith.closedhand.ai'")).rows[0];
-  assert.deepEqual(row, { state: 'pending', dns_id: null, tunnel_token: null });
+  assert.deepEqual(done, { state: 'pending', url: 'https://lucy-smith.closedhand.ai' }, 'typed names are tidied');
   assert.equal((await account(owner.cookie)).url, null, 'not advertised until it answers at the new name');
-  // The Worker learns about the old name, and routes the new one to the same tunnel.
-  const worker2 = worker;
-  let moves = (await (await json('POST', '/api/phone-enrollment/jobs/moves', {}, worker2)).json()).moves;
-  const announced = moves.find(m => m.hostname === 'renamer.closedhand.ai');
-  assert.equal(announced.to, 'lucy-smith.closedhand.ai');
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/jobs/moves/done', { hostname: 'renamer.closedhand.ai', to: 'lucy-smith.closedhand.ai' }, worker2)).json(), { ok: true });
-  moves = (await (await json('POST', '/api/phone-enrollment/jobs/moves', {}, worker2)).json()).moves;
-  assert.ok(!moves.some(m => m.hostname === 'renamer.closedhand.ai'), 'announced once');
-  const { job } = await (await json('POST', '/api/phone-enrollment/jobs/lease', {}, worker2)).json();
-  assert.equal(job.hostname, 'lucy-smith.closedhand.ai'); assert.equal(job.dnsId, null); assert.ok(job.tunnelId, 'the same tunnel');
-  const tunnelId = job.tunnelId, token = tunnelToken(tunnelId);
-  await json('POST', '/api/phone-enrollment/jobs/checkpoint', { id: job.id, attempt: job.attempt, tunnelId, dnsId: crypto.randomBytes(16).toString('hex'), token }, worker2);
+  // The copy takes the new name at the relay with a pass for it, and proves it answers there.
+  const told = await (await connection(copy)).json();
+  assert.equal(told.state, 'connecting'); assert.equal(passOf(told.pass).h, 'lucy-smith.closedhand.ai');
   challengeSecret = copy.secret;
   assert.deepEqual(await (await json('POST', '/api/phone-enrollment/connected', {}, copy.auth)).json(), { state: 'active' });
   assert.equal((await account(owner.cookie)).url, 'https://lucy-smith.closedhand.ai');
@@ -486,73 +490,39 @@ test('renaming: tidied names, the old name redirects for thirty days then stays 
   assert.equal((await renameTo('renamer', rivalCopy)).status, 409, 'an old name is reserved to its owner');
   assert.equal((await renameTo('lucy-smith', rivalCopy)).status, 409, 'a name in use is taken');
   for (let i = 0; i < 20; i++) assert.notEqual(await freeNameOf(), 'renamer.closedhand.ai');
-  // A second rename sends the first old name to the newest.
+  // A second rename: both old names are kept for the owner.
   const second = await (await renameTo('lucy')).json();
   assert.equal(second.url, 'https://lucy.closedhand.ai');
-  const chain = (await db.query("SELECT hostname, redirect_to, announced FROM retired_names WHERE owner_id = (SELECT owner_id FROM addresses WHERE hostname = 'lucy.closedhand.ai') ORDER BY created_at")).rows;
-  assert.deepEqual(chain.map(r => [r.hostname, r.redirect_to, r.announced]), [['renamer.closedhand.ai', 'lucy.closedhand.ai', false], ['lucy-smith.closedhand.ai', 'lucy.closedhand.ai', false]]);
-  // Coming back to your own old name is allowed; the Worker finds its route again by name.
+  const kept = (await db.query("SELECT hostname FROM retired_names WHERE owner_id = (SELECT owner_id FROM addresses WHERE hostname = 'lucy.closedhand.ai') ORDER BY created_at")).rows;
+  assert.deepEqual(kept.map(r => r.hostname), ['renamer.closedhand.ai', 'lucy-smith.closedhand.ai']);
+  // Coming back to your own old name is allowed.
   const back = await (await renameTo('renamer')).json();
   assert.equal(back.url, 'https://renamer.closedhand.ai');
-  assert.equal((await db.query("SELECT dns_id FROM addresses WHERE hostname = 'renamer.closedhand.ai'")).rows[0].dns_id, null);
   assert.equal((await db.query("SELECT 1 FROM retired_names WHERE hostname = 'renamer.closedhand.ai'")).rowCount, 0);
   // Three old names held in thirty days is the most. Going back to one of
-  // your own reuses its route, so it doesn't count.
+  // your own holds nothing new, so it doesn't count.
   assert.equal((await renameTo('lucy-again')).status, 200);
   const capped = await renameTo('lucy-more');
   assert.equal(capped.status, 409); assert.match((await capped.json()).error, /three times in thirty days/);
-  // The Worker is told when the redirect ends and when the moved page ends.
-  const announcedMove = (await (await json('POST', '/api/phone-enrollment/jobs/moves', {}, worker2)).json()).moves.find(m => m.hostname === 'lucy-smith.closedhand.ai');
-  assert.ok(Date.parse(announcedMove.release) > Date.parse(announcedMove.until), 'the moved page follows the redirect');
-  const months = (Date.parse(announcedMove.release) - Date.now()) / 86400000;
-  assert.ok(months > 180 && months < 185, 'released six months after the rename');
-  // After thirty days the Worker removes the old route; the name stays reserved.
-  await db.query("UPDATE retired_names SET redirect_until = now() - interval '1 minute' WHERE hostname = 'lucy-smith.closedhand.ai'");
-  moves = (await (await json('POST', '/api/phone-enrollment/jobs/moves', {}, worker2)).json()).moves;
-  assert.ok(moves.some(m => m.hostname === 'lucy-smith.closedhand.ai' && m.remove), 'due for removal');
-  await json('POST', '/api/phone-enrollment/jobs/moves/done', { hostname: 'lucy-smith.closedhand.ai', removed: true }, worker2);
-  moves = (await (await json('POST', '/api/phone-enrollment/jobs/moves', {}, worker2)).json()).moves;
-  assert.ok(!moves.some(m => m.hostname === 'lucy-smith.closedhand.ai' && m.remove), 'removed once');
-  assert.equal((await renameTo('lucy-smith', rivalCopy)).status, 409, 'still reserved after the redirect ends');
-  // Six months on it is released: the Worker forgets it, then so does the
-  // service, and anyone can take it, with nothing linking it to its old owner.
+  const release = (await db.query("SELECT release_at FROM retired_names WHERE hostname = 'lucy-smith.closedhand.ai'")).rows[0].release_at;
+  const days = (release.getTime() - Date.now()) / 86400000;
+  assert.ok(days > 180 && days < 185, 'released six months after the rename');
+  // Six months on it is released: the hourly sweep forgets it, and anyone
+  // can take it, with nothing linking it to its old owner.
   await db.query("UPDATE retired_names SET release_at = now() - interval '1 minute' WHERE hostname = 'lucy-smith.closedhand.ai'");
-  assert.equal((await renameTo('lucy-smith', rivalCopy)).status, 409, 'still taken until the Worker has let it go');
-  moves = (await (await json('POST', '/api/phone-enrollment/jobs/moves', {}, worker2)).json()).moves;
-  const due = moves.find(m => m.hostname === 'lucy-smith.closedhand.ai');
-  assert.deepEqual(due, { hostname: 'lucy-smith.closedhand.ai', dnsId: null, release: true }, 'its route is already gone');
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/jobs/moves/done', { hostname: 'lucy-smith.closedhand.ai', released: true }, worker2)).json(), { ok: true });
+  assert.equal((await renameTo('lucy-smith', rivalCopy)).status, 409, 'still taken until the sweep has let it go');
+  await sweep();
   assert.equal((await db.query("SELECT 1 FROM retired_names WHERE hostname = 'lucy-smith.closedhand.ai'")).rowCount, 0, 'no trace of the old owner');
   assert.equal((await renameTo('lucy-smith', rivalCopy)).status, 200, 'free for anyone');
-  assert.equal((await json('POST', '/api/phone-enrollment/jobs/moves', {}, { Authorization: 'Bearer wrong' })).status, 401);
-});
-
-test('the operator is emailed once when personal URL DNS records pass 150, and again only after it drops back', async () => {
-  const report = async n => (await json('POST', '/api/phone-enrollment/jobs/usage', { dnsRecords: n }, worker)).json();
-  mails.length = 0;
-  assert.equal((await json('POST', '/api/phone-enrollment/jobs/usage', { dnsRecords: 151 }, { Authorization: 'Bearer wrong' })).status, 401);
-  assert.equal((await json('POST', '/api/phone-enrollment/jobs/usage', { dnsRecords: -1 }, worker)).status, 400);
-  assert.deepEqual(await report(140), { over: false, alerted: false });
-  assert.equal(mails.length, 0);
-  assert.deepEqual(await report(151), { over: true, alerted: true });
-  assert.equal(mails.length, 1);
-  assert.deepEqual(mails[0].Destination, { ToAddresses: ['operator@example.com'] });
-  assert.match(mails[0].Content.Simple.Subject.Data, /passed 150/);
-  assert.match(mails[0].Content.Simple.Body.Text.Data, /151 DNS records/);
-  assert.deepEqual(await report(160), { over: true, alerted: false }, 'once per crossing');
-  assert.deepEqual(await report(150), { over: false, alerted: false });
-  assert.deepEqual(await report(152), { over: true, alerted: true }, 'again after it drops back');
-  assert.equal(mails.length, 2);
 });
 const freeNameOf = () => require('../lib/addresses').freeName(db);
 
-test('deleting a Closedhand account from its computer: the sign-in is forgotten, the route comes down, the names are held for nobody', async () => {
+test('deleting a Closedhand account from its computer: the sign-in and the address are forgotten, the names are held for nobody', async () => {
   const copy = newCopy();
   const owner = await signIn('google', google('g-deleter', 'deleter@example.com'));
   await working(copy, owner, await ask(copy, 'keeper'));
-  // An old name too, still redirecting.
+  // An old name too.
   assert.equal((await json('POST', '/api/phone-enrollment/rename', { name: 'keeper-new' }, copy.auth)).status, 200);
-  await buildAll();
   // The computer sees its account whole for My Account: which sign-ins it
   // has and its plan, never the base its use counts from; nobody else does.
   const seen = (await (await fetch(base + '/api/phone-enrollment/account', { headers: copy.auth })).json()).account;
@@ -568,16 +538,10 @@ test('deleting a Closedhand account from its computer: the sign-in is forgotten,
   // The sign-in is forgotten at once, and signing in again finds nothing.
   assert.equal((await db.query("SELECT 1 FROM owners WHERE subject = 'g-deleter'")).rowCount, 0);
   assert.equal((await account(owner.cookie)).signedIn, false);
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: copy.auth })).json(), { state: 'unconfirmed' });
-  // The Worker takes the route down completely, then the address is gone.
-  const { job } = await (await json('POST', '/api/phone-enrollment/jobs/lease', {}, worker)).json();
-  assert.equal(job.id, addressId); assert.equal(job.revoked, true); assert.equal(job.teardown, true);
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/jobs/checkpoint', { id: job.id, attempt: job.attempt, revoked: true }, worker)).json(), { ok: true });
+  assert.deepEqual(await (await connection(copy)).json(), { state: 'unconfirmed' }, 'and no more passes');
+  // The address and the old name are gone at once, nothing linking them to anyone.
   assert.equal((await db.query('SELECT 1 FROM addresses WHERE id = $1', [addressId])).rowCount, 0);
-  // The old name stops redirecting: the Worker releases it.
-  const moves = (await (await json('POST', '/api/phone-enrollment/jobs/moves', {}, worker)).json()).moves;
-  assert.ok(moves.some(m => m.hostname === 'keeper.closedhand.ai' && m.release === true));
-  assert.deepEqual(await (await json('POST', '/api/phone-enrollment/jobs/moves/done', { hostname: 'keeper.closedhand.ai', released: true }, worker)).json(), { ok: true });
+  assert.equal((await db.query("SELECT 1 FROM retired_names WHERE hostname LIKE 'keeper%'")).rowCount, 0);
   // Both names are held, linked to nobody.
   const held = (await db.query("SELECT hostname, owner_id, release_at FROM held_names WHERE hostname LIKE 'keeper%' ORDER BY hostname")).rows;
   assert.deepEqual(held.map(h => [h.hostname, h.owner_id]).sort(), [['keeper-new.closedhand.ai', null], ['keeper.closedhand.ai', null]]);
@@ -601,35 +565,47 @@ test('deleting a Closedhand account on closedhand.com: signed in, from the site 
   assert.deepEqual(await gone.json(), { deleted: true });
   assert.ok((gone.headers.getSetCookie?.() || []).some(c => /Max-Age=0/i.test(c)), 'signed out');
   assert.deepEqual(await account(owner.cookie), { signedIn: false, provider: null, email: null, emailVerified: false, signIns: [], url: null, address: null, available: true, includedAi: false }, 'no AI offered without a management key');
-  assert.deepEqual(await (await fetch(base + '/api/phone-enrollment/connection', { headers: copy.auth })).json(), { state: 'unconfirmed' }, 'the computer finds out when it next asks');
+  assert.deepEqual(await (await connection(copy)).json(), { state: 'unconfirmed' }, 'the computer finds out when it next asks for a pass');
   const held = (await db.query('SELECT owner_id FROM held_names WHERE hostname = $1', [new URL(url).hostname])).rows[0];
   assert.deepEqual(held, { owner_id: null });
-  await buildAll();
   assert.equal((await db.query('SELECT 1 FROM addresses WHERE hostname = $1', [new URL(url).hostname])).rowCount, 0);
 });
 
-test('an address unused for ninety days is let go only on a current report, and its owner gets the name back', async () => {
+test('an address unused for ninety days is let go only while the relay reports, and its owner gets the name back', async () => {
   const copy = newCopy();
   const owner = await signIn('google', google('g-idle', 'idle@example.com'));
   await working(copy, owner, await ask(copy, 'idler'));
   await db.query("UPDATE addresses SET last_seen_at = now() - interval '91 days' WHERE hostname = 'idler.closedhand.ai'");
   const idleRow = async () => (await db.query("SELECT owner_id, state FROM addresses WHERE hostname = 'idler.closedhand.ai'")).rows[0];
-  // With no report yet, or one that covers too little, nothing is let go.
-  await buildAll();
+  // With no report yet, nothing is let go.
+  await db.query('DELETE FROM relay_seen');
+  await sweep();
   assert.equal((await idleRow()).state, 'active');
-  const thin = await (await json('POST', '/api/phone-enrollment/jobs/seen', { tunnels: [] }, worker)).json();
-  assert.equal(thin.matched, 0); assert.ok(thin.working > 1);
-  await buildAll();
-  assert.equal((await idleRow()).state, 'active', 'a report covering too little never lets anything go');
-  // A full report: everything else was seen just now, this one long ago.
-  const working_ = (await db.query("SELECT id, tunnel_id, hostname FROM addresses WHERE activated_at IS NOT NULL AND tunnel_id IS NOT NULL AND state <> 'revoked'")).rows;
-  const tunnels = working_.map(r => ({ address: r.id, tunnel: r.tunnel_id, seen: r.hostname === 'idler.closedhand.ai' ? new Date(Date.now() - 91 * 86400000).toISOString() : new Date(Date.now() + 86400000).toISOString() }));
-  const full = await (await json('POST', '/api/phone-enrollment/jobs/seen', { tunnels: [...tunnels, { address: crypto.randomUUID(), tunnel: crypto.randomUUID(), seen: new Date().toISOString() }] }, worker)).json();
-  assert.equal(full.matched, working_.length);
-  assert.ok((await db.query("SELECT last_seen_at FROM addresses WHERE hostname <> 'idler.closedhand.ai' AND activated_at IS NOT NULL AND last_seen_at > now() + interval '1 minute'")).rowCount === 0, 'never later than now');
-  await buildAll();
-  assert.equal(await idleRow(), undefined, 'let go and taken down');
-  assert.equal((await db.query("SELECT 1 FROM addresses WHERE activated_at IS NOT NULL AND tunnel_id IS NOT NULL AND state <> 'revoked'")).rowCount, working_.length - 1, 'every other address stays');
+  // Only the relay reports, and only a list of names.
+  assert.equal((await json('POST', '/jobs/relay-seen', { connected: [] }, { Authorization: 'Bearer wrong' })).status, 401);
+  assert.equal((await json('POST', '/jobs/relay-seen', { connected: [] })).status, 401);
+  assert.equal((await relayReport('idler.closedhand.ai')).status, 400);
+  assert.equal((await relayReport(Array.from({ length: 20001 }, (_, i) => `n${i}-a.closedhand.ai`))).status, 400, 'at most 20,000 names');
+  // A report that finds nobody connected, from a relay just restarted or
+  // broken, never lets anything go.
+  assert.deepEqual(await (await relayReport([])).json(), { seen: 0 });
+  assert.deepEqual(await (await relayReport(['nobody-here.closedhand.ai', 'not a name', 7, 'admin.closedhand.ai'])).json(), { seen: 0 });
+  await sweep();
+  assert.equal((await idleRow()).state, 'active', 'a report finding nobody is no sign of anything unused');
+  // Everything else is connected now, this one not.
+  const others = (await db.query("SELECT hostname FROM addresses WHERE state = 'active' AND hostname <> 'idler.closedhand.ai'")).rows.map(r => r.hostname);
+  assert.ok(others.length > 1);
+  assert.deepEqual(await (await relayReport([...others, others[0]])).json(), { seen: others.length }, 'each connected address seen once');
+  assert.equal((await db.query("SELECT 1 FROM addresses WHERE state = 'active' AND last_seen_at < now() - interval '1 minute'")).rowCount, 1, 'only the unused one is behind');
+  // A report hours old is no longer current.
+  await db.query("UPDATE relay_seen SET seen_at = now() - interval '4 hours'");
+  await sweep();
+  assert.equal((await idleRow()).state, 'active', 'only while the reports are current');
+  await relayReport(others);
+  await sweep();
+  assert.equal(await idleRow(), undefined, 'let go');
+  assert.equal((await db.query("SELECT 1 FROM addresses WHERE state = 'active' AND hostname = ANY($1::text[])", [others])).rowCount, others.length, 'every other address stays');
+  assert.deepEqual(await (await connection(copy)).json(), { state: 'unconfirmed' }, 'its computer gets no more passes');
   // The owner stays, with the name held for them alone.
   assert.equal((await account(owner.cookie)).signedIn, true);
   const rival = await signIn('google', google('g-idle-rival', 'rival2@example.com'));
@@ -648,7 +624,7 @@ test('a sign-in holding nothing is forgotten after a day; one with a held name i
   await db.query("INSERT INTO held_names (hostname, owner_id, release_at) VALUES ('held-for-me.closedhand.ai', $1, now() + interval '1 month')", [holderId]);
   await db.query("INSERT INTO held_names (hostname, owner_id, release_at) VALUES ('held-over.closedhand.ai', NULL, now() - interval '1 minute')");
   await db.query("UPDATE owners SET updated_at = now() - interval '2 days' WHERE subject IN ('g-lookup', 'g-holder')");
-  await buildAll();
+  await sweep();
   assert.equal((await account(lookup.cookie)).signedIn, false, 'nothing to hold, so no account');
   assert.equal((await account(holder.cookie)).signedIn, true);
   assert.equal((await db.query("SELECT 1 FROM held_names WHERE hostname = 'held-over.closedhand.ai'")).rowCount, 0, 'a hold ends on time');
@@ -790,7 +766,7 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   const held = (await db.query("SELECT a.hostname, o.email FROM addresses a JOIN owners o ON o.id = a.owner_id WHERE a.activated_at IS NOT NULL LIMIT 1")).rows[0];
   if (held) assert.ok(data.people.some(p => p.hostname === held.hostname && p.email === held.email && p.last_online), 'a claimed personal URL shows with its owner');
   assert.ok(Array.isArray(data.reports) && data.reports.length > 0, 'recent bug reports are listed');
-  assert.ok(!/tunnel_token|secret_hash|key_id/.test(text), 'connection secrets and Managed Models keys never reach the page');
+  assert.ok(!/secret_hash|key_id/.test(text), 'computers\' secrets and Managed Models keys never reach the page');
   assert.ok(me.id && 'first_month_usd' in me && 'plus_status' in me && 'more_sign_ins' in me, 'each row carries its free days, subscription and other sign-ins');
   assert.equal(typeof data.managed.running, 'number');
   assert.equal(typeof data.managed.allowance, 'number');
@@ -828,8 +804,7 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
       images: null,
     } }, 'only .dmg files of releases count as Mac downloads, and each workflow\'s last finished run on main');
   assert.ok(data.needs.some(x => /last Mac build did not finish/.test(x.what)), 'a stopped Mac build needs you');
-  assert.equal(data.urls.dnsCeiling, 190);
-  for (const key of ['working', 'day', 'week', 'month', 'setting_up', 'errors', 'used', 'limit']) assert.equal(typeof data.urls[key], 'number', key);
+  for (const key of ['working', 'day', 'week', 'month', 'setting_up', 'used', 'limit']) assert.equal(typeof data.urls[key], 'number', key);
 });
 
 test('link previews, the favicon and HTTPS-only are in place', async () => {

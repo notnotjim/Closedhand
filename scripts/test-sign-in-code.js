@@ -146,9 +146,9 @@ test("through the personal URL only a password-and-code session counts, and no d
 
 test("a Closedhand on a host signs in like the personal URL at its own web address, whatever name a request gives", () => {
   const server = read("webapp/server.js");
-  const src = server.slice(server.indexOf("const isLoopback = "), server.indexOf("function lockedOut("));
+  const src = server.slice(server.indexOf("function clientIp("), server.indexOf("function lockedOut("));
   const make = (enabled) => new Function("setupCode", src.replace(/^\/\/.*$/gm, "") + "; return fromElsewhere;")({ enabled });
-  const req = (host, peer, cf) => ({ headers: { host, ...(cf ? { "cf-connecting-ip": cf } : {}) }, socket: { remoteAddress: peer } });
+  const req = (host, peer, from) => ({ headers: { host }, socket: { remoteAddress: peer, ...(from ? { relayFrom: from } : {}) } });
   const docker = make(false), host = make(true);
   assert.equal(docker(req("localhost:3000", "127.0.0.1")), false, "on Docker or the Mac app, localhost signs in with the password");
   assert.equal(docker(req("x.closedhand.com", "127.0.0.1", "203.0.113.9")), true, "the personal URL takes the code");

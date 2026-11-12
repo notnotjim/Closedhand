@@ -4,9 +4,12 @@ The small service behind closedhand.com. It serves the public website and
 the three things a copy of Closedhand asks it for:
 
 - **Personal URLs** (`name.closedhand.ai`): a copy asks for a name, its owner
-  claims it here by signing in with Google (or Microsoft), the Cloudflare
-  Worker in `workers/provisioner` builds the route, and the copy proves it
-  answers at the new address before the address is marked ready.
+  claims it here by signing in with Google (or Microsoft), and the copy takes
+  it at the relay (`relay/` in the repo root) with a pass from here, signed for
+  its name and the copy's own key and good for a day. The copy proves it
+  answers at the new address before the address is marked ready. Nothing is
+  built for an address: Cloudflare only answers DNS for `*.closedhand.ai`,
+  with one record pointing at the relay.
 - **Bug reports** that a person chose to send, with a receipt that can check
   only that report's outcome.
 - **Assistant email relay**: a copy that turns on its own email address
@@ -37,14 +40,19 @@ Migrations in `migrations/` apply on start.
 |---|---|
 | `DATABASE_URL` | Postgres for owners, personal URLs and bug reports |
 | `SESSION_SECRET` | 32+ random characters; signs sessions and personal URL tickets |
-| `TOKEN_ENCRYPTION_KEY` | 32 random bytes, base64; encrypts connection credentials at rest |
+| `TOKEN_ENCRYPTION_KEY` | 32 random bytes, base64; seals what is kept secret at rest (claim codes, an account number until its computer collects it, the NEAR AI sign-in) |
 | `BASE_URL` | `https://closedhand.com` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in, asking only for the email |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | Microsoft sign-in, same |
 | `MICROSOFT_ASSOCIATED_APP_IDS` | Microsoft app IDs published at `/.well-known/microsoft-identity-association.json`, so their permission screens name closedhand.com (defaults to `MICROSOFT_CLIENT_ID`). Those other than `MICROSOFT_CLIENT_ID` are the apps a computer connects mail through, and their sign-in claims a personal URL in one step |
 | `GOOGLE_ASSOCIATED_CLIENT_IDS` | Closedhand's own Google app (the Desktop app client official builds carry), comma separated; its sign-in claims a personal URL in one step |
-| `PHONE_ENROLLMENT_ENABLED` | `1` to accept new personal URLs |
-| `PHONE_PROVISIONER_SECRET` | Shared with the provisioner Worker |
+| `PHONE_ENROLLMENT_ENABLED` | `1` to accept new personal URLs. Personal URLs already claimed keep getting their passes either way |
+| `RELAY_PASS_PRIVATE_KEY` | closedhand.com's Ed25519 private key (PEM, PKCS8; `\n` for line breaks is fine), which signs the passes computers show the relay. Its public half is the relay's `RELAY_PASS_KEY` |
+| `RELAY_ADDRESS` | Where computers reach the relay, as `host:port` (`relay.closedhand.ai:443`) |
+| `RELAY_CONTROL_HOST` | The relay's own name, which computers ask for when they connect (`relay.closedhand.ai`; the relay's `RELAY_CONTROL_HOST`) |
+| `RELAY_PIN` | The SHA-256 of the relay's certificate (DER), base64url: computers check the relay against it, so no other server can pose as it |
+| `RELAY_REPORT_SECRET` | Shared with the relay, whose report each minute of the personal URLs connected to it (`/jobs/relay-seen`) keeps "last online" and lets unused ones go. Without it, no address is ever let go for lack of use |
+| `ADDRESS_IDLE_DAYS` | How long a personal URL's computer may stay away before the address is let go, its name held for its owner (default 90) |
 | `BUG_RECEIPT_SECRET` | Signs bug report receipts (defaults to `SESSION_SECRET`) |
 | `ADDRESS_LIMIT` | How many personal URLs may exist (default 100) |
 | `NEAR_REFRESH_TOKEN` | A sign-in at NEAR AI (cloud.near.ai), as its refresh token (`rt_...`, copied from cloud.near.ai while signed in); with it, each account that claims a personal URL gets its own NEAR AI key, Closedhand Managed Models (lib/included-ai.js). NEAR replaces the token each time it is used, so closedhand.com keeps the current one sealed in its database (lib/near-session.js) and only starts again from this one when it changes; the maintainer is told when NEAR stops taking it. `TOKEN_ENCRYPTION_KEY` seals it and keys the fingerprints. Without it, no keys are made |
@@ -85,13 +93,21 @@ Migrations in `migrations/` apply on start.
 Sign-in callbacks are `BASE_URL/auth/google/callback` and
 `BASE_URL/auth/microsoft/callback`.
 
-## Workers
+## The relay
 
-`workers/provisioner` builds each personal URL's Cloudflare tunnel and DNS
-record; it receives routing jobs only, never owners. `workers/edge` shows a
-"Closedhand is offline" page when a personal URL's computer is asleep. Copy
-each `wrangler.example.jsonc` to `wrangler.jsonc` (ignored by git), fill in
-the IDs, and deploy with Wrangler.
+`relay/` in the repo root runs on its own (`relay/main.js` lists its
+settings). It passes each browser's encrypted connection to the computer it
+asked for, and tells closedhand.com which personal URLs are connected. Making
+closedhand.com's key for passes, and the relay's pin from its certificate:
+
+```
+openssl genpkey -algorithm ed25519 -out pass-key.pem
+openssl pkey -in pass-key.pem -pubout -out pass-key.pub.pem
+openssl x509 -in relay-cert.pem -outform der | openssl dgst -sha256 -binary | base64 | tr '+/' '-_' | tr -d '='
+```
+
+`pass-key.pem` is `RELAY_PASS_PRIVATE_KEY` here and `pass-key.pub.pem` the
+relay's `RELAY_PASS_KEY`; the last line prints `RELAY_PIN`.
 
 ## Tests
 

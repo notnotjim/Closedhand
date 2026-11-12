@@ -71,22 +71,24 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   // Visitors arrive through Cloudflare, which adds a header carrying
   // EDGE_SECRET. A request that goes around Cloudflare could pretend to come
   // from any address and slip past the rate limits, so it is turned away.
-  // Railway's health check and the route-building Worker, which carries its
-  // own secret, are let through.
+  // Railway's health check and the relay's report, which carries its own
+  // secret, are let through.
   if (env.EDGE_SECRET) {
     app.use((req, res, next) => {
-      if (req.path === '/health' || req.path.startsWith('/api/phone-enrollment/jobs/') || equal(req.headers['x-closedhand-edge'], env.EDGE_SECRET)) return next();
+      if (req.path === '/health' || req.path === '/jobs/relay-seen' || equal(req.headers['x-closedhand-edge'], env.EDGE_SECRET)) return next();
       res.status(403).type('text/plain').send('Please open https://closedhand.com');
     });
   }
-  // Only bug reports and assistant email replies (which may carry
-  // attachments) are large; every other request is small. Polar's webhooks
+  // Only bug reports, assistant email replies (which may carry attachments)
+  // and the relay's list of the personal URLs connected to it are large;
+  // every other request is small. Polar's webhooks
   // and BTCPay's are kept as they came, to check their signature (lib/plus.js,
   // lib/ahead.js).
   app.use('/api/plus/webhook', express.raw({ type: '*/*', limit: '256kb' }));
   app.use('/api/ahead/btcpay', express.raw({ type: '*/*', limit: '256kb' }));
   app.use('/api/bug-intake', express.json({ limit: '8mb' }));
   app.use('/api/assistant-mail-relay/outbox', express.json({ limit: '8mb' }));
+  app.use('/jobs/relay-seen', express.json({ limit: '1mb' }));
   app.use(express.json({ limit: '32kb' }));
   app.use(express.static(PUBLIC, {
     index: false,
@@ -139,7 +141,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   const plus = require('./lib/plus').create({ db, env, request, includedAi, ahead, baseUrl });
   const capacity = require('./lib/capacity').create({ db, env, notices, includedAi });
   const backup = require('./lib/backup').create({ db, env, notices });
-  require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, ahead, notices });
+  const addresses = require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, ahead, notices });
   plus.register(app, { sessions });
   ahead.register(app, { sessions });
   require('./lib/bugs').register(app, { db, secret: env.BUG_RECEIPT_SECRET || secret });
@@ -186,7 +188,8 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   // paid ahead (a new month's fair use, or one that has ended), the
   // maintainer is told what needs raising, a notice their computer has not
   // collected for a day goes by email, messages from the website older than
-  // 90 days are deleted, and once a day the database is backed up.
+  // 90 days are deleted, personal URLs and names that have had their time are
+  // let go, and once a day the database is backed up.
   async function hourly() {
     await includedAi.sweep().catch(e => console.error('[included ai] sweep:', e.message));
     await plus.sweep().catch(e => console.error('[plus] sweep:', e.message));
@@ -194,9 +197,10 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
     await capacity.check().catch(e => console.error('[capacity] check:', e.message));
     await notices.emailStale().catch(e => console.error('[operator] notices:', e.message));
     await messages.sweep().catch(e => console.error('[messages] sweep:', e.message));
+    await addresses.sweep().catch(e => console.error('[addresses] sweep:', e.message));
     await backup.daily().catch(e => console.error('[backup] daily:', e.message));
   }
-  return { app, sessions, plus, messages, hourly, settle: () => includedAi.settle(), stopMail: () => typeof mailWorker === 'function' && mailWorker() };
+  return { app, sessions, plus, messages, addresses, hourly, settle: () => includedAi.settle(), stopMail: () => typeof mailWorker === 'function' && mailWorker() };
 }
 
 if (require.main === module) {

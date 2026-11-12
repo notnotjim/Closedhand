@@ -50,21 +50,6 @@ fi
 [ -f "$HERE/workspace/manifest.json" ] || { echo "Missing pinned Workspace manifest"; exit 1; }
 
 # --- app source with production dependencies ---------------------------------
-CLOUDFLARED_VERSION="2026.10.4"
-CLOUDFLARED_DIR="$CACHE/cloudflared-$CLOUDFLARED_VERSION-$ARCH"
-if [ ! -x "$CLOUDFLARED_DIR/cloudflared" ]; then
-  case "$ARCH" in
-    arm64) CF_ARCH=arm64; CF_SHA=68b6bc4080ac1330234db2a9002d07f98b000537a1bd531a687b660d4160fa7f ;;
-    x86_64) CF_ARCH=amd64; CF_SHA=f11fbef4207d715892331917dafd437f032cf4b7137ed64dea3008338c1c613d ;;
-    *) echo "Unsupported connection runtime architecture"; exit 1 ;;
-  esac
-  say "Fetching the dashboard connection runtime"
-  curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/$CLOUDFLARED_VERSION/cloudflared-darwin-$CF_ARCH.tgz" -o "$CACHE/cloudflared.tgz"
-  printf '%s  %s\n' "$CF_SHA" "$CACHE/cloudflared.tgz" | shasum -a 256 -c -
-  mkdir -p "$CLOUDFLARED_DIR"
-  tar xzf "$CACHE/cloudflared.tgz" -C "$CLOUDFLARED_DIR"
-  chmod +x "$CLOUDFLARED_DIR/cloudflared"
-fi
 
 # llama.cpp's server, for jobs whose LLM runs on this Mac (webapp/run-here.js).
 # Only the server and the libraries it loads ship; the release's other tools don't.
@@ -162,7 +147,6 @@ rm -rf "$APP/Contents/Resources/pg/lib/postgresql/pgxs"   # build-time files, wi
 mkdir -p "$APP/Contents/Resources/workspace" "$APP/Contents/Resources/bin"
 cp "$HERE/workspace/host.js" "$HERE/workspace/runtime.js" "$HERE/workspace/migrate.js" "$HERE/workspace/manifest.json" "$APP/Contents/Resources/workspace/"
 cp "$(dirname "$BIN")/WorkspaceVM" "$APP/Contents/Resources/bin/WorkspaceVM"
-mkdir -p "$APP/Contents/Resources/bin" && cp "$CLOUDFLARED_DIR/cloudflared" "$APP/Contents/Resources/bin/"
 cp -RP "$LLAMA_DIR" "$APP/Contents/Resources/llama"
 cp -R "$APP_SRC" "$APP/Contents/Resources/app"
 rm -rf "$APP/Contents/Resources/app/node_modules/mammoth/test" "$APP/Contents/Resources/app/webapp/node_modules/mammoth/test"

@@ -2,9 +2,10 @@
 // address, its owner confirms it here after signing in and is shown a code,
 // and the code typed into that copy finishes the request. The name is picked
 // here (names.js) unless an older copy asks for one it chose; the owner can
-// rename it later. A separate Cloudflare Worker builds the route, and the
-// copy proves it answers at the new address before the address is marked
-// ready. Only routing records live here.
+// rename it later. Nothing is built for an address: the copy takes it at the
+// relay (relay/relay.js) with a pass from here for its own key, and proves it
+// answers at the new address before the address is marked ready. Only
+// routing records live here.
 //
 // A copy that has just connected mail through Closedhand's own Google or
 // Microsoft app can claim in one step instead (claim-google, claim-microsoft):
@@ -14,7 +15,7 @@
 //
 // The sign-in that claims a personal URL is the owner's Closedhand account.
 // Only its email is kept, with the address, and deleting it
-// forgets the sign-in and takes the route down (deleteAccount).
+// forgets the sign-in and the address (deleteAccount).
 //
 // A claim also hands the claiming computer the AI that comes with Closedhand,
 // a key of its own at the Managed Models provider (included-ai.js), when one can be given.
@@ -22,7 +23,6 @@ const crypto = require('node:crypto');
 const { encryptString, decryptString } = require('./crypto-tokens');
 const { equal } = require('./session');
 const { randomName, cleanName } = require('./names');
-const { reportDnsRecords } = require('./alerts');
 const { verifyPassedSignIn } = require('./passed-sign-in');
 const { PROVIDERS } = require('./signin');
 const { ownerFor, addSignIn, signInsOf, anonymousOwner, isAnonymous } = require('./owners');
@@ -38,6 +38,9 @@ const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const newCode = () => Array.from({ length: 6 }, () => CODE_LETTERS[crypto.randomInt(CODE_LETTERS.length)]).join('');
 const MAX_CODE_TRIES = 5;
+// The most personal URLs one report from the relay may name (server.js lets
+// its body be large enough for them).
+const MAX_REPORTED = 20000;
 
 function validHostname(hostname) {
   if (typeof hostname !== 'string' || !hostname.endsWith('.closedhand.ai')) return false;
@@ -46,10 +49,19 @@ function validHostname(hostname) {
   return /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/.test(name) && !/^..--/.test(name) && !RESERVED.has(name);
 }
 
-// A Cloudflare tunnel token is base64 JSON naming its account ("a") and
-// tunnel ("t"). One for any other tunnel is refused.
-function tokenTunnel(token) {
-  try { return JSON.parse(Buffer.from(token, 'base64').toString('utf8')).t || null; } catch (_) { return null; }
+// The computer's own public key, as the relay reads it: the 32 bytes of an
+// Ed25519 key in base64url, written the one way they can be.
+function computerKey(key) {
+  return typeof key === 'string' && key.length === 43 && Buffer.from(key, 'base64url').toString('base64url') === key;
+}
+// A pass for the relay (readPass in relay/relay.js): the personal URL, the
+// computer's own key and when the pass ends, signed with closedhand.com's
+// key. It is no use without the computer's private key, which the relay has
+// sign a nonce, and it lasts a day, so the computer asks for a new one daily.
+const PASS_MS = 24 * 3600000;
+function passFor(hostname, key, passKey, now = Date.now()) {
+  const body = Buffer.from(JSON.stringify({ h: hostname, k: key, e: now + PASS_MS })).toString('base64url');
+  return body + '.' + crypto.sign(null, Buffer.from(body), passKey).toString('base64url');
 }
 
 // The copy's answer to the connection check is a few dozen bytes; stop
@@ -81,7 +93,7 @@ function installation(req) {
 // It names the copy (by the hash of its secret, never the secret) and the
 // address asked for, and is good for thirty minutes.
 function ticketFor(request, secret, now = Date.now()) {
-  const text = Buffer.from(JSON.stringify({ ...request, version: 3, expires: now + 30 * 60000 })).toString('base64url');
+  const text = Buffer.from(JSON.stringify({ ...request, version: 4, expires: now + 30 * 60000 })).toString('base64url');
   return text + '.' + crypto.createHmac('sha256', secret).update('phone-pair:' + text).digest('hex');
 }
 function readTicket(ticket, secret) {
@@ -91,8 +103,7 @@ function readTicket(ticket, secret) {
   if (!equal(parts[1], crypto.createHmac('sha256', secret).update('phone-pair:' + parts[0]).digest('hex'))) return null;
   try {
     const t = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
-    return t.version === 3 && /^[a-f0-9]{64}$/.test(t.secret_hash) && validHostname(t.hostname) &&
-      Number.isInteger(t.port) && t.port >= 1024 && t.port <= 65535 && typeof t.expires === 'number' &&
+    return t.version === 4 && /^[a-f0-9]{64}$/.test(t.secret_hash) && validHostname(t.hostname) && typeof t.expires === 'number' &&
       (t.auto === undefined || t.auto === true) ? t : null;
   } catch (_) { return null; }
 }
@@ -129,15 +140,12 @@ async function freeName(db) {
   throw new Error('No free name found');
 }
 
-// A personal URL on its way to another copy reads as being built.
-const shown = row => row.state === 'revoked' && row.reprovision ? 'provisioning' : row.state;
-
 // Give an owner's personal URL to the copy that typed in their code. Under
 // one lock, so two owners can never take the same name, one owner never gets
 // two addresses, and the address limit is exact. An owner's existing address
-// moves to the new copy: the old computer's connection is cut and the route
-// is built again for this one.
-async function reserve(pool, { ownerId, secretHash, hostname, port, limit }) {
+// moves to the new copy: the old one is no longer given passes for it, and
+// the new one proves it answers there, as for a new address.
+async function reserve(pool, { ownerId, secretHash, hostname, limit }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -148,17 +156,16 @@ async function reserve(pool, { ownerId, secretHash, hostname, port, limit }) {
     let row;
     if (mine) {
       if (mine.hostname !== hostname) throw new Refusal('This account already has a personal URL, ' + mine.hostname + '.');
-      row = mine.secret_hash === secretHash && mine.state !== 'revoked' ? mine : (await client.query(
-        `UPDATE addresses SET secret_hash = $2, web_port = $3, state = 'revoked', revocation_complete = false, reprovision = true,
-           tunnel_token = NULL, updated_at = now() WHERE id = $1 RETURNING *`, [mine.id, secretHash, port])).rows[0];
+      row = mine.secret_hash === secretHash ? mine : (await client.query(
+        "UPDATE addresses SET secret_hash = $2, state = 'pending', updated_at = now() WHERE id = $1 RETURNING *", [mine.id, secretHash])).rows[0];
     } else {
       if (await nameTaken(client, hostname, ownerId)) throw new Refusal('That personal URL is already taken. Choose another name.');
-      // Working addresses and fresh reservations count; released ones do not.
-      const live = await client.query("SELECT count(*)::int AS n FROM addresses WHERE state <> 'revoked' AND (activated_at IS NOT NULL OR created_at > now() - interval '24 hours')");
+      // Working addresses and fresh reservations count.
+      const live = await client.query("SELECT count(*)::int AS n FROM addresses WHERE activated_at IS NOT NULL OR created_at > now() - interval '24 hours'");
       if (live.rows[0].n >= limit) throw new Refusal('Personal URLs are full for now. Try again later.');
       row = (await client.query(
-        'INSERT INTO addresses (id, owner_id, secret_hash, hostname, web_port) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [crypto.randomUUID(), ownerId, secretHash, hostname, port])).rows[0];
+        'INSERT INTO addresses (id, owner_id, secret_hash, hostname) VALUES ($1, $2, $3, $4) RETURNING *',
+        [crypto.randomUUID(), ownerId, secretHash, hostname])).rows[0];
       await client.query('DELETE FROM held_names WHERE hostname = $1 AND owner_id = $2', [hostname, ownerId]);
     }
     await client.query('COMMIT');
@@ -171,12 +178,11 @@ async function reserve(pool, { ownerId, secretHash, hostname, port, limit }) {
   }
 }
 
-// Renaming. The old name is kept for this address: for thirty days it sends
-// visitors on to the new one (see the Worker), then it says it has moved,
-// and six months after the rename it is released for anyone to take. Until
-// then it is reserved to the owner, who can take it back. Each old name
-// holds a route for those thirty days, so three in thirty days is the most.
-// Coming back to one of your own old names reuses its route, so it doesn't
+// Renaming. The old name is kept for this address, reserved to the owner,
+// who can take it back, so an old bookmark never opens somebody else's
+// computer; six months after the rename it is released for anyone to take.
+// Each old name is held that long, so three in thirty days is the most.
+// Coming back to one of your own old names holds nothing new, so it doesn't
 // count.
 const RENAMES_PER_MONTH = 3;
 async function rename(pool, { secretHash, hostname }) {
@@ -185,34 +191,24 @@ async function rename(pool, { secretHash, hostname }) {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(490048)');
     const row = (await client.query('SELECT * FROM addresses WHERE secret_hash = $1 FOR UPDATE', [secretHash])).rows[0];
-    if (!row || shown(row) === 'revoked') throw new Refusal('This computer does not have a personal URL yet.');
+    if (!row) throw new Refusal('This computer does not have a personal URL yet.');
     if (!row.activated_at) throw new Refusal('Your personal URL is still being set up. Try again once it opens.');
-    if (row.hostname === hostname) { await client.query('COMMIT'); return { row, until: null }; }
+    if (row.hostname === hostname) { await client.query('COMMIT'); return row; }
     if (await nameTaken(client, hostname, row.owner_id)) throw new Refusal('That name is taken. Try another.');
     const recent = (await client.query(
       "SELECT count(*)::int AS n FROM retired_names WHERE address_id = $1 AND created_at > now() - interval '30 days'", [row.id])).rows[0].n;
     if (recent >= RENAMES_PER_MONTH) throw new Refusal('You can change your personal URL three times in thirty days. Try again later.');
-    // Coming back to an old name: its route, if still there, is found again
-    // by name when the Worker rebuilds (never by a record the thirty-day
-    // clean-up might be removing at that moment).
     await client.query('DELETE FROM retired_names WHERE hostname = $1 AND owner_id = $2', [hostname, row.owner_id]);
     await client.query('DELETE FROM held_names WHERE hostname = $1 AND owner_id = $2', [hostname, row.owner_id]);
-    const until = (await client.query(
-      `INSERT INTO retired_names (hostname, owner_id, address_id, redirect_to, redirect_until, release_at, dns_id)
-       VALUES ($1, $2, $3, $4, now() + interval '30 days', now() + interval '6 months', $5) RETURNING redirect_until`,
-      [row.hostname, row.owner_id, row.id, hostname, row.dns_id])).rows[0].redirect_until;
-    // Older names still redirecting follow to the newest.
     await client.query(
-      'UPDATE retired_names SET redirect_to = $2, announced = false WHERE address_id = $1 AND hostname <> $3 AND redirect_until > now()',
-      [row.id, hostname, row.hostname]);
-    // The Worker routes the new name to the same tunnel, then this copy
-    // reconnects and proves it answers there, as for a new address.
+      "INSERT INTO retired_names (hostname, owner_id, address_id, release_at) VALUES ($1, $2, $3, now() + interval '6 months')",
+      [row.hostname, row.owner_id, row.id]);
+    // This copy takes the new name at the relay with a pass for it, and
+    // proves it answers there, as for a new address.
     const updated = (await client.query(
-      `UPDATE addresses SET hostname = $2, dns_id = NULL, state = 'pending', tunnel_token = NULL, lease_until = NULL, updated_at = now()
-       WHERE id = $1 RETURNING *`,
-      [row.id, hostname])).rows[0];
+      "UPDATE addresses SET hostname = $2, state = 'pending', updated_at = now() WHERE id = $1 RETURNING *", [row.id, hostname])).rows[0];
     await client.query('COMMIT');
-    return { row: updated, until };
+    return updated;
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;
@@ -224,26 +220,17 @@ async function rename(pool, { secretHash, hostname }) {
 // Letting an owner's address go, when their account is deleted or the
 // address has gone unused. Its name, and any old names, are held for six
 // months: for the owner (holdFor) or, after a deletion, for nobody. The
-// Worker takes every route down. The row loses its owner and its computer at
-// once, so both are free to start again straight away.
+// address goes at once, so its computer is free to start again straight away.
 async function letGo(client, ownerId, holdFor) {
   const hold = (sql, values) => client.query(
     `INSERT INTO held_names (hostname, owner_id, release_at) ${sql}
      ON CONFLICT (hostname) DO UPDATE SET owner_id = EXCLUDED.owner_id, release_at = GREATEST(held_names.release_at, EXCLUDED.release_at)`, values);
-  const row = (await client.query('SELECT * FROM addresses WHERE owner_id = $1 FOR UPDATE', [ownerId])).rows[0];
-  if (row) {
-    // A name that never opened anything has no bookmarks to protect.
-    if (row.activated_at) await hold("VALUES ($1, $2::uuid, now() + interval '6 months')", [row.hostname, holdFor]);
-    await client.query(
-      `UPDATE addresses SET owner_id = NULL, secret_hash = encode(digest(gen_random_uuid()::text, 'sha256'), 'hex'),
-         state = 'revoked', reprovision = false, revocation_complete = (tunnel_id IS NULL AND dns_id IS NULL),
-         tunnel_token = NULL, lease_until = NULL, updated_at = now() WHERE id = $1`, [row.id]);
-  }
-  // Old names keep their own release dates, and stop redirecting now: the
-  // Worker releases them (removing their routes), and the hold keeps them.
+  const row = (await client.query('DELETE FROM addresses WHERE owner_id = $1 RETURNING *', [ownerId])).rows[0];
+  // A name that never opened anything has no bookmarks to protect.
+  if (row?.activated_at) await hold("VALUES ($1, $2::uuid, now() + interval '6 months')", [row.hostname, holdFor]);
+  // Old names keep their own release dates.
   await hold('SELECT hostname, $2::uuid, release_at FROM retired_names WHERE owner_id = $1', [ownerId, holdFor]);
-  await client.query('UPDATE retired_names SET owner_id = NULL, release_at = now() WHERE owner_id = $1', [ownerId]);
-  await client.query("DELETE FROM addresses WHERE owner_id IS NULL AND state = 'revoked' AND revocation_complete");
+  await client.query('DELETE FROM retired_names WHERE owner_id = $1', [ownerId]);
   return row || null;
 }
 async function locked(pool, fn) {
@@ -274,13 +261,12 @@ async function deleteAccount(pool, ownerId) {
 // their names held for their owners (who get them back by setting up again).
 async function releaseIdle(pool, days) {
   const idle = (await pool.query(
-    `SELECT owner_id FROM addresses WHERE owner_id IS NOT NULL AND activated_at IS NOT NULL AND state <> 'revoked'
-       AND last_seen_at < now() - make_interval(days => $1) LIMIT 20`, [days])).rows;
+    'SELECT owner_id FROM addresses WHERE activated_at IS NOT NULL AND last_seen_at < now() - make_interval(days => $1) LIMIT 20', [days])).rows;
   for (const { owner_id: ownerId } of idle) {
     await locked(pool, async client => {
       // Checked again under the lock, in case it came back.
       const still = await client.query(
-        "SELECT 1 FROM addresses WHERE owner_id = $1 AND state <> 'revoked' AND last_seen_at < now() - make_interval(days => $2)", [ownerId, days]);
+        'SELECT 1 FROM addresses WHERE owner_id = $1 AND last_seen_at < now() - make_interval(days => $2)', [ownerId, days]);
       if (still.rowCount) await letGo(client, ownerId, ownerId);
     });
   }
@@ -302,7 +288,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   // never passes a Google or Microsoft sign-in on to it.
   const claimed = async (row, ownerId, req) => {
     const included = await includedAi.forOwner(ownerId, { ip: req.ip });
-    return { state: shown(row), url: 'https://' + row.hostname, ...(included ? { included_ai: included } : {}), ...(await isAnonymous(db, ownerId) ? { anonymous: true } : {}) };
+    return { state: row.state, url: 'https://' + row.hostname, ...(included ? { included_ai: included } : {}), ...(await isAnonymous(db, ownerId) ? { anonymous: true } : {}) };
   };
   // The maintainer hears of each account's first personal URL through their
   // own Closedhand (lib/operator-notices.js), which no other account can
@@ -311,7 +297,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   const announce = async (first, ownerId, row) => {
     if (!first || !notices) return;
     const who = (await db.query('SELECT email, provider FROM owners WHERE id = $1', [ownerId])).rows[0] || {};
-    const n = (await db.query("SELECT count(DISTINCT owner_id)::int AS n FROM addresses WHERE state <> 'revoked'")).rows[0].n;
+    const n = (await db.query('SELECT count(*)::int AS n FROM addresses')).rows[0].n;
     const by = { google: 'Google', microsoft: 'Microsoft' }[who.provider] || who.provider || 'a sign-in';
     const signUp = who.provider === 'anonymous' ? 'new sign-up with an account number, no email,' : `new sign-up, ${who.email || 'no email'} (${by}),`;
     await notices.queue(`Closedhand: ${signUp} took ${row.hostname}. ${n} ${n === 1 ? 'person has' : 'people have'} a personal URL now.`)
@@ -322,10 +308,12 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   const perMinute = Number.parseInt(env.ADDRESS_RATE_PER_MINUTE || '120', 10);
   const hits = new Map();
   let total = 0, resetAt = 0;
-  // Switching new personal URLs off never stops anyone deleting their account.
+  // Switching new personal URLs off never stops anyone deleting their
+  // account, nor the personal URLs already working (connection, connected).
+  const UNAVAILABLE = 'Personal URLs are not available right now. You can still use Closedhand on the computer running it.';
   const wrap = (fn, { always = false } = {}) => async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    if (!always && !enabled()) return res.status(503).json({ error: 'Personal URLs are not available right now. You can still use Closedhand on the computer running it.' });
+    if (!always && !enabled()) return res.status(503).json({ error: UNAVAILABLE });
     const now = Date.now();
     if (now > resetAt) { hits.clear(); total = 0; resetAt = now + 60000; }
     const key = req.ip || '?', count = (hits.get(key) || 0) + 1;
@@ -345,24 +333,23 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const copy = installation(req);
     if (!copy) return null;
     const row = (await db.query('SELECT * FROM addresses WHERE secret_hash = $1', [copy.secret_hash])).rows[0];
-    return row && shown(row) !== 'revoked' ? { row, copy } : null;
+    return row ? { row, copy } : null;
   }
 
   app.post('/api/phone-enrollment/register', wrap(async (req, res) => {
-    const copy = installation(req), { name, port, confirm } = req.body || {};
+    const copy = installation(req), { name, confirm } = req.body || {};
     if (!copy) return res.status(401).json({ error: 'Closedhand could not be recognised. Update it on your computer and try again.' });
     // Copies from before confirmation codes could never finish.
     if (confirm !== 'code') return res.status(400).json({ error: 'Update Closedhand on your computer, then choose your personal URL again.' });
     // Asked without a name, the address gets one picked here.
     if (name === undefined || name === null || name === '') {
-      if (!Number.isInteger(port) || port < 1024 || port > 65535) return res.status(400).json({ error: 'Update Closedhand on your computer and try again.' });
-      return res.json({ ticket: ticketFor({ secret_hash: copy.secret_hash, hostname: await freeName(db), port, auto: true }, secret) });
+      return res.json({ ticket: ticketFor({ secret_hash: copy.secret_hash, hostname: await freeName(db), auto: true }, secret) });
     }
     const hostname = typeof name === 'string' ? name + '.closedhand.ai' : '';
-    if (!validHostname(hostname) || !Number.isInteger(port) || port < 1024 || port > 65535) {
+    if (!validHostname(hostname)) {
       return res.status(400).json({ error: 'Use 3 to 32 lowercase letters, numbers or hyphens. Start with a letter and end with a letter or number.' });
     }
-    res.json({ ticket: ticketFor({ secret_hash: copy.secret_hash, hostname, port }, secret) });
+    res.json({ ticket: ticketFor({ secret_hash: copy.secret_hash, hostname }, secret) });
   }));
 
   // What the confirmation page shows. Progress, and the code while it is
@@ -381,9 +368,9 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       // the name held for them.
       const hostname = t.auto ? mine?.hostname || await heldName(db, owner) || t.hostname : t.hostname;
       answer.url = 'https://' + hostname;
-      if (mine && mine.hostname === hostname && mine.secret_hash === t.secret_hash) answer.state = shown(mine);
+      if (mine && mine.hostname === hostname && mine.secret_hash === t.secret_hash) answer.state = mine.state;
       else {
-        if (mine?.hostname === hostname && mine.state !== 'revoked') answer.move = true;
+        if (mine?.hostname === hostname) answer.move = true;
         const waiting = (await db.query('SELECT code, hostname FROM approvals WHERE secret_hash = $1 AND owner_id = $2 AND expires_at > now()' + (t.auto ? '' : ' AND hostname = $3'),
           t.auto ? [t.secret_hash, owner] : [t.secret_hash, owner, t.hostname])).rows[0];
         const code = waiting && decryptString(waiting.code);
@@ -411,7 +398,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     if (mine && mine.hostname !== hostname) {
       throw new Refusal('This account already has a personal URL, ' + mine.hostname + '. To use it with this computer, choose ' + mine.hostname.split('.')[0] + ' in Closedhand.');
     }
-    if (mine && mine.secret_hash === t.secret_hash && mine.state !== 'revoked') return res.json({ state: shown(mine), url });
+    if (mine && mine.secret_hash === t.secret_hash) return res.json({ state: mine.state, url });
     if (!mine && (await nameTaken(db, hostname, owner))) throw new Refusal('That personal URL is already taken. Choose another name.');
     const copy = (await db.query('SELECT owner_id FROM addresses WHERE secret_hash = $1', [t.secret_hash])).rows[0];
     if (copy && copy.owner_id !== owner) throw new Refusal('This computer already has a personal URL on another account.');
@@ -420,11 +407,11 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     await db.query('DELETE FROM approvals WHERE expires_at < now()');
     // Confirming again replaces the waiting code.
     await db.query(
-      `INSERT INTO approvals (secret_hash, owner_id, hostname, web_port, code, expires_at) VALUES ($1, $2, $3, $4, $5, now() + interval '10 minutes')
-       ON CONFLICT (secret_hash) DO UPDATE SET owner_id = EXCLUDED.owner_id, hostname = EXCLUDED.hostname, web_port = EXCLUDED.web_port,
+      `INSERT INTO approvals (secret_hash, owner_id, hostname, code, expires_at) VALUES ($1, $2, $3, $4, now() + interval '10 minutes')
+       ON CONFLICT (secret_hash) DO UPDATE SET owner_id = EXCLUDED.owner_id, hostname = EXCLUDED.hostname,
          code = EXCLUDED.code, attempts = 0, expires_at = EXCLUDED.expires_at, created_at = now()`,
-      [t.secret_hash, owner, hostname, t.port, sealed]);
-    res.json({ state: 'awaiting-code', url, code, ...(mine && mine.state !== 'revoked' ? { move: true } : {}) });
+      [t.secret_hash, owner, hostname, sealed]);
+    res.json({ state: 'awaiting-code', url, code, ...(mine ? { move: true } : {}) });
   }));
 
   // The copy types in the code its owner was shown. Each try is counted
@@ -443,11 +430,11 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       return res.status(400).json({ error: 'That code did not match, so it no longer works. Claim it again on closedhand.com for a new code.' });
     }
     // One use: only the request that removes it goes on.
-    const used = await db.query('DELETE FROM approvals WHERE secret_hash = $1 AND code = $2 RETURNING owner_id, hostname, web_port', [copy.secret_hash, waiting.code]);
+    const used = await db.query('DELETE FROM approvals WHERE secret_hash = $1 AND code = $2 RETURNING owner_id, hostname', [copy.secret_hash, waiting.code]);
     if (!used.rowCount) return res.status(409).json({ error: 'Claim your personal URL on closedhand.com first. It then shows the code to type here.' });
     const a = used.rows[0];
     const first = !(await db.query('SELECT 1 FROM addresses WHERE owner_id = $1', [a.owner_id])).rowCount;
-    const row = await reserve(db, { ownerId: a.owner_id, secretHash: copy.secret_hash, hostname: a.hostname, port: a.web_port, limit });
+    const row = await reserve(db, { ownerId: a.owner_id, secretHash: copy.secret_hash, hostname: a.hostname, limit });
     await agreed(db, a.owner_id, req.body);
     await announce(first, a.owner_id, row);
     res.json(await claimed(row, a.owner_id, req));
@@ -466,9 +453,8 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   };
   for (const [provider, apps] of Object.entries(passedApps)) {
     app.post('/api/phone-enrollment/claim-' + provider, wrap(async (req, res) => {
-      const copy = installation(req), { idToken, port } = req.body || {};
+      const copy = installation(req), { idToken } = req.body || {};
       if (!copy) return res.status(401).json({ error: 'Closedhand could not be recognised. Update it on your computer and try again.' });
-      if (!Number.isInteger(port) || port < 1024 || port > 65535) return res.status(400).json({ error: 'Update Closedhand on your computer and try again.' });
       const ids = String(apps.ids || '').split(',').map(s => s.trim()).filter(id => apps.valid.test(id) && id !== apps.own);
       const claims = ids.length ? await verifyPassedSignIn(provider, idToken, { appIds: ids, request }) : null;
       const identity = claims && PROVIDERS[provider].identity(claims, claims.aud);
@@ -476,17 +462,15 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       // A computer whose personal URL belongs to an account made with an
       // account number keeps that account free of any sign-in: nothing is
       // made or kept for this one.
-      const theirs = (await db.query("SELECT owner_id FROM addresses WHERE secret_hash = $1 AND state <> 'revoked'", [copy.secret_hash])).rows[0];
+      const theirs = (await db.query('SELECT owner_id FROM addresses WHERE secret_hash = $1', [copy.secret_hash])).rows[0];
       if (theirs && await isAnonymous(db, theirs.owner_id)) return res.json({ state: 'unconfirmed', claimHere: true });
       const owner = await ownerFor(db, identity);
       const mine = (await db.query('SELECT * FROM addresses WHERE owner_id = $1', [owner])).rows[0];
-      if (mine && mine.secret_hash === copy.secret_hash && mine.state !== 'revoked') return res.json(await claimed(mine, owner, req));
-      const held = (await db.query('SELECT owner_id FROM addresses WHERE secret_hash = $1', [copy.secret_hash])).rows[0];
-      if ((mine && mine.state !== 'revoked') || (held && held.owner_id !== owner)) return res.json({ state: 'unconfirmed', claimHere: true });
-      const hostname = mine ? mine.hostname : await heldName(db, owner) || await freeName(db);
-      const row = await reserve(db, { ownerId: owner, secretHash: copy.secret_hash, hostname, port, limit });
+      if (mine && mine.secret_hash === copy.secret_hash) return res.json(await claimed(mine, owner, req));
+      if (mine || theirs) return res.json({ state: 'unconfirmed', claimHere: true });
+      const row = await reserve(db, { ownerId: owner, secretHash: copy.secret_hash, hostname: await heldName(db, owner) || await freeName(db), limit });
       await agreed(db, owner, req.body);
-      await announce(!mine, owner, row);
+      await announce(true, owner, row);
       res.json(await claimed(row, owner, req));
     }));
 
@@ -502,7 +486,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       const claims = ids.length ? await verifyPassedSignIn(provider, idToken, { appIds: ids, request }) : null;
       const identity = claims && PROVIDERS[provider].identity(claims, claims.aud);
       if (!identity) return res.status(400).json({ error: `The ${apps.name} sign-in could not be checked.` });
-      const held = (await db.query("SELECT owner_id FROM addresses WHERE secret_hash = $1 AND state <> 'revoked'", [copy.secret_hash])).rows[0];
+      const held = (await db.query('SELECT owner_id FROM addresses WHERE secret_hash = $1', [copy.secret_hash])).rows[0];
       if (!held) return res.status(409).json({ error: 'This computer has no personal URL yet.' });
       if (await isAnonymous(db, held.owner_id)) return res.status(409).json({ error: 'Your Closedhand account uses an account number, so no Google or Microsoft sign-in is added.' });
       res.json({ signIn: await addSignIn(db, held.owner_id, identity) });
@@ -519,20 +503,19 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   // expires discards the claim, and a claim never paid goes after a day.
   const dropOld = () => db.query("DELETE FROM anonymous_pending WHERE (state = 'waiting' AND created_at < now() - interval '1 day') OR (state = 'paid' AND created_at < now() - interval '30 days')");
   app.post('/api/phone-enrollment/claim-anonymous', wrap(async (req, res) => {
-    const copy = installation(req), { port, months } = req.body || {};
+    const copy = installation(req), { months } = req.body || {};
     if (!copy) return res.status(401).json({ error: 'Closedhand could not be recognised. Update it on your computer and try again.' });
-    if (!Number.isInteger(port) || port < 1024 || port > 65535) return res.status(400).json({ error: 'Update Closedhand on your computer and try again.' });
     if (req.body?.acceptedTerms !== true) return res.status(400).json({ error: 'Agree to the Terms and Privacy policy first.' });
     if (!ahead?.cryptoOn() || String(env.TOKEN_ENCRYPTION_KEY || '').length < 16) return res.status(503).json({ error: 'Using Closedhand anonymously isn\u2019t available just now. Please try again later.' });
     if (!ahead.CRYPTO_MONTHS.includes(months)) return res.status(400).json({ error: 'Choose 3, 6 or 9 months.' });
-    if ((await db.query("SELECT 1 FROM addresses WHERE secret_hash = $1 AND state <> 'revoked'", [copy.secret_hash])).rowCount) throw new Refusal('This computer already has a personal URL.');
-    const live = (await db.query("SELECT count(*)::int AS n FROM addresses WHERE state <> 'revoked' AND (activated_at IS NOT NULL OR created_at > now() - interval '24 hours')")).rows[0].n;
+    if ((await db.query('SELECT 1 FROM addresses WHERE secret_hash = $1', [copy.secret_hash])).rowCount) throw new Refusal('This computer already has a personal URL.');
+    const live = (await db.query("SELECT count(*)::int AS n FROM addresses WHERE activated_at IS NOT NULL OR created_at > now() - interval '24 hours'")).rows[0].n;
     if (live >= limit) throw new Refusal('Personal URLs are full for now. Try again later.');
     await dropOld();
     // Asking again starts over: one waiting claim a computer.
     await db.query("DELETE FROM anonymous_pending WHERE secret_hash = $1 AND state = 'waiting'", [copy.secret_hash]);
     const id = crypto.randomUUID();
-    await db.query('INSERT INTO anonymous_pending (id, secret_hash, web_port, months, terms_version) VALUES ($1, $2, $3, $4, $5)', [id, copy.secret_hash, port, months, TERMS_VERSION]);
+    await db.query('INSERT INTO anonymous_pending (id, secret_hash, months, terms_version) VALUES ($1, $2, $3, $4)', [id, copy.secret_hash, months, TERMS_VERSION]);
     let invoice;
     try { invoice = await ahead.invoiceForClaim(id, months); }
     catch (e) { await db.query('DELETE FROM anonymous_pending WHERE id = $1', [id]); throw e; }
@@ -558,7 +541,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const taken = (await db.query("DELETE FROM anonymous_pending WHERE id = $1 AND state = 'paid' RETURNING owner_id, number", [row.id])).rows[0];
     const number = taken && decryptString(taken.number);
     if (!number) return res.json({ state: 'none' });
-    const address = (await db.query("SELECT * FROM addresses WHERE owner_id = $1 AND state <> 'revoked'", [taken.owner_id])).rows[0];
+    const address = (await db.query('SELECT * FROM addresses WHERE owner_id = $1', [taken.owner_id])).rows[0];
     res.json({ ...(address ? await claimed(address, taken.owner_id, req) : { state: 'unconfirmed', anonymous: true }), accountNumber: accountNumber.grouped(number) });
   }, { always: true }));
   // The invoice settled: the account, its personal URL and its plan, made
@@ -576,7 +559,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       if (taken.terms_version) await db.query('UPDATE owners SET terms_version = $2, terms_accepted_at = $3 WHERE id = $1', [owner, taken.terms_version, taken.created_at]);
       let row = null;
       // Paid for, so made even past the limit on personal URLs (checked when asked).
-      try { row = await reserve(db, { ownerId: owner, secretHash: taken.secret_hash, hostname: await freeName(db), port: taken.web_port, limit: Infinity }); }
+      try { row = await reserve(db, { ownerId: owner, secretHash: taken.secret_hash, hostname: await freeName(db), limit: Infinity }); }
       catch (e) { if (!(e instanceof Refusal)) throw e; console.error('[addresses] a paid anonymous account without a personal URL:', e.message); }
       await ahead.grant(owner, months, paid);
       await db.query("UPDATE anonymous_pending SET state = 'paid', owner_id = $2, number = $3 WHERE id = $1", [claimId, owner, encryptString(number)]);
@@ -625,36 +608,48 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     if (!validHostname(hostname)) {
       return res.status(400).json({ error: 'Use 3 to 32 letters, numbers or hyphens, starting with a letter. A few names, like admin and mail, are kept back.' });
     }
-    const { row, until } = await rename(db, { secretHash: copy.secret_hash, hostname });
-    res.json({ state: shown(row), url: 'https://' + row.hostname, ...(until ? { redirectUntil: until } : {}) });
+    const row = await rename(db, { secretHash: copy.secret_hash, hostname });
+    res.json({ state: row.state, url: 'https://' + row.hostname });
   }));
 
-  app.get('/api/phone-enrollment/connection', wrap(async (req, res) => {
+  // The relay the computers take their personal URLs at, as closedhand.com
+  // names it to them: where to reach it, its own name and the fingerprint
+  // of its certificate (so no other server can pose as it), and the key
+  // passes are signed with.
+  function relaySettings() {
+    const address = String(env.RELAY_ADDRESS || '').trim(), controlHost = String(env.RELAY_CONTROL_HOST || '').trim(), pin = String(env.RELAY_PIN || '').trim();
+    let passKey = null;
+    try { passKey = crypto.createPrivateKey(String(env.RELAY_PASS_PRIVATE_KEY || '').replace(/\\n/g, '\n')); } catch (_) { /* not set */ }
+    if (!/^[a-z0-9.-]+:\d{1,5}$/.test(address) || !/^[a-z0-9.-]+$/.test(controlHost) || !/^[A-Za-z0-9_-]{43}$/.test(pin) || passKey?.asymmetricKeyType !== 'ed25519') return null;
+    return { address, controlHost, pin, passKey };
+  }
+
+  // What the computer needs to take its personal URL at the relay: a pass
+  // for it and the computer's own key, and the relay to show it to. A
+  // computer whose address is not yet active then proves it answers there
+  // (connected); an active one asks again before its pass runs out. Answered
+  // even with new personal URLs switched off, as a pass lasts a day and the
+  // personal URLs already working need the next one.
+  app.post('/api/phone-enrollment/connection', wrap(async (req, res) => {
+    const key = req.body?.key;
+    if (!computerKey(key)) return res.status(400).json({ error: 'Update Closedhand on your computer and try again.' });
     const found = await owned(req);
     if (!found) return res.json({ state: 'unconfirmed' });
     const { row } = found;
-    if (!['connecting', 'active'].includes(row.state)) return res.json({ state: shown(row) });
-    // The key that opens the route is kept here only until its computer
-    // proves it is connected (connected, below); after that the computer's
-    // saved one is the only copy. A computer that has lost it (lost=1) has
-    // the route built again, which fetches the key from Cloudflare once more.
-    if (row.state === 'active' && !row.tunnel_token) {
-      if (req.query.lost !== '1') return res.json({ state: 'active', url: 'https://' + row.hostname });
-      const again = (await db.query(
-        "UPDATE addresses SET state = 'pending', lease_until = NULL, updated_at = now() WHERE id = $1 AND state = 'active' AND tunnel_token IS NULL RETURNING *",
-        [row.id])).rows[0];
-      return res.json({ state: shown(again || row) });
+    const relay = relaySettings();
+    if (!relay) {
+      console.error('[addresses] RELAY_ADDRESS, RELAY_CONTROL_HOST, RELAY_PIN and RELAY_PASS_PRIVATE_KEY are not all set');
+      return res.status(503).json({ error: UNAVAILABLE });
     }
-    const token = decryptString(row.tunnel_token);
-    if (!token || token.length < 30) throw new Error('Missing connection');
-    res.json({ state: row.state, url: 'https://' + row.hostname, token });
-  }));
+    res.json({ state: row.state === 'active' ? 'active' : 'connecting', url: 'https://' + row.hostname, pass: passFor(row.hostname, key, relay.passKey),
+      relay: { address: relay.address, controlHost: relay.controlHost, pin: relay.pin } });
+  }, { always: true }));
 
-  // The copy says it is connected. Check by asking it, through the new
-  // address, to sign a fresh challenge with the secret only it holds.
+  // The copy says it is connected. Check by asking it, through the relay at
+  // its address, to sign a fresh challenge with the secret only it holds.
   app.post('/api/phone-enrollment/connected', wrap(async (req, res) => {
     const found = await owned(req);
-    if (!found || !['connecting', 'active'].includes(found.row.state)) return res.status(409).json({ error: 'Your personal URL is not ready yet.' });
+    if (!found) return res.status(409).json({ error: 'Your personal URL is not ready yet.' });
     const { row, copy } = found;
     const nonce = crypto.randomBytes(32).toString('hex');
     let proof = null;
@@ -664,12 +659,13 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     } catch (_) { /* not reachable yet */ }
     const expected = crypto.createHmac('sha256', copy.secret).update('closedhand-address:' + nonce).digest('hex');
     if (!equal(proof, expected)) return res.status(409).json({ error: 'Waiting for this computer to connect. Please try again shortly.' });
+    // Only for the name it answered at: a rename meanwhile waits for its own proof.
     const updated = await db.query(
-      "UPDATE addresses SET state = 'active', tunnel_token = NULL, activated_at = COALESCE(activated_at, now()), last_seen_at = now(), updated_at = now() WHERE id = $1 AND secret_hash = $2 AND state IN ('connecting', 'active') RETURNING id",
-      [row.id, row.secret_hash]);
+      "UPDATE addresses SET state = 'active', activated_at = COALESCE(activated_at, now()), last_seen_at = now(), updated_at = now() WHERE id = $1 AND secret_hash = $2 AND hostname = $3 RETURNING id",
+      [row.id, row.secret_hash, row.hostname]);
     if (!updated.rowCount) throw new Error('Address changed while connecting');
     res.json({ state: 'active' });
-  }));
+  }, { always: true }));
 
   // A Closedhand account is the Google or Microsoft sign-in that confirmed a
   // personal URL, and it holds that personal URL and nothing else. The
@@ -822,8 +818,8 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
       if (owner) {
         person = (await db.query('SELECT provider, email, email_verified FROM owners WHERE id = $1', [owner])).rows[0];
         if (person) ({ provider, email } = person), emailVerified = person.email_verified === true;
-        const row = person && (await db.query('SELECT hostname, state, reprovision FROM addresses WHERE owner_id = $1', [owner])).rows[0];
-        if (row && shown(row) !== 'revoked' && validHostname(row.hostname)) address = row.hostname;
+        const row = person && (await db.query('SELECT hostname, state FROM addresses WHERE owner_id = $1', [owner])).rows[0];
+        if (row && validHostname(row.hostname)) address = row.hostname;
         if (row?.state === 'active' && validHostname(row.hostname)) url = 'https://' + row.hostname;
       }
       // A sign-in whose account was deleted is no sign-in at all.
@@ -838,36 +834,20 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     }
   });
 
-  // The Cloudflare Worker that builds routes. It receives routing jobs only,
-  // never owners or anything else about them. It has its own gate: switching
-  // new addresses off, or a flood of other traffic, must not stop it from
-  // finishing or removing routes.
-  const job = fn => async (req, res) => {
-    res.set('Cache-Control', 'no-store');
-    if (!env.PHONE_PROVISIONER_SECRET || !equal(req.headers.authorization, 'Bearer ' + env.PHONE_PROVISIONER_SECRET)) {
-      return res.status(401).json({ error: 'Unauthorised' });
-    }
-    try { await fn(req, res); }
-    catch (e) { console.error('[addresses] job:', e.message); res.status(503).json({ error: 'Job unavailable' }); }
-  };
-  // A reservation that has not worked within a day is released: its route,
-  // if any, is removed by the Worker first, then the row goes. Held names
-  // are freed when their six months are up. Unused addresses are let go,
-  // but only while the Worker's last-seen reports are current (seenAt), so
-  // a broken report can never make every address look unused. A sign-in
-  // that holds nothing, a day on, is forgotten: an account exists only
-  // while it has a personal URL (or a name held for it), or while its
-  // a subscription runs, so a subscription never outlives its account.
+  // Tidying up, each hour (server.js). A reservation that has not worked
+  // within a day is released, and names held or retired are freed when their
+  // six months are up. Unused addresses are let go, but only while the
+  // relay's reports are current (relay-seen, below), so a relay that stops
+  // reporting can never make every address look unused. A sign-in that
+  // holds nothing, a day on, is forgotten: an account exists only while it
+  // has a personal URL (or a name held for it), or while a subscription or a
+  // plan paid ahead runs, so neither ever outlives its account.
   const idleDays = Number.parseInt(env.ADDRESS_IDLE_DAYS || '90', 10);
-  let seenAt = 0;
-  async function releaseStale() {
-    await db.query(
-      `UPDATE addresses SET state = 'revoked', revocation_complete = (tunnel_id IS NULL AND dns_id IS NULL), lease_until = NULL, updated_at = now()
-       WHERE activated_at IS NULL AND state IN ('pending', 'provisioning', 'connecting', 'error')
-         AND created_at < now() - interval '24 hours' AND (lease_until IS NULL OR lease_until < now())`);
-    await db.query("DELETE FROM addresses WHERE (activated_at IS NULL OR owner_id IS NULL) AND state = 'revoked' AND revocation_complete");
+  async function sweep() {
+    await db.query("DELETE FROM addresses WHERE activated_at IS NULL AND created_at < now() - interval '24 hours'");
     await db.query('DELETE FROM held_names WHERE release_at <= now()');
-    if (Date.now() - seenAt < 3 * 3600000) await releaseIdle(db, idleDays);
+    await db.query('DELETE FROM retired_names WHERE release_at <= now()');
+    if ((await db.query("SELECT 1 FROM relay_seen WHERE seen_at > now() - interval '3 hours'")).rowCount) await releaseIdle(db, idleDays);
     await db.query(
       `DELETE FROM owners o WHERE o.updated_at < now() - interval '1 day'
          AND NOT EXISTS (SELECT 1 FROM addresses a WHERE a.owner_id = o.id)
@@ -877,112 +857,35 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
          AND NOT EXISTS (SELECT 1 FROM plus_subscriptions s WHERE s.owner_id = o.id AND s.status IN ('active', 'trialing', 'past_due'))
          AND NOT EXISTS (SELECT 1 FROM ahead_plans p WHERE p.owner_id = o.id AND p.ended_at IS NULL AND p.ends_at > now())`);
   }
-  // When each address's computer was last connected, from Cloudflare's
-  // record of its tunnel, reported by the Worker every hour.
-  app.post('/api/phone-enrollment/jobs/seen', job(async (req, res) => {
-    const tunnels = Array.isArray(req.body?.tunnels) ? req.body.tunnels.slice(0, 5000) : null;
-    if (!tunnels) return res.status(400).json({ error: 'Invalid report' });
-    const valid = tunnels.filter(t => uuid.test(t?.address || '') && uuid.test(t?.tunnel || '') && Number.isFinite(Date.parse(t?.seen)));
-    const seen = valid.map(t => new Date(Math.min(Date.parse(t.seen), Date.now())));
-    const matched = (await db.query(
-      `UPDATE addresses a SET last_seen_at = GREATEST(a.last_seen_at, s.seen)
-       FROM unnest($1::uuid[], $2::uuid[], $3::timestamptz[]) AS s(address, tunnel, seen)
-       WHERE a.id = s.address AND a.tunnel_id = s.tunnel`,
-      [valid.map(t => t.address), valid.map(t => t.tunnel), seen])).rowCount;
-    const working = (await db.query(
-      "SELECT count(*)::int AS n FROM addresses WHERE activated_at IS NOT NULL AND tunnel_id IS NOT NULL AND state <> 'revoked'")).rows[0].n;
-    // Current only when it covers most working addresses.
-    if (matched >= Math.ceil(working / 2)) seenAt = Date.now();
-    res.json({ matched, working });
-  }));
-  app.post('/api/phone-enrollment/jobs/lease', job(async (req, res) => {
-    await releaseStale();
-    const row = (await db.query(
-      `UPDATE addresses SET state = CASE WHEN state = 'revoked' THEN 'revoked' ELSE 'provisioning' END,
-         attempt_id = gen_random_uuid(), lease_until = now() + interval '3 minutes', updated_at = now()
-       WHERE id = (SELECT id FROM addresses
-                   WHERE (state IN ('pending', 'provisioning', 'error') OR (state = 'revoked' AND NOT revocation_complete))
-                     AND (lease_until IS NULL OR lease_until < now())
-                   ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)
-       RETURNING *`)).rows[0];
-    // A revoked address moving to another computer keeps its tunnel and
-    // route; any other revoked address is taken down completely.
-    res.json({ job: row ? { id: row.id, hostname: row.hostname, port: row.web_port, attempt: row.attempt_id, tunnelId: row.tunnel_id, dnsId: row.dns_id,
-      revoked: row.state === 'revoked', teardown: row.state === 'revoked' && !row.reprovision } : null });
-  }));
-  // Renamed addresses, for the Worker. Old names whose redirect it has not
-  // set up; old names past their thirty days, whose own route it removes
-  // (the catch-all record then brings visitors to the moved page); and old
-  // names due for release, which it forgets entirely.
-  app.post('/api/phone-enrollment/jobs/moves', job(async (req, res) => {
-    const announce = (await db.query(
-      'SELECT hostname, redirect_to, redirect_until, release_at FROM retired_names WHERE NOT announced AND release_at > now() ORDER BY created_at LIMIT 20')).rows;
-    const remove = (await db.query(
-      'SELECT hostname, dns_id FROM retired_names WHERE redirect_until <= now() AND NOT dns_removed AND release_at > now() ORDER BY redirect_until LIMIT 20')).rows;
-    const release = (await db.query(
-      'SELECT hostname, dns_id, dns_removed FROM retired_names WHERE release_at <= now() ORDER BY release_at LIMIT 20')).rows;
-    res.json({ moves: [
-      ...announce.map(r => ({ hostname: r.hostname, to: r.redirect_to, until: r.redirect_until.toISOString(), release: r.release_at.toISOString() })),
-      ...remove.map(r => ({ hostname: r.hostname, dnsId: r.dns_id, remove: true })),
-      ...release.map(r => ({ hostname: r.hostname, dnsId: r.dns_removed ? null : r.dns_id, release: true })),
-    ] });
-  }));
-  app.post('/api/phone-enrollment/jobs/moves/done', job(async (req, res) => {
-    const { hostname, to, removed, released } = req.body || {};
-    const name = /^[a-z][a-z0-9-]{1,30}[a-z0-9]\.closedhand\.ai$/;
-    if (!name.test(hostname || '') || (!removed && !released && !name.test(to || ''))) return res.status(400).json({ error: 'Invalid move' });
-    // An announcement counts only for the destination it announced. A
-    // released name's row goes: nothing is left linking it to its owner.
-    const done = released
-      ? await db.query('DELETE FROM retired_names WHERE hostname = $1 AND release_at <= now()', [hostname])
-      : removed
-        ? await db.query('UPDATE retired_names SET dns_removed = true WHERE hostname = $1 AND redirect_until <= now()', [hostname])
-        : await db.query('UPDATE retired_names SET announced = true WHERE hostname = $1 AND redirect_to = $2', [hostname, to]);
-    res.json({ ok: done.rowCount > 0 });
-  }));
-  // How many DNS records personal URLs use, counted by the Worker. Past the
-  // alert level the operator is emailed (alerts.js).
-  app.post('/api/phone-enrollment/jobs/usage', job(async (req, res) => {
-    const count = req.body?.dnsRecords;
-    if (!Number.isInteger(count) || count < 0 || count > 1000000) return res.status(400).json({ error: 'Invalid usage' });
-    res.json(await reportDnsRecords(db, env, count, request));
-  }));
 
-  app.post('/api/phone-enrollment/jobs/checkpoint', job(async (req, res) => {
-    const { id, attempt, tunnelId, dnsId, token, error: failed, revoked } = req.body || {};
-    if (!uuid.test(id || '') || !uuid.test(attempt || '') || (tunnelId && !uuid.test(tunnelId)) || (dnsId && !/^[a-f0-9]{32}$/.test(dnsId))) {
-      return res.status(400).json({ error: 'Invalid checkpoint' });
+  // The relay's report, each minute, of the personal URLs whose computer is
+  // connected to it now (relay/main.js): when each was last online, for the
+  // insights page and for letting unused ones go. Only hostnames reach here,
+  // never anything about their owners. It carries its own secret, and
+  // switching new personal URLs off never stops it.
+  app.post('/jobs/relay-seen', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!env.RELAY_REPORT_SECRET || !equal(req.headers.authorization, 'Bearer ' + env.RELAY_REPORT_SECRET)) return res.status(401).json({ error: 'Unauthorised' });
+    const connected = req.body?.connected;
+    if (!Array.isArray(connected) || connected.length > MAX_REPORTED) return res.status(400).json({ error: 'Invalid report' });
+    try {
+      const names = [...new Set(connected.filter(validHostname))];
+      const seen = names.length ? (await db.query("UPDATE addresses SET last_seen_at = now() WHERE state = 'active' AND hostname = ANY($1::text[])", [names])).rowCount : 0;
+      // Current only when it finds a computer connected: a relay reporting
+      // nobody, broken or just restarted, leaves every address as it was.
+      if (seen) await db.query('INSERT INTO relay_seen (id, seen_at) VALUES (true, now()) ON CONFLICT (id) DO UPDATE SET seen_at = EXCLUDED.seen_at');
+      // A name still connected at the relay that belongs to nobody now (let
+      // go, renamed, its account deleted): the relay drops it at once rather
+      // than when its pass runs out.
+      const known = names.length ? new Set((await db.query('SELECT hostname FROM addresses WHERE hostname = ANY($1::text[])', [names])).rows.map(r => r.hostname)) : new Set();
+      res.json({ seen, drop: names.filter(n => !known.has(n)) });
+    } catch (e) {
+      console.error('[addresses] relay report:', e.message);
+      res.status(503).json({ error: 'Report unavailable' });
     }
-    if (revoked) {
-      // A personal URL moving to another copy is built again straight away.
-      const done = await db.query(
-        `UPDATE addresses SET tunnel_token = NULL, updated_at = now(),
-           state = CASE WHEN reprovision THEN 'pending' ELSE 'revoked' END, revocation_complete = NOT reprovision,
-           lease_until = CASE WHEN reprovision THEN NULL ELSE lease_until END, reprovision = false
-         WHERE id = $1 AND attempt_id = $2 AND state = 'revoked' AND lease_until > now() RETURNING id`,
-        [id, attempt]);
-      // An address let go has nothing left once its route is down.
-      if (done.rowCount) await db.query("DELETE FROM addresses WHERE id = $1 AND owner_id IS NULL AND state = 'revoked' AND revocation_complete", [id]);
-      return done.rowCount ? res.json({ ok: true }) : res.status(409).json({ error: 'Revocation lease changed' });
-    }
-    const set = ['updated_at = now()'], values = [id, attempt];
-    const add = (sql, value) => { values.push(value); set.push(sql.replace('?', '$' + values.length)); };
-    if (tunnelId) add('tunnel_id = ?', tunnelId);
-    if (dnsId) add('dns_id = ?', dnsId);
-    if (failed) set.push("state = 'error'", "lease_until = now() + interval '1 minute'");
-    if (token) {
-      if (typeof token !== 'string' || token.length < 30 || token.length > 8192 || !tunnelId || !dnsId || tokenTunnel(token) !== tunnelId) {
-        return res.status(400).json({ error: 'Invalid connection' });
-      }
-      const sealed = encryptString(token);
-      if (!sealed?.startsWith('enc:v1:')) throw new Error('Encryption unavailable');
-      add('tunnel_token = ?', sealed);
-      set.push("state = 'connecting'", 'lease_until = NULL');
-    }
-    const done = await db.query(
-      `UPDATE addresses SET ${set.join(', ')} WHERE id = $1 AND attempt_id = $2 AND state = 'provisioning' AND lease_until > now() RETURNING id`, values);
-    done.rowCount ? res.json({ ok: true }) : res.status(409).json({ error: 'Job lease expired or revoked' });
-  }));
+  });
+
+  return { sweep };
 }
 
-module.exports = { TERMS_VERSION, register, reserve, rename, deleteAccount, releaseIdle, heldName, nameTaken, freeName, ticketFor, readTicket, installation, validHostname, tokenTunnel, Refusal };
+module.exports = { TERMS_VERSION, register, reserve, rename, deleteAccount, releaseIdle, heldName, nameTaken, freeName, ticketFor, readTicket, installation, validHostname, computerKey, passFor, Refusal };
