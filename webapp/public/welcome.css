@@ -62,6 +62,9 @@ dialog.hello-screen::backdrop { background: var(--bg); }
 .dashboard-help-menu { position: absolute; right: 0; top: 2.625rem; width: 11.25rem; padding: 0.375rem; background: var(--raised); border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.5rem; box-shadow: 0 0.5rem 1.75rem var(--lift); }
 .dashboard-help-menu :is(a,button) { display: block; width: 100%; padding: 0.625rem 0.75rem; font: 400 var(--ui-label)/1.4 var(--font-ui); text-align: left; color: var(--ui-text); background: none; border: 0; border-radius: 0.25rem; text-decoration: none; cursor: pointer; }
 .dashboard-help-menu :is(a,button):hover { background: rgba(var(--fg-rgb),0.16); }
+/* Whose account: the email it signs in with, above what can be done with it. */
+.dashboard-help-menu .dashboard-menu-who { margin: 0 0 0.25rem; padding: 0.5rem 0.75rem 0.625rem; font: 400 var(--ui-label)/1.4 var(--font-ui); color: var(--ui-muted); overflow-wrap: anywhere; border-bottom: 1px solid rgba(var(--fg-rgb),0.1); }
+#dashboard-account .dashboard-help-menu { width: max-content; min-width: 11.25rem; max-width: min(20rem, calc(100vw - 2rem)); }
 .tour-panel { position: fixed; inset: auto; margin: 0; padding: 1rem; width: min(20rem, calc(100vw - 2rem)); max-height: calc(100dvh - 1.5rem); overflow: visible; border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 0.625rem; background: var(--raised); color: var(--ui-text); box-shadow: 0 0.5rem 1.75rem var(--lift); font: 400 var(--ui-body)/1.5 var(--font-ui); }
 .tour-panel::before { content: ''; position: absolute; top: -0.4375rem; left: calc(var(--tour-pointer, 1.875rem) - 0.375rem); width: 0.75rem; height: 0.75rem; transform: rotate(45deg); background: inherit; border-top: inherit; border-left: inherit; }
 .tour-panel:popover-open { animation: ch-arrive 160ms ease-out; }

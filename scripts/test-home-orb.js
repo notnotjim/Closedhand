@@ -70,31 +70,48 @@ test("every page's header says Sign in, or Open dashboard and Sign out, and Sign
   const script = read('closedhand-com/public/account-nav.js');
   async function header({ kept = null, account = null }) {
     const store = new Map(kept ? [['closedhand-personal-url', kept]] : []);
-    const made = [];
-    const link = { href: '/open', textContent: 'Sign in', hidden: false, attrs: { 'aria-current': 'page' }, removeAttribute(k) { delete this.attrs[k]; }, after(n) { made.push(n); } };
-    const node = (tag) => ({ tag, children: [], listeners: {}, append(...c) { this.children.push(...c); }, addEventListener(t, fn) { this.listeners[t] = fn; } });
+    const made = [], appended = [];
+    const link = { href: '/open', textContent: 'Sign in', hidden: false, attrs: { 'aria-current': 'page' }, removeAttribute(k) { delete this.attrs[k]; },
+      after(n) { made.push(n); }, parentNode: { append(n) { appended.push(n); } } };
+    const node = (tag) => ({ tag, children: [], listeners: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, append(...c) { this.children.push(...c); }, addEventListener(t, fn) { this.listeners[t] = fn; } });
+    const all = () => [...made, ...appended];
     vm.runInNewContext(script, {
-      document: { querySelector: () => link, getElementById: (id) => made.find((n) => n.id === id) || null, createElement: node },
+      document: { querySelector: () => link, getElementById: (id) => all().find((n) => n.id === id) || null, createElement: node, addEventListener() {} },
       localStorage: { getItem: (k) => store.get(k) ?? null, removeItem: (k) => store.delete(k) },
       fetch: async () => ({ ok: true, json: async () => account || { signedIn: false } }),
     });
     await new Promise((r) => setTimeout(r, 0));
-    return { link, out: made[0], store };
+    const menu = appended[0];
+    const list = menu && menu.children[1];
+    const find = (tag) => list && list.children.find((c) => c.tag === tag);
+    return { link, signIn: made[0], menu, who: find('p'), mine: find('a'), out: find('form'), store };
   }
   const out = await header({});
   assert.equal(out.link.textContent, 'Sign in');
-  assert.equal(out.out, undefined, 'signed out: no Sign out');
-  const signedIn = await header({ account: { signedIn: true, url: 'https://amber-fox-42.closedhand.ai' } });
+  assert.equal(out.menu, undefined, 'signed out: no account menu');
+  assert.equal(out.signIn, undefined);
+  const signedIn = await header({ account: { signedIn: true, email: 'mira@example.com', url: 'https://amber-fox-42.closedhand.ai' } });
   assert.equal(signedIn.link.textContent, 'Open dashboard');
   assert.equal(signedIn.link.href, 'https://amber-fox-42.closedhand.ai/dashboard');
+  assert.equal(signedIn.menu.tag, 'details', 'the account menu, last in the header');
+  assert.equal(signedIn.who.textContent, 'mira@example.com', 'it says who is signed in');
+  assert.equal(signedIn.mine.href, '/account');
+  assert.equal(signedIn.mine.textContent, 'My Account');
   assert.equal(signedIn.out.action, '/logout');
   assert.equal(signedIn.out.children[0].textContent, 'Sign out');
+  assert.equal(signedIn.signIn, undefined);
+  const number = await header({ account: { signedIn: true, email: null, url: 'https://amber-fox-42.closedhand.ai' } });
+  assert.equal(number.who, undefined, 'an account number has no email to show');
   const kept = await header({ kept: 'https://amber-fox-42.closedhand.ai' });
   assert.equal(kept.link.textContent, 'Open dashboard', 'an address this browser keeps opens too');
-  kept.out.listeners.submit();
-  assert.equal(kept.store.has('closedhand-personal-url'), false, 'Sign out forgets it');
-  const unset = await header({ account: { signedIn: true, url: null } });
-  assert.equal(unset.link.hidden, true, 'signed in with no address: only the way out');
+  assert.equal(kept.menu, undefined, 'nobody signed in: no Sign out');
+  assert.equal(kept.signIn.textContent, 'Sign in');
+  assert.equal(kept.signIn.href, '/account');
+  const keptSignedIn = await header({ kept: 'https://amber-fox-42.closedhand.ai', account: { signedIn: true, email: 'mira@example.com', url: 'https://amber-fox-42.closedhand.ai' } });
+  keptSignedIn.out.listeners.submit();
+  assert.equal(keptSignedIn.store.has('closedhand-personal-url'), false, 'Sign out forgets it');
+  const unset = await header({ account: { signedIn: true, email: 'mira@example.com', url: null } });
+  assert.equal(unset.link.hidden, true, 'signed in with no address: only the account menu');
   assert.equal(unset.out.children[0].textContent, 'Sign out');
   assert.match(read('closedhand-com/public/account.js'), /querySelector\('form\[action\^="\/logout"\]'\)\.addEventListener\('submit'/, "the Account page's Sign out forgets it too");
 });

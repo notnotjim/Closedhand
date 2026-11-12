@@ -2171,6 +2171,7 @@
       <details class="dashboard-help" id="dashboard-account">
         <summary aria-label="Your account" title="Your account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c1.2-3.6 4-5.5 7-5.5s5.8 1.9 7 5.5"/></svg></summary>
         <div class="dashboard-help-menu">
+          <p class="dashboard-menu-who" id="dashboard-account-who" hidden></p>
           <a href="#account" onclick="this.closest('details').open = false; openMyAccount(); return false;">My Account</a>
           <a href="/logout" class="logout-link">Sign out</a>
         </div>
@@ -10779,6 +10780,24 @@
         .then(function () { (window.parent !== window ? window.top : window).location.href = '/'; });
     });
   });
+  // The account menu says whose Closedhand account this is, by the email it
+  // signs in with, as most apps' account menus do; an account made with an
+  // account number has no email, so says nothing. Asked the first time the
+  // menu opens.
+  (function () {
+    var menu = document.getElementById('dashboard-account'), asked = false;
+    if (!menu) return;
+    menu.addEventListener('toggle', function () {
+      if (!menu.open || asked) return;
+      asked = true;
+      fetch('/api/phone/account', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+        var email = d && d.account && !d.account.anonymous ? d.account.email : '';
+        var who = document.getElementById('dashboard-account-who');
+        who.textContent = email || '';
+        who.hidden = !email;
+      }).catch(function () { asked = false; });
+    });
+  })();
   // The toolbar's menus close when anything else is clicked.
   document.addEventListener('click', function (e) {
     document.querySelectorAll('.dashboard-help[open]').forEach(function (menu) { if (!menu.contains(e.target)) menu.open = false; });
