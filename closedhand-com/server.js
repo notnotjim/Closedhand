@@ -145,7 +145,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   require('./lib/bugs').register(app, { db, secret: env.BUG_RECEIPT_SECRET || secret });
   const messages = require('./lib/messages').create({ db, notices });
   messages.register(app);
-  require('./lib/insights').register(app, { db, sessions, render, env, request, includedAi });
+  require('./lib/insights').register(app, { db, sessions, render, env, request, includedAi, backup });
 
   // The assistant email relay and the worker that moves its mail through
   // Amazon SES (lib/assistant-mail-*.js). A worker that cannot start leaves

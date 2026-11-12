@@ -1,10 +1,13 @@
-// A private page for whoever runs closedhand.com: everything closedhand.com
+// A private page for whoever runs closedhand.com, everything needed to run
+// Closedhand in one place: what needs them now (lib/needs.js), money in and
+// out, the uncensored LLM, people, growth, and everything closedhand.com
 // already holds for its own work, totals and each person's row, plus GitHub's
 // public counts. closedhand.com collects little (see the privacy page), so all
 // of it is shown. Anyone not signed in with an email in OPERATOR_EMAILS that
 // Google has verified gets the ordinary not-found page, so the page doesn't
 // show that it exists.
 const { fairUseMonth } = require('./months');
+const { needsOf } = require('./needs');
 
 const REPO = 'notnotjim/Closedhand';
 const INSTALL_SCRIPT = `https://raw.githubusercontent.com/${REPO}/main/install.sh`;
@@ -12,8 +15,10 @@ const INSTALL_SCRIPT = `https://raw.githubusercontent.com/${REPO}/main/install.s
 // records (see alerts.js).
 const DNS_CEILING = 190;
 const GITHUB_TTL = 15 * 60000;
+// The workflows on main whose last run the page shows.
+const WORKFLOWS = { checks: 'Checks', mac: 'Build desktop app', images: 'Build self-host images' };
 
-function register(app, { db, sessions, render, env = process.env, request = fetch, includedAi = null }) {
+function register(app, { db, sessions, render, env = process.env, request = fetch, includedAi = null, backup = null }) {
   const operators = new Set(String(env.OPERATOR_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
   const limit = Number.parseInt(env.ADDRESS_LIMIT || '100', 10);
   const misuse = require('./misuse').create({ db, env, includedAi, request });
@@ -60,12 +65,19 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
         if (!response.ok) throw new Error('GitHub answered ' + response.status);
         return response.json();
       };
-      const [repo, releases] = await Promise.all([get(''), get('/releases?per_page=100')]);
-      const mac = releases.filter(r => !r.draft).map(r => ({
-        version: r.tag_name,
+      const [repo, releases, runs] = await Promise.all([get(''), get('/releases?per_page=100'), get('/actions/runs?branch=main&per_page=50').catch(() => null)]);
+      const mac = releases.filter(r => !r.draft && !r.prerelease).map(r => ({
+        version: r.tag_name, at: r.published_at || null,
         downloads: (r.assets || []).filter(a => /\.dmg$/i.test(a.name)).reduce((n, a) => n + (a.download_count || 0), 0),
       }));
-      github = { stars: repo.stargazers_count || 0, forks: repo.forks_count || 0, macTotal: mac.reduce((n, r) => n + r.downloads, 0), macLatest: mac[0] || null };
+      // Each workflow's last finished run on main, and whether another is running now.
+      const last = {};
+      for (const [key, name] of Object.entries(WORKFLOWS)) {
+        const all = ((runs && runs.workflow_runs) || []).filter(r => r.name === name);
+        const done = all.find(r => r.status === 'completed');
+        last[key] = done ? { conclusion: done.conclusion, at: done.updated_at || done.created_at, sha: String(done.head_sha || '').slice(0, 7), url: done.html_url, running: all.some(r => r.status !== 'completed') } : null;
+      }
+      github = { stars: repo.stargazers_count || 0, forks: repo.forks_count || 0, macTotal: mac.reduce((n, r) => n + r.downloads, 0), macLatest: mac[0] || null, runs: runs ? last : null };
     } catch (e) {
       console.error('[insights] GitHub counts unavailable:', e.message);
       github = null;
@@ -86,6 +98,51 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
     const read = (what, promise) => promise.catch(e => { console.error(`[insights] ${what} unavailable:`, e.message); return null; });
     const [spend, credit] = await Promise.all([read('spend', includedAi.spendSplit(mine)), read('credit', includedAi.credit())]);
     return (near = { spentThisMonth: spend ? spend.others : null, spentYou: spend ? spend.you : null, ownUse: spend ? spend.own : null, credit, provider: includedAi.label });
+  }
+
+  // How what Closedhand runs on is doing, read at most every five minutes:
+  // closedhand.com's NEAR AI sign-in, crypto payments being followed on the
+  // networks invoices offer, the newest backup, and this month's card
+  // payments at Polar, the maintainer's own left out. A part that can't be
+  // read says so instead of failing the page.
+  let health = null, healthAt = 0;
+  async function healthOf(mine) {
+    if (health && Date.now() - healthAt < 5 * 60000) return health;
+    healthAt = Date.now();
+    const near = includedAi && includedAi.label === 'NEAR AI' ? await db.query('SELECT expires_at, failed_at FROM near_session WHERE id = 1')
+      .then(r => { const row = r.rows[0]; return { signedIn: !!row && !row.failed_at, until: row ? row.expires_at : null, failedAt: row ? row.failed_at : null }; })
+      .catch(() => ({ signedIn: false, until: null, failedAt: null })) : null;
+    let crypto = null;
+    const btcpay = String(env.BTCPAY_URL || '').trim().replace(/\/+$/, ''), btcpayKey = String(env.BTCPAY_API_KEY || '').trim();
+    if (btcpay && btcpayKey) {
+      const offered = String(env.BTCPAY_PAYMENT_METHODS || 'USDT-ETHEREUM,USDT-POLYGON').split(',').map(s => s.trim()).filter(Boolean);
+      try {
+        const response = await request(btcpay + '/api/v1/server/info', { headers: { Authorization: 'token ' + btcpayKey }, signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error('BTCPay answered ' + response.status);
+        const sync = new Map(((await response.json()).syncStatus || []).map(s => [s.paymentMethodId || s.cryptoCode, s]));
+        const NAMES = { 'USDT-ETHEREUM': 'Ethereum', 'USDT-POLYGON': 'Polygon', 'USDT-TRON': 'Tron', 'USDT-BSC': 'BSC', 'BTC-CHAIN': 'Bitcoin' };
+        const behind = offered.filter(m => { const s = sync.get(m); return !s || !s.available || (s.chainHeight != null && s.syncHeight != null && s.chainHeight - s.syncHeight > 50); });
+        crypto = { networks: offered.map(m => NAMES[m] || m), behind: behind.map(m => NAMES[m] || m) };
+      } catch (e) { console.error('[insights] BTCPay unavailable:', e.message); crypto = { error: true }; }
+    }
+    let saved = null;
+    if (backup) {
+      try { const list = await backup.list(); saved = { count: list.length, newest: list[0] ? new Date(list[0].at).toISOString() : null }; }
+      catch (e) { console.error('[insights] backups unavailable:', e.message); saved = { error: true }; }
+    }
+    let cards = null;
+    if (env.POLAR_ACCESS_TOKEN) {
+      try {
+        const api = env.POLAR_SERVER === 'sandbox' ? 'https://sandbox-api.polar.sh' : 'https://api.polar.sh';
+        const response = await request(api + '/v1/orders/?sorting=-created_at&limit=100', { headers: { Authorization: 'Bearer ' + env.POLAR_ACCESS_TOKEN, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+        if (!response.ok) throw new Error('Polar answered ' + response.status);
+        const yours = new Set((await db.query('SELECT polar_customer_id FROM plus_subscriptions WHERE owner_id = ANY($1::uuid[]) AND polar_customer_id IS NOT NULL', [mine])).rows.map(r => r.polar_customer_id));
+        const start = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).getTime();
+        const paid = ((await response.json()).items || []).filter(o => o.paid !== false && o.status !== 'pending' && Date.parse(o.created_at) >= start && !yours.has(o.customer_id));
+        cards = { payments: paid.filter(o => (o.net_amount || 0) > 0).length, usd: paid.reduce((t, o) => t + Math.max(0, (o.net_amount || 0) - (o.refunded_amount || 0)), 0) / 100 };
+      } catch (e) { console.error('[insights] Polar unavailable:', e.message); cards = { error: true }; }
+    }
+    return (health = { near, crypto, backup: saved, cards });
   }
 
   async function gather() {
@@ -188,19 +245,34 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       });
     const reports = (await db.query(`SELECT created_at, status, left(comment, 400) AS comment, app_version, platform, resolved_at
       FROM bug_reports ORDER BY created_at DESC LIMIT 50`)).rows;
+    // Messages sent from the site's "Send us a message", as sent (lib/messages.js),
+    // and the maintainer notices closedhand.com sent lately.
+    const messages = (await db.query('SELECT created_at, left(message, 2000) AS message, reply_to, page FROM site_messages ORDER BY created_at DESC LIMIT 50')).rows;
+    const notices = (await db.query("SELECT created_at, text FROM operator_notices WHERE created_at > now() - interval '14 days' ORDER BY created_at DESC LIMIT 10")).rows;
+    // Paid ahead in crypto this month, everyone else's.
+    const crypto = await one(`SELECT count(*)::int AS payments, coalesce(sum(amount_cents), 0)::int AS cents FROM ahead_payments
+      WHERE paid_at >= date_trunc('month', now() at time zone 'UTC') AND NOT (owner_id = ANY($1::uuid[]))`, [mine]);
+    const [near, h, github] = await Promise.all([fromNear(mine), healthOf(mine), githubCounts()]);
+    const managed = { ...firstMonths, plus, ahead, you: { ...firstMonths.you, plus: plusYou }, ...near };
+    const urlsOut = { ...urls, limit, dns: dns.value ?? null, dnsCeiling: DNS_CEILING };
     return {
       at: new Date().toISOString(),
       people,
       reports,
       accounts,
-      urls: { ...urls, limit, dns: dns.value ?? null, dnsCeiling: DNS_CEILING },
+      urls: urlsOut,
       weeks,
       installs: { total: installs.total },
       bugs,
       email: { accounts: email.accounts, sent: Math.max(0, email.all_sent - email.you_sent), received: Math.max(0, email.all_received - email.you_received),
         you: { accounts: email.you_accounts, sent: email.you_sent, received: email.you_received } },
-      managed: { ...firstMonths, plus, ahead, you: { ...firstMonths.you, plus: plusYou }, ...await fromNear(mine) },
-      github: await githubCounts(),
+      managed,
+      github,
+      messages,
+      notices,
+      health: h,
+      money: { cards: h.cards, crypto: { payments: crypto.payments, usd: crypto.cents / 100 } },
+      needs: needsOf({ managed, near: h.near, bugs, messages: messages.length, backup: h.backup, crypto: h.crypto, cards: h.cards, github, urls: urlsOut }),
     };
   }
 

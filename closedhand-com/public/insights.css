@@ -119,3 +119,21 @@
   .person-details { grid-template-columns: 1fr; gap: .125rem; }
   .person-details dd { margin-bottom: .375rem; }
 }
+
+/* Needs you, first on the page: each thing wrong now, what to do under it. */
+.needs.clear { border-color: rgba(var(--ok-rgb),0.35); }
+.needs:not(.clear) { border-color: rgba(var(--accent-soft-rgb),0.35); }
+.needs-list { list-style: none; margin: .75rem 0 0; padding: 0; }
+.needs-list li + li { margin-top: .875rem; padding-top: .875rem; border-top: 1px solid rgba(var(--fg-rgb),0.08); }
+.needs-list .need-what { margin: 0; font-size: .9375rem; color: var(--fg); }
+.needs-list .need-do { margin: .25rem 0 0; font-size: .8125rem; color: var(--dim); }
+.needs.clear .needs-list .need-what { color: var(--ok); }
+/* A section of tiles under its own heading, headed as the cards are: one
+   heading style on the page. */
+.insights-main .ins-section { margin-top: 2rem; }
+.insights-main :is(.ins-section, .ins-card) h2 { font: 600 1.125rem/1.3 var(--font-ui); letter-spacing: normal; }
+.ins-section h2 { margin: 0 0 .125rem; }
+.insights-main .ins-section + .card { margin-top: 2rem; }
+.ins-section .ins-note { margin: 0 0 1rem; font-size: .8125rem; color: var(--dim); }
+.ins-section h2 + .tiles { margin-top: 1rem; }
+.message-from { font-size: .75rem; color: var(--dim); }

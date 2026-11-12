@@ -789,6 +789,12 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   assert.equal(typeof data.managed.plus, 'object');
   assert.ok('spentThisMonth' in data.managed, 'this month\'s Managed Models spend');
   assert.ok('credit' in data.managed, 'what is left of NEAR AI\'s credit');
+  // Everything needed to run Closedhand on one page: what needs you first,
+  // money this month, how what it runs on is doing, and the messages sent.
+  assert.ok(Array.isArray(data.needs) && data.needs.every(x => typeof x.what === 'string' && typeof x.do === 'string'), 'what needs you, each with what to do');
+  assert.ok(data.money && 'cards' in data.money && typeof data.money.crypto.usd === 'number', 'money in this month, by card and in crypto');
+  assert.ok(data.health && 'near' in data.health && 'crypto' in data.health && 'backup' in data.health, 'how what Closedhand runs on is doing');
+  assert.ok(Array.isArray(data.messages) && Array.isArray(data.notices), 'the messages sent from the site, and notices lately');
   const person = await fetch(base + '/api/insights/person/' + me.id, { headers: { cookie } });
   assert.equal(person.status, 200);
   assert.ok('usage' in await person.json(), 'one person\'s use, read when their row opens');
