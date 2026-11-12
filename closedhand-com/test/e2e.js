@@ -588,14 +588,15 @@ test('an address unused for ninety days is let go only while the relay reports, 
   assert.equal((await relayReport(Array.from({ length: 20001 }, (_, i) => `n${i}-a.closedhand.ai`))).status, 400, 'at most 20,000 names');
   // A report that finds nobody connected, from a relay just restarted or
   // broken, never lets anything go.
-  assert.deepEqual(await (await relayReport([])).json(), { seen: 0 });
-  assert.deepEqual(await (await relayReport(['nobody-here.closedhand.ai', 'not a name', 7, 'admin.closedhand.ai'])).json(), { seen: 0 });
+  assert.deepEqual(await (await relayReport([])).json(), { seen: 0, drop: [] });
+  assert.deepEqual(await (await relayReport(['nobody-here.closedhand.ai', 'not a name', 7, 'admin.closedhand.ai'])).json(), { seen: 0, drop: ['nobody-here.closedhand.ai'] },
+    'a name that belongs to nobody is let go at the relay');
   await sweep();
   assert.equal((await idleRow()).state, 'active', 'a report finding nobody is no sign of anything unused');
   // Everything else is connected now, this one not.
   const others = (await db.query("SELECT hostname FROM addresses WHERE state = 'active' AND hostname <> 'idler.closedhand.ai'")).rows.map(r => r.hostname);
   assert.ok(others.length > 1);
-  assert.deepEqual(await (await relayReport([...others, others[0]])).json(), { seen: others.length }, 'each connected address seen once');
+  assert.deepEqual(await (await relayReport([...others, others[0]])).json(), { seen: others.length, drop: [] }, 'each connected address seen once');
   assert.equal((await db.query("SELECT 1 FROM addresses WHERE state = 'active' AND last_seen_at < now() - interval '1 minute'")).rowCount, 1, 'only the unused one is behind');
   // A report hours old is no longer current.
   await db.query("UPDATE relay_seen SET seen_at = now() - interval '4 hours'");
@@ -606,6 +607,7 @@ test('an address unused for ninety days is let go only while the relay reports, 
   assert.equal(await idleRow(), undefined, 'let go');
   assert.equal((await db.query("SELECT 1 FROM addresses WHERE state = 'active' AND hostname = ANY($1::text[])", [others])).rowCount, others.length, 'every other address stays');
   assert.deepEqual(await (await connection(copy)).json(), { state: 'unconfirmed' }, 'its computer gets no more passes');
+  assert.deepEqual((await (await relayReport(['idler.closedhand.ai'])).json()).drop, ['idler.closedhand.ai'], 'and the relay lets it go at once');
   // The owner stays, with the name held for them alone.
   assert.equal((await account(owner.cookie)).signedIn, true);
   const rival = await signIn('google', google('g-idle-rival', 'rival2@example.com'));
