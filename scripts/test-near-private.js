@@ -336,6 +336,33 @@ test("a new connection to a proven enclave key reuses its proof for a while, one
   } finally { near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, fetchPublished, signatureWaitMs: 5 }); }
 });
 
+test("a connection that stalls, in its handshake or its proof, is given up in time instead of waiting for good", async () => {
+  await ready; reset();
+  const net = require("node:net");
+  const held = [];
+  const silent = net.createServer((s) => held.push(s)); // takes the connection, never answers the handshake
+  await new Promise((r) => silent.listen(0, "127.0.0.1", r));
+  const quick = (extra = {}) => near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, fetchPublished, signatureWaitMs: 5, proofTimeoutMs: 100, ...extra });
+  try {
+    quick();
+    const stalled = { ...conn(), baseUrl: `https://localhost:${silent.address().port}/v1` };
+    const t = Date.now();
+    await assert.rejects(near.complete(stalled, { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] }));
+    assert.ok(Date.now() - t < 3000, "given up, not left waiting");
+    // A proof whose checks never end is given up too, and a later connection proves afresh.
+    let hang = true;
+    quick({ verifyQuote: (q) => hang ? new Promise(() => {}) : verifyQuote(q) });
+    reset();
+    const c = conn();
+    await assert.rejects(near.complete(c, { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] }), /prove its enclave/);
+    hang = false;
+    assert.equal((await (await near.complete(c, { model: MODEL_ID, messages: [{ role: "user", content: "again" }] })).json()).choices[0].message.content, "Echo: again");
+  } finally {
+    for (const s of held) s.destroy();
+    silent.close();
+    near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, fetchPublished, signatureWaitMs: 5 });
+  }
+});
 test("a NEAR AI model's quick support jobs skip thinking through its chat template; its replies think as the model does", () => {
   const policy = require("../lib/model-policy");
   const cap = policy.capabilities(conn(), MODEL_ID, { input_modalities: ["text"] });
