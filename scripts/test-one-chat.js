@@ -111,3 +111,31 @@ test("the turn's hook, proactive messages and the web chat page", () => {
   assert.match(page, /var firstOfVisit = !hasMessages && !_openProject;\n(\s*\/\/[^\n]*\n)*\s*if \(spoken === true && !hasMessages && window\.talkFirst && window\.talkFirst\(\)\) holdForAnswer\(\); else enterChatMode\(\);\n\s*if \(firstOfVisit\) loadEarlier\(\);/, "typing (or talking) from the opening screen carries the conversation on");
   assert.match(page, /addMessage\(msg\.content, msg\.role === 'user' \? 'user' : 'bot', null, msg\.ts \|\| null, msg\.via \|\| null\);/, "history says which app too");
 });
+
+// A picture made in the web chat once reached WhatsApp only as the words
+// "sent as ferrari_spider.jpg": the turn's pictures and files go with it.
+test("the pictures and files Closedhand sent in a turn go with it to the other apps", async (t) => {
+  const web = [], wa = [];
+  const oneChat = load({
+    "./web-chat-ws": { hasWebChatConnection: () => true, sendToUser: (userId, msg) => web.push(msg) },
+    "./platforms/whatsapp-linked": { selfChat: () => "447700900001@s.whatsapp.net", mirrorPersonToSelf: async (x) => wa.push(["me", x]), sendLinkedMessage: async (jid, x) => wa.push(["closedhand", x]),
+      sendLinkedDocument: async (jid, buffer, name, mime, picture) => wa.push(["file", name, mime, picture, buffer.toString()]) },
+  }, t);
+  oneChat.noteFile("u1", "draw a lighthouse", { buffer: Buffer.from("JPEG"), filename: "image.jpg", mimeType: "image/jpeg" });
+  await oneChat.after({ userId: "u1", via: "web", said: "draw a lighthouse", reply: "Here it is." });
+  assert.deepEqual(wa.splice(0), [["me", "draw a lighthouse"], ["closedhand", "Here it is."], ["file", "image.jpg", "image/jpeg", true, "JPEG"]], "the picture follows the reply, as a picture");
+
+  oneChat.noteFile("u1", "the receipt?", { buffer: Buffer.from("%PDF"), filename: "receipt.pdf", mimeType: "application/pdf" });
+  await oneChat.after({ userId: "u1", via: "whatsapp_linked", said: "the receipt?", reply: "Attached." });
+  assert.equal(wa.length, 0);
+  assert.equal(web[0].type, "elsewhere");
+  assert.deepEqual(web[1], { type: "file", filename: "receipt.pdf", mediaType: "application/pdf", size: 4, base64: Buffer.from("%PDF").toString("base64") }, "and the web chat gets it too");
+
+  oneChat.noteFile("u1", "an older turn", { buffer: Buffer.from("x"), filename: "old.png", mimeType: "image/png" });
+  await oneChat.after({ userId: "u1", via: "web", said: "something else", reply: "Ok." });
+  assert.deepEqual(wa.splice(0).map((m) => m[0]), ["me", "closedhand"], "a file from another turn never goes with this one");
+
+  const messaging = read("lib/messaging.js");
+  assert.match(messaging, /const userId = ctx\.activeUserId, said = ctx\.currentAsk && userId && ctx\.currentAsk\[userId\];\n\s*if \(said && Buffer\.isBuffer\(buffer\)\) require\("\.\/one-chat"\)\.noteFile\(userId, said, \{ buffer, filename, mimeType \}\);/);
+});
+
