@@ -207,11 +207,11 @@ test('the tool is always offered and says why it cannot run here, sends the pict
   assert.match(im.unavailable({ eligible: true, state: 'off' }), /turned on in Settings, under Image generation/);
   assert.match(im.unavailable({ eligible: true, state: 'downloading', pct: 42 }), /still downloading .*\(42%\)/);
   assert.equal(im.unavailable({ state: 'ready' }), null);
-  assert.match(read('lib/tools/handlers.js'), /const why = require\("\.\.\/image-generation"\)\.unavailable\(\);\n\s*if \(why\) return \{ error: `\$\{why\} Tell the person that, in a sentence\. Never make it through another website or service\.` \};/);
+  assert.match(read('lib/tools/handlers.js'), /if \(e\.unavailable\) return \{ error: `\$\{e\.message\} Tell the person that, in a sentence\. Never make it through another website or service\.` \};/);
   const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'generate_image');
   assert.deepEqual(def.groups, ['images']);
   assert.ok(!def.core, 'listed, not carried in full on every message');
-  assert.match(read('lib/tools/handlers.js'), /const png = await require\("\.\.\/image-generation"\)\.generate\(toolInput\.prompt, \{ shape: toolInput\.shape \}\);\n\s*await sendDocument\(chatId, png, "image\.png", "image\/png"\);/);
+  assert.match(read('lib/tools/handlers.js'), /const pic = await require\("\.\.\/image-generation"\)\.picture\(toolInput\.prompt, \{ shape: toolInput\.shape, settings: ctx\.activeUserStore\?\.profile\?\.settings \}\);\n\s*await sendDocument\(chatId, pic\.bytes, pic\.name, pic\.mime\);/);
   const dash = read('webapp/views/dashboard.html');
   assert.match(dash, /<h2>Image generation<\/h2>/);
   assert.match(dash, /if \(!im\.eligible\) \{\n\s*body\.innerHTML = '<p>' \+ escHtml\(im\.needs \|\| ''\) \+ '<\/p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" disabled>Turn on<\/button><\/div>';/, 'greyed out, saying what it needs');
@@ -395,4 +395,27 @@ test('for a chat model that cannot see, what was read from a picture stays in th
   assert.match(src, /\? `\[User uploaded file: \$\{attachmentId\}\. \$\{kept\}\]`/);
   assert.match(src, /const sub = pictureText \|\| "The picture could not be read just now\. Tell the user and do not infer what it contains\.";/, 'the same reading on the first turn');
   assert.ok(src.indexOf('let pictureText = null;') < src.indexOf('const uploadLabel = attachmentId'), 'read before it is kept');
+});
+
+// Where this computer can't make a picture, a person whose plan for the
+// uncensored LLM holds gets one from the same model in NEAR AI's TEE
+// (lib/near-private.js image, tested there); without one the tool says why.
+test('a plan that holds makes the picture in the TEE where this computer cannot; without one the tool says why', async () => {
+  const im = require('../lib/image-generation');
+  const near = require('../lib/near-private');
+  assert.equal(im.ready(), false, 'no model on this computer');
+  const was = near.image, asked = [];
+  near.image = async (conn, body) => { asked.push({ conn, body }); return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: Buffer.from('JPEG').toString('base64') }] }) }; };
+  try {
+    const settings = { included_api_key: 'near-test-key', included_ai: { plan: { name: 'plus' } } };
+    const pic = await im.picture('a lighthouse at dusk', { shape: 'landscape', settings });
+    assert.deepEqual({ ...pic, bytes: pic.bytes.toString() }, { bytes: 'JPEG', name: 'image.jpg', mime: 'image/jpeg' });
+    assert.deepEqual(asked[0].body, { model: 'black-forest-labs/FLUX.2-klein-4B', prompt: 'a lighthouse at dusk', size: '1024x768' });
+    assert.equal(asked[0].conn.apiKey, 'near-test-key');
+    for (const name of ['first-month', 'ahead', 'maintainer']) await im.picture('x', { settings: { ...settings, included_ai: { plan: { name } } } });
+    await assert.rejects(im.picture('x', { settings: { ...settings, included_ai: { plan: { name: 'ended', was: 'plus' } } } }), (e) => e.unavailable === true, 'an ended plan');
+    await assert.rejects(im.picture('x', { settings: {} }), (e) => e.unavailable === true && /Image generation/.test(e.message), 'no plan');
+    near.image = async () => ({ ok: false, status: 429, json: async () => ({ error: { message: 'limit' } }) });
+    await assert.rejects(im.picture('x', { settings }), (e) => !e.unavailable && /couldn't be made just now/.test(e.message));
+  } finally { near.image = was; }
 });

@@ -132,6 +132,21 @@ const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 3000
       res.writeHead(200, { "Content-Type": "application/json", "Content-Length": resBytes.length });
       return res.end(resBytes);
     }
+    if (url.pathname === "/v1/images/generations") {
+      // NEAR AI's gateway rebuilds a picture request from its own fields, in
+      // its own order, before the enclave hashes and signs it.
+      const raw = Buffer.concat(chunks), body = JSON.parse(raw);
+      const { model, prompt, n, size, response_format, quality, style } = body;
+      const rebuilt = Buffer.from(JSON.stringify({ model, prompt, n, size, response_format, quality, style, ...(fake.mode.gatewayAdds ? { user: "x" } : {}) }));
+      fake.posts.push({ raw, headers: req.headers, socket: req.socket });
+      const said = near.open(prompt, xSecret(MODEL.seed)), toClient = (t) => near.seal(t, Buffer.from(req.headers["x-client-pub-key"], "hex"));
+      const id = "img-" + fake.posts.length;
+      const resBytes = Buffer.from(JSON.stringify({ id, created: 1, data: [{ b64_json: toClient(Buffer.from("JPEG of " + said).toString("base64")) }] }));
+      const text = `${model}:${sha("sha256", rebuilt).toString("hex")}:${sha("sha256", resBytes).toString("hex")}`;
+      fake.signatures[id] = { text, signing_address: MODEL.pub.toString("hex"), signing_algo: "ed25519", signature_kind: "provider_tee", signature: crypto.sign(null, Buffer.from(text), MODEL.privateKey).toString("hex") };
+      res.writeHead(200, { "Content-Type": "application/json", "Content-Length": resBytes.length });
+      return res.end(resBytes);
+    }
     if (url.pathname.startsWith("/v1/signature/")) return fake.mode.noSignature ? send(404, { error: "not found" }) : send(200, fake.signatures[decodeURIComponent(url.pathname.slice("/v1/signature/".length))] || fake.signature);
     send(404, {});
   });
@@ -439,4 +454,24 @@ test("nothing is sent to a model enclave that deployed an unpublished file, or w
     await assert.rejects(near.complete(conn(), { model: MODEL_ID, messages: [{ role: "user", content: "secret" }] }), (e) => e.code === "near_unproven", JSON.stringify(mode));
     assert.equal(fake.posts.length, 0, "no request reached NEAR AI");
   }
+});
+
+// A picture made in the TEE (lib/image-generation.js): only its description
+// is sealed, as NEAR's proxy opens it, and the request goes in the form NEAR's
+// gateway rebuilds, so the enclave's signature covers the bytes sent. Should
+// the gateway change that form, the picture is not used.
+test("a picture is asked for privately and opens once its signature checks out; a request the gateway changed is not used", async () => {
+  await ready;
+  fake.mode = {};
+  const c = conn();
+  const res = await near.image(c, { size: "1024x768", quality: "hd", prompt: "a lighthouse at dusk, ink drawing", model: "black-forest-labs/FLUX.2-klein-4B" });
+  assert.equal(res.ok, true);
+  assert.equal(Buffer.from((await res.json()).data[0].b64_json, "base64").toString(), "JPEG of a lighthouse at dusk, ink drawing");
+  const sent = fake.posts.at(-1);
+  assert.doesNotMatch(sent.raw.toString(), /lighthouse/, "the description goes sealed");
+  assert.deepEqual(Object.keys(JSON.parse(sent.raw)), ["model", "prompt", "n", "size", "response_format"]);
+  assert.equal(JSON.parse(sent.raw).response_format, "b64_json");
+  fake.mode = { gatewayAdds: true };
+  await assert.rejects(near.image(conn(), { prompt: "a lighthouse", model: "black-forest-labs/FLUX.2-klein-4B", size: "1024x1024" }), /couldn't be checked as coming from its enclave/);
+  fake.mode = {};
 });

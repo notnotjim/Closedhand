@@ -1,5 +1,6 @@
-// closedhand.com on phones: the smoke ring with Closedhand answering inside
-// it, in place of the fist the header already shows.
+// closedhand.com on phones: the smoke ring with a question only you can read
+// inside it and your world drifting in, in place of the fist the header
+// already shows.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -20,15 +21,17 @@ test('the film is the smoke alone, and nothing still points at the fist film', (
   assert.doesNotMatch(read('closedhand-com/tools/ring-video/film.html'), /fist/i);
 });
 
-test('it answers and it speaks first, starting where the page does, every example fitting a small ring', () => {
-  const examples = vm.runInNewContext('(' + home.match(/var EXAMPLES = (\[[\s\S]*?\]);/)[1] + ')');
-  assert.ok(examples.some((e) => e.ask) && examples.some((e) => e.at), 'questions answered, and messages it sends unasked');
-  // Reduced motion and no script show the page's own words: the first example.
-  assert.ok(home.includes('<span class="orb-ask" id="orbAsk">' + examples[0].ask + '</span><span class="orb-answer" id="orbAnswer">' + examples[0].say + '</span>'));
-  for (const e of examples) {
-    assert.ok((e.ask || e.at).length <= 28, 'short first line: ' + (e.ask || e.at));
-    assert.ok(e.say.length <= 48, 'short reply: ' + e.say);
-  }
+test('questions only you can read resolve out of noise, starting where the page does, each fitting a small ring', () => {
+  const questions = vm.runInNewContext('(' + home.match(/var QUESTIONS = (\[[\s\S]*?\]);/)[1] + ')');
+  assert.ok(questions.length >= 5);
+  // No script shows the page's own words: the first question.
+  assert.ok(home.includes('<span class="orb-line" id="orbLine">' + questions[0] + '</span>'));
+  for (const q of questions) assert.ok(q.length <= 56, 'fits the ring: ' + q);
+  // Each letter keeps its width as noise turns to words, so nothing jolts.
+  assert.match(home, /\.orb-noise \{ position: absolute;/);
+  assert.match(home, /\.orb-ch\.on \.orb-real \{ opacity: 1; filter: none; transform: none; \}/);
+  // The icons drift behind the smoke, in a band that keeps clear of the words.
+  assert.match(home, /<span class="orb-stage" aria-hidden="true">\s*<span class="orb-drift" id="orbDrift"><\/span>\s*<span class="orb-body">/);
 });
 
 test('only phones and tablets get it, it opens the dashboard once this phone has, and it says the same in words', () => {
@@ -37,11 +40,12 @@ test('only phones and tablets get it, it opens the dashboard once this phone has
   assert.match(home, /<a class="orb-open handheld-only" id="orbOpen">\s*<span class="orb-stage" aria-hidden="true">/);
   assert.match(home, /\.orb-open:not\(\[href\]\) \.orb-label \{ display: none; \}/);
   assert.match(home, /try \{ opens\(localStorage\.getItem\('closedhand-personal-url'\)\); \}/, 'a typed address counts too');
-  assert.match(home, /<p class="orb-said handheld-only">Ask Closedhand things like/);
+  assert.match(home, /<p class="orb-said handheld-only">Ask Closedhand what other assistants won’t answer, like “What really happened in Tiananmen Square\?”/);
   assert.match(home, /if \(!smoke \|\| !link \|\| !document\.documentElement\.classList\.contains\('handheld'\)\) return;/);
-  // Still for reduced motion; otherwise talking only while on screen.
-  assert.match(home, /if \(still\) talk\.classList\.add\('answered'\);\n  else \{/);
-  assert.match(home, /async function awake\(\) \{ while \(!onScreen \|\| document\.hidden\) await wait\(400\); \}/);
+  // Still for reduced motion; otherwise moving only while on screen.
+  assert.match(home, /build\(QUESTIONS\[0\]\);\n  if \(still\) \{\n    chars\.forEach\(function \(c\) \{ c\.open = true; c\.el\.classList\.add\('on'\); \}\);/);
+  assert.match(home, /function paused\(\) \{ return !onScreen \|\| document\.hidden; \}/);
+  assert.match(home, /if \(!paused\(\)\) left -= now - last;/);
 });
 
 test('a phone sees the two steps in order and nothing that looks like a download', () => {

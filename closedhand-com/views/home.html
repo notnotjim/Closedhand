@@ -807,36 +807,42 @@ body.chat-active .mon-area { display:none; }
   @keyframes orb-flash { 0% { filter: brightness(2.2); transform: scale(1.06); } 100% { filter: none; transform: none; } }
   .orb-body { position: absolute; inset: 0; display: grid; place-items: center; transition: transform .2s ease; }
   .orb-open:active .orb-body { transform: scale(0.97); }
-  /* Closedhand answering inside the smoke: a question types out and the
-     answer is simply there, as if it already knew. A warm light behind the
-     words breathes, swells as each answer lands and flashes with the tap.
-     Everything is sized to the ring, so a small phone shrinks it whole. */
+  /* Inside the smoke, a question only you can read: it sits as shifting
+     noise, then its letters sharpen out of it in a soft wave and later
+     dissolve back. Each letter keeps its own width, so nothing moves as noise
+     turns to words. Around the ring, your world (mail, chats, calendar, cards,
+     photos, files, health, places) drifts in and is taken into the smoke. A
+     warm light behind the words breathes, glows while a question shows and
+     flashes with the tap. Everything is sized to the ring, so a small phone
+     shrinks it whole. */
   .orb-stage { container-type: size; }
   .orb-core { position: absolute; left: 50%; top: 50%; width: 64%; height: 64%; translate: -50% -50%; border-radius: 50%; pointer-events: none;
     background: radial-gradient(closest-side, rgba(var(--accent-soft-rgb),0.26), rgba(var(--accent-soft-rgb),0.09) 58%, rgba(var(--accent-soft-rgb),0));
-    animation: orb-breathe 6s ease-in-out infinite; transition: filter .8s ease; }
+    animation: orb-breathe 6s ease-in-out infinite; transition: filter 1.2s cubic-bezier(.22,.61,.36,1); }
   @keyframes orb-breathe { 0%, 100% { opacity: .7; scale: .94; } 50% { opacity: 1; scale: 1.04; } }
-  .orb-stage.answered .orb-core { filter: brightness(1.6); }
+  .orb-stage.answered .orb-core { filter: brightness(1.55); }
+  .orb-core.taking { animation: orb-breathe 6s ease-in-out infinite, orb-take .9s cubic-bezier(.22,.61,.36,1); }
+  @keyframes orb-take { 35% { filter: brightness(1.35); } }
   .orb-stage.pulsing .orb-core { animation: orb-flash 0.45s ease-out; }
-  .orb-talk { position: relative; width: 66cqw; display: flex; flex-direction: column; align-items: center; gap: 2.4cqw; text-align: center; animation: orb-float 5s ease-in-out infinite; transition: opacity .6s ease; }
+  .orb-talk { position: relative; width: 60cqw; display: grid; place-items: center; text-align: center; animation: orb-float 6s ease-in-out infinite; transition: opacity .9s cubic-bezier(.22,.61,.36,1); }
   .orb-talk.is-leaving { opacity: 0; }
-  @keyframes orb-float { 0%, 100% { translate: 0 -1.1cqw; } 50% { translate: 0 1.1cqw; } }
-  .orb-ask { min-height: 1.3em; font: 400 clamp(.6875rem, 6.3cqw, .875rem)/1.3 var(--font-ui); color: var(--muted); text-wrap: balance; }
-  .orb-ask.typing::after { content: ''; display: inline-block; width: .08em; height: 1em; margin-left: .1em; vertical-align: -0.15em; background: currentColor; animation: orb-caret 1s steps(1) infinite; }
-  @keyframes orb-caret { 50% { opacity: 0; } }
-  .orb-answer { font: 500 clamp(.8125rem, 7.4cqw, 1.125rem)/1.2 var(--font-brand); font-variation-settings: 'opsz' 48, 'SOFT' 30; letter-spacing: -0.005em; color: var(--fg); text-wrap: balance;
-    transition: opacity .7s ease, filter .7s ease, translate .7s ease; }
-  /* Hidden at once, so the next answer never shows before its question; only
-     its arrival fades in. */
-  .orb-answer.is-hidden { opacity: 0; filter: blur(.25rem); translate: 0 .375rem; transition: none; }
-  /* A small ring has room for one of them at a time: the answer takes the
-     question's place as it lands. */
+  @keyframes orb-float { 0%, 100% { translate: 0 -1cqw; } 50% { translate: 0 1cqw; } }
+  .orb-line { font: 500 clamp(.75rem, 6.9cqw, 1.0625rem)/1.24 var(--font-brand); font-variation-settings: 'opsz' 48, 'SOFT' 30; letter-spacing: -0.005em; color: var(--fg); text-wrap: balance; }
+  .orb-w { display: inline-block; white-space: nowrap; }
+  .orb-ch { position: relative; display: inline-block; }
+  .orb-real { display: inline-block; opacity: 0; filter: blur(.12em); transform: translateY(.06em); transition: opacity .55s cubic-bezier(.22,.61,.36,1), filter .7s cubic-bezier(.22,.61,.36,1), transform .7s cubic-bezier(.22,.61,.36,1); }
+  .orb-noise { position: absolute; left: 50%; top: 0; translate: -50% 0; color: var(--muted); opacity: .6; pointer-events: none; transition: opacity .45s cubic-bezier(.22,.61,.36,1), filter .55s cubic-bezier(.22,.61,.36,1); }
+  .orb-ch.on .orb-real { opacity: 1; filter: none; transform: none; }
+  .orb-ch.on .orb-noise { opacity: 0; filter: blur(.18em); }
   @container (max-width: 10rem) {
-    .orb-talk { display: grid; place-items: center; width: 76cqw; }
-    .orb-answer { font-size: .75rem; }
-    .orb-ask, .orb-answer { grid-area: 1 / 1; }
-    .orb-talk.answered .orb-ask { opacity: 0; visibility: hidden; transition: opacity .4s ease, visibility 0s .4s; }
+    .orb-talk { width: 76cqw; }
+    .orb-line { font-size: .6875rem; }
   }
+  /* The icons drift behind the smoke, within a band just taller than the
+     ring, so they never cross the words above and below it. */
+  .orb-drift { position: absolute; left: 50%; top: 50%; width: min(100vw, 26rem); height: calc(var(--orb-size, 13.5rem) * 1.3); translate: -50% -50%; overflow: hidden; pointer-events: none; }
+  .orb-icon { position: absolute; left: 50%; top: 50%; width: 1.5rem; height: 1.5rem; margin: -.75rem 0 0 -.75rem; color: var(--muted); opacity: 0; will-change: transform, opacity; }
+  .orb-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .orb-said { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .orb-label { display: inline-flex; align-items: center; gap: .5rem; margin-top: 2px; font: 500 1.4375rem/1.1 var(--font-brand); font-variation-settings: 'opsz' 48, 'SOFT' 30; letter-spacing: -0.01em; color: var(--fg); }
   .orb-label svg { width: 1.1875rem; height: 1.1875rem; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px; }
@@ -917,26 +923,27 @@ body.chat-active .mon-area { display:none; }
       }
     </script>
 
-    <!-- Phones and tablets: Closedhand answering inside the smoke ring, a
-         newcomer's first look at what it does. On a phone that has opened
+    <!-- Phones and tablets: inside the smoke ring, questions only you can
+         read; around it, your world drifting in. On a phone that has opened
          its Closedhand before, the ring becomes the link to that exact
          address (script below). -->
     <a class="orb-open handheld-only" id="orbOpen">
       <span class="orb-stage" aria-hidden="true">
+        <span class="orb-drift" id="orbDrift"></span>
         <span class="orb-body">
           <!-- The desktop's own smoke ring, filmed (tools/ring-video), played
                as a small transparent loop. Its sources are set by script on
                phones and tablets only, so computers never download it. -->
           <span class="orb-film"><video class="orb-smoke" id="orbSmoke" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback data-mov="/orb/smoke.mov" data-webm="/orb/smoke.webm" data-poster="/orb/smoke-poster.png"></video></span>
           <span class="orb-core"></span>
-          <span class="orb-talk" id="orbTalk"><span class="orb-ask" id="orbAsk">What wine did Tom like?</span><span class="orb-answer" id="orbAnswer">A 2019 Rioja. He said so on WhatsApp.</span></span>
+          <span class="orb-talk" id="orbTalk"><span class="orb-line" id="orbLine">What really happened in Tiananmen Square?</span></span>
         </span>
       </span>
       <span class="orb-label">Open dashboard<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>
       <span class="orb-address" id="orbAddress" hidden></span>
     </a>
 
-    <p class="orb-said handheld-only">Ask Closedhand things like “What wine did Tom like?” and it answers from your own mail, calendar and messages: “A 2019 Rioja. He said so on WhatsApp.” It also speaks up before you ask, like “Your flight’s delayed. You’ll miss your train.”</p>
+    <p class="orb-said handheld-only">Ask Closedhand what other assistants won’t answer, like “What really happened in Tiananmen Square?”, and nobody but you can read the question or the answer.</p>
     <!-- A phone can't run Closedhand: it lives on a computer, and this phone
          opens it. Two steps say the order; nothing here looks like a
          download. The link is for people who have done the first step. -->
@@ -1660,58 +1667,142 @@ body.chat-active .mon-area { display:none; }
   // A phone that refused to autoplay may allow it after a touch.
   document.addEventListener('touchstart', sync, { once: true, passive: true });
   sync();
-  // Inside it, Closedhand talks, made-up examples in turn. Asked something,
-  // the question types out and the answer is simply there. Unasked, as Pulse
-  // does, the light swells first and its message arrives with the time, like
-  // one landing on your phone. Reduced motion keeps the first, as the page
-  // has it. Paused, like the film, while off screen or hidden.
-  var EXAMPLES = [
-    { ask: 'What wine did Tom like?', say: 'A 2019 Rioja. He said so on WhatsApp.' },
-    { at: '7:05am', say: 'Your flight’s delayed. You’ll miss your train.' },
-    { ask: 'Did I pay that parking fine?', say: 'Yes, £35 on 2\u00a0May. Receipt’s in your inbox.' },
-    { at: '4:12pm', say: 'Sam moved dinner to 7, during your call.' },
-    { ask: 'What’s Leo’s shoe size?', say: 'Size 31, from his last shoe receipt.' },
-    { at: '9:00am', say: 'Your passport runs out before the Lisbon trip.' },
+  // Inside it, questions only the person can read, each asked of the
+  // uncensored LLM Closedhand provides and answered directly before it went
+  // here. Each sits as shifting noise; its letters sharpen out of it in a soft
+  // wave and later dissolve back. Around it, the person's world drifts in and
+  // is taken into the smoke. Reduced motion keeps the first question and the
+  // icons still. Paused, like the film, while off screen or hidden.
+  var QUESTIONS = [
+    'What really happened in Tiananmen Square?',
+    'Make the case for legalising all drugs.',
+    'What risks did my doctor gloss over on statins?',
+    'Write the gangsters’ deal scene. No moral at the end.',
+    'Is Taiwan its own country?',
+    'How does this exploit work, so I can patch it?',
+    'How is China treating the Uyghurs?',
   ];
-  var ask = document.getElementById('orbAsk'), answer = document.getElementById('orbAnswer'), talk = document.getElementById('orbTalk');
-  var orb = link.querySelector('.orb-stage');
-  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  async function awake() { while (!onScreen || document.hidden) await wait(400); }
-  async function converse() {
-    for (var i = 0; ; i = (i + 1) % EXAMPLES.length) {
-      var example = EXAMPLES[i];
-      await awake();
-      answer.classList.add('is-hidden');
-      talk.classList.remove('answered');
-      answer.textContent = example.say;
-      ask.textContent = '';
-      talk.classList.remove('is-leaving');
-      if (example.ask) {
-        ask.classList.add('typing');
-        await wait(500);
-        for (var c of example.ask) { await awake(); ask.textContent += c; await wait(60 + Math.random() * 60); }
-        await wait(500);
-        ask.classList.remove('typing');
-      } else {
-        await wait(900);
-        orb.classList.add('answered');
-        await wait(500);
-        ask.textContent = example.at;
+  var NOISE = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  // Mail, chats, calendar, cards, photos, files, health and places.
+  var ICONS = [
+    '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    '<path d="M4 5h16v11H10l-6 4z"/>',
+    '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h4"/>',
+    '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/>',
+    '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/>',
+    '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
+    '<path d="M12 21s-6-6.2-6-11a6 6 0 0 1 12 0c0 4.8-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
+  ];
+  var line = document.getElementById('orbLine'), talk = document.getElementById('orbTalk'), drift = document.getElementById('orbDrift');
+  var orb = link.querySelector('.orb-stage'), core = link.querySelector('.orb-core');
+  function paused() { return !onScreen || document.hidden; }
+  // Time that stands still while paused.
+  function wait(ms) {
+    return new Promise(function (resolve) {
+      var left = ms, last = performance.now();
+      (function tick(now) {
+        if (!paused()) left -= now - last;
+        last = now;
+        if (left <= 0) return resolve();
+        requestAnimationFrame(tick);
+      })(last);
+    });
+  }
+  function noise() { return NOISE[Math.floor(Math.random() * NOISE.length)]; }
+  // The question as letters that each keep their width, with noise over them.
+  var chars = [];
+  function build(question) {
+    line.textContent = '';
+    chars = [];
+    question.split(' ').forEach(function (word, i) {
+      if (i) line.appendChild(document.createTextNode(' '));
+      var w = document.createElement('span');
+      w.className = 'orb-w';
+      for (var c of word) {
+        var ch = document.createElement('span'), real = document.createElement('span'), fuzz = document.createElement('span');
+        ch.className = 'orb-ch'; real.className = 'orb-real'; fuzz.className = 'orb-noise';
+        real.textContent = c; fuzz.textContent = noise();
+        ch.append(real, fuzz);
+        w.appendChild(ch);
+        chars.push({ el: ch, noise: fuzz, next: 0, open: false });
       }
-      answer.classList.remove('is-hidden');
-      talk.classList.add('answered');
+      line.appendChild(w);
+    });
+  }
+  // The noise keeps shifting, each letter on its own beat.
+  (function churn(now) {
+    if (!paused()) for (var i = 0; i < chars.length; i++) {
+      var c = chars[i];
+      if (c.open || now < c.next) continue;
+      c.noise.textContent = noise();
+      c.next = now + 70 + Math.random() * 140;
+    }
+    requestAnimationFrame(churn);
+  })(performance.now());
+  async function reveal() {
+    for (var i = 0; i < chars.length; i++) { chars[i].open = true; chars[i].el.classList.add('on'); await wait(26 + Math.random() * 22); }
+  }
+  async function conceal() {
+    for (var i = chars.length - 1; i >= 0; i--) { chars[i].open = false; chars[i].el.classList.remove('on'); await wait(14 + Math.random() * 10); }
+  }
+  async function ask() {
+    for (var i = 0; ; i = (i + 1) % QUESTIONS.length) {
+      build(QUESTIONS[i]);
+      talk.classList.remove('is-leaving');
+      await wait(1700);
+      await reveal();
       orb.classList.add('answered');
-      setTimeout(function () { orb.classList.remove('answered'); }, 1200);
-      await wait(3800);
+      await wait(3000);
+      orb.classList.remove('answered');
+      await conceal();
+      await wait(1100);
       talk.classList.add('is-leaving');
-      await wait(800);
+      await wait(900);
     }
   }
-  if (still) talk.classList.add('answered');
-  else {
-    answer.classList.add('is-hidden');
-    ask.textContent = '';
-    wait(1200).then(converse);
+  function icon(svg) {
+    var el = document.createElement('span');
+    el.className = 'orb-icon';
+    el.innerHTML = '<svg viewBox="0 0 24 24">' + svg + '</svg>';
+    drift.appendChild(el);
+    return el;
+  }
+  // Each icon spirals in from beyond the ring and is taken in as it reaches
+  // the smoke.
+  function launch(svg) {
+    var el = icon(svg), size = orb.getBoundingClientRect().width;
+    var a0 = Math.random() * Math.PI * 2, turn = (Math.random() < .5 ? -1 : 1) * (0.55 + Math.random() * 0.35);
+    var from = size * (0.76 + Math.random() * 0.1), to = size * 0.4, dur = 4200 + Math.random() * 1400, start = performance.now();
+    (function step(now) {
+      var t = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - t, 3);
+      var r = from + (to - from) * e, a = a0 + turn * e;
+      var fadeIn = Math.min(1, t / 0.25), fadeOut = t > 0.6 ? Math.max(0, 1 - (t - 0.6) / 0.4) : 1;
+      el.style.transform = 'translate3d(' + (Math.cos(a) * r).toFixed(2) + 'px,' + (Math.sin(a) * r).toFixed(2) + 'px,0) scale(' + (1 - 0.5 * Math.max(0, (t - 0.6) / 0.4)).toFixed(3) + ')';
+      el.style.opacity = (fadeIn * fadeOut * 0.85).toFixed(3);
+      if (t < 1) return requestAnimationFrame(step);
+      el.remove();
+      core.classList.remove('taking'); void core.offsetWidth; core.classList.add('taking');
+    })(start);
+  }
+  async function world() {
+    for (var n = 0; ; n++) {
+      if (!paused()) launch(ICONS[n % ICONS.length]);
+      await wait(1300 + Math.random() * 700);
+    }
+  }
+  build(QUESTIONS[0]);
+  if (still) {
+    chars.forEach(function (c) { c.open = true; c.el.classList.add('on'); });
+    var size = orb.getBoundingClientRect().width;
+    ICONS.forEach(function (svg, n) {
+      var el = icon(svg), a = n / ICONS.length * Math.PI * 2;
+      el.style.transform = 'translate(' + (Math.cos(a) * size * 0.6).toFixed(2) + 'px,' + (Math.sin(a) * size * 0.6).toFixed(2) + 'px)';
+      el.style.opacity = '.7';
+    });
+  } else {
+    wait(1200).then(ask);
+    world();
   }
   link.addEventListener('click', function (e) {
     if (!link.getAttribute('href') || still || e.metaKey || e.ctrlKey || e.shiftKey) return;

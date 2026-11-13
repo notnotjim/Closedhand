@@ -25,6 +25,13 @@ async function credit(settings) {
   return { limit, used, left: Math.max(0, limit - used) };
 }
 
+// The plan holds: the first 14 days, a subscription, a plan paid ahead, or
+// the maintainer's own.
+const LIVE_PLANS = ["first-month", "plus", "ahead", "maintainer"];
+function live(settings) {
+  return !!settings?.included_api_key && LIVE_PLANS.includes(settings?.included_ai?.plan?.name);
+}
+
 // The person is told once a period, when this share of the fair use is used.
 const NEARLY_USED = 0.8;
 
@@ -108,4 +115,4 @@ function accountProblemText(status, link, web) {
     : `Your LLM provider rejected Closedhand's API key, so I can't reply for now. Check the key under Models in the ${dashboard(link, web)}.`;
 }
 
-module.exports = { inUse, credit, NEARLY_USED, period, day, until, llm, endingText, nearlyUsedText, usedUpText, accountProblemText };
+module.exports = { inUse, live, LIVE_PLANS, credit, NEARLY_USED, period, day, until, llm, endingText, nearlyUsedText, usedUpText, accountProblemText };

@@ -2781,11 +2781,13 @@
           <!-- Image generation: on the computer running Closedhand, with nothing
                sent anywhere (lib/image-generation.js). Greyed out, saying what it
                needs, where the computer can't; turned on, it downloads in the
-               background on the same thin line as Getting to know you. -->
+               background on the same thin line as Getting to know you. Until the
+               computer's own model is ready, a plan for the uncensored LLM makes
+               pictures in the TEE instead. -->
           <div class="settings-group" id="images-group">
             <div class="settings-group-header">
               <h2>Image generation</h2>
-              <p class="section-desc">Closedhand generates images on this computer, with nothing sent anywhere</p>
+              <p class="section-desc" id="images-desc">Closedhand generates images on this computer, with nothing sent anywhere</p>
             </div>
             <div class="images-body" id="images-body"></div>
           </div>
@@ -10673,8 +10675,12 @@
       if (!im) { document.getElementById('images-group').hidden = true; return; }
       document.getElementById('images-group').hidden = false;
       var size = im.total_gb ? im.total_gb + ' GB' : 'about 5 GB';
-      body.className = 'images-body' + (im.eligible ? '' : ' unavailable');
-      if (!im.eligible) {
+      var tee = !!st.imagesInTee && im.state !== 'ready';
+      document.getElementById('images-desc').textContent = tee ? 'Closedhand generates images in a TEE, so nobody but you can see them' : 'Closedhand generates images on this computer, with nothing sent anywhere';
+      body.className = 'images-body' + (im.eligible || tee ? '' : ' unavailable');
+      if (!im.eligible && tee) {
+        body.innerHTML = '<div class="images-ways"><span class="plan-status on">Ready</span><span>Ask for a picture in any chat.</span></div>';
+      } else if (!im.eligible) {
         body.innerHTML = '<p>' + escHtml(im.needs || '') + '</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" disabled>Turn on</button></div>';
       } else if (im.state === 'ready') {
         body.innerHTML = '<div class="images-ways"><span class="plan-status on">Ready</span><span>Ask for a picture in any chat.</span></div>'
@@ -10686,7 +10692,7 @@
       } else if (im.state === 'error') {
         body.innerHTML = '<p>The download stopped before it finished. It carries on from where it got to.</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" onclick="imagesSwitch(true, this)">Try again</button></div>';
       } else {
-        body.innerHTML = '<p>Turning it on downloads ' + size + ' in the background.</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" onclick="imagesSwitch(true, this)">Turn on</button></div>';
+        body.innerHTML = '<p>' + (tee ? 'Turning it on downloads ' + size + ' in the background, to make pictures on this computer instead, with nothing sent anywhere.' : 'Turning it on downloads ' + size + ' in the background.') + '</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" onclick="imagesSwitch(true, this)">Turn on</button></div>';
       }
       clearTimeout(timer);
       if (im.state === 'downloading') timer = setTimeout(load, 4000);
