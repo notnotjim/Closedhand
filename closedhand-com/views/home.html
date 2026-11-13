@@ -231,7 +231,7 @@ body.chat-active .page { height: 100dvh; min-height: 0; overflow: hidden; }
     flex-wrap: wrap;
     justify-content: center;
   }
-.hero-footer > span {
+.hero-footer > span, .hero-ethos > span {
     font-size: clamp(.8125rem, 1.1vw, .9375rem);
     line-height: 1.5;
     letter-spacing: 0;
@@ -241,6 +241,9 @@ body.chat-active .page { height: 100dvh; min-height: 0; overflow: hidden; }
     text-wrap: pretty;
   }
 .hero-footer { margin-top: 1rem; flex-direction: column; gap: .25rem; }
+/* Both lines are one link to the ethos page, and light up together. */
+.hero-ethos { display: flex; flex-direction: column; align-items: center; gap: .25rem; }
+.hero-ethos:hover > span { color: var(--fg); text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: .3125rem; }
 .ethos-link { color: inherit; text-decoration: none; text-underline-offset: .3125rem; }
 .ethos-link:hover { color: var(--fg); text-decoration: underline; text-decoration-color: var(--accent); }
 .ethos-link:focus-visible { outline: 2px solid var(--accent); outline-offset: .3125rem; }
@@ -965,8 +968,10 @@ body.chat-active .mon-area { display:none; }
     </div>
 
     <div class="hero-footer">
-      <span><a class="ethos-link" href="/ethos"><span class="computer-only">Your Closedhand assistant</span><span class="handheld-only">Closedhand</span> is local-first, open source and works with any LLM.</a></span>
-      <span>Your data and conversations can be read by nobody but you.</span>
+      <a class="ethos-link hero-ethos" href="/ethos">
+        <span><span class="computer-only">Your Closedhand assistant</span><span class="handheld-only">Closedhand</span> is local-first, open source and works with any LLM.</span>
+        <span>Your data and conversations can be read by nobody but you.</span>
+      </a>
     </div>
     <div class="hero-space-bottom" style="flex:1"></div>
   </div>
