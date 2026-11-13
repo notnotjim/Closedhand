@@ -138,3 +138,44 @@ test("the server, tile and privacy pages carry every job, not only the voice", (
     assert.match(read(page), /anything else a service you connect does in Closedhand's place, such as reading web pages, watching videos, the weather or maps/);
   }
 });
+
+// A picture service connected with a key or as an MCP server is a job like
+// any other: on from the start, used first, its picture sent to the chat it
+// was asked in, whatever form it comes back in, and Closedhand's own makes
+// it when the service sends back no picture.
+test("a connected image service makes the picture first and sends it to the chat, from an image, base64 or a link", async () => {
+  const PNG = Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), Buffer.alloc(300, 1)]);
+  const row = { id: "wren-row", name: "Wren Pictures", updated_at: "1", transport: "mcp", caps: { jobs: { images: { tool: "wren_create", args: { prompt: "text" }, fixed: { size: "1024x1024" }, on: true } } } };
+  const db = { from: () => ({ select: () => ({ eq: () => ({ eq: async () => ({ data: [row], error: null }) }) }) }) };
+  const sent = [];
+  const take = (result, extra = {}) => jobs.takeOver("generate_image", { prompt: "a lighthouse at dusk", shape: "square", _userId: "u1", _chatId: "c1" }, {
+    db, ctx: {}, sendDocument: async (...a) => { sent.push(a); },
+    callTool: async (u, id, tool, args) => { assert.deepEqual([tool, args], ["wren_create", { size: "1024x1024", text: "a lighthouse at dusk" }]); return result; },
+    ...extra,
+  });
+  const got = await take({ content: [{ type: "image", data: PNG.toString("base64"), mimeType: "image/png" }] });
+  assert.deepEqual(got, { success: true, sent: "The picture is in the chat. Say a word about it; don't describe it at length.", source: "Wren Pictures" });
+  assert.deepEqual([sent[0][0], sent[0][2], sent[0][3]], ["c1", "image.png", "image/png"]);
+  assert.ok(sent[0][1].equals(PNG));
+  await take({ content: [{ type: "text", text: JSON.stringify({ data: [{ b64_json: PNG.toString("base64") }] }) }] });
+  assert.ok(sent[1][1].equals(PNG), "base64 in its answer");
+  const fetched = [];
+  await take({ content: [{ type: "text", text: JSON.stringify({ images: [{ url: "https://cdn.wren.example/p/1.png" }] }) }] }, { fetch: async (u) => { fetched.push(u); return { ok: true, arrayBuffer: async () => PNG }; } });
+  assert.deepEqual(fetched, ["https://cdn.wren.example/p/1.png"], "a link, fetched");
+  assert.ok(sent[2][1].equals(PNG));
+  const quiet = console.warn; console.warn = () => {};
+  try {
+    assert.equal(await take({ content: [{ type: "text", text: '{"url":"https://127.0.0.1/p.png"}' }] }, { fetch: async () => { throw new Error("must not be fetched"); } }), null, "a private address is never fetched, and Closedhand's own makes it");
+    assert.equal(await take({ content: [{ type: "text", text: "Queued as job 42." }] }), null, "no picture back");
+    const hops = [];
+    const redirecting = async (u) => { hops.push(u); return { ok: false, status: 302, headers: { get: () => "https://169.254.169.254/latest" } }; };
+    assert.equal(await take({ content: [{ type: "text", text: '{"url":"https://cdn.wren.example/p/2.png"}' }] }, { fetch: redirecting }), null, "nor one a link redirects to");
+    assert.deepEqual(hops, ["https://cdn.wren.example/p/2.png"]);
+  } finally { console.warn = quiet; }
+  assert.equal(sent.length, 3);
+  const { texts } = require("../lib/tool-jobs");
+  assert.equal(texts("images").on, "Closedhand makes pictures with {name} first. What a picture shows goes to {name}, which may charge your account for it.");
+  assert.match(read("webapp/connection-jobs.js"), /A tool that edits, enlarges or describes a picture it is given is not images\./);
+  assert.match(read("lib/api-connections.js"), /if \(\/\^image\\\/\/\.test\(type\)\) return \{ content: \[\{ type: "image", data: buffer\.toString\("base64"\), mimeType: type \}\] \};/);
+});
+

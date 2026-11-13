@@ -91,7 +91,7 @@ Report, for each job:
 ${Object.entries(TOOL_JOBS).map(([name, job]) => `- ${name}: a tool that ${job.does}. ${Object.entries(job.inputs).map(([input, spec]) => `${input}_argument is the argument for ${spec.about}${spec.required ? "" : ", if it takes one"}.`).join(" ")}`).join("\n")}
 - fixed_arguments: values for any other required arguments, only when the definition makes the value clear, such as a default, an example it gives, or the one sensible choice of an enum. Never make up ids, such as a voice id.
 - choose_argument and choose_from (speak and hear): when a required argument is an id from the person's own account (a voice id, say) and another tool here lists them, name the argument and that listing tool, and Closedhand picks one from the list.
-- Tools that make music or sound effects, change one voice into another, or manage voices, agents, accounts or files are not speak or hear. A tool that searches only the service's own records, not the web, is not search. Report a tool for a job only when doing that job is what the tool is for.
+- Tools that make music or sound effects, change one voice into another, or manage voices, agents, accounts or files are not speak or hear. A tool that searches only the service's own records, not the web, is not search. A tool that edits, enlarges or describes a picture it is given is not images. Report a tool for a job only when doing that job is what the tool is for.
 - found is false when no tool fits.`;
 }
 

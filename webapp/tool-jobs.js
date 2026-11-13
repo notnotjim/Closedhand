@@ -3,8 +3,9 @@
 // Vendored: lib/tool-jobs.js (bot) and webapp/tool-jobs.js (dashboard), kept
 // byte-identical (scripts/check-vendored-identical.js).
 //
-// Every tool here looks something up outside: the web, a page, a video, the
-// weather, a map. When the person connects a service that does one of these
+// Every tool here looks something up outside (the web, a page, a video, the
+// weather, a map) or makes a picture. When the person connects a service that
+// does one of these
 // (an MCP server, or a key for a plain API), it does that job first, with no
 // code for that service: webapp/connection-jobs.js finds which of its tools
 // does which job when it is connected, and lib/connection-jobs.js runs it in
@@ -86,6 +87,15 @@ const JOBS = {
     title: "Directions",
     lower: "directions",
   },
+  images: {
+    tool: "generate_image",
+    does: "makes a new picture from a text description and returns it, as image data or a link to the image",
+    inputs: { prompt: { about: "the description of the picture", required: true } },
+    words: /image|picture|photo|illustrat|draw|paint|artwork|flux|diffusion|dall-?e|midjourney|imagen/i,
+    findWith: "generate image from text prompt",
+    title: "Image generation",
+    lower: "image generation",
+  },
   geocode: {
     tool: "maps_geocode",
     does: "turns an address or place name into coordinates",
@@ -115,6 +125,15 @@ function texts(name) {
       on: "Closedhand searches the web with {name} first. Your searches go to {name}, which may charge your account for them.",
       off: "Closedhand searches with your primary model’s own search, or free search. Switch this on to search with {name} first.",
       stoodIn: "Last time, Closedhand’s own search stood in: ",
+    };
+  }
+  if (name === "images") {
+    return {
+      title: job.title,
+      news: "Closedhand will now make pictures with {name} first. What a picture shows goes to {name}, which may charge your account for it.",
+      on: "Closedhand makes pictures with {name} first. What a picture shows goes to {name}, which may charge your account for it.",
+      off: "Closedhand makes pictures itself where it can. Switch this on to make them with {name} first.",
+      stoodIn: "Last time, Closedhand’s own stood in: ",
     };
   }
   return {
