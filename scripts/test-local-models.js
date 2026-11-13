@@ -197,9 +197,17 @@ test('the switch refuses a computer that cannot generate images, saying why', as
   } finally { restore(); }
 });
 
-test('the tool is offered only once the model is ready, sends the picture to the chat, and Settings shows each state', () => {
+test('the tool is always offered and says why it cannot run here, sends the picture to the chat when it can, and Settings shows each state', () => {
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-  assert.match(read('lib/engine.js'), /if \(g === "images" && !require\("\.\/image-generation"\)\.ready\(\)\) return false;/);
+  // Offered whatever the computer: asked for a picture without it, Closedhand
+  // made one through a free website, with the description and its watermark.
+  assert.doesNotMatch(read('lib/engine.js'), /g === "images"/);
+  const im = require('../lib/image-generation');
+  assert.match(im.unavailable({ eligible: false, needs: 'Image generation needs a Mac with Apple silicon.' }), /^Image generation needs a Mac with Apple silicon\.$/);
+  assert.match(im.unavailable({ eligible: true, state: 'off' }), /turned on in Settings, under Image generation/);
+  assert.match(im.unavailable({ eligible: true, state: 'downloading', pct: 42 }), /still downloading .*\(42%\)/);
+  assert.equal(im.unavailable({ state: 'ready' }), null);
+  assert.match(read('lib/tools/handlers.js'), /const why = require\("\.\.\/image-generation"\)\.unavailable\(\);\n\s*if \(why\) return \{ error: `\$\{why\} Tell the person that, in a sentence\. Never make the picture another way: no other website or service, and no code\.` \};/);
   const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'generate_image');
   assert.deepEqual(def.groups, ['images']);
   assert.ok(!def.core, 'listed, not carried in full on every message');
