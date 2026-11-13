@@ -20,7 +20,7 @@ require("./required-secrets").requireSecret("WS_AUTH_SECRET");
 
 // A Closedhand that has moved to another computer shows only where it went,
 // and starts nothing else (move.js, moved-server.js).
-if ((require("./move-marker").read() || {}).state === "moved") return require("./moved-server").serve();
+if (["moved", "replaced"].includes((require("./move-marker").read() || {}).state)) return require("./moved-server").serve();
 
 const express = require("express");
 const http = require("http");
@@ -1861,6 +1861,18 @@ async function botMoveState() {
 // move afresh. A non-zero exit, since a host may restart only on failure.
 const exitSoon = () => setTimeout(() => process.exit(1), 3000);
 const moveStorage = () => (process.env.STORAGE_DRIVER || "local").toLowerCase() === "pg" ? "pg" : (process.env.STORAGE_DIR || "./data/storage");
+// Its personal URL went to another computer set up afresh with the same
+// account (closedhand.com said so, phone-registration.js): Closedhand runs
+// there now, so this one stops as a moved one does, the bot first, keeping
+// what it had (moved-server.js says so). Where no marker can be kept, it
+// only forgets the address, as before.
+require("./phone-registration").onReplaced(async (url) => {
+  if (!moveMarker.available()) return;
+  console.log("[move] Closedhand runs on another computer now (" + url + "): stopping here");
+  moveMarker.write({ state: "replaced", url, at: new Date().toISOString() });
+  await restartBot().catch((e) => console.error("[move] the bot didn't restart:", e.message));
+  exitSoon();
+});
 const intoHereDeps = () => ({ setupCode, passwordConfigured, pool: supabase._pool, storage: moveStorage(), restartBot, exitSoon });
 function moveFailed(res, e) {
   if (!e.status) console.error("[move]", e.message);

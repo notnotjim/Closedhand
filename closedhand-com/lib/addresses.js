@@ -144,7 +144,9 @@ async function freeName(db) {
 // one lock, so two owners can never take the same name, one owner never gets
 // two addresses, and the address limit is exact. An owner's existing address
 // moves to the new copy: the old one is no longer given passes for it, and
-// the new one proves it answers there, as for a new address.
+// the new one proves it answers there, as for a new address. The old one is
+// remembered (replaced_copies), so it is told and stops running Closedhand:
+// one Closedhand runs for an account.
 async function reserve(pool, { ownerId, secretHash, hostname, limit }) {
   const client = await pool.connect();
   try {
@@ -156,8 +158,13 @@ async function reserve(pool, { ownerId, secretHash, hostname, limit }) {
     let row;
     if (mine) {
       if (mine.hostname !== hostname) throw new Refusal('This account already has a personal URL, ' + mine.hostname + '.');
-      row = mine.secret_hash === secretHash ? mine : (await client.query(
-        "UPDATE addresses SET secret_hash = $2, state = 'pending', updated_at = now() WHERE id = $1 RETURNING *", [mine.id, secretHash])).rows[0];
+      if (mine.secret_hash === secretHash) row = mine;
+      else {
+        row = (await client.query(
+          "UPDATE addresses SET secret_hash = $2, state = 'pending', updated_at = now() WHERE id = $1 RETURNING *", [mine.id, secretHash])).rows[0];
+        await client.query('INSERT INTO replaced_copies (secret_hash, owner_id) VALUES ($1, $2) ON CONFLICT (secret_hash) DO UPDATE SET owner_id = EXCLUDED.owner_id, replaced_at = now()', [mine.secret_hash, ownerId]);
+      }
+      await client.query('DELETE FROM replaced_copies WHERE secret_hash = $1', [secretHash]);
     } else {
       if (await nameTaken(client, hostname, ownerId)) throw new Refusal('That personal URL is already taken. Choose another name.');
       // Working addresses and fresh reservations count.
@@ -634,7 +641,13 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     const key = req.body?.key;
     if (!computerKey(key)) return res.status(400).json({ error: 'Update Closedhand on your computer and try again.' });
     const found = await owned(req);
-    if (!found) return res.json({ state: 'unconfirmed' });
+    if (!found) {
+      // A computer whose address moved to another of its owner's computers:
+      // Closedhand runs there now, and stops here.
+      const copy = installation(req);
+      const now = copy && (await db.query('SELECT a.hostname FROM replaced_copies r JOIN addresses a ON a.owner_id = r.owner_id WHERE r.secret_hash = $1', [copy.secret_hash])).rows[0];
+      return res.json(now ? { state: 'replaced', url: 'https://' + now.hostname } : { state: 'unconfirmed' });
+    }
     const { row } = found;
     const relay = relaySettings();
     if (!relay) {

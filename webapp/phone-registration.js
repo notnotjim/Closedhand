@@ -141,6 +141,11 @@ async function connection({ key } = {}) {
   }
   registrationState = ['unconfirmed', 'pending', 'provisioning', 'connecting', 'active', 'error'].includes(data.state) ? data.state : null;
   if (data.state === 'unconfirmed' && await getConf('PHONE_PERMANENT_URL')) await forget();
+  if (data.state === 'replaced') {
+    await forget();
+    if (validAddress(data.url) && replacedHook) await replacedHook(data.url);
+    return null;
+  }
   if (!['active', 'connecting'].includes(data.state)) return null;
   const relay = data.relay || {};
   if (!validAddress(data.url) || typeof data.pass !== 'string' || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(data.pass)
@@ -398,6 +403,11 @@ async function deleteAccount() {
   await setConf({ PHONE_ANONYMOUS: null, PHONE_ACCOUNT_NUMBER: null, PHONE_ACCOUNT_NUMBER_SAVED: null, PHONE_ANONYMOUS_PENDING: null });
   return { deleted: data.deleted === true };
 }
+// What runs when closedhand.com says Closedhand runs on another computer now
+// (server.js): one Closedhand runs for an account.
+let replacedHook = null;
+function onReplaced(fn) { replacedHook = fn; }
+
 async function forget() {
   registrationState = null;
   await setConf({ PHONE_PERMANENT_URL: null, PHONE_RELAY: null, PHONE_ADDRESS_NAME: null, PHONE_ENROLLMENT: null });
@@ -405,4 +415,4 @@ async function forget() {
 function status() {
   return { registrationState, ownershipConfirmed: ['pending', 'provisioning', 'connecting', 'active', 'error'].includes(registrationState) };
 }
-module.exports = { begin, claim, claimWithSignIn, claimAnonymous, anonymousWaiting, anonymousClaim, anonymousOffer, anonymous, accountNumber, accountNumberToSave, accountNumberSaved, termsAccepted, acceptTerms, addSignIn, rename, cleanName, connection, validAddress, confirm, challenge, status, serviceAvailable, includedAiOffered, includedAiModel, includedAiState, account, plus, deleteAccount };
+module.exports = { onReplaced, begin, claim, claimWithSignIn, claimAnonymous, anonymousWaiting, anonymousClaim, anonymousOffer, anonymous, accountNumber, accountNumberToSave, accountNumberSaved, termsAccepted, acceptTerms, addSignIn, rename, cleanName, connection, validAddress, confirm, challenge, status, serviceAvailable, includedAiOffered, includedAiModel, includedAiState, account, plus, deleteAccount };

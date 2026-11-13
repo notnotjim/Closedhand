@@ -150,7 +150,10 @@
       // put as "computer": the address is for opening Closedhand on any device.
       if (address.move) {
         $('heading').textContent = 'You already have a personal URL linked to this email';
-        $('lede').textContent = 'It opens a Closedhand you set up before. Want to switch it to the one you’re setting up now? The earlier one stops opening there.';
+        // One Closedhand runs for an account: switching stops the earlier one
+        // (lib/addresses.js replaced_copies), and bringing it here is the way
+        // to keep what it has.
+        $('lede').textContent = 'It opens a Closedhand you set up before. Switch it to this one and the earlier one stops running. To bring the earlier one here with everything it has, choose Bring Closedhand from another computer in setup instead.';
       }
       $('approve').textContent = address.move ? 'Switch to the new one' : 'Claim ' + name;
       $('confirm-note').textContent = address.move ? '' : 'Only claim it if you’re setting up Closedhand on your own computer.';

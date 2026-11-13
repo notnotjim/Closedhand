@@ -75,10 +75,41 @@ test("the moved page says nothing is left once it is, and what to do about Railw
   assert.equal(clear.leftWords({ cleared: "2026-10-28T12:00:00Z" }, true), "Nothing of it is left on Railway. Delete the project there so Railway stops charging you.");
   assert.match(clear.leftWords({}, true), /Then delete the project on Railway so it stops charging you\.$/);
   const server = read("webapp/moved-server.js");
-  assert.match(server, /\.replace\("__LEFT__", require\("\.\/move-clear"\)\.leftWords\(state, !!process\.env\.RAILWAY_ENVIRONMENT_ID\)\);/);
+  assert.match(server, /: require\("\.\/move-clear"\)\.leftWords\(state, railway\)\);/);
   assert.doesNotMatch(server, /until you remove it|still on this computer/);
   assert.match(server, /if \(process\.env\.DATABASE_URL\) require\("\.\/move-clear"\)\.whenMoved\(state, clearDeps\(state\)\);/);
   const idle = read("lib/move-idle.js");
   assert.match(idle, /app\.post\("\/internal\/move-clear", \(req, res\) => \{\n\s*if \(!verifyToken\(req\.get\("x-closedhand-token"\)\)\) return res\.status\(401\)/, "only the dashboard may ask");
   assert.match(idle, /if \(\(marker\.read\(\) \|\| \{\}\)\.state !== "moved"\) return res\.status\(409\)/, "and only once moved");
 });
+
+// One Closedhand runs for an account. Set up afresh on another computer with
+// the same account, the personal URL goes there; closedhand.com tells the
+// computer it left, which stops as a moved one does and says where Closedhand
+// runs now, keeping what it had: nothing came across, so nothing is cleared.
+test("a Closedhand replaced by one set up afresh elsewhere stops, says where it runs now, and clears nothing by itself", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ch-replaced-"));
+  const was = process.env.STORAGE_DIR;
+  process.env.STORAGE_DIR = dir;
+  try {
+    const marker = require("../webapp/move-marker");
+    marker.write({ state: "replaced", url: "https://amber-fox-42.closedhand.ai", at: "2026-11-13T18:00:00Z" });
+    assert.equal(marker.read().state, "replaced", "read, so the bot starts nothing and the dashboard only says where");
+    assert.equal(clear.whenMoved(marker.read(), {}), null, "nothing came across, so nothing is cleared by itself");
+    const page = require("../webapp/moved-server").page(marker.read());
+    assert.match(page, /<h1>Closedhand runs on another computer now<\/h1>/);
+    assert.match(page, /Your personal URL, <a href="https:\/\/amber-fox-42\.closedhand\.ai">amber-fox-42\.closedhand\.ai<\/a>, opens it there, so it stopped running here\./);
+    assert.match(page, /What it kept on this computer stays here, unused\./);
+    assert.doesNotMatch(page, /<button|<form/, "nothing on this open page deletes anything");
+  } finally {
+    if (was === undefined) delete process.env.STORAGE_DIR; else process.env.STORAGE_DIR = was;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.match(read("index.js"), /if \(require\("\.\/lib\/move-marker"\)\.read\(\)\) return require\("\.\/lib\/move-idle"\)\.start\(\);/);
+  assert.match(read("webapp/server.js"), /if \(\["moved", "replaced"\]\.includes\(\(require\("\.\/move-marker"\)\.read\(\) \|\| \{\}\)\.state\)\) return require\("\.\/moved-server"\)\.serve\(\);/);
+  assert.match(read("webapp/server.js"), /moveMarker\.write\(\{ state: "replaced", url, at: new Date\(\)\.toISOString\(\) \}\);\n\s*await restartBot\(\)/, "the bot stops first");
+  assert.match(read("lib/move-idle.js"), /\["moving", "moved", "replaced"\]\.includes\(sent\.state\)/);
+  const registration = read("webapp/phone-registration.js");
+  assert.match(registration, /if \(data\.state === 'replaced'\) \{\n\s*await forget\(\);\n\s*if \(validAddress\(data\.url\) && replacedHook\) await replacedHook\(data\.url\);/);
+});
+

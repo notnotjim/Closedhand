@@ -285,7 +285,8 @@ test('personal URL: request, confirm, type the code, take a pass to the relay, c
   assert.equal((await account(owner.cookie)).url, 'https://alex.closedhand.ai', 'confirming alone moves nothing');
   assert.deepEqual(await (await json('POST', '/api/phone-enrollment/claim', { code: moving.code }, fresh.auth)).json(), { state: 'pending', url: 'https://alex.closedhand.ai' });
   assert.equal((await signUps()).length, 1, 'a move is no new account');
-  assert.deepEqual(await (await connection(copy)).json(), { state: 'unconfirmed' }, 'the old copy lost it, and gets no more passes');
+  assert.deepEqual(await (await connection(copy)).json(), { state: 'replaced', url: 'https://alex.closedhand.ai' }, 'the old copy lost it, gets no more passes, and is told where Closedhand runs now, so it stops');
+  assert.deepEqual(await (await connection(newCopy(3200))).json(), { state: 'unconfirmed' }, 'a copy it never had is only unknown');
   const movedTo = await (await connection(fresh)).json();
   assert.equal(movedTo.state, 'connecting'); assert.deepEqual([passOf(movedTo.pass).h, passOf(movedTo.pass).k], ['alex.closedhand.ai', fresh.key]);
   challengeSecret = fresh.secret;

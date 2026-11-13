@@ -14,12 +14,19 @@ function page(state) {
   try { url = new URL(state.url || state.to).href.replace(/\/$/, ""); } catch (_) { /* no address recorded */ }
   let where = "on another computer";
   try { if (new URL(state.to).hostname.endsWith(".railway.app")) where = "on Railway"; } catch (_) {}
+  const railway = !!process.env.RAILWAY_ENVIRONMENT_ID;
+  const link = `<a href="${escape(url || "#")}">${escape(url ? url.replace(/^https?:\/\//, "") : "its new address")}</a>`;
+  // Replaced: set up afresh on another computer with the same account, so
+  // nothing came across and nothing here is cleared by itself. No button
+  // deletes it: this page is open to anyone who finds this address.
+  const replaced = state.state === "replaced";
   const html = assets.stamp(fs.readFileSync(path.join(__dirname, "views", "moved.html"), "utf8"))
-    .replace("__WHERE__", where)
-    .replace("__URL__", escape(url || "#"))
-    .replace("__URL_TEXT__", escape(url ? url.replace(/^https?:\/\//, "") : "its new address"))
+    .replace("__TITLE__", replaced ? "Closedhand runs on another computer now" : "Closedhand has moved")
+    .replace("__WHERE_LINE__", replaced ? `Your personal URL, ${link}, opens it there, so it stopped running here.` : `It runs ${where} now, at ${link}.`)
     // On Railway the old one is a project that costs money while it stays.
-    .replace("__LEFT__", require("./move-clear").leftWords(state, !!process.env.RAILWAY_ENVIRONMENT_ID));
+    .replace("__LEFT__", replaced
+      ? (railway ? "What it kept here stays in your Railway project until you delete the project, which also stops Railway charging you." : "What it kept on this computer stays here, unused.")
+      : require("./move-clear").leftWords(state, railway));
   return assets.withAppearance(html);
 }
 
@@ -57,7 +64,7 @@ function serve() {
   if (process.env.DATABASE_URL) require("./move-clear").whenMoved(state, clearDeps(state));
   const app = express();
   app.disable("x-powered-by");
-  app.get("/health", (req, res) => res.json({ status: "ok", service: "closedhand-webapp", move: "moved" }));
+  app.get("/health", (req, res) => res.json({ status: "ok", service: "closedhand-webapp", move: state.state }));
   // Settings polls this while handing over; after the restart it lands here.
   // A move to Railway names its Railway address; one to a computer of the
   // person's own keeps the personal URL, so Settings words each as it was.
@@ -69,7 +76,7 @@ function serve() {
   app.use(express.static(path.join(__dirname, "public"), { setHeaders: assets.cacheHeaders }));
   app.use((req, res) => res.set("Cache-Control", "no-store").type("html").send(page(state)));
   const port = process.env.PORT || 3000;
-  app.listen(port, process.env.LISTEN_HOST || undefined, () => console.log(`[move] moved to ${state.to}: the dashboard shows only that (port ${port})`));
+  app.listen(port, process.env.LISTEN_HOST || undefined, () => console.log(`[move] ${state.state === "replaced" ? "replaced by Closedhand at " + state.url : "moved to " + state.to}: the dashboard shows only that (port ${port})`));
 }
 
 module.exports = { serve, page };
