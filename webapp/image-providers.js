@@ -8,13 +8,14 @@
 // by its exact id and changed by hand: a pattern picking the newest could
 // move people's pictures to a pricier model nobody chose. way: how it is
 // asked, its OpenAI-style images endpoint, Gemini's generateContent, or a
-// chat completion that answers with a picture.
+// chat completion that answers with a picture. edits: it also changes a
+// picture it is given, the way its provider documents.
 const MODELS = {
-  openai: { name: "OpenAI", model: "gpt-image-2.6-sunburst", way: "images" },
-  xai: { name: "xAI", model: "grok-imagine-image-2.0", way: "images" },
-  deepinfra: { name: "DeepInfra", model: "black-forest-labs/FLUX-2-pro", way: "images" },
-  gemini: { name: "Google Gemini", model: "gemini-3-pro-image", way: "gemini" },
-  openrouter: { name: "OpenRouter", model: "google/gemini-3-pro-image", way: "chat" },
+  openai: { name: "OpenAI", model: "gpt-image-2.6-sunburst", way: "images", edits: true },
+  xai: { name: "xAI", model: "grok-imagine-image-2.0", way: "images", edits: false },
+  deepinfra: { name: "DeepInfra", model: "black-forest-labs/FLUX-2-pro", way: "images", edits: false },
+  gemini: { name: "Google Gemini", model: "gemini-3-pro-image", way: "gemini", edits: true },
+  openrouter: { name: "OpenRouter", model: "google/gemini-3-pro-image", way: "chat", edits: true },
 };
 
 // The provider behind the person's chat, as model-policy reads a connection.
