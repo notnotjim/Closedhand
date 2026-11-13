@@ -1,0 +1,59 @@
+# The relay on Fly.io, which can give it its own internet address and pass
+# connections on port 443 to it still encrypted (Railway's front door would
+# end the encryption itself). One machine only: which computers are
+# connected is kept in its memory. Deployed from this folder with
+# `fly deploy --ha=false`; its keys are Fly secrets (closedhand-com/README.md).
+app = "closedhand-relay"
+primary_region = "sin"
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  RELAY_DOMAIN = "closedhand.ai"
+  RELAY_CONTROL_HOST = "relay.closedhand.ai"
+  RELAY_REPORT_URL = "https://closedhand.com/jobs/relay-seen"
+  RELAY_PROXY_PROTOCOL = "1"
+  PORT_TLS = "8443"
+  PORT_HTTP = "8080"
+
+# Browsers and computers, still encrypted, with a PROXY header saying where
+# each connection came from.
+[[services]]
+  protocol = "tcp"
+  internal_port = 8443
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  [services.concurrency]
+    type = "connections"
+    soft_limit = 20000
+    hard_limit = 25000
+  [[services.ports]]
+    port = 443
+    handlers = ["proxy_proto"]
+    proxy_proto_options = { version = "v2" }
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+
+# Let's Encrypt's checks, and plain http sent on to https.
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  [services.concurrency]
+    type = "connections"
+    soft_limit = 2000
+    hard_limit = 2500
+  [[services.ports]]
+    port = 80
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

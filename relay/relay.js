@@ -24,6 +24,7 @@ const http = require('http');
 const crypto = require('crypto');
 const { Duplex } = require('stream');
 const { serverName } = require('./sni');
+const { proxyHeader } = require('./proxy');
 
 const PERSONAL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const HELLO_WITHIN_MS = 10000;
@@ -97,7 +98,9 @@ function replaying(socket, first) {
   return d;
 }
 
-function createRelay({ domain, controlHost, controlKey, controlCert, passKey, log = () => {}, now = () => Date.now() }) {
+// proxied: the host's front door puts a PROXY header before each connection
+// on port 443 (proxy.js), and the browser's address is read from it.
+function createRelay({ domain, controlHost, controlKey, controlCert, passKey, proxied = false, log = () => {}, now = () => Date.now() }) {
   const suffix = '.' + domain;
   const passPublic = typeof passKey === 'string' ? crypto.createPublicKey(passKey) : passKey;
   const computers = new Map(); // hostname -> { socket, challenges: Map(token -> answer) }
@@ -184,11 +187,20 @@ function createRelay({ domain, controlHost, controlKey, controlCert, passKey, lo
   // Port 443: every connection, read just far enough to learn its name.
   const front = net.createServer(socket => {
     socket.on('error', () => {});
-    let buf = Buffer.alloc(0), done = false;
+    let buf = Buffer.alloc(0), done = false, from = String(socket.remoteAddress || '').replace(/^::ffff:/, ''), header = !proxied;
     const timer = setTimeout(() => socket.destroy(), HELLO_WITHIN_MS);
     const onData = chunk => {
       if (done) return;
       buf = Buffer.concat([buf, chunk]);
+      if (!header) {
+        const h = proxyHeader(buf);
+        if (h.need) return;
+        if (h.error) { done = true; clearTimeout(timer); socket.destroy(); return; }
+        header = true;
+        if (h.from) from = h.from.replace(/^::ffff:/, '');
+        buf = buf.subarray(h.length);
+        if (!buf.length) return;
+      }
       const found = serverName(buf);
       if (found.need) return;
       done = true;
@@ -205,10 +217,10 @@ function createRelay({ domain, controlHost, controlKey, controlCert, passKey, lo
       const mine = [...waiting.values()].filter(w => w.host === found.name).length;
       if (mine >= MAX_WAITING_PER_NAME) { socket.destroy(); return; }
       const id = b64u(crypto.randomBytes(18));
-      const w = { host: found.name, socket, hello: buf, from: socket.remoteAddress, timer: setTimeout(() => { waiting.delete(id); socket.destroy(); }, DIAL_WITHIN_MS) };
+      const w = { host: found.name, socket, hello: buf, from, timer: setTimeout(() => { waiting.delete(id); socket.destroy(); }, DIAL_WITHIN_MS) };
       waiting.set(id, w);
       socket.on('close', () => { if (waiting.get(id) === w) { clearTimeout(w.timer); waiting.delete(id); } });
-      send(entry.socket, { open: id, from: String(socket.remoteAddress || '').replace(/^::ffff:/, '') });
+      send(entry.socket, { open: id, from });
     };
     socket.on('data', onData);
   });

@@ -7,10 +7,11 @@
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto');
-const http = require('node:http'), https = require('node:https'), tls = require('node:tls');
+const http = require('node:http'), https = require('node:https'), tls = require('node:tls'), net = require('node:net');
 const { execFileSync } = require('node:child_process');
 const { createRelay } = require('../relay/relay');
 const { serverName } = require('../relay/sni');
+const { proxyHeader } = require('../relay/proxy');
 const relayClient = require('../webapp/relay-client');
 
 const DOMAIN = 'closedhand.test', CONTROL = 'relay.closedhand.test', NAME = 'amber-fox-42.closedhand.test';
@@ -56,16 +57,16 @@ const site = http.createServer((req, res) => {
   req.on('data', d => { body += d; });
   req.on('end', () => res.end(JSON.stringify({ from: req.socket.relayFrom, secure: !!req.socket.encrypted, body })));
 });
-function startComputer({ key = computer, getPass = async () => pass({ key: key.publicKey }), relayPin = pin } = {}) {
-  const c = relayClient.create({ relay: { address: '127.0.0.1:' + FRONT, controlHost: CONTROL, pin: relayPin }, getPass, privateKey: key.privateKey, publicKey: key.publicKey });
+function startComputer({ key = computer, getPass = async () => pass({ key: key.publicKey }), relayPin = pin, port = FRONT } = {}) {
+  const c = relayClient.create({ relay: { address: '127.0.0.1:' + port, controlHost: CONTROL, pin: relayPin }, getPass, privateKey: key.privateKey, publicKey: key.publicKey });
   c.on('stream', relayClient.terminate({ server: site, secureContext: () => tls.createSecureContext({ key: read('site.key'), cert: read('site.crt') }) }));
   clients.push(c);
   return c;
 }
 const once = (em, ev) => new Promise(r => em.once(ev, (...a) => r(a)));
-function browse(name = NAME, body = '') {
+function browse(name = NAME, body = '', port = FRONT) {
   return new Promise((resolve, reject) => {
-    const req = https.request({ host: '127.0.0.1', port: FRONT, servername: name, ca: read('ca.crt'), path: '/', method: body ? 'POST' : 'GET', agent: false }, res => {
+    const req = https.request({ host: '127.0.0.1', port, servername: name, ca: read('ca.crt'), path: '/', method: body ? 'POST' : 'GET', agent: false }, res => {
       let text = '';
       res.on('data', d => { text += d; });
       res.on('end', () => resolve(JSON.parse(text)));
@@ -184,4 +185,40 @@ test("a computer a personal URL moved away from can't take it back with its olde
   assert.deepEqual(relay.connected(), [], 'let go when closedhand.com says it belongs to nobody');
   fresh.stop();
   assert.match(fs.readFileSync(path.join(__dirname, '../relay/main.js'), 'utf8'), /relay\.drop\(answer\.drop\)/, "closedhand.com's answer to each report is acted on");
+});
+
+test("behind a front door that says where each connection came from (Fly.io's PROXY header), the computer gets the browser's address", async () => {
+  // The header, read on its own.
+  const v1 = Buffer.from('PROXY TCP4 203.0.113.9 10.0.0.1 51000 443\r\n');
+  assert.deepEqual(proxyHeader(v1), { from: '203.0.113.9', length: v1.length });
+  assert.deepEqual(proxyHeader(v1.subarray(0, 12)), { need: true });
+  const v2 = (fam, src) => {
+    const addr = fam === 0x11 ? Buffer.concat([Buffer.from(src), Buffer.from([10, 0, 0, 1]), Buffer.from([0xc7, 0x38, 0x01, 0xbb])]) : Buffer.concat([src, Buffer.alloc(16), Buffer.from([0xc7, 0x38, 0x01, 0xbb])]);
+    const head = Buffer.from('0d0a0d0a000d0a515549540a2100', 'hex'); head[13] = fam;
+    const len = Buffer.alloc(2); len.writeUInt16BE(addr.length);
+    return Buffer.concat([head, len, addr]);
+  };
+  assert.deepEqual(proxyHeader(v2(0x11, [198, 51, 100, 7])), { from: '198.51.100.7', length: 28 });
+  assert.equal(proxyHeader(v2(0x21, Buffer.from('20010db8000000000000000000000042', 'hex'))).from, '2001:db8:0:0:0:0:0:42');
+  const local = Buffer.from('0d0a0d0a000d0a515549540a20000000', 'hex');
+  assert.deepEqual(proxyHeader(local), { from: null, length: 16 }, "the front door's own check");
+  assert.deepEqual(proxyHeader(v2(0x11, [198, 51, 100, 7]).subarray(0, 20)), { need: true });
+  assert.ok(proxyHeader(Buffer.from([0x16, 0x03, 0x01, 0x02, 0x00, 0x01, 0x00])).error, 'a browser straight in, with no header: refused');
+
+  // A relay behind a stand-in for Fly's front door, which adds the header.
+  const behind = createRelay({ domain: DOMAIN, controlHost: CONTROL, controlKey: read('control.key'), controlCert: read('control.crt'), passKey: issuer.publicKey, proxied: true });
+  await new Promise(r => behind.front.listen(0, '127.0.0.1', r));
+  const door = net.createServer(c => {
+    const up = net.connect(behind.front.address().port, '127.0.0.1', () => { up.write(v2(0x11, [198, 51, 100, 7])); c.pipe(up).pipe(c); });
+    c.on('error', () => up.destroy()); up.on('error', () => c.destroy());
+  });
+  await new Promise(r => door.listen(0, '127.0.0.1', r));
+  const c = startComputer({ port: door.address().port });
+  await once(c.start(), 'up');
+  const got = await browse(NAME, 'hello', door.address().port);
+  assert.equal(got.body, 'hello');
+  assert.equal(got.from, '198.51.100.7', "the browser's address, from the header");
+  assert.equal(got.secure, true);
+  await assert.rejects(browse(NAME, '', behind.front.address().port), 'a connection without the header is closed');
+  c.stop(); behind.close(); door.close();
 });

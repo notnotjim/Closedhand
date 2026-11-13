@@ -10,6 +10,8 @@
 //   RELAY_REPORT_URL      https://closedhand.com/jobs/relay-seen
 //   RELAY_REPORT_SECRET   shared with closedhand.com for that report
 //   PORT_TLS, PORT_HTTP   443 and 80 unless set
+//   RELAY_PROXY_PROTOCOL  1 when the host's front door adds a PROXY header on
+//                         port 443 (Fly.io), so browsers' addresses are known
 const { createRelay } = require('./relay');
 
 const env = process.env;
@@ -22,6 +24,7 @@ const relay = createRelay({
   controlKey: pem(need('RELAY_CONTROL_KEY')),
   controlCert: pem(need('RELAY_CONTROL_CERT')),
   passKey: pem(need('RELAY_PASS_KEY')),
+  proxied: env.RELAY_PROXY_PROTOCOL === '1',
   log: (what, host) => console.log(`[relay] ${what} ${host}`),
 });
 relay.front.listen(Number(env.PORT_TLS || 443), () => console.log('[relay] listening for https'));
