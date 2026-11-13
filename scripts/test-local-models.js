@@ -493,3 +493,21 @@ test("the person's own LLM provider makes pictures once they say so, the way eac
   } finally { restore(); }
 });
 
+// Once a picture is in the chat, the LLM is given what it was seen to show,
+// as a check, with nothing to claim beyond it: told only that it was sent, it
+// said a picture of a plain cat had "retriever face and build, feline ears".
+test('after a picture is sent, the LLM goes by what it was seen to show, never by what it asked for', async () => {
+  const im = require('../lib/image-generation');
+  const pic = { bytes: Buffer.from('JPEG'), mime: 'image/jpeg' };
+  const looked = [];
+  const got = await im.madeResult(pic, { settings: {}, userId: 'u1', look: async (bytes, mime, settings, userId) => { looked.push([bytes.toString(), mime, userId]); return 'A cat is sitting on the floor.'; } });
+  assert.deepEqual(looked, [['JPEG', 'image/jpeg', 'u1']]);
+  assert.equal(got.checked, 'Looked at after it was made, the picture shows: A cat is sitting on the floor.');
+  assert.match(got.say, /Claim nothing about the picture beyond what 'checked' says\. If 'checked' shows it clearly misses what they asked for, make it once more with a clearer description; if it still misses, say so plainly\./);
+  const blind = await im.madeResult(pic, { look: async () => null });
+  assert.equal(blind.checked, undefined);
+  assert.match(blind.say, /don't describe it/);
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'lib/tools/handlers.js'), 'utf8'), /return await require\("\.\.\/image-generation"\)\.madeResult\(pic, \{ settings, userId: toolInput\._userId \|\| ctx\.activeUserId \}\);/);
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'lib/image-generation.js'), 'utf8'), /require\("\.\/model-images"\)\.substituteImages\(/, 'seen as any picture is: the chosen picture model, or the VLM on this computer');
+});
+

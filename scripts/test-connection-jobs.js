@@ -149,12 +149,13 @@ test("a connected image service makes the picture first and sends it to the chat
   const db = { from: () => ({ select: () => ({ eq: () => ({ eq: async () => ({ data: [row], error: null }) }) }) }) };
   const sent = [];
   const take = (result, extra = {}) => jobs.takeOver("generate_image", { prompt: "a lighthouse at dusk", shape: "square", _userId: "u1", _chatId: "c1" }, {
-    db, ctx: {}, sendDocument: async (...a) => { sent.push(a); },
+    db, ctx: {}, sendDocument: async (...a) => { sent.push(a); }, look: async () => "a stone lighthouse on a headland at dusk",
     callTool: async (u, id, tool, args) => { assert.deepEqual([tool, args], ["wren_create", { size: "1024x1024", text: "a lighthouse at dusk" }]); return result; },
     ...extra,
   });
   const got = await take({ content: [{ type: "image", data: PNG.toString("base64"), mimeType: "image/png" }] });
-  assert.deepEqual(got, { success: true, sent: "The picture is in the chat. Say a word about it; don't describe it at length.", source: "Wren Pictures" });
+  assert.equal(got.source, "Wren Pictures");
+  assert.equal(got.checked, "Looked at after it was made, the picture shows: a stone lighthouse on a headland at dusk", "what it really shows, for the LLM to go by");
   assert.deepEqual([sent[0][0], sent[0][2], sent[0][3]], ["c1", "image.png", "image/png"]);
   assert.ok(sent[0][1].equals(PNG));
   await take({ content: [{ type: "text", text: JSON.stringify({ data: [{ b64_json: PNG.toString("base64") }] }) }] });
