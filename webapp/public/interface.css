@@ -670,3 +670,26 @@ input[type=search]::-webkit-search-cancel-button:hover { background-color: var(-
 @media (prefers-reduced-motion: reduce) { .anon-ring-ink, .anon-fist { animation: none; } .anon-ring-ink { stroke-dasharray: 100 0; } }
 #url-anon-pay[hidden], #url-anon-go[hidden], #url-anon-back[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { #url-anon-panel, #url-number { animation: none; } }
+
+/* Lights running round a box's edge, the same wherever they appear: two,
+   ember and warm, on opposite sides at an even pace, each a bright stretch
+   of the ring (.edge-run, masked to the ring) over a soft glow beneath the
+   box (.edge-glow). The box gives its corner radius as --edge-r, how bright
+   as --edge-lit (0 to 1) and, to run quicker, --edge-pace. "Connect anything"
+   runs them all the time; the chat box lights them while a file is dragged
+   over it. */
+@property --edge-lit {syntax:'<number>';inherits:true;initial-value:0;}
+.edge-run {position:absolute;inset:0;z-index:1;border-radius:inherit;padding:1.5px;pointer-events:none;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);}
+.edge-glow {position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;}
+:is(.edge-run, .edge-glow)::before, :is(.edge-run, .edge-glow)::after {
+  content:"";position:absolute;top:0;left:0;border-radius:50%;pointer-events:none;
+  offset-path:inset(0 round var(--edge-r, 1rem));offset-rotate:auto;offset-distance:12%;animation:edge-run var(--edge-pace, 9s) linear infinite;}
+:is(.edge-run, .edge-glow)::after {offset-distance:62%;animation-delay:calc(var(--edge-pace, 9s) / -2);}
+.edge-run::before {width:9rem;height:2rem;background:radial-gradient(closest-side,rgba(var(--accent-warm-rgb),1),rgba(var(--accent-rgb),.55) 45%,transparent);}
+.edge-run::after {width:9rem;height:2rem;background:radial-gradient(closest-side,rgba(var(--accent-soft-rgb),1),rgba(var(--accent-rgb),.55) 45%,transparent);}
+.edge-glow::before, .edge-glow::after {width:calc(11rem + 3rem * var(--edge-lit));height:calc(3.5rem + 1rem * var(--edge-lit));filter:blur(0.75rem);opacity:calc(.4 + .35 * var(--edge-lit));background:radial-gradient(closest-side,rgba(var(--accent-rgb),.6),transparent);}
+:root[data-theme="light"] .edge-glow::before, :root[data-theme="light"] .edge-glow::after {opacity:calc(.2 + .2 * var(--edge-lit));}
+@keyframes edge-run {from {offset-distance:0%;} to {offset-distance:100%;}}
+@supports not (offset-path:inset(0 round 1rem)) {.edge-run, .edge-glow {display:none;}}
+@media (prefers-reduced-motion: reduce) {:is(.edge-run, .edge-glow)::before, :is(.edge-run, .edge-glow)::after {animation:none;}}
+

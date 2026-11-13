@@ -1121,12 +1121,16 @@
   #fileInput { display: none; }
 
 
-  /* Drag and drop overlay */
-  .input-box.drag-over {
-    background: rgba(var(--accent-rgb),0.08) !important;
-    border: 2px dashed rgba(var(--accent-rgb),0.3) !important;
-  }
-  .input-box.drag-over::after {
+  /* A file dragged anywhere over the chat (body.file-over): its box lights up
+     as "Connect anything" does (interface.css .edge-run), the lights running
+     quicker and the glow beneath swelling, and says where the file goes.
+     Dropped (.landed), the glow flares once and settles. */
+  .input-box-wrap { isolation: isolate; --edge-r: 1.25rem; --edge-pace: 3.6s; }
+  .input-box-wrap > :is(.edge-run, .edge-glow) { opacity: 0; transition: opacity 0.35s ease, --edge-lit 0.45s ease; }
+  body.file-over .input-box-wrap > :is(.edge-run, .edge-glow) { opacity: 1; --edge-lit: 1; }
+  .input-box-wrap.landed > .edge-glow { opacity: 1; animation: box-landed 0.9s cubic-bezier(0.22,0.61,0.36,1); }
+  @keyframes box-landed { 0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb),0.45); } 45% { box-shadow: 0 0 0 0.5rem rgba(var(--accent-rgb),0.12); } 100% { box-shadow: 0 0 0 0.75rem rgba(var(--accent-rgb),0); } }
+  body.file-over .input-box::after {
     content: 'Drop files here';
     position: absolute;
     inset: 0;
@@ -1134,20 +1138,18 @@
     align-items: center;
     justify-content: center;
     font-size: 1rem;
-    color: rgba(var(--accent-rgb),0.6);
-    font-weight: 400;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--accent);
     z-index: 10;
-    background: rgba(var(--raised-rgb),0.85);
-    border-radius: 1.625rem;
+    border-radius: inherit;
+    background: rgba(var(--raised-rgb),0.6);
+    -webkit-backdrop-filter: blur(0.375rem);
+    backdrop-filter: blur(0.375rem);
+    animation: drop-say 0.3s ease both;
   }
-  .chat-messages.drag-over {
-    box-shadow: inset 0 0 0 2px rgba(var(--accent-strong-rgb),0.5), 0 0 1.5rem rgba(var(--accent-strong-rgb),0.15);
-    transition: box-shadow 0.2s ease;
-  }
-  .docked-input.drag-over {
-    box-shadow: inset 0 0 0 2px rgba(var(--accent-strong-rgb),0.5), 0 0 1.5rem rgba(var(--accent-strong-rgb),0.15);
-    transition: box-shadow 0.2s ease;
-  }
+  @keyframes drop-say { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .input-box-wrap.landed > .edge-glow, body.file-over .input-box::after { animation: none; } }
 
   /* Mobile */
   @media (max-width: 600px) {
@@ -1192,17 +1194,6 @@
     body.chat-active .chat-messages { padding-bottom: 1.5rem !important; }
     body.chat-active { overflow: hidden; height: 100dvh; }
     body.chat-active .page { height: 100dvh !important; }
-    /* Fade gradient above the fixed chatbox */
-    .docked-input::before {
-      content: '';
-      position: absolute;
-      top: -2.5rem;
-      left: 0;
-      right: 0;
-      height: 2.5rem;
-      background: linear-gradient(transparent, rgba(var(--raised-rgb),0.95));
-      pointer-events: none;
-    }
 
     /* Mobile activity sidebar: always rendered off-screen, slides in */
     body.chat-active .activity-sidebar { display: block !important; position: fixed; top: 0; left: 0; bottom: 0; z-index: 30; background: rgba(var(--bg-rgb),0.97); backdrop-filter: blur(1.25rem); transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), visibility 0s linear 0.3s; visibility: hidden; pointer-events: none; }
@@ -1692,11 +1683,19 @@
   }
   /* The input floats over the list. The list ends at the input's top edge
      and its bottom is masked, so the thread fades out before it reaches the
-     box and never shows through it. */
+     box and never shows through it. The fade eases out over a short stretch
+     and the thread softens into it under a blur that grows toward the box: a
+     long straight fade read as a milky band laid over a picture. */
   body.chat-active .chat-messages {
     padding-bottom: 1.5rem;
-    -webkit-mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 4.5rem), transparent 100%);
-    mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 4.5rem), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 3rem), rgba(0,0,0,.93) calc(100% - 2.5rem), rgba(0,0,0,.78) calc(100% - 1.9rem), rgba(0,0,0,.55) calc(100% - 1.35rem), rgba(0,0,0,.3) calc(100% - .85rem), rgba(0,0,0,.1) calc(100% - .4rem), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 3rem), rgba(0,0,0,.93) calc(100% - 2.5rem), rgba(0,0,0,.78) calc(100% - 1.9rem), rgba(0,0,0,.55) calc(100% - 1.35rem), rgba(0,0,0,.3) calc(100% - .85rem), rgba(0,0,0,.1) calc(100% - .4rem), transparent 100%);
+  }
+  body.chat-active .docked-input::before {
+    content: ''; position: absolute; left: 0; right: 0; bottom: calc(100% - 0.125rem); height: 3.25rem; pointer-events: none;
+    -webkit-backdrop-filter: blur(0.625rem); backdrop-filter: blur(0.625rem);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, rgba(0,0,0,.35) 35%, rgba(0,0,0,.8) 70%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, rgba(0,0,0,.35) 35%, rgba(0,0,0,.8) 70%, #000 100%);
   }
   @media (max-width: 899px) {
     body.chat-active .docked-input.active {
@@ -2292,6 +2291,7 @@
     <!-- Sending from here carries on Chat, or the project that is open. -->
 
     <div class="input-box-wrap" id="heroInputWrap">
+      <span class="edge-glow" aria-hidden="true"></span><span class="edge-run" aria-hidden="true"></span>
       <div class="input-box" id="heroInputBox">
         <div class="input-textarea-wrap">
           <!-- Replying to a message (its Reply button or a search result): shown
@@ -2407,6 +2407,7 @@
 
   <div class="docked-input" id="dockedInput">
     <div class="input-box-wrap">
+      <span class="edge-glow" aria-hidden="true"></span><span class="edge-run" aria-hidden="true"></span>
       <div class="input-box" id="dockedInputBox">
         <!-- textarea and toolbar get moved here in chat mode via JS -->
       </div>
@@ -3630,24 +3631,38 @@
 
   // Drag and drop
   var inputBox = document.getElementById('heroInputBox');
+  // A file over any place that takes it lights the chat box (body.file-over),
+  // which stays lit moving from one such place to the next; dropped, the box
+  // flares once (.landed).
+  var filesOver = 0;
+  function fileOver(on) {
+    filesOver = Math.max(0, filesOver + (on ? 1 : -1));
+    document.body.classList.toggle('file-over', filesOver > 0);
+  }
+  function landed() {
+    document.querySelectorAll('.input-box-wrap').forEach(function (w) {
+      w.classList.remove('landed'); void w.offsetWidth; w.classList.add('landed');
+      setTimeout(function () { w.classList.remove('landed'); }, 900);
+    });
+  }
   function addDragListeners(box) {
     var counter = 0;
+    var hasFiles = function (e) { return Array.prototype.indexOf.call((e.dataTransfer && e.dataTransfer.types) || [], 'Files') >= 0; };
     box.addEventListener('dragenter', function(e) {
       e.preventDefault();
-      counter++;
-      box.classList.add('drag-over');
+      if (!hasFiles(e)) return;
+      if (counter++ === 0) fileOver(true);
     });
     box.addEventListener('dragleave', function(e) {
       e.preventDefault();
-      counter--;
-      if (counter <= 0) { counter = 0; box.classList.remove('drag-over'); }
+      if (counter > 0 && --counter === 0) fileOver(false);
     });
     box.addEventListener('dragover', function(e) { e.preventDefault(); });
     box.addEventListener('drop', function(e) {
       e.preventDefault();
+      if (counter > 0) fileOver(false);
       counter = 0;
-      box.classList.remove('drag-over');
-      if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+      if (e.dataTransfer.files.length > 0) { landed(); handleFiles(e.dataTransfer.files); }
     });
   }
   addDragListeners(inputBox);

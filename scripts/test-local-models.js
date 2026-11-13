@@ -554,3 +554,11 @@ test("a picture is changed on this computer or by an allowed provider, never in 
   assert.match(handlers, /return \{ \.\.\.await require\("\.\.\/image-generation"\)\.madeResult\(pic, \{ settings, userId \}\), picture_id: pictureId \};/, 'a picture made is kept, to be changed next');
 });
 
+// Before a move to Railway, where its own image model can't run, a computer
+// that runs it says what changes for pictures, in the words agreed.
+test("a move to Railway from a computer that runs the image model says what changes for pictures", () => {
+  const dash = fs.readFileSync(path.join(__dirname, '..', 'webapp/views/dashboard.html'), 'utf8');
+  assert.match(dash, /<p class="account-action-desc" id="railway-pictures" hidden>Railway's servers can't run Closedhand's own image model: there, new pictures come with the Closedhand subscription, and changing existing pictures isn't possible yet\.<\/p>/);
+  assert.match(dash, /document\.getElementById\('railway-pictures'\)\.hidden = !\(st && st\.localModels && st\.localModels\.images && st\.localModels\.images\.eligible\);/);
+});
+

@@ -2309,7 +2309,7 @@
             <h3 class="connect-anything-title">Connect anything</h3>
 
             <div class="mcp-pill">
-              <span class="mcp-edge" aria-hidden="true"></span>
+              <span class="edge-glow" aria-hidden="true"></span><span class="edge-run" aria-hidden="true"></span>
               <div class="mcp-pill-inner">
                 <textarea id="mcp-url-input" rows="1" placeholder="Paste an MCP server, skill or API key" aria-label="MCP server, skill or API key" oninput="mcpGrowInput(this)" onkeydown="mcpInputKey(event)" onpaste="mcpPaste(event)" spellcheck="false"></textarea>
                 <button onclick="addMcpConnection()" id="mcp-connect-btn" class="cta mcp-connect-btn unpainted">Connect</button>
@@ -3028,6 +3028,7 @@
                   <p class="account-action-desc" id="always-on-railway"></p>
                   <div class="move-confirm" id="railway-confirm" hidden>
                     <p class="account-action-desc">Everything moves to a server on Railway, and this computer stops running Closedhand. You sign in to Railway next.</p>
+                    <p class="account-action-desc" id="railway-pictures" hidden>Railway's servers can't run Closedhand's own image model: there, new pictures come with the Closedhand subscription, and changing existing pictures isn't possible yet.</p>
                     <button type="button" class="cta" id="railway-continue" onclick="startRailwayMove()">Continue to Railway</button>
                     <button type="button" class="quiet-link" onclick="confirmRailwayMove(false)">Cancel</button>
                   </div>
@@ -5776,9 +5777,14 @@
     }
     // Off to Railway's sign-in; it comes back to Settings, which follows the rest.
     // What moving to Railway does, said before it starts; Continue goes to Railway's sign-in.
+    // Said only where this computer runs Closedhand's own image model, which a
+    // server on Railway can't (lib/image-generation.js).
     function confirmRailwayMove(open) {
       document.getElementById('railway-confirm').hidden = !open;
       document.getElementById('move-go').hidden = open;
+      if (open) fetch('/api/setup/status', { headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (st) { document.getElementById('railway-pictures').hidden = !(st && st.localModels && st.localModels.images && st.localModels.images.eligible); })
+        .catch(function () {});
     }
     async function startRailwayMove() {
       var go = document.getElementById('railway-continue');

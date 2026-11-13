@@ -163,10 +163,14 @@ test("Connect anything stands apart under the skills, inviting, with Connect as 
   // two lights run round its ember edge all the time, and the edge and its
   // glow brighten on hover and more in use.
   assert.match(css, /\.connection-catalogue \.mcp-pill:hover \{--edge-lit:\.45;\}\n\.connection-catalogue \.mcp-pill:focus-within \{--edge-lit:1;\}/);
-  assert.match(css, /offset-path:inset\(0 round 1rem\);offset-rotate:auto;offset-distance:12%;animation:edge-run 9s linear infinite;/, "at an even pace round the edge");
-  assert.match(css, /\.connection-catalogue :is\(\.mcp-edge, \.mcp-pill\)::after \{offset-distance:62%;animation-delay:-4\.5s;\}/, "the second light on the far side");
-  assert.match(css, /prefers-reduced-motion: reduce\) \{\.mcp-connect-btn::before \{transition:none;\} \.connection-catalogue :is\(\.mcp-edge, \.mcp-pill\)::before, \.connection-catalogue :is\(\.mcp-edge, \.mcp-pill\)::after \{animation:none;\}\}/, "still, without motion");
-  assert.match(dash, /<div class="mcp-pill">\n\s+<span class="mcp-edge" aria-hidden="true"><\/span>/);
+  // The lights are one shared piece (interface.css), the chat box's too.
+  const shared = read("webapp/public/interface.css");
+  assert.match(css, /\.connection-catalogue \.mcp-pill \{position:relative;isolation:isolate;max-width:40rem;margin:0 auto;border-radius:1rem;--edge-r:1rem;/);
+  assert.match(shared, /offset-path:inset\(0 round var\(--edge-r, 1rem\)\);offset-rotate:auto;offset-distance:12%;animation:edge-run var\(--edge-pace, 9s\) linear infinite;/, "at an even pace round the edge");
+  assert.match(shared, /:is\(\.edge-run, \.edge-glow\)::after \{offset-distance:62%;animation-delay:calc\(var\(--edge-pace, 9s\) \/ -2\);\}/, "the second light on the far side");
+  assert.match(shared, /@media \(prefers-reduced-motion: reduce\) \{:is\(\.edge-run, \.edge-glow\)::before, :is\(\.edge-run, \.edge-glow\)::after \{animation:none;\}\}/, "still, without motion");
+  assert.doesNotMatch(css, /mcp-edge|edge-run \{/, "not a copy of its own");
+  assert.match(dash, /<div class="mcp-pill">\n\s+<span class="edge-glow" aria-hidden="true"><\/span><span class="edge-run" aria-hidden="true"><\/span>/);
   assert.match(dash, /<button onclick="addMcpConnection\(\)" id="mcp-connect-btn" class="cta mcp-connect-btn unpainted">Connect<\/button>/, "Connect is the brush-stroke main action");
   assert.match(dash, /classList\.toggle\('ready', !!el\.value\.trim\(\)\)/, "its stroke is painted over once there is something to connect");
   assert.match(css, /\.connection-catalogue \.mcp-scan \{display:flex;align-items:center;justify-content:center;gap:0\.375rem;margin:0\.875rem 0 0;color:var\(--muted\);/, "the scan note is a plain line, not a capsule");
