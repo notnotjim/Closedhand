@@ -316,8 +316,7 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   only [[next]], lib/follow-on.js; unmarked long replies are split there too). What Closedhand
   makes beyond the chat answer, when one helps, is a "page" (/page/<id>, with PDF, Word and Excel),
   linked as an extra, never instead of the answer, and kept under Pages on the dashboard whichever
-  chat or agent made it. Never "report" or "document" for it: documents are the files in Context
-  Brain. The code and its table still say report. Background progress is one live line in the web chat and one plain message elsewhere.
+  chat or agent made it. Never "report" or "document" for it: documents are the files you connect. The code and its table still say report. Background progress is one live line in the web chat and one plain message elsewhere.
 - Questions mid-task go to the chat the task came from. The dashboard only shows
   that Closedhand is waiting, where it asked and when, and repeats the question.
   It never expects the answer there.
