@@ -2,7 +2,7 @@
   "index.js": 1,
   "lib/admin.js": 3,
   "lib/bridge-server.js": 1,
-  "lib/conversation.js": 14,
+  "lib/conversation.js": 3,
   "lib/platforms/web.js": 2,
   "lib/platforms/whatsapp-linked.js": 3,
   "lib/proactive.js": 1,
@@ -13,6 +13,6 @@
   "lib/workspace-cache.js": 1,
   "user-store.js": 16,
   "webapp/admin.js": 3,
-  "webapp/rag-processor.js": 13,
-  "webapp/server.js": 34
+  "webapp/rag-processor.js": 12,
+  "webapp/server.js": 18
 }
