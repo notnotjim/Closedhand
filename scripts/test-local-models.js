@@ -301,7 +301,7 @@ test('an image model is told what a picture came with or is looked at for, and l
   }
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
   assert.match(read('lib/tools/handlers.js'), /description: data\.description, \.\.\.\(toolInput\.question \? \{ question:/, 'view_attachment takes what to look for');
-  assert.match(read('lib/engine.js'), /\.\.\.\(result\.question \? \[\{ type: "text", text: `Look for: \$\{result\.question\}` \}\] : \[\]\)/, 'and it rides with the picture');
+  assert.match(read('lib/tool-result-content.js'), /\.\.\.\(result\.question \? \[\{ type: "text", text: `Look for: \$\{result\.question\}` \}\] : \[\]\)/, 'and it rides with the picture');
 });
 
 test('the bot describes a picture for File Search by the VLM, for the web app only', async () => {

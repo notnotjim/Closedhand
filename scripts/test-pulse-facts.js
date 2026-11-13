@@ -143,3 +143,32 @@ test("who of the people a message is from no Pinned Fact names, asked about once
   assert.match(pulse, /if \(askWho\) text \+= `\\n\\nWho's \$\{askWho\} to you, and where do they live\? Tell me once and I'll remember\.`;/, "otherwise the message goes with the question");
   assert.equal((pulse.match(/s\.asked_who = \[\.\.\.\(s\.asked_who \|\| \[\]\), askWho\.toLowerCase\(\)\]\.slice\(-500\)/g) || []).length, 2, "asked once, either way");
 });
+
+// A reply that asks the person for something on what they started reaches the
+// noticing as that: a helpdesk answered a refund request from another address,
+// on a new thread, with the ask after its boilerplate, and Pulse saw a
+// two-hundred-character "request received" with nothing tying it to them.
+test("mail that answers something the person sent says so, with the start of what they sent, and shows its ask", () => {
+  const mail = (id, thread, from, to, date, extra = {}) => ({ type: "email", external_id: id, data: { id, threadId: thread, from, to, date, ...extra } });
+  const sent = mail("s1", "t-receipt", "Rowan <rowan@harbour.test>", "Kestrel Wi-Fi <wifi@kestrelair.test>", "2026-10-23T20:00:00Z",
+    { labels: ["SENT"], snippet: "Hello, I bought Premium Wi-Fi on KP209, ref ABC123, £19.99. It never worked. Please refund it." });
+  const onThread = mail("r1", "t-receipt", "Desk <desk@kestrel-support.test>", "rowan@harbour.test", "2026-10-24T04:40:00Z", { snippet: "[DESK-55]" });
+  const newThread = mail("r2", "t-ticket", "Desk <desk@kestrel-support.test>", "rowan@harbour.test", "2026-10-24T04:40:30Z");
+  const unrelated = mail("u1", "t-other", "Mara <mara@clubhouse.test>", "rowan@harbour.test", "2026-10-24T05:00:00Z");
+  const before = mail("b1", "t-old", "Desk <desk@kestrel-support.test>", "rowan@harbour.test", "2026-10-20T09:00:00Z");
+  const rows = [sent, onThread, newThread, unrelated];
+  assert.match(f.answersNote(onThread, [sent], rows), /^answers what you sent wifi@kestrelair\.test 9 h before: "Hello, I bought Premium Wi-Fi on KP209/);
+  assert.match(f.answersNote(newThread, [sent], rows), /^answers what you sent wifi@kestrelair\.test/, "a new thread from a sender that answered on theirs");
+  assert.equal(f.answersNote(unrelated, [sent], rows), "");
+  assert.equal(f.answersNote(before, [sent], [...rows, before]), "", "nothing can answer what had not been sent yet");
+  assert.match(f.answersNote(mail("r3", "t-x", "Kestrel Wi-Fi <wifi@kestrelair.test>", "rowan@harbour.test", "2026-10-24T06:00:00Z"), [sent], rows), /answers what you sent/, "an answer from the address they wrote to");
+
+  // Such mail is shown far enough to hold its ask; what they sent shows its start.
+  assert.match(pulse, /const answers = facts\.answersNote\(e, sentMail, mailRows\);\n\s*const said = answers \? String\(e\.body \|\| summaryById\[e\.external_id\] \|\| ""\)\.replace\(\/\\s\+\/g, " "\)\.slice\(0, 1000\)/);
+  assert.match(pulse, /`Email they sent to \$\{e\.data\.to \|\| "\?"\}, [^`]*: \$\{e\.data\.subject \|\| ""\}: "\$\{String\(e\.data\.snippet \|\| ""\)/);
+  // A confirmation that asks them for something is not dismissed as one, and
+  // a reply to what they started may be drafted (no-reply senders never are).
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "lib", "pulse-triage.js"), "utf8"), /Confirmations that only confirm, codes they asked for, newsletters and marketing never are; one that asks them for something \(details, a document, a reply\) on something they started is\./);
+  assert.match(pulse, /REPLIES: when a point is an email that asks them something or is waiting on them, written to them by a person or answering something they sent \(not a mailing list\)/);
+  assert.match(pulse, /if \(JUNK_SENDER\.test\(row\.data\?\.from \|\| ""\) \|\| fromMailingList\(\{ labels, body: original \}\)\) return null;/);
+});

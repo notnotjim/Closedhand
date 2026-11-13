@@ -34,7 +34,7 @@ jobs:
       - name: Install the mail libraries for the draft tests
         run: npm install --prefix "$RUNNER_TEMP/mail-test" --ignore-scripts --no-audit --no-fund imapflow@1.7.1 mailparser@3.9.47 nodemailer@10.1.7 cheerio@1.2.0
       - name: Drafts in every mailbox
-        run: NODE_PATH="$RUNNER_TEMP/mail-test/node_modules" node --test scripts/test-imap-drafts.js scripts/test-draft-update-id.js
+        run: NODE_PATH="$RUNNER_TEMP/mail-test/node_modules" node --test scripts/test-imap-drafts.js scripts/test-draft-update-id.js scripts/test-draft-attachments.js scripts/test-claims-check.js scripts/test-tool-result-content.js
       - name: The index and the mail cache are read whole, and old listed mail stays
         run: NODE_PATH="$RUNNER_TEMP/mail-test/node_modules" node --test scripts/test-index-hashes.js scripts/test-mail-history.js
   # The closedhand.com service deploys from this repo, so its sign-in,
@@ -196,7 +196,7 @@ jobs:
       - name: No undefined names in server code
         run: |
           npm install --prefix "$RUNNER_TEMP/lint" --ignore-scripts --no-audit --no-fund eslint@8.57.1
-          "$RUNNER_TEMP/lint/node_modules/.bin/eslint" --no-eslintrc --env node,es2022 --parser-options=ecmaVersion:2022 --rule '{"no-undef":"error"}' --ignore-pattern lib/flight-time.js lib index.js user-store.js crypto-tokens.js webapp/server.js webapp/*.js sandbox-image/agent/server.js
+          "$RUNNER_TEMP/lint/node_modules/.bin/eslint" --no-eslintrc --env node,es2022 --parser-options=ecmaVersion:2022 --rule '{"no-undef":"error","no-use-before-define":["error",{"functions":false,"classes":false,"variables":false}]}' --ignore-pattern lib/flight-time.js lib index.js user-store.js crypto-tokens.js webapp/server.js webapp/*.js sandbox-image/agent/server.js
 
       # Sound and files a connected service sends back reach the person.
       - name: Connected services' sound and files

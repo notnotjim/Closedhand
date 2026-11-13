@@ -59,7 +59,7 @@ test("Pulse keeps what a sent nudge was about with it, and the turn context and 
   assert.match(pulse, /const deliver = async \(text, about = \[\]\)/);
   assert.match(pulse, /getConversation\(userId\)\.push\(\{ role: "assistant", content: text, \.\.\.\(via \? \{ via \} : \{\}\), \.\.\.\(about\.length \? \{ about \} : \{\}\) \}\)/);
   assert.match(pulse, /\(\{ source: r\.source, id: r\.external_id, text: watches\.itemText\(r, userTz\)/, "each cited item in its own words, with its id");
-  assert.ok(pulse.indexOf("const about = ") < pulse.indexOf("await deliver(text, about);"), "worked out before it is sent");
+  assert.ok(pulse.indexOf("const items = [...new Set(flaggedItems)]") < pulse.indexOf("await deliver(text, items);"), "worked out before it is sent");
   const engine = read("lib/engine.js");
   assert.match(engine, /require\("\.\/conversation"\)\.aboutRecent\(conversation\)/);
   assert.match(engine, /\(opts\.heldNote \? "\\n\\n" \+ opts\.heldNote : ""\) \+ \(toldAbout \? "\\n\\n" \+ toldAbout : ""\)/, "it rides in the turn's context, not the cached history");

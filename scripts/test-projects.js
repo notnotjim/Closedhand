@@ -403,7 +403,7 @@ test("the engine, tools and claims check use projects", () => {
   assert.match(webChat, /\(!c\.id \? '' : '<div class="activity-item-time">'/);
   assert.doesNotMatch(read("lib/conversation.js"), /function (archiveThread|switchThread|getThreadList|deleteThread|shouldNudgeNewThread)\(/);
   assert.match(read("migrations/068_projects.sql"), /ALTER TABLE conversation_threads ADD COLUMN IF NOT EXISTS project_id uuid REFERENCES projects\(id\) ON DELETE CASCADE;/);
-  assert.match(read("lib/claims-check.js"), /const open = await require\("\.\/projects"\)\.live\(userId\);/);
+  assert.match(read("lib/claims-check.js"), /const \[open, sentBefore\] = await Promise\.all\(\[require\("\.\/projects"\)\.live\(userId\), approvedOnThread\(userId, input, to\)\]\);/);
   assert.match(read("lib/attachments.js"), /if \(await adoptStored\(attachmentId\)\) return loadAttachment\(attachmentId\);/);
   assert.ok(!fs.existsSync(path.join(__dirname, "..", "lib", "matters.js")));
   assert.match(read("migrations/068_projects.sql"), /DROP TABLE IF EXISTS matters;[\s\S]*CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_one_emoji ON projects \(user_id, emoji\) WHERE status = 'active';/);
@@ -644,7 +644,7 @@ test("Closedhand's own messages about a project carry its emoji, and a reply to 
   assert.match(pulse, /project: \{ type: "string", description: "When the whole message is about one of THEIR PROJECTS, that project's emoji; leave out otherwise\." \}/);
   assert.match(pulse, /"project": null or "the emoji of the one project in THEIR PROJECTS the whole message is about"/);
   assert.match(pulse, /\$\{theirProjects\.length \? `\\n\\nTHEIR PROJECTS: \$\{theirProjects\.join\("; "\)\}` : ""\}/);
-  assert.match(pulse, /if \(project\) text = [^\n]*`\$\{project\.emoji\} \$\{text\}`;\n\s*await deliver\(text, about\);/);
+  assert.match(pulse, /if \(project\) text = [^\n]*`\$\{project\.emoji\} \$\{text\}`;\n\s*await deliver\(text, items\);/);
   assert.match(pulse, /if \(project\) await require\("\.\/projects"\)\.said\(userId, project, text\)/);
   assert.equal((pulse.match(/sendChecked\([^\n]*written\.project\)/g) || []).length, 2, "the one-call writer too, and its second go");
 });

@@ -172,8 +172,8 @@ test("Pulse: new mail by when it arrived, local times, the chat lately, the chec
   assert.match(pulse, /const line = \(r\) => watches\.itemText\(r, userTz\)/, "every item, coming ones included, in the person's time");
   assert.match(pulse, /\.\.\.recent\.map\(\(m\) => `Said in the chat lately/);
   const at = pulse.indexOf("const verdictToSend = await gate.check(");
-  assert.ok(at > 0 && at < pulse.indexOf("await deliver(text, about);"), "checked before it goes");
-  assert.match(pulse.slice(pulse.indexOf("await deliver(text, about);")), /^await deliver\(text, about\);\n\s*if \(!sent\) return \{ error: "Could not reach any of their chat apps; nothing was delivered\." \};\n[\s\S]{0,450}recordTold/, "told only when it reached someone");
+  assert.ok(at > 0 && at < pulse.indexOf("await deliver(text, items);"), "checked before it goes");
+  assert.match(pulse.slice(pulse.indexOf("await deliver(text, items);")), /^await deliver\(text, items\);\n\s*if \(!sent\) return \{ error: "Could not reach any of their chat apps; nothing was delivered\." \};\n[\s\S]{0,450}recordTold/, "told only when it reached someone");
   assert.match(pulse, /try \{ await sendToPlatform\(t\.platform, t\.platform_user_id, text\); sent = true; via = via \|\| t\.platform; \}/);
 });
 

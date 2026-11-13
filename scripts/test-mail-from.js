@@ -48,7 +48,7 @@ test("a new email, a reply and a new draft carry it", async () => {
 test("a draft's From changes in place, with or without new wording", () => {
   const update = block("gmail_draft_update");
   assert.match(update, /if \(toolInput\.from\) raw = setHeader\(raw, "From", await gmailFrom\(dApi, toolInput\.from\)\);/);
-  assert.match(update, /if \(typeof toolInput\.body === "string"\) \{[\s\S]*\} else if \(!toolInput\.to && !toolInput\.cc && !toolInput\.subject && !toolInput\.from\) \{/);
+  assert.match(update, /if \(typeof toolInput\.body === "string"\) \{[\s\S]*\} else if \(!toolInput\.to && !toolInput\.cc && !toolInput\.subject && !toolInput\.from && !adding\.length\) \{/);
   assert.match(update, /threadId \? \{ threadId \} : \{\}/, "still in its thread");
   const { setHeader } = require("../lib/gmail-draft");
   const raw = "From: office@harbour.test\r\nTo: mara@harbourpost.example\r\nSubject: Re: Court photos\r\n\r\nSee the court";

@@ -43,7 +43,9 @@ test("Docker compares its commit with the newest image build", async () => {
 test("nothing is asked where Closedhand updates itself, or a build from source", async () => {
   releases._reset();
   const calls = [];
-  for (const own of [{ SETUP_CODE: "x" }, { CLOSEDHAND_DESKTOP: "1" }, { CLOSEDHAND_AUTO_UPDATE: "1" }]) {
+  // Railway sets RAILWAY_ENVIRONMENT_ID on every service, the bot included,
+  // which is the one that says a report is fixed; SETUP_CODE is only on the webapp.
+  for (const own of [{ RAILWAY_ENVIRONMENT_ID: "env-1" }, { SETUP_CODE: "x" }, { CLOSEDHAND_DESKTOP: "1" }, { CLOSEDHAND_AUTO_UPDATE: "1" }]) {
     assert.deepEqual(await releases.status({ env: { CLOSEDHAND_SHA: "aaa", ...own }, fetchImpl: github([], calls) }), { newer: false, kind: null }, Object.keys(own)[0]);
   }
   assert.deepEqual(await releases.status({ env: {}, fetchImpl: github([], calls) }), { newer: false, kind: null });

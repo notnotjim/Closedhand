@@ -105,12 +105,13 @@ test('an Outlook draft edited since Closedhand last saw it is handed back, not o
   const patches = [];
   let live = { id: 'AAMk-1', isDraft: true, changeKey: 'ck-2', body: { contentType: 'html', content: '<p>Hi Mara,</p><p>Two racquets and a pavilion banner.</p>' } };
   const msApi = async (method, url, body) => { if (method === 'PATCH') { patches.push(body); return { changeKey: 'ck-3' }; } return live; };
-  const run = new Function('ctx', 'require', 'draftLastSeen', 'changedDraft', 'isMicrosoftConnected', 'draftAccountFor', 'microsoftReqFor', 'liveOutlookMessage', 'outlookWording', 'outlookRecipients',
+  const run = new Function('ctx', 'require', 'draftLastSeen', 'changedDraft', 'isMicrosoftConnected', 'draftAccountFor', 'microsoftReqFor', 'liveOutlookMessage', 'outlookWording', 'outlookRecipients', 'resolveOutgoingAttachments',
     fnSrc('draftSeenVersions') + '\nreturn async (toolInput) => { switch ("outlook_draft_update") {\n' + caseSrc + '\n} };')(
     { activeUserId: 'u1' }, (m) => (m === 'cheerio' ? require('cheerio') : m === '../gmail-draft' ? require('../lib/gmail-draft') : { supabase }), lastSeen, changedDraft, () => true, async () => 'ops@kestreltennis.example', () => msApi,
     (api, id) => api('GET', id),
     new Function('require', plainSrc('outlookWording') + '\nreturn outlookWording;')((m) => require(m)),
-    (text) => String(text).split(',').map((address) => ({ emailAddress: { address: address.trim() } })));
+    (text) => String(text).split(',').map((address) => ({ emailAddress: { address: address.trim() } })),
+    async () => ({ attachments: [], missing: [] }));
 
   lastSeen.set('AAMk-1', 'ck-1');
   const back = await run({ draft_id: 'AAMk-1', body: 'Hi Mara, two racquets.' });
