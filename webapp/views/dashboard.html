@@ -10676,10 +10676,19 @@
       document.getElementById('images-group').hidden = false;
       var size = im.total_gb ? im.total_gb + ' GB' : 'about 5 GB';
       var tee = !!st.imagesInTee && im.state !== 'ready';
-      document.getElementById('images-desc').textContent = tee ? 'Closedhand generates images in a TEE, so nobody but you can see them' : 'Closedhand generates images on this computer, with nothing sent anywhere';
-      body.className = 'images-body' + (im.eligible || tee ? '' : ' unavailable');
+      // Where nothing private can make them, the person's own LLM provider
+      // may, once they say so (lib/image-generation.js picture).
+      var pv = !im.eligible && !tee ? st.imagesProvider : null;
+      document.getElementById('images-desc').textContent = tee ? 'Closedhand generates images in a TEE, so nobody but you can see them' : pv && pv.on ? 'Closedhand generates images with ' + pv.name : 'Closedhand generates images on this computer, with nothing sent anywhere';
+      body.className = 'images-body' + (im.eligible || tee || pv ? '' : ' unavailable');
       if (!im.eligible && tee) {
         body.innerHTML = '<div class="images-ways"><span class="plan-status on">Ready</span><span>Ask for a picture in any chat.</span></div>';
+      } else if (pv && pv.on) {
+        body.innerHTML = '<div class="images-ways"><span class="plan-status on">Ready</span><span>' + escHtml(pv.name) + ' makes your pictures with ' + escHtml(pv.model) + ', and sees what they show.</span></div>'
+          + '<div class="images-ways"><button type="button" class="conn-btn conn-btn-disconnect" onclick="imagesProvider(false, this)">Stop</button></div>';
+      } else if (pv) {
+        body.innerHTML = '<p>' + escHtml(im.needs || '') + ' ' + escHtml(pv.name) + ' can make them with ' + escHtml(pv.model) + ', and would see what they show.</p>'
+          + '<div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" onclick="imagesProvider(true, this)">Use ' + escHtml(pv.name) + '</button></div>';
       } else if (!im.eligible) {
         body.innerHTML = '<p>' + escHtml(im.needs || '') + '</p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" disabled>Turn on</button></div>';
       } else if (im.state === 'ready') {
@@ -10707,6 +10716,15 @@
       ways.innerHTML = '<span>Turn off and remove the download? You can turn it on again later.</span>'
         + '<button type="button" class="conn-btn conn-btn-disconnect" onclick="imagesSwitch(false, this)">Turn off</button>'
         + '<button type="button" class="quiet-link" onclick="document.dispatchEvent(new Event(\'images-reload\'))">Keep it</button>';
+    };
+    window.imagesProvider = function (on, button) {
+      if (asking) return;
+      asking = true;
+      if (button) button.disabled = true;
+      fetch('/api/images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: on }) })
+        .then(function (r) { if (!r.ok) showToast('Closedhand couldn\'t change this just now.'); })
+        .catch(function () { showToast('Closedhand couldn\'t change this just now.'); })
+        .then(function () { asking = false; load(); });
     };
     window.imagesSwitch = function (on, button) {
       if (asking) return;

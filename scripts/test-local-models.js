@@ -210,11 +210,12 @@ test('the tool is always offered and says why it cannot run here, sends the pict
   // A service the person connected themselves makes it first, as a job of its
   // own; otherwise the reason, and no other way.
   assert.doesNotMatch(read('lib/tools/handlers.js'), /IMAGE_SERVICE/, 'a connected image service is a job of its own (test-connection-jobs.js)');
-  assert.match(read('lib/tools/handlers.js'), /return \{ error: `\$\{e\.message\} Tell the person this in one sentence\$\{e\.offer \? " and add nothing to it" : ""\}, and make the picture no other way\.`, \.\.\.\(e\.offer \? \{ _imageOffer: true \} : \{\}\) \};/);
+  assert.match(read('lib/tools/handlers.js'), /return \{ error: `\$\{e\.message\} Tell the person this in one sentence\$\{e\.offer \? " and add nothing to it" : ""\}, and make the picture no other way\.`, \.\.\.\(e\.offer \? \{ _imageOffer: true, \.\.\.\(e\.provider \? \{ _imageProvider: e\.provider\.provider \} : \{\}\) \} : \{\}\) \};/);
   const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'generate_image');
   assert.deepEqual(def.groups, ['images']);
   assert.ok(!def.core, 'listed, not carried in full on every message');
-  assert.match(read('lib/tools/handlers.js'), /const pic = await require\("\.\.\/image-generation"\)\.picture\(toolInput\.prompt, \{ shape: toolInput\.shape, settings: ctx\.activeUserStore\?\.profile\?\.settings \}\);\n\s*await sendDocument\(chatId, pic\.bytes, pic\.name, pic\.mime\);/);
+  assert.match(read('lib/tools/handlers.js'), /const pic = await require\("\.\.\/image-generation"\)\.picture\(toolInput\.prompt, \{ shape: toolInput\.shape, settings, useProvider: toolInput\.use_provider === true \}\);/);
+  assert.match(read('lib/tools/handlers.js'), /await sendDocument\(chatId, pic\.bytes, pic\.name, pic\.mime\);/);
   const dash = read('webapp/views/dashboard.html');
   assert.match(dash, /<h2>Image generation<\/h2>/);
   assert.match(dash, /if \(!im\.eligible\) \{\n\s*body\.innerHTML = '<p>' \+ escHtml\(im\.needs \|\| ''\) \+ '<\/p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" disabled>Turn on<\/button><\/div>';/, 'greyed out, saying what it needs');
@@ -433,8 +434,62 @@ test('a picture this computer can never make is followed by how to get one', asy
   assert.match(im.offerText({ included_ai: { plan: { name: 'ended', was: 'plus' } } }, false), /: closedhand\.com\/subscribe$/);
   assert.match(im.offerText({ included_ai: { plan: { name: 'ended', was: 'ahead' } } }, true), /^Paying ahead again in My Account lets Closedhand make pictures here too/);
   const src = fs.readFileSync(path.join(__dirname, '..', 'lib/image-generation.js'), 'utf8');
-  assert.match(src, /throw Object\.assign\(new Error\(unavailable\(\)\), \{ unavailable: true, offer: \(_status \|\| \{\}\)\.eligible === false \}\);/);
+  assert.match(src, /const never = \(_status \|\| \{\}\)\.eligible === false;\n  throw Object\.assign\(new Error\(unavailable\(\)\), \{ unavailable: true, offer: never, provider: never \? spec : null \}\);/);
   const engine = fs.readFileSync(path.join(__dirname, '..', 'lib/engine.js'), 'utf8');
-  assert.match(engine, /if \(block\.name === "generate_image" && result\?\._imageOffer\) imageOffer = true;/);
-  assert.match(engine, /if \(imageOffer\) finalText = String\(finalText\)\.trim\(\) \+ "\\n\\n\[\[next\]\]\\n\\n" \+ require\("\.\/image-generation"\)\.offerText\(/);
+  assert.match(engine, /if \(block\.name === "generate_image" && result\?\._imageOffer\) imageOffer = \{ provider: result\._imageProvider \|\| null \};/);
+  assert.match(engine, /finalText = String\(finalText\)\.trim\(\) \+ "\\n\\n\[\[next\]\]\\n\\n" \+ require\("\.\/image-generation"\)\.offerText\(settings, \(deliverPlatform \|\| "web"\) === "web", provider\);/);
 });
+
+// Where nothing private can make a picture, the person's own LLM provider's
+// picture model does, once they say so, and is offered until then. A person
+// whose own provider is NEAR AI gets the TEE, never asked.
+test("the person's own LLM provider makes pictures once they say so, the way each provider takes it, and is offered until then", async () => {
+  const { im, restore } = loadImageMaking({ platform: 'linux', arch: 'x64', memoryGb: 64 });
+  try {
+    await im.boot();
+    const providers = require('../lib/image-providers');
+    const config = (provider, baseUrl) => ({ model_config: { roles: { chat: { connection: 'primary', model: 'm' } }, connections: { primary: { provider, ...(baseUrl ? { baseUrl } : {}), apiKey: 'test-key' } } } });
+    assert.equal(providers.forSettings(config('openai')).model, 'gpt-image-2.6-sunburst');
+    assert.equal(providers.forSettings(config('custom', 'https://api.x.ai/v1')).provider, 'xai', 'a provider saved by its address');
+    for (const p of ['anthropic', 'deepseek', 'groq', 'moonshot']) assert.equal(providers.forSettings(config(p)), null, p);
+    await assert.rejects(im.picture('a lighthouse', { settings: config('openai') }), (e) => e.unavailable && e.offer && e.provider?.name === 'OpenAI', 'not allowed yet: offered');
+
+    const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(300, 1)]);
+    const asked = [];
+    const answering = (answer) => async (url, opts) => { asked.push({ url, headers: opts.headers, body: JSON.parse(opts.body) }); return { ok: true, status: 200, json: async () => answer }; };
+    const b64 = { data: [{ b64_json: PNG.toString('base64') }] };
+    let pic = await im.picture('a lighthouse', { shape: 'landscape', settings: config('openai'), useProvider: true, deps: { fetch: answering(b64) } });
+    assert.equal(pic.via.name, 'OpenAI');
+    assert.deepEqual([pic.mime, pic.name, pic.bytes.equals(PNG)], ['image/png', 'image.png', true]);
+    assert.deepEqual(asked.at(-1), { url: 'https://api.openai.com/v1/images/generations', headers: { Authorization: 'Bearer test-key', 'Content-Type': 'application/json' }, body: { model: 'gpt-image-2.6-sunburst', prompt: 'a lighthouse', n: 1, size: '1536x1024' } });
+    await im.picture('x', { settings: { ...config('custom', 'https://api.x.ai/v1'), images_from_provider: true }, deps: { fetch: answering(b64) } });
+    assert.deepEqual([asked.at(-1).url, asked.at(-1).body], ['https://api.x.ai/v1/images/generations', { model: 'grok-imagine-image-2.0', prompt: 'x', n: 1, response_format: 'b64_json' }], 'allowed once, kept');
+    await im.picture('x', { settings: { ...config('deepinfra'), images_from_provider: true }, deps: { fetch: answering(b64) } });
+    assert.equal(asked.at(-1).url, 'https://api.deepinfra.com/v1/openai/images/generations');
+    await im.picture('x', { shape: 'portrait', settings: { ...config('gemini'), images_from_provider: true }, deps: { fetch: answering({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: PNG.toString('base64') } }] } }] }) } });
+    assert.equal(asked.at(-1).url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent');
+    assert.equal(asked.at(-1).headers['x-goog-api-key'], 'test-key');
+    assert.deepEqual(asked.at(-1).body.generationConfig, { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:4' } });
+    pic = await im.picture('x', { settings: { ...config('openrouter'), images_from_provider: true }, deps: { fetch: answering({ choices: [{ message: { images: [{ image_url: { url: 'data:image/png;base64,' + PNG.toString('base64') } }] } }] }) } });
+    assert.deepEqual([asked.at(-1).url, asked.at(-1).body.model, asked.at(-1).body.modalities], ['https://openrouter.ai/api/v1/chat/completions', 'google/gemini-3-pro-image', ['image', 'text']]);
+    assert.ok(pic.bytes.equals(PNG));
+    const quiet = console.warn; console.warn = () => {};
+    try {
+      await assert.rejects(im.picture('x', { settings: { ...config('openai'), images_from_provider: true }, deps: { fetch: async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'Your organization must be verified' } }) }) } }), /^Error: OpenAI couldn't make the picture just now: Your organization must be verified$/);
+    } finally { console.warn = quiet; }
+
+    const near = require('../lib/near-private'), was = near.image, nearKeys = [];
+    near.image = async (conn) => { nearKeys.push(conn.apiKey); return { ok: true, json: async () => b64 }; };
+    try {
+      pic = await im.picture('x', { settings: config('near') });
+      assert.deepEqual([nearKeys, pic.via], [['test-key'], undefined], 'their own NEAR AI key: the TEE, never asked');
+    } finally { near.image = was; }
+
+    assert.equal(im.offerText({}, true, providers.forSettings(config('openai'))), 'OpenAI can make it with gpt-image-2.6-sunburst, and would see what the picture shows. Say so and Closedhand will use OpenAI for pictures from now on. Or subscribe at [closedhand.com/subscribe](https://closedhand.com/subscribe), and FLUX.2 Klein makes them in a TEE, so nobody but you can see them.');
+    const handlers = fs.readFileSync(path.join(__dirname, '..', 'lib/tools/handlers.js'), 'utf8');
+    assert.match(handlers, /if \(pic\.via && settings\?\.images_from_provider !== true\) \{\n\s*await require\("\.\.\/profile-settings"\)\.updateSettings\(toolInput\._userId \|\| ctx\.activeUserId, \{ images_from_provider: true \}, \{ store: ctx\.activeUserStore \}\);/, 'their yes is kept');
+    const dash = fs.readFileSync(path.join(__dirname, '..', 'webapp/views/dashboard.html'), 'utf8');
+    assert.match(dash, /var pv = !im\.eligible && !tee \? st\.imagesProvider : null;/);
+  } finally { restore(); }
+});
+

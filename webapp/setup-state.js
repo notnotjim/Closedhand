@@ -114,7 +114,10 @@ async function getSetupState() {
     modelIncludedName: settings.included_ai?.name || null,
     // Pictures this computer can't make are made in the TEE with the plan
     // (lib/image-generation.js picture).
-    imagesInTee: require("./included-ai").live(settings),
+    imagesInTee: require("./included-ai").live(settings) || (require("./image-providers").providerOf(settings) === "near" && !settings.model_config?.included),
+    // The person's own LLM provider's picture model, where it has one, and
+    // whether they have said it may make their pictures.
+    imagesProvider: (() => { const p = require("./image-providers").forSettings(settings); return p ? { name: p.name, model: p.model, on: settings.images_from_provider === true } : null; })(),
     chatProvider: settings.model_config?.connections?.primary?.provider || null,
     chatProviderLabel: settings.model_config ? new URL(settings.model_config.connections.primary.baseUrl).hostname : null,
     botUsername: conf.TELEGRAM_BOT_USERNAME || null,

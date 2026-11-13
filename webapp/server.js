@@ -8193,6 +8193,17 @@ const _docSearch = docSearch({
 app.post("/api/images", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not authenticated" });
+  // { provider }: whether the person's own LLM provider may make their
+  // pictures when Closedhand can't make them privately.
+  if (typeof req.body?.provider === "boolean") {
+    try {
+      const change = req.body.provider ? { set: { images_from_provider: true } } : { unset: ["images_from_provider"] };
+      await patchSettings(supabase, userId, change);
+      return res.json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: "Closedhand couldn't change this just now. Try again in a minute." });
+    }
+  }
   try {
     const r = await fetch(`${BOT_INTERNAL_URL}/internal/images`, {
       method: "POST",

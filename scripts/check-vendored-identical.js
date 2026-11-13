@@ -38,6 +38,7 @@ const PAIRS = [
   { name: "name-guess", copies: ["lib/name-guess.js", "webapp/name-guess.js"] },
   { name: "own-name", copies: ["lib/own-name.js", "webapp/own-name.js"] },
   { name: "settings-patch", copies: ["lib/settings-patch.js", "webapp/settings-patch.js"] },
+  { name: "image-providers", copies: ["lib/image-providers.js", "webapp/image-providers.js"] },
   { name: "config", copies: ["lib/config.js", "webapp/config.js"] },
   { name: "required-secrets", copies: ["lib/required-secrets.js", "webapp/required-secrets.js"] },
   { name: "db-driver-pg", copies: ["lib/db-driver-pg.js", "webapp/db-driver-pg.js", "closedhand-com/lib/db-driver-pg.js"] },
