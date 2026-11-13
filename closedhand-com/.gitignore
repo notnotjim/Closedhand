@@ -1,4 +1,0 @@
-workers/*/wrangler.jsonc
-workers/*/.generated/
-workers/*/.wrangler/
-workers/*/.dev.vars*
