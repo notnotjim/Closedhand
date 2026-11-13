@@ -66,3 +66,57 @@ test('a query sent as a POST body is a lookup; content, identifiers and files ar
 test('the list holds sends, deletes, changes and disconnects, and writes through the API tools', () => {
   for (const name of ['gmail_send', 'gmail_send_draft', 'gcal_delete_event', 'gcal_update_event', 'disconnect_service', 'api_request', 'sandbox_gateway']) assert.ok(ACTIONS_NEEDING_CONFIRMATION.includes(name), name);
 });
+
+// The person's own content counts too: their words at length, or text from
+// their mail, chats, files or Pinned Facts, found in what is sent. A generic
+// prompt still goes without a question: asked for a picture, Closedhand once
+// sent "a red Ferrari" to an image website, which is no one's business, but
+// the same route would carry a paragraph of their mail.
+const mail = "Hi Mara, the boiler at Flat 4 is leaking again and the landlord still hasn't replied to my email from Monday.";
+let dbRows = { data_cache: [{ body: 'From Mara. ' + mail + ' Thanks, Rowan' }], facts: [], rag_chunks: [] };
+let dbFails = false;
+{
+  const p = require.resolve('../lib/db');
+  const field = (row, f) => (f === 'value' ? row.value : f === 'content' ? row.content : row[f.replace('data->>', '')]);
+  require.cache[p] = { id: p, filename: p, loaded: true, exports: { supabase: { from: (table) => {
+    let f = null, like = null;
+    const q = { select: () => q, eq: () => q, limit: () => q, ilike: (k, v) => { f = k; like = v; return q; },
+      then: (res) => {
+        if (dbFails) return Promise.resolve({ data: null, error: { message: 'down' } }).then(res);
+        const needle = like.slice(1, -1).replace(/\\([\\%_])/g, '$1');
+        return Promise.resolve({ data: (dbRows[table] || []).filter((r) => String(field(r, f) || '').includes(needle)), error: null }).then(res);
+      } };
+    return q;
+  } } } };
+}
+const own = { ...store, userId: 'u1' };
+
+test("the person's own content leaving for a new site is put to them; a generic prompt is not", async () => {
+  const picture = 'import requests\nr = requests.get("https://image.pollinations.ai/prompt/Red%20Ferrari%20Spider%2C%20roof%20down%2C%20coastal%20road%20at%20golden%20hour")\nopen("f.jpg","wb").write(r.content)';
+  assert.equal(await guard.outboundCheck('sandbox_exec', { code: picture }, own, { ownWords: ['generate a picture of a ferrari spider'] }), null);
+
+  const send = `import requests\nrequests.post("https://api.translate.test/v1", json={"text": "${mail}"})`;
+  assert.deepEqual(await guard.outboundCheck('sandbox_exec', { code: send }, own), { host: 'api.translate.test', what: 'a request with text from your own mail, chats or files in it' });
+  assert.equal((await guard.outboundCheck('api_request', { url: 'https://api.translate.test/v1?q=' + encodeURIComponent(mail), method: 'GET' }, own)).what, 'a request with text from your own mail, chats or files in it', 'in an address too');
+
+  const said = 'I have been feeling low since the divorce and want to find a therapist near Kestrel Point who takes evening sessions';
+  assert.equal((await guard.outboundCheck('sandbox_exec', { code: `fetch("https://match.therapy.test/find", {method:"POST", body: JSON.stringify({q: "${said}"})})` }, own, { ownWords: [said] })).what, 'a request with some of your own words in it');
+  assert.equal(await guard.outboundCheck('sandbox_exec', { code: `fetch("https://match.therapy.test/find?q=therapist%20near%20Kestrel%20Point")` }, own, { ownWords: [said] }), null, 'a few of their words are a search, not their story');
+
+  assert.equal(await guard.outboundCheck('sandbox_exec', { code: send.replace('api.translate.test', 'api.example.com') }, own), null, 'a site they trusted');
+  assert.equal(await guard.outboundCheck('api_request', { url: 'https://api.translate.test/v1', method: 'POST', body: { text: mail }, service: 'google' }, own), null, 'a connected service already holds it');
+  dbFails = true;
+  assert.equal(await guard.outboundCheck('sandbox_exec', { code: send }, own), null, 'a lookup that fails asks nothing');
+  dbFails = false;
+  assert.match((await guard.outboundCheck('api_request', { url: 'https://lookup.example.net/x', method: 'POST', body: { card: '4111 1111 1111 1111' } }, own)).what, /card number/, 'the old reasons still ask first');
+});
+
+test('chat, background tasks, routines and reminders all ask the same way', () => {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  assert.match(read('lib/engine.js'), /const ob = await outboundGuard\.outboundCheck\(block\.name, block\.input, ctx\.activeUserStore, \{ ownWords \}\);/);
+  assert.match(read('lib/agents.js'), /const ob = await outboundGuard\.outboundCheck\(block\.name, block\.input, userStore, \{ ownWords: \[goal\] \}\);/);
+  assert.match(read('lib/agents.js'), /if \(await outboundGuard\.outboundCheck\(block\.name, block\.input, userStore\)\) return \{ error: HAND_BACK \};/);
+  assert.match(read('lib/automations.js'), /outbound = await outboundGuard\.outboundCheck\(block\.name, input, freshStore\)/);
+  assert.match(read('lib/scheduling.js'), /outbound = await outboundGuard\.outboundCheck\(block\.name, schedInput, ctx\.activeUserStore\)/);
+  for (const f of ['lib/engine.js', 'lib/agents.js', 'lib/automations.js', 'lib/scheduling.js']) assert.doesNotMatch(read(f), /outboundGuard\.outboundIntent\(/, f);
+});

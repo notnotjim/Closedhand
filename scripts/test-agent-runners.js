@@ -52,7 +52,7 @@ function harness(options = {}) {
     "tools/handlers":{isInternalTool:()=>true,handleInternalTool:async(name,input)=>{sends.push({name,input});return options.tool ? options.tool(name,input) : {success:true,source:"fixture",time:"20:00"};}},
     "mcp":{getMcpToolDefsFor:()=>[],warmUserMcp:async()=>{},callMCPTool:async()=>({})},
     "tools/definitions":{INTERNAL_TOOLS:tools,usable:()=>true},"messaging":{sendToPlatform:async(...args)=>options.send ? options.send(args, sends) : sends.push(args)},
-    "skills":{getSkillsForPrompt:()=>""},"llm":llm,"spend-guard":{spendIntent:()=>null,refLabel:()=>""},"outbound-guard":{outboundIntent:()=>null},"user-mcp":{isUserMcpTool:()=>false,needsMcpConfirmation:()=>false,mcpQuestion:()=>""},"claims-check":{},
+    "skills":{getSkillsForPrompt:()=>""},"llm":llm,"spend-guard":{spendIntent:()=>null,refLabel:()=>""},"outbound-guard":{outboundIntent:()=>null,outboundCheck:async()=>null},"user-mcp":{isUserMcpTool:()=>false,needsMcpConfirmation:()=>false,mcpQuestion:()=>""},"claims-check":{},
     "verification":{prepareTask:async(...args)=> options.prepare ? options.prepare(...args) : {tier:"default",criteria:["Correct time"]},verifyCompletion:async()=> options.verdict || {passed:true,status:"passed"},retryNote:(a,m,f)=>`VERIFICATION (attempt ${a}/${m}): ${f}`},
     "task-delivery":{deliverFinished:async()=>{}},"response-presentation":{responsePresentation:()=>""},
     "token-tracker":{getContextWindow:()=>200000,estimateContextTokens:(m,s,t)=>({total:JSON.stringify([m,s,t]).length/4})},

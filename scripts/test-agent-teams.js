@@ -517,7 +517,7 @@ test("an agent let take actions gets Closedhand's own tools, under Closedhand's 
   assert.match(gate, /spendGuard\.assess\(\{ userId, userStore, toolName: block\.name, source: "agent", intent, page \}\)/, "paying, under the spending rules");
   assert.match(gate, /if \(verdict\.action === "refuse"\) return \{ error: verdict\.message \};/, "over a limit: refused");
   assert.match(gate, /from\("spend_ledger"\)\.delete\(\)\.eq\("id", verdict\.ledgerId\)/, "a purchase handed back leaves no stray entry");
-  assert.match(gate, /outboundGuard\.outboundIntent\(/, "data going somewhere new");
+  assert.match(gate, /outboundGuard\.outboundCheck\(/, "data going somewhere new");
   assert.match(src, /const HAND_BACK = "Not done here: this needs the person's yes\./);
   assert.match(src, /if \(b\._spendLedgerId\) await spendGuard\.ledgerUpdate\(b\._spendLedgerId, \{ status: r && r\.error \? "failed" : "completed" \}\);/);
   assert.match(src, /else if \(b\.name === "sandbox_browse" && \(!acts \|\| b\.input\?\.action === "read_pages"\)\) \{/, "read only unless let act");
