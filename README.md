@@ -109,11 +109,11 @@ Claiming the URL creates your Closedhand account on closedhand.com. You sign in 
 
 Or use Closedhand anonymously. Your Closedhand account then has an account number instead of an email, and closedhand.com stores no email, only a one-way fingerprint of the account number. Your account number is the only way back in, and nobody can recover a lost account number. An account like this starts by paying ahead in crypto for DeepSeek V4.1 Flash Abliterated, and pays in crypto only, never by card.
 
-You can rename the URL in **Settings → Personal URL**; the old address points to the new one for 30 days. **Delete account** in My Account deletes your Closedhand account and everything Closedhand keeps on that computer. Without the computer, sign in at closedhand.com/account to delete the account alone.
+You can rename the URL in **Settings → Personal URL**; the old address stops working but stays yours for six months. **Delete account** in My Account deletes your Closedhand account and everything Closedhand keeps on that computer. Without the computer, sign in at closedhand.com/account to delete the account alone.
 
 ## Privacy and security
 
-Each Closedhand serves one person. The first person to message it on a chat app becomes its owner, and strangers get one polite refusal; `ALLOWED_*` lists in `.env` can extend or restrict that. The dashboard password you choose in setup locks every page but setup itself; `ADMIN_PASSWORD` in `.env` overrides it for scripted setups. Keys and sign-ins are encrypted on disk. Your data goes only to the services you connect and the LLM provider you choose. There is no telemetry: a bug report is sent only when you send `/bug` and say yes. Pages you open through your personal URL pass through Closedhand's relay on Cloudflare, encrypted on the way and not kept.
+Each Closedhand serves one person. The first person to message it on a chat app becomes its owner, and strangers get one polite refusal; `ALLOWED_*` lists in `.env` can extend or restrict that. The dashboard password you choose in setup locks every page but setup itself; `ADMIN_PASSWORD` in `.env` overrides it for scripted setups. Keys and sign-ins are encrypted on disk. Your data goes only to the services you connect and the LLM provider you choose. There is no telemetry: a bug report is sent only when you send `/bug` and say yes. Pages you open through your personal URL pass through Closedhand's relay encrypted from your browser to your computer, so nobody in between can read them, the relay included.
 
 ## Requirements
 

@@ -2468,14 +2468,14 @@
                 <label for="phone-new-name">New name</label>
                 <input id="phone-new-name" class="settings-input" type="text" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" oninput="previewDashboardRename()" aria-describedby="phone-new-preview phone-new-help">
                 <p id="phone-new-preview" aria-live="polite"></p>
-                <p id="phone-new-help">The old address sends people to the new one for 30 days.</p>
+                <p id="phone-new-help">The old address stops working but stays yours for six months.</p>
                 <button class="account-action-btn" id="phone-rename-save" onclick="renameDashboardLink()">Save</button>
                 <p id="phone-rename-status" role="status"></p>
               </div>
             </div>
             <div id="phone-setup" hidden>
               <p>Opens the web chat and dashboard from any device, at an address like amber-fox-42.closedhand.ai. Claiming one creates your Closedhand account.</p>
-              <p>Closedhand and Cloudflare connect the address to the computer running Closedhand, so it works whenever that computer is awake and online.</p>
+              <p>Closedhand’s relay connects the address to the computer running Closedhand, so it works whenever that computer is awake and online.</p>
               <p data-claim-way>You claim one by signing in on closedhand.com below, and your Closedhand account stores your email and nothing else.</p>
               <!-- Agreed once, before either way of claiming, as in setup. -->
               <div class="terms-accept" id="phone-terms" hidden>
@@ -6295,8 +6295,8 @@
       var name = cleanAddressName(document.getElementById('phone-new-name').value);
       document.getElementById('phone-new-preview').textContent = name ? name + '.closedhand.ai' : '';
     }
-    // Rename: the old address sends people on for thirty days, and Closedhand
-    // reconnects at the new name, which takes about a minute.
+    // Rename: the old address stops working, and Closedhand reconnects at
+    // the new name, which takes about a minute.
     async function renameDashboardLink() {
       var btn = document.getElementById('phone-rename-save'), status = document.getElementById('phone-rename-status');
       btn.disabled = true; status.textContent = 'Saving…';
@@ -6306,7 +6306,7 @@
         if (!r.ok) throw new Error(data.error || 'Could not change the name. Please try again.');
         document.getElementById('phone-rename').hidden = true;
         loadPhoneAccess();
-        document.getElementById('phone-desc').textContent = 'Your Closedhand is now at ' + new URL(data.renamedTo).hostname + '. It takes about a minute to connect there, and the old address sends people to it for 30 days.';
+        document.getElementById('phone-desc').textContent = 'Your Closedhand is now at ' + new URL(data.renamedTo).hostname + '. It takes about a minute to connect there.';
       } catch (e) { status.textContent = e.message; }
       finally { btn.disabled = false; }
     }

@@ -122,13 +122,12 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   Google or Microsoft sign-ins and the copy always says which one it is: claiming the personal
   URL happens on closedhand.com, while connecting mail and calendar gives access to Closedhand
   on the person's computer, not to closedhand.com. A person's conversations, mail, files and
-  pages never reach closedhand.com or pass through Closedhand's relay on Cloudflare: on a
-  personal URL they go straight to the computer through the tunnel
-  (`closedhand-com/workers/edge/direct-routes.json`), and the relay carries only fixed page
-  layouts, the offline page and one-time setup links. A new route that carries a person's data
-  joins that list (`scripts/test-address-workers.js` checks). Copy may say they never reach
-  closedhand.com; Cloudflare still carries personal-URL traffic, so never say no company
-  carries it. Mail to Closedhand's own email address, if turned on, passes through
+  pages never reach closedhand.com. On a personal URL they pass through Closedhand's relay
+  (`relay/`) still encrypted, from the browser to a certificate whose key is made on the
+  computer and never leaves it, so the relay can't read them (`scripts/test-relay.js` checks).
+  Copy may say nobody in between can read them, the relay included; the relay still sees which
+  personal URL is asked for and from which internet address, so never say nothing passes
+  through anyone. Mail to Closedhand's own email address, if turned on, passes through
   closedhand.com sealed to the computer's key: name it wherever "never" is said in full. Wherever the
   account is named, the copy says what it keeps, the email, in those words: "stores your email
   and nothing else" is right, a bare "keeps nothing" is not; for an account number, "stores no
@@ -178,7 +177,7 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   where the point is ownership ("stays on your computer"). Availability is what the chosen home
   gives ("whenever the computer running it is awake and online"), never a chore ("keep it
   awake"). On closedhand.com it is explained once, in the home page's "What you need" (A computer
-  for it); only Terms, Privacy and the offline page repeat the caveat. Its data moves to another computer
+  for it); only Terms and Privacy repeat the caveat. Its data moves to another computer
   from Always on in My Account, two ways, a computer of the person's own first: a computer they
   leave on (a Mac mini at home, say) fetches all of it through the personal URL, with a one-time
   move code typed into its setup ("Bring Closedhand from another computer"); or it moves to a

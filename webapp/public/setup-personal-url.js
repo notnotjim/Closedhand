@@ -246,7 +246,7 @@
       } catch (e) { if (!given && /\bcode\b/i.test(e.message)) atCode = e.message; else actionError = e.message; }
       finally { claiming = false; lastCheck = 0; display(); check(); if (atCode) root.needsField($('url-code'), atCode); }
     }
-    // Change: rename. The old address sends people on for thirty days.
+    // Change: rename. The old address stops working.
     $('url-change').addEventListener('click', function (event) {
       event.preventDefault();
       $('url-rename-form').hidden = !$('url-rename-form').hidden;
@@ -272,7 +272,7 @@
         var next = personalUrl(result.renamedTo);
         state = result; state.savedUrl = null;
         if (next) { state.addressName = new URL(next).hostname.split('.')[0]; state.ownershipConfirmed = true; }
-        renamed = next ? 'Your Closedhand is now at ' + new URL(next).hostname + '. It takes about a minute to connect there, and the old address sends people to it for 30 days.' : null;
+        renamed = next ? 'Your Closedhand is now at ' + new URL(next).hostname + '. It takes about a minute to connect there.' : null;
         $('url-rename-form').hidden = true;
       } catch (e) { if (/^Use 3 to 32 letters|name is taken|already taken/.test(e.message)) atName = e.message; else actionError = e.message; }
       finally { renaming = false; lastCheck = 0; display(); if (atName) root.needsField($('url-new-name'), atName); }
