@@ -421,3 +421,19 @@ test('a plan that holds makes the picture in the TEE where this computer cannot;
     await assert.rejects(im.picture('x', { settings }), (e) => !e.unavailable && /couldn't be made just now/.test(e.message));
   } finally { near.image = was; }
 });
+
+// Asked for a picture a computer can't make at all, with no plan that would,
+// the person hears how to get one, after the answer: the subscription, or
+// paying ahead again after a plan paid ahead. Off or still downloading, the
+// reason says what to do, so nothing follows.
+test('a picture this computer can never make is followed by how to get one', async () => {
+  const im = require('../lib/image-generation');
+  assert.match(im.offerText({}, true), /^With the Closedhand subscription, Closedhand makes pictures here too, with FLUX\.2 Klein in a TEE, so nobody but you can see them: \[closedhand\.com\/subscribe\]\(https:\/\/closedhand\.com\/subscribe\)$/);
+  assert.match(im.offerText({ included_ai: { plan: { name: 'ended', was: 'plus' } } }, false), /: closedhand\.com\/subscribe$/);
+  assert.match(im.offerText({ included_ai: { plan: { name: 'ended', was: 'ahead' } } }, true), /^Paying ahead again in My Account lets Closedhand make pictures here too/);
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib/image-generation.js'), 'utf8');
+  assert.match(src, /throw Object\.assign\(new Error\(unavailable\(\)\), \{ unavailable: true, offer: \(_status \|\| \{\}\)\.eligible === false \}\);/);
+  const engine = fs.readFileSync(path.join(__dirname, '..', 'lib/engine.js'), 'utf8');
+  assert.match(engine, /if \(block\.name === "generate_image" && result\?\._imageOffer\) imageOffer = true;/);
+  assert.match(engine, /if \(imageOffer\) finalText = String\(finalText\)\.trim\(\) \+ "\\n\\n\[\[next\]\]\\n\\n" \+ require\("\.\/image-generation"\)\.offerText\(/);
+});
