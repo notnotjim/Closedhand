@@ -75,7 +75,9 @@ test("a picture shows as a picture in every chat app, and anything else arrives 
       return { sendLinkedDocument: async (...args) => sent.push(["linked", ...args]) };
     },
   };
-  const send = loadFunction("lib/messaging.js", "sendDocumentToPlatform", context);
+  // How each app is sent a file (sendDocumentToPlatform also keeps it for the
+  // turn, lib/one-chat.js).
+  const send = loadFunction("lib/messaging.js", "sendDocumentOnly", context);
   for (const platform of ["whatsapp", "whatsapp_linked"]) {
     await send(platform, "self", Buffer.from("image"), "chart.png", "image/png");
     assert.equal(sent.at(-1)[5], true, "inline on WhatsApp");
