@@ -364,6 +364,26 @@ test("the write-up of a stopped task tries a dropped connection again", async ()
   } finally { sw.retryNetwork = original; undo.forEach((f) => f()); }
 });
 
+// A task that was to make or change something says whether it was made: one
+// asked to put a different racket into a photo reported the pixel ranges it
+// had measured on the way.
+test("a stopped task that was to make something says whether it was made, not how far its workings got", async () => {
+  const { writeUpFromEvidence } = require("../lib/task-outcome");
+  let asked = "";
+  const client = { messages: { create: async ({ messages }) => { asked = messages[0].content; return { content: [{ type: "text", text: "The edited picture wasn't made." }] }; } } };
+  const stub = (rel, exports) => {
+    const key = require.resolve(rel); const before = require.cache[key];
+    require.cache[key] = { id: key, filename: key, loaded: true, exports };
+    return () => { if (before) require.cache[key] = before; else delete require.cache[key]; };
+  };
+  const undo = [stub("../lib/llm", { getInternalClient: () => ({ client, model: "m" }) }), stub("../user-store", { UserStore: { load: async () => ({}) } })];
+  try {
+    await writeUpFromEvidence({ id: "t", user_id: "owner", goal: "Put the green racket into the tennis photo", runtime: {} },
+      [{ tool: "sandbox_exec", result: "racket head x 315-828, y 136-593" }], new Error("This task reached its work allowance."));
+    assert.match(asked, /If the task was to make or change something \(a picture, a file, a message, a booking\), say first, plainly, whether it was made or done, never the working steps, measurements or coordinates that went into it\./);
+  } finally { undo.forEach((f) => f()); }
+});
+
 // The steps are a limit too: a task once used all 50 in nine minutes, warned
 // only of the clock.
 test("an agent is warned of whichever limit runs out first, steps included", () => {
