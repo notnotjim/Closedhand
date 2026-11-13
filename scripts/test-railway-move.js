@@ -110,7 +110,7 @@ test("Settings is one button, and closedhand.com passes the sign-in straight on"
   const dash = read("webapp/views/dashboard.html");
   // The card's button says first what moving does; Continue goes on to Railway's sign-in.
   assert.match(dash, /<button type="button" class="cta" id="move-go" onclick="confirmRailwayMove\(true\)">Move to Railway<\/button>/);
-  assert.match(dash, /<div class="move-confirm" id="railway-confirm" hidden>\n\s*<p class="account-action-desc">Everything moves to a server on Railway, and this computer stops running Closedhand\. You sign in to Railway next\.<\/p>\n\s*<button type="button" class="cta" id="railway-continue" onclick="startRailwayMove\(\)">Continue to Railway<\/button>/);
+  assert.match(dash, /<div class="move-confirm" id="railway-confirm" hidden>\n\s*<p class="account-action-desc">Everything moves to a server on Railway, and this computer stops running Closedhand\. You sign in to Railway next\.<\/p>\n\s*<p class="account-action-desc" id="railway-pictures" hidden>[^<]+<\/p>\n\s*<button type="button" class="cta" id="railway-continue" onclick="startRailwayMove\(\)">Continue to Railway<\/button>/);
   // A section of its own, before Your data, shown as Models are: a card for
   // each computer, the one it runs on In use, then the ways to move it with
   // what each costs; that the computer it leaves stops running Closedhand is
