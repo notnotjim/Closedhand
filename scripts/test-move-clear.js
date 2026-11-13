@@ -96,7 +96,12 @@ test("a Closedhand replaced by one set up afresh elsewhere stops, says where it 
     marker.write({ state: "replaced", url: "https://amber-fox-42.closedhand.ai", at: "2026-11-13T18:00:00Z" });
     assert.equal(marker.read().state, "replaced", "read, so the bot starts nothing and the dashboard only says where");
     assert.equal(clear.whenMoved(marker.read(), {}), null, "nothing came across, so nothing is cleared by itself");
-    const page = require("../webapp/moved-server").page(marker.read());
+    // The page alone: the server's own packages aren't installed where the
+    // checks run, and serving isn't what is tested here.
+    const Module = require("node:module"), real = Module._load;
+    Module._load = function (request, ...rest) { return request === "express" ? () => ({}) : real.call(this, request, ...rest); };
+    let page;
+    try { page = require("../webapp/moved-server").page(marker.read()); } finally { Module._load = real; }
     assert.match(page, /<h1>Closedhand runs on another computer now<\/h1>/);
     assert.match(page, /Your personal URL, <a href="https:\/\/amber-fox-42\.closedhand\.ai">amber-fox-42\.closedhand\.ai<\/a>, opens it there, so it stopped running here\./);
     assert.match(page, /What it kept on this computer stays here, unused\./);
