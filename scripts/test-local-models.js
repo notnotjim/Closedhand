@@ -215,7 +215,7 @@ test('the tool is always offered and says why it cannot run here, sends the pict
   assert.deepEqual(def.groups, ['images']);
   assert.ok(!def.core, 'listed, not carried in full on every message');
   assert.match(read('lib/tools/handlers.js'), /const pic = await require\("\.\.\/image-generation"\)\.picture\(toolInput\.prompt, \{ shape: toolInput\.shape, settings, useProvider: toolInput\.use_provider === true, edit \}\);/);
-  assert.match(read('lib/tools/handlers.js'), /await sendDocument\(chatId, pic\.bytes, pic\.name, pic\.mime\);/);
+  assert.match(read('lib/tools/handlers.js'), /await sendDocument\(chatId, pic\.bytes, pic\.name, pic\.mime, \{ attachmentId: pictureId \}\);/);
   const dash = read('webapp/views/dashboard.html');
   assert.match(dash, /<h2>Image generation<\/h2>/);
   assert.match(dash, /if \(!im\.eligible\) \{\n\s*body\.innerHTML = '<p>' \+ escHtml\(im\.needs \|\| ''\) \+ '<\/p><div class="images-ways"><button type="button" class="conn-btn conn-btn-manage" disabled>Turn on<\/button><\/div>';/, 'greyed out, saying what it needs');

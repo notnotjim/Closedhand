@@ -88,7 +88,7 @@ test("a picture shows as a picture in every chat app, and anything else arrives 
   assert.equal(sent.at(-1)[0], "photo");
   await send("telegram", "c1", Buffer.from("pdf"), "plan.pdf", "application/pdf");
   assert.equal(sent.at(-1)[0], "document");
-  assert.match(read("lib/messaging.js"), /async function sendDocument\(chatId, buffer, filename, mimeType\) \{\n\s*return sendDocumentToPlatform\(ctx\.activePlatform \|\| "telegram", chatId, buffer, filename, mimeType\);/, "one way to send a file, from any chat");
+  assert.match(read("lib/messaging.js"), /async function sendDocument\(chatId, buffer, filename, mimeType, opts\) \{\n\s*return sendDocumentToPlatform\(ctx\.activePlatform \|\| "telegram", chatId, buffer, filename, mimeType, opts\);/, "one way to send a file, from any chat");
 });
 
 test("there is no canvas: a page is the one thing Closedhand makes", () => {

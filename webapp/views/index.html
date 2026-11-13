@@ -4493,11 +4493,7 @@
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(conv) {
         if (conv && conv.project) { _openProject = conv.project; input.setAttribute('placeholder', composerPlaceholder()); projectHead(); }
-        if (conv && conv.messages) {
-          shownInThread(conv.messages).forEach(function(msg) {
-            addMessage(msg.content, msg.role === 'user' ? 'user' : 'bot', null, msg.ts || null, msg.via || null);
-          });
-        }
+        if (conv && conv.messages) shownInThread(conv.messages).forEach(showStored);
         [300, 600, 1000].forEach(function(ms) { setTimeout(scrollToBottom, ms); });
       })
       .catch(function() {});
@@ -4546,6 +4542,15 @@
       addMessage(m.content, role, null, undefined, m.via);
     });
   }
+  // A message from the stored conversation, with the pictures and files that
+  // came with it above it, as they came (lib/one-chat.js keepFiles).
+  function showStored(m) {
+    (m.role === 'assistant' && Array.isArray(m.files) ? m.files : []).forEach(function (f) {
+      addFileMessage({ filename: f.name, mediaType: f.mime, size: f.size, url: '/api/files/' + encodeURIComponent(f.id) + '/download' });
+    });
+    addMessage(m.content, m.role === 'user' ? 'user' : 'bot', null, m.ts || null, m.via || null);
+  }
+
   // Starting to type from the opening screen carries on the one conversation:
   // what was said lately, in any app, comes in above.
   function loadEarlier() {
@@ -4555,7 +4560,7 @@
       var shown = [].map.call(messagesEl.querySelectorAll('.message'), function (el) { return el._raw; });
       var earlier = shownInThread(conv.messages).slice(-30).filter(function (m) { return shown.indexOf(m.content) === -1; });
       var before = messagesEl.querySelectorAll('.message').length;
-      earlier.forEach(function (m) { addMessage(m.content, m.role === 'user' ? 'user' : 'bot', null, m.ts || null, m.via || null); });
+      earlier.forEach(showStored);
       var all = messagesEl.querySelectorAll('.message');
       for (var i = before; i < all.length; i++) if (first) messagesEl.insertBefore(all[i], first);
       scrollToBottom();

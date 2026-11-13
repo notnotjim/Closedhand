@@ -49,6 +49,8 @@ test("a file sent goes 90 days after its last use, a working copy a day on, and 
     { user_id: "u1", attachment_id: "att_4", storage_path: "u1/att_4", direction: "working", created_at: new Date(NOW - 3600000).toISOString() },
     { user_id: "u1", attachment_id: "att_out_5", storage_path: "u1/att_out_5", direction: "out", created_at: ago(6) },
     { user_id: "u1", attachment_id: "att_6", storage_path: "u1/att_6", direction: "in", created_at: ago(300), last_used_at: ago(200) },
+    { user_id: "u1", attachment_id: "att_7", storage_path: "u1/att_7", direction: "chat", created_at: ago(30), last_used_at: ago(30) },
+    { user_id: "u1", attachment_id: "att_8", storage_path: "u1/att_8", direction: "chat", created_at: ago(100), last_used_at: ago(95) },
   ];
   const projects = [{ context: [{ kind: "file", id: "att_6", title: "Floor plan.pdf" }, { kind: "note", id: "note_1" }] }];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ch-files-"));
@@ -58,9 +60,9 @@ test("a file sent goes 90 days after its last use, a working copy a day on, and 
     fs.utimesSync(path.join(dir, name), t, t);
   }
   const { db, removed } = fakeDb(rows, projects);
-  assert.equal(await deleteOldFiles(db, NOW, dir), 3);
-  assert.deepEqual(rows.map((r) => r.attachment_id), ["att_2", "att_4", "att_6"], "a file a project holds stays as long as the project");
-  assert.deepEqual(removed.sort(), ["u1/att_1", "u1/att_3", "u1/att_out_5"]);
+  assert.equal(await deleteOldFiles(db, NOW, dir), 4);
+  assert.deepEqual(rows.map((r) => r.attachment_id), ["att_2", "att_4", "att_6", "att_7"], "a file a project holds stays as long as the project, and one sent in the conversation as long as one the person sent");
+  assert.deepEqual(removed.sort(), ["u1/att_1", "u1/att_3", "u1/att_8", "u1/att_out_5"]);
   assert.deepEqual(fs.readdirSync(dir).sort(), ["att_10.pdf", "att_2.jpg", "att_4.png"], "the disk copies go too, and one deleted on the dashboard, but never one just arriving");
   fs.rmSync(dir, { recursive: true });
   assert.match(read("index.js"), /require\("\.\/lib\/file-expiry"\)\.start\(\);/);
@@ -77,7 +79,7 @@ test("a fetched file is a working copy, never one the person sent, and nothing s
   assert.doesNotMatch(messaging, /recordOutgoingFile|FILE_ORIGIN_LABELS|saved on your dashboard|too large/);
   assert.match(messaging, /sendToUser\(chatId, \{ type: "file", filename, mediaType: mimeType \|\| "application\/octet-stream", size: buffer\.length, url: `\/api\/files\/\$\{encodeURIComponent\(id\)\}\/download` \}\);/, "a big file in the web chat is a link, never refused");
   assert.match(read("webapp/views/index.html"), /var url = msg\.url \|\| \('data:'/);
-  assert.match(messaging, /async function sendDocument\(chatId, buffer, filename, mimeType\) \{\n\s*return sendDocumentToPlatform\(/);
+  assert.match(messaging, /async function sendDocument\(chatId, buffer, filename, mimeType, opts\) \{\n\s*return sendDocumentToPlatform\(/);
   const server = read("webapp/server.js");
   assert.doesNotMatch(server, /app\.get\("\/api\/files", |app\.delete\("\/api\/files", /);
   assert.match(server, /\.eq\("direction", "in"\)\n\s*\.order\("created_at", \{ ascending: false \}\)/, "Files you've sent lists what the person sent");

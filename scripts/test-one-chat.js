@@ -109,7 +109,7 @@ test("the turn's hook, proactive messages and the web chat page", () => {
   assert.match(page, /if \(msg\.type === 'elsewhere'\) \{ showElsewhere\(msg\); return; \}/);
   assert.match(page, /where\.textContent = 'on ' \+ VIA_NAMES\[via\];/);
   assert.match(page, /var firstOfVisit = !hasMessages && !_openProject;\n(\s*\/\/[^\n]*\n)*\s*if \(spoken === true && !hasMessages && window\.talkFirst && window\.talkFirst\(\)\) holdForAnswer\(\); else enterChatMode\(\);\n\s*if \(firstOfVisit\) loadEarlier\(\);/, "typing (or talking) from the opening screen carries the conversation on");
-  assert.match(page, /addMessage\(msg\.content, msg\.role === 'user' \? 'user' : 'bot', null, msg\.ts \|\| null, msg\.via \|\| null\);/, "history says which app too");
+  assert.match(page, /addMessage\(m\.content, m\.role === 'user' \? 'user' : 'bot', null, m\.ts \|\| null, m\.via \|\| null\);/, "history says which app too");
 });
 
 // A picture made in the web chat once reached WhatsApp only as the words
@@ -136,6 +136,27 @@ test("the pictures and files Closedhand sent in a turn go with it to the other a
   assert.deepEqual(wa.splice(0).map((m) => m[0]), ["me", "closedhand"], "a file from another turn never goes with this one");
 
   const messaging = read("lib/messaging.js");
-  assert.match(messaging, /const userId = ctx\.activeUserId, said = ctx\.currentAsk && userId && ctx\.currentAsk\[userId\];\n\s*if \(said && Buffer\.isBuffer\(buffer\)\) require\("\.\/one-chat"\)\.noteFile\(userId, said, \{ buffer, filename, mimeType \}\);/);
+  assert.match(messaging, /const userId = ctx\.activeUserId, said = ctx\.currentAsk && userId && ctx\.currentAsk\[userId\];\n\s*if \(said && Buffer\.isBuffer\(buffer\)\) \{/);
+  assert.match(messaging, /require\("\.\/one-chat"\)\.noteFile\(userId, said, \{ buffer, filename, mimeType, id \}\);/);
+});
+
+// Looking back, a picture Closedhand sent was gone: only the words of the
+// reply were kept. The files a turn sends are kept and named on its answer,
+// and the web chat draws them above it again.
+test("the files a turn sent are named on its answer, so looking back shows them", (t) => {
+  const oneChat = load({}, t);
+  const before = new Set([{ role: "user", content: "earlier" }]);
+  const conv = [...before, { role: "user", content: "draw a lighthouse" }, { role: "assistant", content: "Here it is." }];
+  oneChat.noteFile("u1", "draw a lighthouse", { buffer: Buffer.from("JPEG"), filename: "image.jpg", mimeType: "image/jpeg", id: "att_1" });
+  assert.equal(oneChat.keepFiles("u1", "something else", conv, before), false, "another turn's files never");
+  assert.equal(oneChat.keepFiles("u1", "draw a lighthouse", conv, before), true);
+  assert.deepEqual(conv[2].files, [{ id: "att_1", name: "image.jpg", mime: "image/jpeg", size: 4 }]);
+  const messaging = read("lib/messaging.js");
+  assert.match(messaging, /id = require\("\.\/attachments"\)\.saveAttachment\(userId, \{ buffer, fileName: filename, mediaType: mimeType, ext, isImage: PICTURE\.test\(mimeType \|\| ""\), direction: "chat" \}, `Sent in the chat: \$\{filename\}`\);/, "kept as it is sent");
+  assert.match(read("lib/engine.js"), /if \(oneChat\.keepFiles\(userId, userMessage, require\("\.\/conversation"\)\.getConversation\(userId\), before\)\) ctx\.activeUserStore\?\.markDirty\?\.\("conversations"\);/);
+  const page = read("webapp/views/index.html");
+  assert.match(page, /addFileMessage\(\{ filename: f\.name, mediaType: f\.mime, size: f\.size, url: '\/api\/files\/' \+ encodeURIComponent\(f\.id\) \+ '\/download' \}\);/);
+  assert.match(page, /if \(conv && conv\.messages\) shownInThread\(conv\.messages\)\.forEach\(showStored\);/);
+  assert.match(page, /earlier\.forEach\(showStored\);/);
 });
 
