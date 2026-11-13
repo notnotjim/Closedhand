@@ -207,7 +207,9 @@ test('the tool is always offered and says why it cannot run here, sends the pict
   assert.match(im.unavailable({ eligible: true, state: 'off' }), /turned on in Settings, under Image generation/);
   assert.match(im.unavailable({ eligible: true, state: 'downloading', pct: 42 }), /still downloading .*\(42%\)/);
   assert.equal(im.unavailable({ state: 'ready' }), null);
-  assert.match(read('lib/tools/handlers.js'), /if \(e\.unavailable\) return \{ error: `\$\{e\.message\} Tell the person that, in a sentence\. Never make it through another website or service\.` \};/);
+  // A service the person connected themselves is theirs to use; nothing else.
+  assert.match(read('lib/tools/handlers.js'), /return \{ error: `\$\{e\.message\} Make it with the image service the person connected themselves instead\.` \};/);
+  assert.match(read('lib/tools/handlers.js'), /return \{ error: `\$\{e\.message\} Tell the person this in one sentence\$\{e\.offer \? " and add nothing to it" : ""\}, and make the picture no other way\.`, \.\.\.\(e\.offer \? \{ _imageOffer: true \} : \{\}\) \};/);
   const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'generate_image');
   assert.deepEqual(def.groups, ['images']);
   assert.ok(!def.core, 'listed, not carried in full on every message');
