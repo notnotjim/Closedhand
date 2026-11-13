@@ -178,7 +178,7 @@ test('once confirmed, setup says where Closedhand is, with Change to rename it',
   reply = { enabled: true, state: 'provisioning', ownershipConfirmed: true, renamedTo: 'https://lucy-smith.closedhand.ai' };
   await f.event('url-rename-form', 'submit'); await tick();
   assert.equal(f.node('url-where').textContent, 'lucy-smith.closedhand.ai');
-  assert.match(f.node('url-status').textContent, /now at lucy-smith\.closedhand\.ai.*30 days/);
+  assert.match(f.node('url-status').textContent, /now at lucy-smith\.closedhand\.ai\. It takes about a minute to connect there\.$/);
   assert.equal(f.node('url-rename-form').hidden, true);
   const renames = f.calls.filter(c => c.method === 'POST');
   assert.deepEqual(renames.map(c => JSON.parse(c.body)), [{ name: ' Lucy Smith! ' }, { name: ' Lucy Smith! ' }]);

@@ -4967,7 +4967,6 @@
         var hc = document.getElementById('headerCenter');
         if (hc) hc.remove();
         connectChat();
-        if (typeof loadRAGModeState === 'function') loadRAGModeState();
         if (typeof window.monLoadCloud === 'function') window.monLoadCloud();
         // The conversations to pick up, under the box: the chat with
         // Closedhand once it has messages, then the projects, most recent
@@ -6195,11 +6194,6 @@ async function ragAskAbout(resultIdx) {
   var r = _ragSearchResults && _ragSearchResults[resultIdx];
   if (!r) return;
 
-  // Enable RAG mode so the bot has document context
-  try { await fetch('/api/rag/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }) }); } catch(e) {}
-  var ragBtn = document.getElementById('ragToggle');
-  if (ragBtn) ragBtn.classList.add('active');
-
   // For images: fetch and attach the actual image to the chat
   var isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(r.document_name || '');
   if (isImage && r.document_id) {
@@ -6236,27 +6230,6 @@ function blobToBase64(blob) {
     reader.onloadend = function() { resolve(reader.result.split(',')[1]); };
     reader.readAsDataURL(blob);
   });
-}
-
-async function toggleRAGMode() {
-  var btn = document.getElementById('ragToggle');
-  var isOn = btn.classList.toggle('active');
-  try {
-    await fetch('/api/rag/mode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: isOn })
-    });
-  } catch (e) { /* ignore */ }
-}
-
-async function loadRAGModeState() {
-  try {
-    var resp = await fetch('/api/rag/mode');
-    var data = await resp.json();
-    var btn = document.getElementById('ragToggle');
-    if (btn && data.enabled) btn.classList.add('active');
-  } catch (e) { /* ignore */ }
 }
 
 function escapeHtml(s) {
