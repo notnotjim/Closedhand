@@ -45,8 +45,11 @@ function create({ db, notices, includedAi, wait = ms => new Promise(r => setTime
     return 'ok';
   }
 
+  // The first result after a start is logged, so a deploy shows it running.
   function start() {
-    const run = () => check().catch(e => console.error('[private llm] check:', e.message));
+    let first = true;
+    const run = () => check().then(state => { if (first && state) console.log(`[private llm] first check since starting: ${state}`); first = false; })
+      .catch(e => console.error('[private llm] check:', e.message));
     setTimeout(run, 90000).unref();
     setInterval(run, EVERY).unref();
   }
