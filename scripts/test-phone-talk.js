@@ -121,12 +121,12 @@ test("too short a recording says which button to tap", async () => {
 
 test("the page: the ring and the chat apps on phones only, the ring becoming the voice, no keyboard while talking", () => {
   const page = read("webapp/views/index.html");
-  assert.match(page, /<button type="button" class="talk-btn" id="talkBtn" aria-label="Talk to Closedhand"><video class="talk-smoke" id="talkSmoke" muted loop playsinline preload="none" [^>]*data-mov="\/orb\/smoke\.mov" data-webm="\/orb\/smoke\.webm" data-poster="\/orb\/smoke-poster\.png"><\/video><span class="talk-core" aria-hidden="true"><\/span><span class="talk-fist" aria-hidden="true"><\/span><\/button>/);
+  assert.match(page, /<button type="button" class="talk-btn" id="talkBtn" aria-label="Talk to Closedhand"><video class="talk-smoke" id="talkSmoke" muted loop playsinline preload="none" [^>]*data-mov="\/orb\/smoke\.mov" data-webm="\/orb\/smoke\.webm" data-poster="\/orb\/smoke-poster\.png" data-mov-light="\/orb\/smoke-light\.mov" data-webm-light="\/orb\/smoke-light\.webm" data-poster-light="\/orb\/smoke-light-poster\.png"><\/video><span class="talk-core" aria-hidden="true"><\/span><span class="talk-fist" aria-hidden="true"><\/span><\/button>/);
   // No filter on the ring or the fist: Safari draws a filtered video or image
   // at a lower resolution. Each theme has its own film; the fist takes the ink.
   assert.doesNotMatch(page, /\.talk-smoke \{ filter|\.talk-btn img|\.talk-fist[^}]*filter/);
   assert.match(page, /\.talk-fist \{[^}]*background: var\(--fg\); -webkit-mask: url\(\/fist\.png\) center \/ contain no-repeat; mask: url\(\/fist\.png\)/);
-  assert.match(page, /var of = function \(src\) \{ return light \? src\.replace\('\/smoke', '\/smoke-light'\) : src; \};/);
+  assert.match(page, /var of = function \(kind\) \{ return smoke\.dataset\[kind \+ \(light \? 'Light' : ''\)\]; \};/);
   assert.match(page, /document\.documentElement\.addEventListener\('themechange', function \(\) \{ film\(\); sync\(\); \}\);/, "and the film changes with the theme");
   assert.match(page, /\.talk, \.continue-on \{ display: none; \}\n  @media \(max-width: 600px\) \{\n    body:not\(\.no-talk\) \.talk \{ display: flex;/);
   assert.match(page, /var phone = window\.matchMedia\('\(max-width: 600px\)'\);/);
@@ -166,7 +166,7 @@ test("the phone's home: the ring's film fetched on phones only, the box at the t
   for (const f of ["smoke.webm", "smoke.mov", "smoke-poster.png", "smoke-light.webm", "smoke-light.mov", "smoke-light-poster.png"]) {
     assert.ok(fs.readFileSync(path.join(ROOT, "webapp/public/orb", f)).equals(fs.readFileSync(path.join(ROOT, "closedhand-com/public/orb", f))), f);
   }
-  assert.match(read("closedhand-com/views/home.html"), /var of = function \(src\) \{ return light \? src\.replace\('\/smoke', '\/smoke-light'\) : src; \};/, "closedhand.com plays each theme's own film too");
+  assert.match(read("closedhand-com/views/home.html"), /var of = function \(kind\) \{ return smoke\.dataset\[kind \+ \(light \? 'Light' : ''\)\]; \};/, "closedhand.com plays each theme's own film too");
   assert.match(page, /if \(!smoke \|\| !window\.talkFirst\(\)\) return;/, "a desk never downloads it");
   assert.match(page, /if \(still \|\| document\.hidden \|\| document\.body\.classList\.contains\('chat-active'\) \|\| !window\.talkFirst\(\)\) \{ smoke\.pause\(\); return; \}/);
   assert.match(page, /smokeRate\(state\);/);

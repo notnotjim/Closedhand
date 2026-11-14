@@ -157,7 +157,8 @@ test("signing in to find a Closedhand never makes an account: the other provider
 test("the light theme's ring is toned once, in its own film, never darkened again on the page", () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'closedhand-com/views/home.html'), 'utf8');
   assert.doesNotMatch(home, /\.orb-film \{ filter:/, "a filter here made the light ring heavy and dark");
-  assert.match(home, /return light \? src\.replace\('\/smoke', '\/smoke-light'\) : src;/, "the light film is its own");
+  assert.match(home, /var of = function \(kind\) \{ return smoke\.dataset\[kind \+ \(light \? 'Light' : ''\)\]; \};/, "the light film is its own");
+  assert.match(home, /data-poster-light="\/orb\/smoke-light-poster\.png"/);
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'closedhand-com/tools/ring-video/film.html'), 'utf8'), /The light tone: CSS brightness\(0\.45\) contrast\(1\.8\) saturate\(1\.3\)/, "toned when it was made");
 });
 
@@ -196,3 +197,23 @@ test("closedhand.com/account opens My Account in the person's dashboard when the
   const stranger = await accountPage({ account: { ...account, url: 'https://evil.example.com' }, answers: true });
   assert.deepEqual([stranger.opened, stranger.asked], [null, []], 'only a personal URL is ever opened');
 });
+
+// On a weak connection the HEVC film's download failed and Safari fell through
+// to the WebM, which it plays without transparency: a black square round the
+// ring. Or the ring never came, waiting behind the 3D library.
+test('a slow connection shows the still ring, then the film, never the film on black', () => {
+  const home = fs.readFileSync(path.join(__dirname, '..', 'closedhand-com/views/home.html'), 'utf8');
+  const chat = fs.readFileSync(path.join(__dirname, '..', 'webapp/views/index.html'), 'utf8');
+  for (const page of [home, chat]) {
+    assert.match(page, /var hevc = smoke\.canPlayType\('video\/quicktime; codecs="hvc1"'\) !== ''/);
+    assert.match(page, /var src = wanted = of\(hevc \? 'mov' : 'webm'\), poster = new Image\(\);/, 'one film, the one the browser shows clear');
+    assert.doesNotMatch(page, /createElement\('source'\)/, 'no second film to fall through to');
+    assert.match(page, /poster\.onload = poster\.onerror = function \(\) \{\n\s+if \(wanted !== src\) return;\n\s+smoke\.poster = poster\.src;/, 'the still ring first');
+    assert.match(page, /if \(tries < 6\) again = setTimeout\(reload, 2000 \* Math\.pow\(2, tries\+\+\)\);/, 'a film that fails is asked for again');
+    assert.match(page, /window\.addEventListener\('online', function \(\) \{ if \(smoke\.error\) \{ tries = 0; reload\(\); \} \}\);/);
+  }
+  assert.ok(home.indexOf("getElementById('orbSmoke')") < home.indexOf('three.min.js'), 'the ring does not wait for the 3D library');
+  // Each film keeps its own stamp, so a phone keeps it rather than asking again.
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'closedhand-com/server.js'), 'utf8'), /\(\?:href\|src\|data-\[a-z-\]\+\)="/);
+});
+

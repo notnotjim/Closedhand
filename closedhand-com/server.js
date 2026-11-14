@@ -36,7 +36,7 @@ const pages = new Map();
 function render(name) {
   if (!pages.has(name)) {
     const html = fs.readFileSync(path.join(__dirname, 'views', name), 'utf8').replace(
-      /((?:href|src|data-[a-z]+)=")(\/[^"#?]+\.(?:css|js|png|svg|jpg|webp|ico|mov|webm))"/g,
+      /((?:href|src|data-[a-z-]+)=")(\/[^"#?]+\.(?:css|js|png|svg|jpg|webp|ico|mov|webm))"/g,
       (whole, attr, url) => { const v = fingerprint(url.slice(1)); return v ? attr + url + '?v=' + v + '"' : whole; });
     pages.set(name, html);
   }

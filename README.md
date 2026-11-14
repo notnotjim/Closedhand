@@ -1,6 +1,6 @@
 # Closedhand
 
-Uncensored personal AI assistance, with no company in between. Your data and conversations can be read by nobody but you.
+Uncensored personal AI, with no company in between. Your data and conversations can be read by nobody but you.
 
 Closedhand is a private AI assistant that runs on your own computer. Connect any app or service you use, from your mail and chats to your files, bank and work tools, and none of it ever needs to leave your computer. Talk to it in WhatsApp, Telegram or the web chat. Ask "What wine did Tom like?" and it answers "A 2019 Rioja. He said so on WhatsApp." It also speaks up before you ask: "Your flight's delayed. You'll miss your train."
 

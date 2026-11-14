@@ -6,11 +6,11 @@
   <script src="/theme.js"></script><script src="/account-nav.js" defer></script><script src="/needs-field.js" defer></script><script src="/message-us.js" defer></script>
 <script src="/handheld.js"></script>
 <title>Closedhand</title>
-<meta name="description" content="Uncensored personal AI assistance, with no company in between. Your data and conversations can be read by nobody but you. Your Closedhand assistant is open source and runs on a computer you control, with an LLM in a TEE (trusted execution environment).">
+<meta name="description" content="Uncensored personal AI, with no company in between. Your data and conversations can be read by nobody but you. Your Closedhand assistant is open source and runs on a computer you control, with an LLM in a TEE (trusted execution environment).">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Closedhand">
 <meta property="og:title" content="Closedhand: control your world and your private data">
-<meta property="og:description" content="Uncensored personal AI assistance, with no company in between. Your data and conversations can be read by nobody but you. Your Closedhand assistant is open source and runs on a computer you control, with an LLM in a TEE (trusted execution environment).">
+<meta property="og:description" content="Uncensored personal AI, with no company in between. Your data and conversations can be read by nobody but you. Your Closedhand assistant is open source and runs on a computer you control, with an LLM in a TEE (trusted execution environment).">
 <meta property="og:url" content="https://closedhand.com/">
 <meta property="og:image" content="https://closedhand.com/og.png">
 <meta property="og:image:width" content="1200">
@@ -902,7 +902,7 @@ body.chat-active .mon-area { display:none; }
   <div class="hero-area" id="heroSection">
     <div class="hero-space-top" style="flex:0.55"></div>
     <div class="hero-heading"><span class="hero-heading-first">Control your world</span><span class="hero-heading-more" id="heroMore">and your private data.</span></div>
-    <div class="hero-heading-sub">Uncensored personal AI assistance, with no company in between</div>
+    <div class="hero-heading-sub">Uncensored personal AI, with no company in between</div>
     <script>
       // The second sentence of the heading is measured at its natural width
       // once the fonts are in, so it can unfold to exactly that; then the hero
@@ -934,7 +934,7 @@ body.chat-active .mon-area { display:none; }
           <!-- The desktop's own smoke ring, filmed (tools/ring-video), played
                as a small transparent loop. Its sources are set by script on
                phones and tablets only, so computers never download it. -->
-          <span class="orb-film"><video class="orb-smoke" id="orbSmoke" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback data-mov="/orb/smoke.mov" data-webm="/orb/smoke.webm" data-poster="/orb/smoke-poster.png"></video></span>
+          <span class="orb-film"><video class="orb-smoke" id="orbSmoke" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback data-mov="/orb/smoke.mov" data-webm="/orb/smoke.webm" data-poster="/orb/smoke-poster.png" data-mov-light="/orb/smoke-light.mov" data-webm-light="/orb/smoke-light.webm" data-poster-light="/orb/smoke-light-poster.png"></video></span>
           <span class="orb-core"></span>
           <span class="orb-talk" id="orbTalk"><span class="orb-line" id="orbLine">What really happened in Tiananmen Square?</span></span>
         </span>
@@ -1095,6 +1095,205 @@ body.chat-active .mon-area { display:none; }
   <a href="/terms">Terms</a>
 </div>
 
+<script>
+// The orb on phones and tablets: the filmed smoke ring plays only while on
+// screen and the page is visible, and stays on its first frame for reduced
+// motion or when the phone won't autoplay (Low Power Mode). Tapping it
+// flashes the ring, then opens. It comes before the 3D library below, so a
+// slow connection never holds the ring back while that arrives.
+(function () {
+  var smoke = document.getElementById('orbSmoke'), link = document.getElementById('orbOpen');
+  if (!smoke || !link || !document.documentElement.classList.contains('handheld')) return;
+  var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches, onScreen = true;
+  smoke.muted = true;
+  // The film of the theme in use: the light theme has its own ring
+  // (smoke-light.*), never the dark one filtered, and it changes with it.
+  // Safari gets the HEVC film, which carries transparency there, and other
+  // browsers the WebM. Only the one the browser shows clear is offered:
+  // Safari plays WebM too, but on black, and a weak connection that dropped
+  // the HEVC film used to fall through to it. The still ring comes first, so
+  // a slow connection shows it while the film follows, and a film that fails
+  // to arrive is asked for again.
+  var hevc = smoke.canPlayType('video/quicktime; codecs="hvc1"') !== '', wanted, tries = 0, again;
+  function film() {
+    var light = document.documentElement.getAttribute('data-theme') === 'light';
+    var of = function (kind) { return smoke.dataset[kind + (light ? 'Light' : '')]; };
+    var src = wanted = of(hevc ? 'mov' : 'webm'), poster = new Image();
+    poster.fetchPriority = 'high';
+    poster.onload = poster.onerror = function () {
+      if (wanted !== src) return;
+      smoke.poster = poster.src;
+      smoke.preload = 'auto';
+      smoke.src = src;
+      sync();
+    };
+    poster.src = of('poster');
+  }
+  function reload() { smoke.load(); sync(); }
+  smoke.addEventListener('error', function () {
+    clearTimeout(again);
+    if (tries < 6) again = setTimeout(reload, 2000 * Math.pow(2, tries++));
+  });
+  smoke.addEventListener('playing', function () { tries = 0; });
+  window.addEventListener('online', function () { if (smoke.error) { tries = 0; reload(); } });
+  film();
+  document.documentElement.addEventListener('themechange', function () { film(); sync(); });
+  function sync() {
+    if (still || !onScreen || document.hidden) smoke.pause();
+    else { var p = smoke.play(); if (p && p.catch) p.catch(function () {}); }
+  }
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (entries) { onScreen = entries[0].isIntersecting; sync(); }).observe(smoke);
+  document.addEventListener('visibilitychange', sync);
+  // A phone that refused to autoplay may allow it after a touch.
+  document.addEventListener('touchstart', sync, { once: true, passive: true });
+  sync();
+  // Inside it, questions only the person can read, each asked of the
+  // uncensored LLM Closedhand provides and answered directly before it went
+  // here. Each sits as shifting noise; its letters sharpen out of it in a soft
+  // wave and later dissolve back. Around it, the person's world drifts in and
+  // is taken into the smoke. Reduced motion keeps the first question and the
+  // icons still. Paused, like the film, while off screen or hidden.
+  var QUESTIONS = [
+    'What really happened in Tiananmen Square?',
+    'Make the case for legalising all drugs.',
+    'What risks did my doctor gloss over on statins?',
+    'Write the gangsters’ deal scene. No moral at the end.',
+    'Is Taiwan its own country?',
+    'How does this exploit work, so I can patch it?',
+    'How is China treating the Uyghurs?',
+  ];
+  var NOISE = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  // Mail, chats, calendar, cards, photos, files, health and places.
+  var ICONS = [
+    '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    '<path d="M4 5h16v11H10l-6 4z"/>',
+    '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h4"/>',
+    '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/>',
+    '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/>',
+    '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
+    '<path d="M12 21s-6-6.2-6-11a6 6 0 0 1 12 0c0 4.8-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
+  ];
+  var line = document.getElementById('orbLine'), talk = document.getElementById('orbTalk'), drift = document.getElementById('orbDrift');
+  var orb = link.querySelector('.orb-stage'), core = link.querySelector('.orb-core');
+  function paused() { return !onScreen || document.hidden; }
+  // Time that stands still while paused.
+  function wait(ms) {
+    return new Promise(function (resolve) {
+      var left = ms, last = performance.now();
+      (function tick(now) {
+        if (!paused()) left -= now - last;
+        last = now;
+        if (left <= 0) return resolve();
+        requestAnimationFrame(tick);
+      })(last);
+    });
+  }
+  function noise() { return NOISE[Math.floor(Math.random() * NOISE.length)]; }
+  // The question as letters that each keep their width, with noise over them.
+  var chars = [];
+  function build(question) {
+    line.textContent = '';
+    chars = [];
+    question.split(' ').forEach(function (word, i) {
+      if (i) line.appendChild(document.createTextNode(' '));
+      var w = document.createElement('span');
+      w.className = 'orb-w';
+      for (var c of word) {
+        var ch = document.createElement('span'), real = document.createElement('span'), fuzz = document.createElement('span');
+        ch.className = 'orb-ch'; real.className = 'orb-real'; fuzz.className = 'orb-noise';
+        real.textContent = c; fuzz.textContent = noise();
+        ch.append(real, fuzz);
+        w.appendChild(ch);
+        chars.push({ el: ch, noise: fuzz, next: 0, open: false });
+      }
+      line.appendChild(w);
+    });
+  }
+  // The noise keeps shifting, each letter on its own beat.
+  (function churn(now) {
+    if (!paused()) for (var i = 0; i < chars.length; i++) {
+      var c = chars[i];
+      if (c.open || now < c.next) continue;
+      c.noise.textContent = noise();
+      c.next = now + 70 + Math.random() * 140;
+    }
+    requestAnimationFrame(churn);
+  })(performance.now());
+  async function reveal() {
+    for (var i = 0; i < chars.length; i++) { chars[i].open = true; chars[i].el.classList.add('on'); await wait(26 + Math.random() * 22); }
+  }
+  async function conceal() {
+    for (var i = chars.length - 1; i >= 0; i--) { chars[i].open = false; chars[i].el.classList.remove('on'); await wait(14 + Math.random() * 10); }
+  }
+  async function ask() {
+    for (var i = 0; ; i = (i + 1) % QUESTIONS.length) {
+      build(QUESTIONS[i]);
+      talk.classList.remove('is-leaving');
+      await wait(1700);
+      await reveal();
+      orb.classList.add('answered');
+      await wait(3000);
+      orb.classList.remove('answered');
+      await conceal();
+      await wait(1100);
+      talk.classList.add('is-leaving');
+      await wait(900);
+    }
+  }
+  function icon(svg) {
+    var el = document.createElement('span');
+    el.className = 'orb-icon';
+    el.innerHTML = '<svg viewBox="0 0 24 24">' + svg + '</svg>';
+    drift.appendChild(el);
+    return el;
+  }
+  // Each icon spirals in from beyond the ring and is taken in as it reaches
+  // the smoke.
+  function launch(svg) {
+    var el = icon(svg), size = orb.getBoundingClientRect().width;
+    var a0 = Math.random() * Math.PI * 2, turn = (Math.random() < .5 ? -1 : 1) * (0.55 + Math.random() * 0.35);
+    var from = size * (0.76 + Math.random() * 0.1), to = size * 0.4, dur = 4200 + Math.random() * 1400, start = performance.now();
+    (function step(now) {
+      var t = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - t, 3);
+      var r = from + (to - from) * e, a = a0 + turn * e;
+      var fadeIn = Math.min(1, t / 0.25), fadeOut = t > 0.6 ? Math.max(0, 1 - (t - 0.6) / 0.4) : 1;
+      el.style.transform = 'translate3d(' + (Math.cos(a) * r).toFixed(2) + 'px,' + (Math.sin(a) * r).toFixed(2) + 'px,0) scale(' + (1 - 0.5 * Math.max(0, (t - 0.6) / 0.4)).toFixed(3) + ')';
+      el.style.opacity = (fadeIn * fadeOut * 0.85).toFixed(3);
+      if (t < 1) return requestAnimationFrame(step);
+      el.remove();
+      core.classList.remove('taking'); void core.offsetWidth; core.classList.add('taking');
+    })(start);
+  }
+  async function world() {
+    for (var n = 0; ; n++) {
+      if (!paused()) launch(ICONS[n % ICONS.length]);
+      await wait(1300 + Math.random() * 700);
+    }
+  }
+  build(QUESTIONS[0]);
+  if (still) {
+    chars.forEach(function (c) { c.open = true; c.el.classList.add('on'); });
+    var size = orb.getBoundingClientRect().width;
+    ICONS.forEach(function (svg, n) {
+      var el = icon(svg), a = n / ICONS.length * Math.PI * 2;
+      el.style.transform = 'translate(' + (Math.cos(a) * size * 0.6).toFixed(2) + 'px,' + (Math.sin(a) * size * 0.6).toFixed(2) + 'px)';
+      el.style.opacity = '.7';
+    });
+  } else {
+    wait(1200).then(ask);
+    world();
+  }
+  link.addEventListener('click', function (e) {
+    if (!link.getAttribute('href') || still || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    var stage = link.querySelector('.orb-stage');
+    stage.classList.remove('pulsing'); void stage.offsetWidth; stage.classList.add('pulsing');
+    var href = link.href;
+    setTimeout(function () { location.href = href; }, 420);
+  });
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function() {
@@ -1629,189 +1828,6 @@ body.chat-active .mon-area { display:none; }
       if (arm && intel) { var alt = document.createElement('a'); alt.href = intel.browser_download_url; alt.textContent = 'Intel version'; alt.className = 'way-meta'; alt.style.textDecoration = 'underline'; note.after(alt); }
     })
     .catch(function () { /* The release-page link remains usable. */ });
-})();
-</script>
-<script>
-// The orb on phones and tablets: the filmed smoke ring plays only while on
-// screen and the page is visible, and stays on its first frame for reduced
-// motion or when the phone won't autoplay (Low Power Mode). Safari plays the
-// HEVC file, which carries transparency there; other browsers skip it (they
-// don't play QuickTime) and take the WebM. Tapping it flashes the ring, then
-// opens.
-(function () {
-  var smoke = document.getElementById('orbSmoke'), link = document.getElementById('orbOpen');
-  if (!smoke || !link || !document.documentElement.classList.contains('handheld')) return;
-  var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches, onScreen = true;
-  smoke.muted = true;
-  // The film of the theme in use: the light theme has its own ring
-  // (smoke-light.*), never the dark one filtered, and it changes with it.
-  function film() {
-    var light = document.documentElement.getAttribute('data-theme') === 'light';
-    var of = function (src) { return light ? src.replace('/smoke', '/smoke-light') : src; };
-    smoke.poster = of(smoke.dataset.poster);
-    var mov = document.createElement('source'), webm = document.createElement('source');
-    mov.src = of(smoke.dataset.mov); mov.type = 'video/quicktime; codecs="hvc1"';
-    webm.src = of(smoke.dataset.webm); webm.type = 'video/webm';
-    smoke.replaceChildren(mov, webm);
-    smoke.preload = 'auto';
-    smoke.load();
-  }
-  film();
-  document.documentElement.addEventListener('themechange', function () { film(); sync(); });
-  function sync() {
-    if (still || !onScreen || document.hidden) smoke.pause();
-    else { var p = smoke.play(); if (p && p.catch) p.catch(function () {}); }
-  }
-  if ('IntersectionObserver' in window) new IntersectionObserver(function (entries) { onScreen = entries[0].isIntersecting; sync(); }).observe(smoke);
-  document.addEventListener('visibilitychange', sync);
-  // A phone that refused to autoplay may allow it after a touch.
-  document.addEventListener('touchstart', sync, { once: true, passive: true });
-  sync();
-  // Inside it, questions only the person can read, each asked of the
-  // uncensored LLM Closedhand provides and answered directly before it went
-  // here. Each sits as shifting noise; its letters sharpen out of it in a soft
-  // wave and later dissolve back. Around it, the person's world drifts in and
-  // is taken into the smoke. Reduced motion keeps the first question and the
-  // icons still. Paused, like the film, while off screen or hidden.
-  var QUESTIONS = [
-    'What really happened in Tiananmen Square?',
-    'Make the case for legalising all drugs.',
-    'What risks did my doctor gloss over on statins?',
-    'Write the gangsters’ deal scene. No moral at the end.',
-    'Is Taiwan its own country?',
-    'How does this exploit work, so I can patch it?',
-    'How is China treating the Uyghurs?',
-  ];
-  var NOISE = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  // Mail, chats, calendar, cards, photos, files, health and places.
-  var ICONS = [
-    '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
-    '<path d="M4 5h16v11H10l-6 4z"/>',
-    '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
-    '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h4"/>',
-    '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/>',
-    '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/>',
-    '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
-    '<path d="M12 21s-6-6.2-6-11a6 6 0 0 1 12 0c0 4.8-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
-  ];
-  var line = document.getElementById('orbLine'), talk = document.getElementById('orbTalk'), drift = document.getElementById('orbDrift');
-  var orb = link.querySelector('.orb-stage'), core = link.querySelector('.orb-core');
-  function paused() { return !onScreen || document.hidden; }
-  // Time that stands still while paused.
-  function wait(ms) {
-    return new Promise(function (resolve) {
-      var left = ms, last = performance.now();
-      (function tick(now) {
-        if (!paused()) left -= now - last;
-        last = now;
-        if (left <= 0) return resolve();
-        requestAnimationFrame(tick);
-      })(last);
-    });
-  }
-  function noise() { return NOISE[Math.floor(Math.random() * NOISE.length)]; }
-  // The question as letters that each keep their width, with noise over them.
-  var chars = [];
-  function build(question) {
-    line.textContent = '';
-    chars = [];
-    question.split(' ').forEach(function (word, i) {
-      if (i) line.appendChild(document.createTextNode(' '));
-      var w = document.createElement('span');
-      w.className = 'orb-w';
-      for (var c of word) {
-        var ch = document.createElement('span'), real = document.createElement('span'), fuzz = document.createElement('span');
-        ch.className = 'orb-ch'; real.className = 'orb-real'; fuzz.className = 'orb-noise';
-        real.textContent = c; fuzz.textContent = noise();
-        ch.append(real, fuzz);
-        w.appendChild(ch);
-        chars.push({ el: ch, noise: fuzz, next: 0, open: false });
-      }
-      line.appendChild(w);
-    });
-  }
-  // The noise keeps shifting, each letter on its own beat.
-  (function churn(now) {
-    if (!paused()) for (var i = 0; i < chars.length; i++) {
-      var c = chars[i];
-      if (c.open || now < c.next) continue;
-      c.noise.textContent = noise();
-      c.next = now + 70 + Math.random() * 140;
-    }
-    requestAnimationFrame(churn);
-  })(performance.now());
-  async function reveal() {
-    for (var i = 0; i < chars.length; i++) { chars[i].open = true; chars[i].el.classList.add('on'); await wait(26 + Math.random() * 22); }
-  }
-  async function conceal() {
-    for (var i = chars.length - 1; i >= 0; i--) { chars[i].open = false; chars[i].el.classList.remove('on'); await wait(14 + Math.random() * 10); }
-  }
-  async function ask() {
-    for (var i = 0; ; i = (i + 1) % QUESTIONS.length) {
-      build(QUESTIONS[i]);
-      talk.classList.remove('is-leaving');
-      await wait(1700);
-      await reveal();
-      orb.classList.add('answered');
-      await wait(3000);
-      orb.classList.remove('answered');
-      await conceal();
-      await wait(1100);
-      talk.classList.add('is-leaving');
-      await wait(900);
-    }
-  }
-  function icon(svg) {
-    var el = document.createElement('span');
-    el.className = 'orb-icon';
-    el.innerHTML = '<svg viewBox="0 0 24 24">' + svg + '</svg>';
-    drift.appendChild(el);
-    return el;
-  }
-  // Each icon spirals in from beyond the ring and is taken in as it reaches
-  // the smoke.
-  function launch(svg) {
-    var el = icon(svg), size = orb.getBoundingClientRect().width;
-    var a0 = Math.random() * Math.PI * 2, turn = (Math.random() < .5 ? -1 : 1) * (0.55 + Math.random() * 0.35);
-    var from = size * (0.76 + Math.random() * 0.1), to = size * 0.4, dur = 4200 + Math.random() * 1400, start = performance.now();
-    (function step(now) {
-      var t = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - t, 3);
-      var r = from + (to - from) * e, a = a0 + turn * e;
-      var fadeIn = Math.min(1, t / 0.25), fadeOut = t > 0.6 ? Math.max(0, 1 - (t - 0.6) / 0.4) : 1;
-      el.style.transform = 'translate3d(' + (Math.cos(a) * r).toFixed(2) + 'px,' + (Math.sin(a) * r).toFixed(2) + 'px,0) scale(' + (1 - 0.5 * Math.max(0, (t - 0.6) / 0.4)).toFixed(3) + ')';
-      el.style.opacity = (fadeIn * fadeOut * 0.85).toFixed(3);
-      if (t < 1) return requestAnimationFrame(step);
-      el.remove();
-      core.classList.remove('taking'); void core.offsetWidth; core.classList.add('taking');
-    })(start);
-  }
-  async function world() {
-    for (var n = 0; ; n++) {
-      if (!paused()) launch(ICONS[n % ICONS.length]);
-      await wait(1300 + Math.random() * 700);
-    }
-  }
-  build(QUESTIONS[0]);
-  if (still) {
-    chars.forEach(function (c) { c.open = true; c.el.classList.add('on'); });
-    var size = orb.getBoundingClientRect().width;
-    ICONS.forEach(function (svg, n) {
-      var el = icon(svg), a = n / ICONS.length * Math.PI * 2;
-      el.style.transform = 'translate(' + (Math.cos(a) * size * 0.6).toFixed(2) + 'px,' + (Math.sin(a) * size * 0.6).toFixed(2) + 'px)';
-      el.style.opacity = '.7';
-    });
-  } else {
-    wait(1200).then(ask);
-    world();
-  }
-  link.addEventListener('click', function (e) {
-    if (!link.getAttribute('href') || still || e.metaKey || e.ctrlKey || e.shiftKey) return;
-    e.preventDefault();
-    var stage = link.querySelector('.orb-stage');
-    stage.classList.remove('pulsing'); void stage.offsetWidth; stage.classList.add('pulsing');
-    var href = link.href;
-    setTimeout(function () { location.href = href; }, 420);
-  });
 })();
 </script>
 <script>

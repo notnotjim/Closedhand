@@ -2285,7 +2285,7 @@
          phones only, so a desk never downloads it. Wider screens keep the mic
          in the box. -->
     <div class="talk" id="talkArea">
-      <button type="button" class="talk-btn" id="talkBtn" aria-label="Talk to Closedhand"><video class="talk-smoke" id="talkSmoke" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback aria-hidden="true" data-mov="/orb/smoke.mov" data-webm="/orb/smoke.webm" data-poster="/orb/smoke-poster.png"></video><span class="talk-core" aria-hidden="true"></span><span class="talk-fist" aria-hidden="true"></span></button>
+      <button type="button" class="talk-btn" id="talkBtn" aria-label="Talk to Closedhand"><video class="talk-smoke" id="talkSmoke" muted loop playsinline preload="none" disablepictureinpicture disableremoteplayback aria-hidden="true" data-mov="/orb/smoke.mov" data-webm="/orb/smoke.webm" data-poster="/orb/smoke-poster.png" data-mov-light="/orb/smoke-light.mov" data-webm-light="/orb/smoke-light.webm" data-poster-light="/orb/smoke-light-poster.png"></video><span class="talk-core" aria-hidden="true"></span><span class="talk-fist" aria-hidden="true"></span></button>
       <div class="talk-line" id="talkLine"><p class="talk-hint" id="talkHint" role="status" aria-live="polite"></p><button type="button" class="talk-end" id="talkEnd" hidden>End</button></div>
     </div>
     <!-- Sending from here carries on Chat, or the project that is open. -->
@@ -3448,17 +3448,34 @@
     var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // The film of the theme in use: the light theme has its own ring
     // (smoke-light.*), never the dark one filtered, and it changes with it.
+    // Safari gets the HEVC film, which carries transparency there, and other
+    // browsers the WebM. Only the one the browser shows clear is offered:
+    // Safari plays WebM too, but on black, and a weak connection that dropped
+    // the HEVC film used to fall through to it. The still ring comes first, so
+    // a slow connection shows it while the film follows, and a film that fails
+    // to arrive is asked for again.
+    var hevc = smoke.canPlayType('video/quicktime; codecs="hvc1"') !== '', wanted, tries = 0, again;
     function film() {
       var light = document.documentElement.getAttribute('data-theme') === 'light';
-      var of = function (src) { return light ? src.replace('/smoke', '/smoke-light') : src; };
-      smoke.poster = of(smoke.dataset.poster);
-      var mov = document.createElement('source'), webm = document.createElement('source');
-      mov.src = of(smoke.dataset.mov); mov.type = 'video/quicktime; codecs="hvc1"';
-      webm.src = of(smoke.dataset.webm); webm.type = 'video/webm';
-      smoke.replaceChildren(mov, webm);
-      smoke.preload = 'auto';
-      smoke.load();
+      var of = function (kind) { return smoke.dataset[kind + (light ? 'Light' : '')]; };
+      var src = wanted = of(hevc ? 'mov' : 'webm'), poster = new Image();
+      poster.fetchPriority = 'high';
+      poster.onload = poster.onerror = function () {
+        if (wanted !== src) return;
+        smoke.poster = poster.src;
+        smoke.preload = 'auto';
+        smoke.src = src;
+        sync();
+      };
+      poster.src = of('poster');
     }
+    function reload() { smoke.load(); sync(); }
+    smoke.addEventListener('error', function () {
+      clearTimeout(again);
+      if (tries < 6) again = setTimeout(reload, 2000 * Math.pow(2, tries++));
+    });
+    smoke.addEventListener('playing', function () { tries = 0; });
+    window.addEventListener('online', function () { if (smoke.error) { tries = 0; reload(); } });
     film();
     document.documentElement.addEventListener('themechange', function () { film(); sync(); });
     function sync() {
