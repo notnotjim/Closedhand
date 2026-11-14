@@ -140,6 +140,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   const ahead = require('./lib/ahead').create({ db, env, request, includedAi, baseUrl });
   const plus = require('./lib/plus').create({ db, env, request, includedAi, ahead, baseUrl });
   const capacity = require('./lib/capacity').create({ db, env, notices, includedAi });
+  const privateLlm = require('./lib/private-llm-check').create({ db, notices, includedAi });
   const backup = require('./lib/backup').create({ db, env, notices });
   const addresses = require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, ahead, notices });
   plus.register(app, { sessions });
@@ -200,7 +201,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
     await addresses.sweep().catch(e => console.error('[addresses] sweep:', e.message));
     await backup.daily().catch(e => console.error('[backup] daily:', e.message));
   }
-  return { app, sessions, plus, messages, addresses, hourly, settle: () => includedAi.settle(), stopMail: () => typeof mailWorker === 'function' && mailWorker() };
+  return { app, sessions, plus, messages, addresses, hourly, privateLlm, settle: () => includedAi.settle(), stopMail: () => typeof mailWorker === 'function' && mailWorker() };
 }
 
 if (require.main === module) {
@@ -208,8 +209,10 @@ if (require.main === module) {
   (async () => {
     const db = connect();
     await migrate(db);
-    const { app, hourly, settle } = createApp({ db });
+    const { app, hourly, settle, privateLlm } = createApp({ db });
     settle();
+    // Every 15 minutes, the uncensored LLM checked as people's Closedhands use it.
+    privateLlm.start();
     // Once a minute after starting too, so frequent deploys never skip it.
     setTimeout(hourly, 60000).unref();
     setInterval(hourly, 3600000).unref();

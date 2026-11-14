@@ -220,7 +220,7 @@ test('as closedhand.com starts, the sign-in at NEAR is renewed, so one that stop
   const near = nearAi(), db = database();
   await create({ db, env: env(), request: near.request }).settle();
   assert.equal(near.state.renewals, 1);
-  assert.match(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'), /const \{ app, hourly, settle \} = createApp\(\{ db \}\);\n\s+settle\(\);/, 'as it starts, before computers ask');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'), /const \{ app, hourly, settle, privateLlm \} = createApp\(\{ db \}\);\n\s+settle\(\);/, 'as it starts, before computers ask');
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'), /const notices = require\('\.\/lib\/operator-notices'\)\.create\(\{ db, env, request \}\);\n\s+const includedAi = require\('\.\/lib\/included-ai'\)\.create\(\{ db, env, request, notices \}\);/, 'with the maintainer\'s notices');
 }));
 

@@ -212,10 +212,21 @@ async function refresh() {
   return changed || notices.changed;
 }
 
+// Hourly, or every five minutes on the maintainer's own Closedhand, whose
+// notices (the uncensored LLM failing closedhand.com's check, say) should not
+// wait an hour.
+const HOUR = 60 * 60 * 1000;
 function start() {
-  const run = () => refresh().catch(e => console.error("[included ai] could not check with closedhand.com:", e.message));
-  setTimeout(run, 2 * 60 * 1000).unref?.();
-  setInterval(run, 60 * 60 * 1000).unref?.();
+  let last = 0;
+  const run = async () => {
+    const often = (await settings()).included_ai?.plan?.name === "maintainer";
+    if (!often && Date.now() - last < HOUR - 60 * 1000) return;
+    last = Date.now();
+    await refresh();
+  };
+  const go = () => run().catch(e => console.error("[included ai] could not check with closedhand.com:", e.message));
+  setTimeout(go, 2 * 60 * 1000).unref?.();
+  setInterval(go, 5 * 60 * 1000).unref?.();
 }
 
 module.exports = { receive, use, useOwn, refresh, start, modelName };

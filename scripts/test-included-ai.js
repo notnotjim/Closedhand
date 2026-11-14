@@ -413,7 +413,7 @@ test("each hour: the plan and its fair use are kept, a waiting key is taken seal
   // A computer that never asked for a personal URL asks nothing.
   answer.now = null;
   assert.equal(await ai.refresh(), false);
-  assert.match(fs.readFileSync(path.join(root, "webapp/included-ai-setup.js"), "utf8"), /setInterval\(run, 60 \* 60 \* 1000\)/, "every hour");
+  assert.match(fs.readFileSync(path.join(root, "webapp/included-ai-setup.js"), "utf8"), /const HOUR = 60 \* 60 \* 1000;[\s\S]*if \(!often && Date\.now\(\) - last < HOUR - 60 \* 1000\) return;/, "every hour, the maintainer's every five minutes");
   assert.match(fs.readFileSync(path.join(root, "webapp/phone-registration.js"), "utf8"), /if \(!\(await getConf\('PHONE_INSTALL_ID'\)\)\) return null;\n  return \(await call\('included-ai', 'GET'\)\) \|\| null;/);
 });
 

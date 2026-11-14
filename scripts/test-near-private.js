@@ -485,3 +485,52 @@ test("a picture is asked for privately and opens once its signature checks out; 
   await assert.rejects(near.image(conn(), { prompt: "a lighthouse", model: "black-forest-labs/FLUX.2-klein-4B", size: "1024x1024" }), /couldn't be checked as coming from its enclave/);
   fake.mode = {};
 });
+
+// A failed privacy check is not a slow answer: the chat says what happened,
+// in one line for both cases, without naming the company running the hardware.
+test("when the privacy check stops a turn, the chat says so plainly", () => {
+  const engine = fs.readFileSync(path.join(__dirname, "../lib/engine.js"), "utf8");
+  const line = "I couldn't confirm the LLM was running privately just now, so I stopped there. Say \\\"try again\\\" in a minute and I'll carry on.";
+  const at = engine.indexOf('if (error.code === "near_unproven" || error.code === "near_unsigned") {\n    return "' + line + '";');
+  assert.ok(at > 0, "the privacy check has its own line");
+  assert.ok(at < engine.indexOf("I couldn't get an answer in time just now."), "ahead of the line for a slow or failed provider");
+});
+
+// closedhand.com checks the uncensored LLM as people's Closedhands use it,
+// with its own key, and tells the maintainer once when the check fails twice
+// and once when it passes again. Its copy of near-private.js is its own.
+test("closedhand.com's check tells the maintainer once when the privacy check fails, and once when it passes again", async () => {
+  await ready;
+  const site = require("../closedhand-com/lib/near-private");
+  site.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, fetchPublished, signatureWaitMs: 5 });
+  try {
+    let failing = false, n = 0;
+    const db = { query: async (sql) => {
+      if (/^INSERT INTO operator_alerts/.test(sql)) { const fresh = !failing; failing = true; return { rowCount: fresh ? 1 : 0 }; }
+      if (/^DELETE FROM operator_alerts/.test(sql)) { const was = failing; failing = false; return { rowCount: was ? 1 : 0 }; }
+      throw new Error("unexpected query " + sql);
+    } };
+    const told = [];
+    const includedAi = { enabled: () => true, label: "NEAR AI", forOperator: async () => ({ key: "site-key-" + ++n, model: MODEL_ID, base: `https://localhost:${PORT}/v1` }) };
+    const check = require("../closedhand-com/lib/private-llm-check").create({ db, notices: { queue: async (t) => told.push(t) }, includedAi, wait: async () => {} });
+    reset();
+    assert.equal(await check.check(), "ok");
+    assert.deepEqual(told, []);
+    reset({ copies: true, strangerSigns: true });
+    assert.equal(await check.check(), "failing");
+    assert.equal(await check.check(), "failing");
+    assert.deepEqual(told, ["Closedhand: the uncensored LLM failed closedhand.com's privacy check twice, two minutes apart, so people's chats on it are probably failing too. The check that failed: the signer is not a proven model enclave."], "told once, with the check that failed");
+    reset({ copies: true });
+    assert.equal(await check.check(), "ok");
+    assert.equal(await check.check(), "ok");
+    assert.equal(told.length, 2);
+    assert.equal(told[1], "Closedhand: the uncensored LLM passes closedhand.com's privacy check again, so people's chats on it work.");
+    const other = require("../closedhand-com/lib/private-llm-check").create({ db, notices: { queue: async () => assert.fail("nothing to check") }, includedAi: { ...includedAi, label: "OpenRouter" } });
+    assert.equal(await other.check(), null, "a provider outside sealed hardware has no proof to check");
+  } finally { site.useDeps(null); }
+  // The maintainer's own Closedhand fetches and says closedhand.com's notices every five minutes; everyone else's as before.
+  assert.match(fs.readFileSync(path.join(__dirname, "../webapp/included-ai-setup.js"), "utf8"), /const often = \(await settings\(\)\)\.included_ai\?\.plan\?\.name === "maintainer";\n\s+if \(!often && Date\.now\(\) - last < HOUR - 60 \* 1000\) return;/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../lib/included-credit.js"), "utf8"), /\.included_ai\?\.plan\?\.name === "maintainer";\n\s+if \(!often && Date\.now\(\) - last < EVERY - 60 \* 1000\) return;/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../closedhand-com/server.js"), "utf8"), /privateLlm\.start\(\);/);
+});
+
