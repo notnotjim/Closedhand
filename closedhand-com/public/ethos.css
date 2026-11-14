@@ -2,7 +2,7 @@
 body { margin: 0; background: var(--bg); color: var(--ui-text); font-size: 1.125rem; line-height: 1.7; }
 main, footer { width: min(100%, 48.75rem); margin: 0 auto; padding-left: 1.75rem; padding-right: 1.75rem; }
 main { padding-top: 3rem; padding-bottom: 3.5rem; }
-h1 { font-family: var(--font-brand); font-weight: 500; font-size: clamp(2.125rem, 5vw, 3rem); line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.5rem; }
+h1 { font-family: var(--font-brand); font-weight: 500; font-variation-settings: 'SOFT' 30; font-size: clamp(2.125rem, 5vw, 3rem); line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.5rem; }
 /* The page a section belongs to, above its title: the same small label as
    the home page's sections (feat-kicker). */
 .kicker { margin: 0 0 .75rem; font-size: .75rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; }

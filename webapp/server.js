@@ -5332,7 +5332,7 @@ async function ownReport(req, res) {
   if (error || !report) {
     // Opening a page link: the styled page with the way back. Other callers get the plain message.
     if (req.method === "GET" && /^\/page\/[^/]+$/.test(req.path)) {
-      res.set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; form-action 'self'; frame-ancestors 'self'");
+      res.set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; form-action 'self'; frame-ancestors 'self'");
       res.status(404).send(assets.withAppearance(require("./report-page").missingHtml()));
     } else res.status(404).send("This page was not found. It may have been deleted.");
     return null;
@@ -5358,7 +5358,7 @@ app.get("/page/:id", async (req, res) => {
   try {
     const report = await ownReport(req, res);
     if (!report) return;
-    res.set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; frame-src 'self'; form-action 'self'; frame-ancestors 'self'");
+    res.set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src 'self'; frame-src 'self'; form-action 'self'; frame-ancestors 'self'");
     pageOpened(report);
     res.send(assets.withAppearance(require("./report-page").pageHtml(report)));
   } catch (err) {

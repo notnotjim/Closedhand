@@ -79,5 +79,8 @@ function cacheHeaders(res, file) {
   const urlPath = "/" + path.relative(publicDir, file).split(path.sep).join("/");
   const v = res.req?.query?.v;
   res.set("Cache-Control", v && v === version(urlPath) ? "public, max-age=31536000, immutable" : "no-cache");
+  // A page's interactive piece runs sandboxed with an origin of its own, and a
+  // browser fetches fonts for it only when they say any page may use them.
+  if (urlPath.startsWith("/fonts/")) res.set("Access-Control-Allow-Origin", "*");
 }
 module.exports = { version, stamp, stampImports, forHost, sendPage, cacheHeaders, setAppearance, withAppearance };

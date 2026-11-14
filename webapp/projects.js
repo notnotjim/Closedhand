@@ -15,7 +15,7 @@ const page = require("./report-page");
 const COLUMNS = "id, name, emoji, about, instructions, summary, state, context, status, expected_end, last_touched, created_at, archived_at";
 // Instructions, one a line, as written.
 const lines = (x) => String(x || "").split(/\n+/).map((l) => l.trim()).filter(Boolean).join("\n").slice(0, 4000);
-const PAGE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; form-action 'self'; frame-ancestors 'self'";
+const PAGE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; form-action 'self'; frame-ancestors 'self'";
 // What a search of the person's synced items looks in, across kinds.
 const SEARCHED = ["data->>subject", "data->>summary", "data->>title", "data->>from", "data->>chat_name", "data->>text"];
 
@@ -473,7 +473,7 @@ function shell(title, inner) {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&display=swap">
+<link rel="stylesheet" href="/fonts.css">
 <style>
 /* The app's one root size (interface.css): 90% on computers. */
 html { font-size: 100%; }

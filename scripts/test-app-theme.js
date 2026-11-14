@@ -131,3 +131,28 @@ test("errors and destructive actions are red, a colour of their own, never the a
     }
   }
 });
+
+// Every page closedhand.com and the app serve is set in Closedhand's own copy
+// of its typefaces (scripts/fetch-fonts.js), so opening one tells no font
+// company who is looking and never waits on one.
+test("the typefaces come from Closedhand itself, never from Google", () => {
+  const served = ["closedhand-com/views", "webapp/views"].flatMap((d) => fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith(".html")).map((f) => `${d}/${f}`))
+    .concat(["lib/report-page.js", "webapp/report-page.js", "lib/paying-for-piece.js", "webapp/projects.js", "webapp/server.js"]);
+  for (const f of served) assert.doesNotMatch(read(f), /fonts\.(googleapis|gstatic)\.com/, f);
+  const css = read("webapp/public/fonts.css");
+  assert.equal(read("closedhand-com/public/fonts.css"), css);
+  const faces = [...css.matchAll(/url\(\/fonts\/([a-z0-9-]+\.woff2)\?v=([0-9a-f]{12})\)/g)];
+  assert.ok(faces.length >= 6);
+  for (const [, file, v] of faces) for (const dir of ["closedhand-com/public/fonts", "webapp/public/fonts"]) {
+    const bytes = fs.readFileSync(path.join(root, dir, file));
+    assert.equal(require("node:crypto").createHash("sha256").update(bytes).digest("hex").slice(0, 12), v, `${dir}/${file} carries its own stamp`);
+  }
+  for (const family of ["DM Sans", "Fraunces", "IBM Plex Mono"]) {
+    assert.ok(css.includes(`font-family: '${family}'`), family);
+    assert.ok(fs.existsSync(path.join(root, "closedhand-com/public/fonts", `LICENSE-${family.toLowerCase().replace(/ /g, "-")}.txt`)), family + "'s licence");
+  }
+  // A page's interactive piece runs with an origin of its own; the fonts say it may use them.
+  assert.match(read("webapp/assets.js"), /if \(urlPath\.startsWith\("\/fonts\/"\)\) res\.set\("Access-Control-Allow-Origin", "\*"\);/);
+  assert.match(read("webapp/server.js"), /style-src 'self' 'unsafe-inline'; font-src 'self';/);
+});
+

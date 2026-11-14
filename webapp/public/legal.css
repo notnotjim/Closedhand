@@ -7,7 +7,7 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 header > a:last-child { display: inline-flex; align-items: center; min-height: 2.75rem; font-size: 0.9375rem; color: var(--ui-muted); text-decoration: none; }
 header > a:last-child:hover { color: var(--ui-text); }
 main { padding-top: 2.5rem; padding-bottom: 3.5rem; }
-h1 { font-family: var(--font-brand); font-weight: 500; font-size: clamp(2.125rem, 5vw, 3rem); line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.5rem; }
+h1 { font-family: var(--font-brand); font-weight: 500; font-variation-settings: 'SOFT' 30; font-size: clamp(2.125rem, 5vw, 3rem); line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.5rem; }
 .lead { font-size: 1.4375rem; line-height: 1.45; color: var(--ui-text); }
 .updated { margin: -0.75rem 0 2rem; font-size: 0.875rem; color: var(--dim); }
 h2 { font-size: 1.1875rem; font-weight: 600; line-height: 1.35; margin: 2.25rem 0 0.75rem; text-wrap: balance; }
