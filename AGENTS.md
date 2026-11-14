@@ -72,7 +72,9 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
 - Headings: a section has one heading style (sentence case, semibold) and at most one muted
   line under it saying what the section is for: one short sentence, never a paragraph. More goes
   in the section's body or the step it belongs to (`scripts/test-subheadings.js` checks). No
-  small-capital labels ("APPS", "ROUTINES") and no centred section headings.
+  small-capital labels ("APPS", "ROUTINES") and no centred section headings. Under a page heading
+  set in Fraunces, that line is Fraunces too, at its reading size, upright and regular (the shared
+  `.ch-lede` in `interface.css`); a page titled in the sans keeps a sans line.
 - Buttons come in three tiers. The main action (the brush-underlined `.cta`) appears once per
   screen at most, for the thing the person most likely came to do. Secondary actions are
   outlined neutral buttons, but one: the "+ …" button that adds to a list of records

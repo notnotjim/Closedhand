@@ -67,6 +67,9 @@ button, input, textarea, select { font-family: var(--font-ui); }
 .ch-brand > span { display: inline; font-family: var(--font-brand); font-size: 1.5rem; font-weight: 500; font-style: normal; line-height: 1; letter-spacing: -0.02em; font-variation-settings: 'opsz' 48, 'SOFT' 30; color: inherit; }
 .ch-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: .3125rem; border-radius: .1875rem; }
 .ch-brand:hover { color: var(--fg); }
+/* The line under a page's heading: Fraunces at the size it is read, upright
+   and regular, the heading's voice said more quietly than its display cut. */
+.ch-lede { font-family: var(--font-brand); font-weight: 400; font-variation-settings: 'SOFT' 30; }
 .dash-slide-header { min-height: 4.25rem; padding: 1.25rem var(--space-page); background: var(--raised); }
 .dash-title { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
 .ch-page-name { font: 400 var(--ui-label)/1.4 var(--font-ui); color: var(--ui-muted); padding-left: 1rem; border-left: 1px solid var(--ui-border); }

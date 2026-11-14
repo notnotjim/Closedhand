@@ -197,7 +197,7 @@
     min-height: calc(100dvh - 9.8125rem);
   }
   @media (prefers-reduced-motion: reduce) {
-    .hero-area *, .hero-heading, .hero-heading-sub, .input-box-wrap, .suggestions { animation: none !important; opacity: 1 !important; }
+    .hero-area *, .hero-heading, .input-box-wrap, .suggestions { animation: none !important; opacity: 1 !important; }
     .hero-heading .hero-heading-more { transition: none; max-width: none; opacity: 0.85; }
   }
 
@@ -309,30 +309,6 @@
   .claw-word { transition: color 0.4s ease; }
   .claw-word.red { color: var(--accent); }
 
-  .hero-heading-sub {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.625rem;
-    font-size: clamp(0.8125rem, 1.8vw, 1.125rem);
-    font-weight: 400;
-    letter-spacing: -0.2px;
-    text-align: center;
-    color: rgba(var(--fg-rgb),0.5);
-    line-height: 1.4;
-    max-width: 56.25rem;
-    text-wrap: balance;
-    user-select: none;
-    margin-bottom: 1.5rem;
-    opacity: 0;
-    animation: heroIn 0.8s ease forwards 0.5s;
-  }
-  .hero-heading-sub img {
-    width: clamp(1.25rem, 2.5vw, 1.75rem);
-    height: clamp(1.25rem, 2.5vw, 1.75rem);
-    opacity: 0.55;
-    flex-shrink: 0;
-  }
 
   /* ===== THE INPUT BOX - hero state: large, prominent, central CTA ===== */
 
@@ -1172,8 +1148,6 @@
     /* Full-width on a phone: a box scaled up on focus pokes past the screen
        edges and Safari pans to it. Brighten, do not grow. */
     .input-box-wrap:focus-within, .input-box-wrap.composing { transform: none; }
-    .hero-heading-sub { font-size: 0.875rem; line-height: 1.45; gap: 0.375rem; margin-bottom: 1.125rem; max-width: 92vw; }
-    .hero-heading-sub img { width: 1.25rem; height: 1.25rem; }
 
     .input-box-wrap { max-width: 100%; }
     .input-textarea-wrap { padding: 1rem 1rem 0.5rem; }
