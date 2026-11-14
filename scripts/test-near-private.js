@@ -51,7 +51,7 @@ execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyo
 const KEY = fs.readFileSync(path.join(dir, "key.pem")), CERT = fs.readFileSync(path.join(dir, "cert.pem"));
 const SPKI = sha("sha256", new crypto.X509Certificate(CERT).publicKey.export({ type: "spki", format: "der" }));
 const edPair = () => { const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519"); return { privateKey, pub: Buffer.from(publicKey.export({ format: "jwk" }).x, "base64url"), seed: Buffer.from(privateKey.export({ format: "jwk" }).d, "base64url") }; };
-const GATEWAY = edPair(), MODEL = edPair();
+const GATEWAY = edPair(), MODEL = edPair(), STRANGER = edPair();
 const xSecret = (seed) => { const s = sha("sha512", seed).subarray(0, 32); s[0] &= 248; s[31] &= 127; s[31] |= 64; return Buffer.from(s); };
 const COMPOSE = "services:\n  model:\n    image: example/model@sha256:00";
 const MR_CONFIG = Buffer.concat([Buffer.from([1]), sha("sha256", COMPOSE), Buffer.alloc(15)]).toString("hex");
@@ -111,7 +111,7 @@ const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 3000
         event_log: "[]", info: { tcb_info: { app_compose: m.managed ? MANAGED : COMPOSE } }, nvidia_payload: JSON.stringify({ nonce }),
         ...(m.managed ? { compose_manager_attestation: logFor(deploymentsOf(m.managed), nonce, { rtMr3: m.otherEnclave ? "11".repeat(48) : "00".repeat(48) }) } : {}),
       };
-      return send(200, { gateway_attestation: gateway, ...(m.noModels ? {} : { model_attestations: [model] }) });
+      return send(200, { gateway_attestation: gateway, ...(m.noModels ? {} : { model_attestations: m.copies ? [model, { ...model }] : [model] }) });
     }
     if (url.pathname === "/v1/chat/completions") {
       const raw = Buffer.concat(chunks), body = JSON.parse(raw);
@@ -124,7 +124,7 @@ const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 3000
         message.tool_calls = [{ id: "call_1", type: "function", function: { name: toClient(name), arguments: toClient(JSON.stringify({ seen: Object.keys(params.properties) })) } }];
       }
       const resBytes = Buffer.from(JSON.stringify({ id: "chatcmpl-" + fake.posts.length, model: body.model, choices: [{ index: 0, message, finish_reason: body.tools ? "tool_calls" : "stop" }], usage: { prompt_tokens: 5, completion_tokens: 3 } }));
-      const signer = fake.mode.gatewaySigns ? GATEWAY : MODEL;
+      const signer = fake.mode.gatewaySigns ? GATEWAY : fake.mode.strangerSigns ? STRANGER : MODEL;
       const text = fake.mode.gatewaySigns ? `${sha("sha256", raw).toString("hex")}:${sha("sha256", resBytes).toString("hex")}` : `${body.model}:${sha("sha256", raw).toString("hex")}:${sha("sha256", resBytes).toString("hex")}`;
       fake.signature = { text, signing_address: signer.pub.toString("hex"), signing_algo: "ed25519", signature_kind: fake.mode.gatewaySigns ? "gateway" : "provider_tee",
         signature: crypto.sign(null, Buffer.from(fake.mode.badSignature ? text + "x" : text), signer.privateKey).toString("hex") };
@@ -215,6 +215,16 @@ test("a reply whose signature is wrong or never comes is not used; one the prove
   reset({ gatewaySigns: true });
   const res = await near.complete(conn(), { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] });
   assert.equal((await res.json()).choices[0].message.content, "Echo: hi");
+});
+
+// NEAR AI ran two copies of one model enclave, so its proof named the same
+// signer twice, and every reply was refused for matching more than one.
+test("a reply from a model enclave the proof names twice is used; one signed by an enclave it never named is not", async () => {
+  await ready; reset({ copies: true });
+  const res = await near.complete(conn(), { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] });
+  assert.equal((await res.json()).choices[0].message.content, "Echo: hi");
+  reset({ copies: true, strangerSigns: true });
+  await assert.rejects(near.complete(conn(), { model: MODEL_ID, messages: [{ role: "user", content: "hi" }] }), (e) => e.code === "near_unsigned");
 });
 
 test("a picture is sent privately with its words, as parts NEAR's proxy restores, and text that looks like parts stays text", async () => {
